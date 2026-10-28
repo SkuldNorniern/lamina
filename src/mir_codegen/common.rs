@@ -1037,6 +1037,13 @@ fn dying_input(inst: &Instruction) -> Option<(VirtualReg, VirtualReg)> {
             src: Operand::Register(Register::Virtual(src)),
             ..
         } if dst != src => Some((*dst, *src)),
+        Instruction::IntConvert {
+            from,
+            to,
+            dst: Register::Virtual(dst),
+            src: Operand::Register(Register::Virtual(src)),
+            ..
+        } if dst != src && from.size_bytes() == 8 && to.size_bytes() == 8 => Some((*dst, *src)),
         _ => None,
     }
 }

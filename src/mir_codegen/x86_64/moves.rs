@@ -88,17 +88,28 @@ pub(super) fn load_copy_operand_to_rax(
     reg_alloc: &X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
 ) -> Result<(), LaminaError> {
+    load_copy_operand_into(ty, src, "rax", writer, reg_alloc, stack_slots)
+}
+
+pub(super) fn load_copy_operand_into(
+    ty: &MirType,
+    src: &Operand,
+    target: &str,
+    writer: &mut impl Write,
+    reg_alloc: &X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
     let size = ty.size_bytes();
     match src {
         Operand::Register(Register::Virtual(vreg)) => {
             if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
-                emit_copy_register_load(writer, physical, size)?;
+                emit_copy_register_into(writer, physical, size, target)?;
             } else if let Some(offset) = stack_slots.get(vreg) {
                 match size {
-                    1 => writeln!(writer, "    movsbq {offset}(%rbp), %rax")?,
-                    2 => writeln!(writer, "    movswq {offset}(%rbp), %rax")?,
-                    4 => writeln!(writer, "    movslq {offset}(%rbp), %rax")?,
-                    _ => writeln!(writer, "    movq {offset}(%rbp), %rax")?,
+                    1 => writeln!(writer, "    movsbq {offset}(%rbp), %{target}")?,
+                    2 => writeln!(writer, "    movswq {offset}(%rbp), %{target}")?,
+                    4 => writeln!(writer, "    movslq {offset}(%rbp), %{target}")?,
+                    _ => writeln!(writer, "    movq {offset}(%rbp), %{target}")?,
                 }
             } else {
                 return Err(LaminaError::ValidationError(format!(
@@ -107,7 +118,7 @@ pub(super) fn load_copy_operand_to_rax(
             }
         }
         Operand::Register(Register::Physical(physical)) => {
-            emit_copy_register_load(writer, physical.name, size)?;
+            emit_copy_register_into(writer, physical.name, size, target)?;
         }
         Operand::Immediate(immediate) => {
             let bits = match immediate {
@@ -120,27 +131,32 @@ pub(super) fn load_copy_operand_to_rax(
             };
             let shift = 64 - size * 8;
             let value = ((bits << shift) as i64) >> shift;
-            writeln!(writer, "    movq ${value}, %rax")?;
+            writeln!(writer, "    movq ${value}, %{target}")?;
         }
     }
     Ok(())
 }
 
-pub(super) fn emit_copy_register_load(
+/// Copy the low `size` bytes of `register` into `target`, sign-extended to 64 bits.
+pub(super) fn emit_copy_register_into(
     writer: &mut impl Write,
     register: &str,
     size: usize,
+    target: &str,
 ) -> Result<(), LaminaError> {
+    if size == 8 && register == target {
+        return Ok(());
+    }
     let narrowed = register_for_size(register, size).ok_or_else(|| {
         LaminaError::ValidationError(format!(
             "x86_64 backend cannot select a {size}-byte alias for register {register}"
         ))
     })?;
     match size {
-        1 => writeln!(writer, "    movsbq %{narrowed}, %rax")?,
-        2 => writeln!(writer, "    movswq %{narrowed}, %rax")?,
-        4 => writeln!(writer, "    movslq %{narrowed}, %rax")?,
-        _ => writeln!(writer, "    movq %{narrowed}, %rax")?,
+        1 => writeln!(writer, "    movsbq %{narrowed}, %{target}")?,
+        2 => writeln!(writer, "    movswq %{narrowed}, %{target}")?,
+        4 => writeln!(writer, "    movslq %{narrowed}, %{target}")?,
+        _ => writeln!(writer, "    movq %{narrowed}, %{target}")?,
     }
     Ok(())
 }

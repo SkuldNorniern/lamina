@@ -25,7 +25,7 @@ fn restore_saved_registers<W: Write>(
 /// Where the value printf reads is waiting.
 #[derive(Clone, Copy)]
 enum PrintArg {
-    /// In rax.
+    /// In the integer argument register: rdx on Windows, rsi elsewhere.
     Integer,
     /// In xmm0, already widened to double.
     Double,
@@ -47,7 +47,7 @@ fn emit_printf_and_flush<W: Write>(
         writeln!(writer, "    subq ${shadow}, %rsp")?;
         writeln!(writer, "    leaq {fmt}(%rip), %rcx")?;
         match arg {
-            PrintArg::Integer => writeln!(writer, "    movq %rax, %rdx")?,
+            PrintArg::Integer => {}
             PrintArg::Double => writeln!(writer, "    movq %xmm0, %rdx")?,
         }
         writeln!(writer, "    call {printf}")?;
@@ -60,9 +60,6 @@ fn emit_printf_and_flush<W: Write>(
     }
 
     writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
-    if let PrintArg::Integer = arg {
-        writeln!(writer, "    movq %rax, %rsi")?;
-    }
     // al carries the vector-register count for a variadic call; printf reads it
     // before saving xmm state.
     let vector_count = match arg {
@@ -704,6 +701,21 @@ pub(super) fn emit_instruction_x86_64(
         src,
     } = inst
     {
+        let dst_phys = match dst {
+            Register::Virtual(v) => reg_alloc.get_mapping_for(v),
+            Register::Physical(p) => Some(p.name),
+        };
+        if let Some(target) = dst_phys {
+            load_operand_to_register(src, writer, reg_alloc, stack_slots, target)?;
+            extend_integer(
+                writer,
+                target,
+                from.size_bytes().min(to.size_bytes()),
+                *signed,
+            )?;
+            canonicalize_integer(writer, target, to)?;
+            return Ok(());
+        }
         load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
         extend_integer(
             writer,
@@ -739,15 +751,38 @@ pub(super) fn emit_instruction_x86_64(
             };
             let in_place = ty.size_bytes() == 8 && src_phys.is_some() && src_phys == dst_phys;
             if !in_place {
-                load_copy_operand_to_rax(ty, src, writer, reg_alloc, stack_slots)?;
-                match dst {
-                    Register::Virtual(vreg) => {
-                        store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                match (dst, dst_phys) {
+                    (_, Some(target)) => {
+                        load_copy_operand_into(ty, src, target, writer, reg_alloc, stack_slots)?;
                     }
-                    Register::Physical(phys) if phys.name != "rax" => {
-                        writeln!(writer, "    movq %rax, %{}", phys.name)?;
+                    (Register::Virtual(vreg), None) => {
+                        let slot = stack_slots.get(vreg).copied();
+                        let direct = match (ty.size_bytes(), slot) {
+                            (8, Some(offset)) => match src {
+                                Operand::Register(Register::Virtual(v)) => {
+                                    reg_alloc.get_mapping_for(v).map(|p| format!("%{p}"))
+                                }
+                                Operand::Register(Register::Physical(p)) => {
+                                    Some(format!("%{}", p.name))
+                                }
+                                Operand::Immediate(_) => integer_immediate(src)
+                                    .filter(|v| i32::try_from(*v).is_ok())
+                                    .map(|v| format!("${v}")),
+                            }
+                            .map(|source| (source, offset)),
+                            _ => None,
+                        };
+                        match direct {
+                            Some((source, offset)) => {
+                                writeln!(writer, "    movq {source}, {offset}(%rbp)")?;
+                            }
+                            None => {
+                                load_copy_operand_to_rax(ty, src, writer, reg_alloc, stack_slots)?;
+                                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                            }
+                        }
                     }
-                    Register::Physical(_) => {}
+                    (Register::Physical(_), None) => {}
                 }
             }
         }
@@ -1047,7 +1082,23 @@ pub(super) fn emit_instruction_x86_64(
             if name == "lamina.print" || name == "lamina.printu" {
                 let fmt = print_format_label(name);
                 if let Some(arg) = args.first() {
-                    load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                    let value_reg = if target_os == TargetOperatingSystem::Windows {
+                        "rdx"
+                    } else {
+                        "rsi"
+                    };
+                    match arg {
+                        Operand::Register(Register::Virtual(v)) if writer.rax_value == Some(*v) => {
+                            writeln!(writer, "    movq %rax, %{value_reg}")?;
+                        }
+                        _ => load_operand_to_register(
+                            arg,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            value_reg,
+                        )?,
+                    }
                     emit_printf_and_flush(
                         writer,
                         target_os,
@@ -1504,17 +1555,33 @@ pub(super) fn emit_instruction_x86_64(
                 base, offset: 0, ..
             } = addr
             {
-                match base {
-                    Register::Virtual(vreg) => {
-                        load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
+                let base_phys = mapped_register(base, reg_alloc);
+                let dst_phys = match dst {
+                    Register::Virtual(v) => reg_alloc.get_mapping_for(v),
+                    Register::Physical(p) => Some(p.name),
+                };
+                match (base, base_phys, dst_phys) {
+                    (_, Some(bp), Some(dp)) => {
+                        writeln!(writer, "    {} (%{bp}), %{dp}", load_mnemonic_for(ty))?;
                     }
-                    Register::Physical(phys) => {
-                        writeln!(writer, "    movq %{}, %rax", phys.name)?;
+                    (Register::Virtual(bv), None, Some(dp)) if stack_slots.contains_key(bv) => {
+                        load_register_to_register(bv, writer, reg_alloc, stack_slots, dp)?;
+                        writeln!(writer, "    {} (%{dp}), %{dp}", load_mnemonic_for(ty))?;
                     }
-                }
-                writeln!(writer, "    {}", load_insn_for(ty))?;
-                if let Register::Virtual(vreg) = dst {
-                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                    _ => {
+                        match base {
+                            Register::Virtual(vreg) => {
+                                load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
+                            }
+                            Register::Physical(phys) => {
+                                writeln!(writer, "    movq %{}, %rax", phys.name)?;
+                            }
+                        }
+                        writeln!(writer, "    {}", load_insn_for(ty))?;
+                        if let Register::Virtual(vreg) = dst {
+                            store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                        }
+                    }
                 }
             } else {
                 return Err(LaminaError::ValidationError(format!(
@@ -1528,34 +1595,70 @@ pub(super) fn emit_instruction_x86_64(
             ty,
             attrs: _,
         } => {
-            // Simple direct store for now
-            load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
-            if let AddressMode::BaseOffset {
-                base, offset: 0, ..
-            } = addr
+            let src_phys = match src {
+                Operand::Register(Register::Virtual(v)) => reg_alloc.get_mapping_for(v),
+                Operand::Register(Register::Physical(p)) => Some(p.name),
+                Operand::Immediate(_) => None,
+            };
+            let size = ty.size_bytes();
+            let imm_value = integer_immediate(src).map(|raw| {
+                let shift = 64 - size * 8;
+                (raw << shift) >> shift
+            });
+            if let (
+                Some(sp),
+                AddressMode::BaseOffset {
+                    base, offset: 0, ..
+                },
+            ) = (src_phys, addr)
+                && let Some(bp) = mapped_register(base, reg_alloc)
             {
-                let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
-                match base {
-                    Register::Virtual(vreg) => {
-                        load_register_to_register(vreg, writer, reg_alloc, stack_slots, scratch)?;
-                    }
-                    Register::Physical(phys) => {
-                        writeln!(writer, "    movq %{}, %{}", phys.name, scratch)?;
-                    }
-                }
-                writeln!(
-                    writer,
-                    "    mov{} %{}, (%{scratch})",
-                    size_suffix(ty),
-                    rax_for(ty)
-                )?;
-                if scratch != "rbx" {
-                    reg_alloc.free_scratch(scratch);
-                }
+                let alias = register_for_size(sp, size).ok_or_else(scratch_error)?;
+                writeln!(writer, "    mov{} %{alias}, (%{bp})", size_suffix(ty))?;
+            } else if let (
+                Some(value),
+                AddressMode::BaseOffset {
+                    base, offset: 0, ..
+                },
+            ) = (imm_value.filter(|v| i32::try_from(*v).is_ok()), addr)
+                && let Some(bp) = mapped_register(base, reg_alloc)
+            {
+                writeln!(writer, "    mov{} ${value}, (%{bp})", size_suffix(ty))?;
             } else {
-                return Err(LaminaError::ValidationError(format!(
-                    "x86_64 backend does not support store address mode {addr:?}"
-                )));
+                load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
+                if let AddressMode::BaseOffset {
+                    base, offset: 0, ..
+                } = addr
+                {
+                    let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
+                    match base {
+                        Register::Virtual(vreg) => {
+                            load_register_to_register(
+                                vreg,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                                scratch,
+                            )?;
+                        }
+                        Register::Physical(phys) => {
+                            writeln!(writer, "    movq %{}, %{}", phys.name, scratch)?;
+                        }
+                    }
+                    writeln!(
+                        writer,
+                        "    mov{} %{}, (%{scratch})",
+                        size_suffix(ty),
+                        rax_for(ty)
+                    )?;
+                    if scratch != "rbx" {
+                        reg_alloc.free_scratch(scratch);
+                    }
+                } else {
+                    return Err(LaminaError::ValidationError(format!(
+                        "x86_64 backend does not support store address mode {addr:?}"
+                    )));
+                }
             }
         }
         MirInst::AtomicLoad { .. }
@@ -1751,6 +1854,10 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::SymbolAddress { dst, symbol } => {
             let label = X86ABI::new(target_os).mangle_function_name(symbol);
+            if let Some(dp) = mapped_register(dst, reg_alloc) {
+                writeln!(writer, "    leaq {label}(%rip), %{dp}")?;
+                return Ok(());
+            }
             writeln!(writer, "    leaq {label}(%rip), %rax")?;
             if let Register::Virtual(vreg) = dst {
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -1760,12 +1867,29 @@ pub(super) fn emit_instruction_x86_64(
             let offset = stack_slots.get(slot).ok_or_else(|| {
                 LaminaError::ValidationError("stack address has no frame slot".into())
             })?;
+            if let Some(dp) = mapped_register(dst, reg_alloc) {
+                writeln!(writer, "    leaq {offset}(%rbp), %{dp}")?;
+                return Ok(());
+            }
             writeln!(writer, "    leaq {offset}(%rbp), %rax")?;
             if let Register::Virtual(vreg) = dst {
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         MirInst::Lea { dst, base, offset } => {
+            if let (Some(dp), Some(bp)) = (
+                mapped_register(dst, reg_alloc),
+                mapped_register(base, reg_alloc),
+            ) {
+                if *offset == 0 {
+                    if bp != dp {
+                        writeln!(writer, "    movq %{bp}, %{dp}")?;
+                    }
+                } else {
+                    writeln!(writer, "    leaq {offset}(%{bp}), %{dp}")?;
+                }
+                return Ok(());
+            }
             match base {
                 Register::Virtual(vreg) => {
                     if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
@@ -2155,6 +2279,16 @@ pub(super) fn emit_instruction_x86_64(
     }
 
     Ok(())
+}
+
+/// Sign- or zero-extending load mnemonic for a value of this type into a 64-bit register.
+pub(super) fn load_mnemonic_for(ty: &MirType) -> &'static str {
+    match ty.size_bytes() {
+        1 => "movsbq",
+        2 => "movswq",
+        4 => "movslq",
+        _ => "movq",
+    }
 }
 
 /// Width suffix for a `mov` touching memory of this type.

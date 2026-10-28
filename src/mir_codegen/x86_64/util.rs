@@ -12,6 +12,7 @@ use crate::mir::{
     types::{MirType, ScalarType},
 };
 use lamina_codegen::LocalRegisterAllocator;
+use lamina_codegen::x86_64::register_for_size;
 
 /// Whether a MirType is a 32-bit float (`f32`).
 pub fn is_f32(ty: &MirType) -> bool {
@@ -35,6 +36,11 @@ pub fn load_float_operand_to_xmm<W: Write, RA: LocalRegisterAllocator<PhysReg = 
     ty: &MirType,
 ) -> Result<(), Error> {
     let mov_to_xmm = if is_f32(ty) { "movd" } else { "movq" };
+    if let Operand::Register(Register::Virtual(v)) = operand
+        && let Some(phys) = reg_alloc.get_mapping(v)
+    {
+        return writeln!(writer, "    {mov_to_xmm} %{}, %{xmm}", gpr_bits(phys, ty)?);
+    }
     match operand {
         Operand::Register(_) => {
             load_operand_to_rax(operand, writer, reg_alloc, stack_slots)?;
@@ -60,6 +66,15 @@ pub fn load_float_operand_to_xmm<W: Write, RA: LocalRegisterAllocator<PhysReg = 
     }
 }
 
+/// The GPR name a float's bits move through: the low 32 bits for f32, the whole register for f64.
+fn gpr_bits(phys: &str, ty: &MirType) -> Result<String, Error> {
+    if is_f32(ty) {
+        register_for_size(phys, 4).ok_or_else(|| Error::new(ErrorKind::InvalidData, "f32 alias"))
+    } else {
+        Ok(phys.to_string())
+    }
+}
+
 /// Store the float result from an XMM register back into a virtual register (as integer bits).
 pub fn store_xmm_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     xmm: &str,
@@ -70,6 +85,13 @@ pub fn store_xmm_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'st
     ty: &MirType,
 ) -> Result<(), Error> {
     let mov_from_xmm = if is_f32(ty) { "movd" } else { "movq" };
+    if let Some(phys) = reg_alloc.get_mapping(reg) {
+        return writeln!(
+            writer,
+            "    {mov_from_xmm} %{xmm}, %{}",
+            gpr_bits(phys, ty)?
+        );
+    }
     writeln!(writer, "    {mov_from_xmm} %{xmm}, %rax")?;
     store_rax_to_register(reg, writer, reg_alloc, stack_slots)
 }
