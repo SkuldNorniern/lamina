@@ -260,19 +260,26 @@ fn @conditional(i32 %x) -> i32 {
 
 ### Memory Operations
 
+Heap memory comes from the C allocator, declared like any other extern:
+
 ```
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
 # Stack allocation
 %ptr = stackalloc.i32
 
-# Heap allocation
-%hptr = heapalloc.i32
+# Heap allocation (size in bytes)
+%hptr = call @malloc(4)
 
 # Load and store
 store.i32 %ptr, %val
 %loaded = load.i32 %ptr
 
 # Optional heap deallocation
-heapfree %hptr
+call @free(%hptr)
 ```
 
 ### Composite Type Operations

@@ -61,11 +61,15 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             )),
             "select" => parse_select(state, result),
             "stackalloc" => parse_alloc(state, result, AllocType::Stack),
-            "heapalloc" => parse_alloc(state, result, AllocType::Heap),
+            "heapalloc" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'%p = call @malloc(<size>)' after declaring '@extern fn @malloc(i64 %n) -> ptr'",
+            )),
             "alloc" => Err(removed_opcode_error(
                 state,
                 opcode_str,
-                "'stackalloc.<type>' or 'heapalloc.<type>'",
+                "'stackalloc.<type>'",
             )),
             "load" => parse_load(state, result, false),
             "volatile" => parse_volatile_assignment(state, result),
@@ -152,8 +156,16 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "jmp" => parse_jmp(state),
             "ret" => parse_ret(state),
             "unreachable" => Ok(Instruction::Unreachable),
-            "heapfree" => parse_heapfree(state),
-            "dealloc" => Err(removed_opcode_error(state, opcode_str, "'heapfree <ptr>'")),
+            "heapfree" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'call @free(<ptr>)' after declaring '@extern fn @free(ptr %p) -> void'",
+            )),
+            "dealloc" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'call @free(<ptr>)' after declaring '@extern fn @free(ptr %p) -> void'",
+            )),
             "call" => parse_call(state, None),
             "callptr" => parse_call_indirect(state, None),
             "print" => Err(removed_opcode_error(
@@ -173,9 +185,21 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 opcode_str,
                 "'%v = load.<type> <ptr>' then '%r = writebyte %v' for one byte, or '%r = write <ptr>, <size>' for raw bytes",
             )),
-            "memcpy" => parse_memcpy(state),
-            "memmove" => parse_memmove(state),
-            "memset" => parse_memset(state),
+            "memcpy" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'call @memcpy(<dst>, <src>, <size>)' after declaring '@extern fn @memcpy(ptr %d, ptr %s, i64 %n) -> ptr'",
+            )),
+            "memmove" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'call @memmove(<dst>, <src>, <size>)' after declaring '@extern fn @memmove(ptr %d, ptr %s, i64 %n) -> ptr'",
+            )),
+            "memset" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'call @memset(<dst>, <value>, <size>)' after declaring '@extern fn @memset(ptr %d, i32 %v, i64 %n) -> ptr'",
+            )),
             "atomic_store" => parse_atomic_store(state),
             "fence" => parse_fence(state),
             "atomic_load" | "atomic_add" | "atomic_sub" | "atomic_and" | "atomic_or"
@@ -483,7 +507,7 @@ fn parse_cmp_op<'a>(
     })
 }
 
-/// Parses `stackalloc.T` or `heapalloc.T`.
+/// Parses `stackalloc.T`.
 fn parse_alloc<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -880,11 +904,6 @@ fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaE
     }
 }
 
-fn parse_heapfree<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let ptr = parse_value(state)?;
-    Ok(Instruction::Dealloc { ptr })
-}
-
 fn parse_va_start<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let ap = parse_value(state)?;
     Ok(Instruction::VaStart { ap })
@@ -990,33 +1009,6 @@ fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, L
 fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let result = state.parse_identifier_str()?;
     Ok(Instruction::ReadByte { result })
-}
-
-fn parse_memcpy<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let dst = parse_value(state)?;
-    state.expect_char(',')?;
-    let src = parse_value(state)?;
-    state.expect_char(',')?;
-    let size = parse_value(state)?;
-    Ok(Instruction::MemCpy { dst, src, size })
-}
-
-fn parse_memmove<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let dst = parse_value(state)?;
-    state.expect_char(',')?;
-    let src = parse_value(state)?;
-    state.expect_char(',')?;
-    let size = parse_value(state)?;
-    Ok(Instruction::MemMove { dst, src, size })
-}
-
-fn parse_memset<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let dst = parse_value(state)?;
-    state.expect_char(',')?;
-    let value = parse_value(state)?;
-    state.expect_char(',')?;
-    let size = parse_value(state)?;
-    Ok(Instruction::MemSet { dst, value, size })
 }
 
 fn parse_zext<'a>(

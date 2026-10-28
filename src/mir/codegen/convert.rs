@@ -331,98 +331,6 @@ fn conflicting_definitions(name: &str) -> FromIRError {
     FromIRError::ConflictingDefinitions(name.to_string())
 }
 
-/// Bits of the allocations a name may hold, for `heapfree`. Reassigning a name replaces
-/// its allocation kind, so the answer is the set of definitions reaching the instruction.
-const PROV_STACK: u8 = 1;
-const PROV_HEAP: u8 = 2;
-const PROV_OTHER: u8 = 4;
-
-fn provenance_after<'a>(instr: &IRInst<'a>, state: &mut HashMap<&'a str, u8>) {
-    let Some(name) = instr.defined_var() else {
-        return;
-    };
-    let bits = match instr {
-        IRInst::Alloc {
-            alloc_type: AllocType::Stack,
-            ..
-        } => PROV_STACK,
-        IRInst::Alloc {
-            alloc_type: AllocType::Heap,
-            ..
-        } => PROV_HEAP,
-        _ => PROV_OTHER,
-    };
-    state.insert(name, bits);
-}
-
-fn join_provenance<'a>(target: &mut HashMap<&'a str, u8>, source: &HashMap<&'a str, u8>) -> bool {
-    let mut changed = false;
-    for (name, bits) in source {
-        let slot = target.entry(name).or_insert(0);
-        if *slot | bits != *slot {
-            *slot |= bits;
-            changed = true;
-        }
-    }
-    changed
-}
-
-fn successor_labels<'a>(instructions: &[IRInst<'a>]) -> Vec<&'a str> {
-    match instructions.last() {
-        Some(IRInst::Br {
-            true_label,
-            false_label,
-            ..
-        }) => vec![*true_label, *false_label],
-        Some(IRInst::Jmp { target_label }) => vec![*target_label],
-        Some(IRInst::Switch { default, cases, .. }) => {
-            let mut labels = vec![*default];
-            labels.extend(cases.iter().map(|(_, label)| *label));
-            labels
-        }
-        _ => Vec::new(),
-    }
-}
-
-/// Provenance of every name at the start of each reachable block.
-fn block_entry_provenance<'a>(f: &IRFunction<'a>) -> HashMap<&'a str, HashMap<&'a str, u8>> {
-    let mut entry: HashMap<&'a str, HashMap<&'a str, u8>> = HashMap::new();
-    entry.insert(
-        f.entry_block,
-        f.signature
-            .params
-            .iter()
-            .map(|p| (p.name, PROV_OTHER))
-            .collect(),
-    );
-    let mut worklist = VecDeque::from([f.entry_block]);
-    while let Some(label) = worklist.pop_front() {
-        let Some(block) = f.basic_blocks.get(label) else {
-            continue;
-        };
-        let mut state = entry.get(label).cloned().unwrap_or_default();
-        for instr in &block.instructions {
-            provenance_after(instr, &mut state);
-        }
-        for succ in successor_labels(&block.instructions) {
-            if !f.basic_blocks.contains_key(succ) {
-                continue;
-            }
-            let changed = match entry.get_mut(succ) {
-                Some(target) => join_provenance(target, &state),
-                None => {
-                    entry.insert(succ, state.clone());
-                    true
-                }
-            };
-            if changed {
-                worklist.push_back(succ);
-            }
-        }
-    }
-    entry
-}
-
 /// Where each element of a global's initializer list lands.
 enum Slots {
     Strided { stride: usize, count: usize },
@@ -764,7 +672,6 @@ fn convert_function<'a>(
         ..Default::default()
     };
     let mut register_types = HashMap::new();
-    let entry_provenance = block_entry_provenance(f);
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
 
@@ -851,7 +758,6 @@ fn convert_function<'a>(
     while let Some(label) = worklist.pop_front() {
         let ir_block = &f.basic_blocks[label];
         let mut mir_block = Block::new(label);
-        let mut provenance = entry_provenance.get(label).cloned().unwrap_or_default();
 
         // Registers already defined in this block. A scan of the emitted instructions per
         // instruction made conversion quadratic in the size of a single-block function.
@@ -875,7 +781,6 @@ fn convert_function<'a>(
                 instr,
                 &mut vreg_alloc,
                 &mut var_to_reg,
-                &provenance,
                 &mut reservations,
                 &ValueFacts {
                     types: &register_types,
@@ -892,7 +797,6 @@ fn convert_function<'a>(
                 },
                 other => other,
             })?;
-            provenance_after(instr, &mut provenance);
             if f.basic_blocks.len() == 1
                 && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
                 && !var_to_reg.wide.contains_key(result)
@@ -1351,7 +1255,6 @@ fn convert_instruction<'a>(
     instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut VarBindings<'a>,
-    provenance: &HashMap<&'a str, u8>,
     reservations: &mut HashMap<VirtualReg, usize>,
     facts: &ValueFacts<'_, 'a>,
     globals: &mut GlobalAddresses<'a>,
@@ -2131,42 +2034,6 @@ fn convert_instruction<'a>(
                 src: val_op,
             }])
         }
-        IRInst::MemCpy { dst, src, size } => {
-            let args = vec![
-                resolve_operand(dst, vreg_alloc, var_to_reg, globals)?,
-                resolve_operand(src, vreg_alloc, var_to_reg, globals)?,
-                resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
-            ];
-            Ok(vec![Instruction::Call {
-                name: RuntimeSymbol::Memcpy.c_name().to_string(),
-                args,
-                ret: None,
-            }])
-        }
-        IRInst::MemMove { dst, src, size } => {
-            let args = vec![
-                resolve_operand(dst, vreg_alloc, var_to_reg, globals)?,
-                resolve_operand(src, vreg_alloc, var_to_reg, globals)?,
-                resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
-            ];
-            Ok(vec![Instruction::Call {
-                name: RuntimeSymbol::Memmove.c_name().to_string(),
-                args,
-                ret: None,
-            }])
-        }
-        IRInst::MemSet { dst, value, size } => {
-            let args = vec![
-                resolve_operand(dst, vreg_alloc, var_to_reg, globals)?,
-                resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
-                resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
-            ];
-            Ok(vec![Instruction::Call {
-                name: RuntimeSymbol::Memset.c_name().to_string(),
-                args,
-                ret: None,
-            }])
-        }
         IRInst::GetFieldPtr {
             result,
             struct_ptr,
@@ -2350,31 +2217,7 @@ fn convert_instruction<'a>(
                         slot: storage_vreg,
                     }])
                 }
-                AllocType::Heap => Ok(vec![Instruction::Call {
-                    name: RuntimeSymbol::Malloc.c_name().to_string(),
-                    args: vec![Operand::Immediate(Immediate::I64(size))],
-                    ret: Some(dst),
-                }]),
             }
-        }
-        IRInst::Dealloc { ptr } => {
-            // heapfree on a stack allocation is a no-op; passing a stack
-            // address to free() aborts.
-            if let IRVal::Variable(name) = ptr {
-                match provenance.get(name).copied() {
-                    Some(PROV_STACK) => return Ok(Vec::new()),
-                    Some(bits) if bits & PROV_STACK != 0 => {
-                        return Err(FromIRError::UnsupportedInstruction);
-                    }
-                    _ => {}
-                }
-            }
-            let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
-            Ok(vec![Instruction::Call {
-                name: RuntimeSymbol::Free.c_name().to_string(),
-                args: vec![p],
-                ret: None,
-            }])
         }
         #[cfg(feature = "nightly")]
         IRInst::SimdBinary {

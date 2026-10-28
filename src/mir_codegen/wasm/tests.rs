@@ -522,11 +522,11 @@ fn wasi_buffered_io_declares_each_helper_it_calls() {
 #[test]
 fn wasi_rejects_heap_allocation_instead_of_importing_malloc() {
     let error = emit_wasi(
-        "fn @main() -> i64 {\nentry:\n  %h = heapalloc.i64\n  heapfree %h\n  ret.i64 0\n}\n",
+        "@extern\nfn @malloc(i64 %n) -> ptr\n@extern\nfn @free(ptr %p) -> void\nfn @main() -> i64 {\nentry:\n  %h = call @malloc(8)\n  call @free(%h)\n  ret.i64 0\n}\n",
     )
     .expect_err("heap allocation has no WASI form");
     let message = error.to_string();
-    assert!(message.contains("heapalloc"), "{message}");
+    assert!(message.contains("call @malloc"), "{message}");
     assert!(message.contains("wasm32-wasi"), "{message}");
 }
 
@@ -566,7 +566,7 @@ fn wasi_writebyte_reaches_stdout() {
 fn wasi_memcpy_and_memset_fill_the_module_memory() {
     let wat = emit_wasi(
         &[
-        "fn @main() -> i64 {\nentry:\n  %src = stackalloc.i64\n  %dst = stackalloc.i64\n  store.i64 %src, 578437695752307201\n  memset %dst, 165, 8\n  memcpy %dst, %src, 4\n  %x = load.i64 %dst\n  call @print_i64(%x)\n  ret.i64 0\n}\n",
+        "@extern\nfn @memcpy(ptr %d, ptr %s, i64 %n) -> ptr\n@extern\nfn @memset(ptr %d, i32 %v, i64 %n) -> ptr\nfn @main() -> i64 {\nentry:\n  %src = stackalloc.i64\n  %dst = stackalloc.i64\n  store.i64 %src, 578437695752307201\n  call @memset(%dst, 165, 8)\n  call @memcpy(%dst, %src, 4)\n  %x = load.i64 %dst\n  call @print_i64(%x)\n  ret.i64 0\n}\n",
             PRINT_I64_HELPERS,
         ]
         .concat(),

@@ -3,15 +3,26 @@
 use std::{env, fs, process, process::Command};
 
 const PROGRAM: &str = r#"
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+@extern
+fn @memcpy(ptr %d, ptr %s, i64 %n) -> ptr
+@extern
+fn @memmove(ptr %d, ptr %s, i64 %n) -> ptr
+@extern
+fn @memset(ptr %d, i32 %v, i64 %n) -> ptr
+
 fn @main() -> i32 {
   entry:
-    %p = heapalloc.i64
-    %src = heapalloc.i64
-    memcpy %p, %src, 8
-    memmove %p, %src, 8
-    memset %p, 0, 8
+    %p = call @malloc(8)
+    %src = call @malloc(8)
+    call @memcpy(%p, %src, 8)
+    call @memmove(%p, %src, 8)
+    call @memset(%p, 0, 8)
     %w = writebyte 55
-    heapfree %p
+    call @free(%p)
     ret.i32 0
 }
 "#;

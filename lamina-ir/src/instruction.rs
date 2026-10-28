@@ -12,10 +12,9 @@
 //! - **Type conversions**: Zero-extension, type casting
 //!
 //! ### Memory Operations
-//! - **Allocation**: Stack and heap memory allocation
+//! - **Allocation**: Stack memory allocation
 //! - **Access**: Loading and storing values to/from memory
 //! - **Pointer arithmetic**: Array indexing, struct field access
-//! - **Deallocation**: Freeing heap-allocated memory
 //!
 //! ### Control Flow
 //! - **Branches**: Conditional jumps based on boolean values
@@ -436,20 +435,17 @@ impl fmt::Display for CmpOp {
 /// # Examples
 ///
 /// ```rust
-/// use lamina_ir::{IRBuilder, Type, PrimitiveType, AllocType};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
 ///     .function("memory", Type::Void)
-///     .stackalloc("local", Type::Primitive(PrimitiveType::I32))  // Stack allocation
-///     .heapalloc("persistent", Type::Primitive(PrimitiveType::I32)); // Heap allocation
+///     .stackalloc("local", Type::Primitive(PrimitiveType::I32));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AllocType {
     /// Stack allocation - automatic cleanup, fast, limited lifetime
     Stack,
-    /// Heap allocation - manual cleanup, slower, persistent
-    Heap,
 }
 
 /// A single instruction in a basic block.
@@ -679,11 +675,8 @@ pub enum Instruction<'a> {
     /// Allocate memory for a value of type `allocated_ty`.
     ///
     /// # Preconditions
-    /// - For `AllocType::Stack`: the allocation is automatically freed when the
-    ///   function returns. Memory must be initialized before reading.
-    /// - For `AllocType::Heap`: the caller must explicitly `heapfree` the
-    ///   returned pointer. Failing to do so is a memory leak (not UB in the IR,
-    ///   but wrong behavior).
+    /// - The allocation is automatically freed when the function returns.
+    ///   Memory must be initialized before reading.
     /// - The result is always of type `ptr` and is guaranteed non-null.
     Alloc {
         result: Identifier<'a>,
@@ -720,34 +713,6 @@ pub enum Instruction<'a> {
         ptr: Value<'a>,
         value: Value<'a>,
         volatile: bool,
-    },
-    /// Copy `size` bytes from `src` to `dst` (memory may not overlap).
-    ///
-    /// This is lowered to a call to the `memcpy` intrinsic in MIR/codegen.
-    MemCpy {
-        dst: Value<'a>,  // Destination pointer
-        src: Value<'a>,  // Source pointer
-        size: Value<'a>, // Number of bytes to copy
-    },
-    /// Copy `size` bytes from `src` to `dst` allowing overlapping regions.
-    ///
-    /// This is lowered to a call to the `memmove` intrinsic in MIR/codegen.
-    MemMove {
-        dst: Value<'a>,  // Destination pointer
-        src: Value<'a>,  // Source pointer
-        size: Value<'a>, // Number of bytes to move
-    },
-    /// Set `size` bytes at `dst` to the byte `value`.
-    ///
-    /// This is lowered to a call to the `memset` intrinsic in MIR/codegen.
-    MemSet {
-        dst: Value<'a>,   // Destination pointer
-        value: Value<'a>, // Byte value (typically i8/u8)
-        size: Value<'a>,  // Number of bytes to set
-    },
-    Dealloc {
-        // Optional Heap Deallocation
-        ptr: Value<'a>, // Must be a ptr from heapalloc
     },
     // --- Atomic Operations ---
     AtomicLoad {
@@ -957,7 +922,7 @@ impl AllocType {
         const fn name_for(alloc: AllocType) -> &'static str {
             alloc.as_str()
         }
-        const NAMES: &[&str] = &[name_for(AllocType::Stack), name_for(AllocType::Heap)];
+        const NAMES: &[&str] = &[name_for(AllocType::Stack)];
         NAMES
     }
 
@@ -965,7 +930,6 @@ impl AllocType {
     pub const fn as_str(&self) -> &'static str {
         match self {
             AllocType::Stack => "stack",
-            AllocType::Heap => "heap",
         }
     }
 }
@@ -1012,7 +976,6 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "select",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
         "stackalloc",
-        "heapalloc",
         "load",
         "volatile",
         "getfieldptr",
@@ -1085,7 +1048,6 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "callptr",
         "select",
         "stackalloc",
-        "heapalloc",
         "load",
         "volatile",
         "getfieldptr",
@@ -1120,13 +1082,9 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         // Function calls (from Instruction::Call - without result)
         "call",
         "callptr",
-        // Memory operations (from Instruction::Store, Instruction::Dealloc, etc.)
+        // Memory operations (from Instruction::Store, etc.)
         "store",
         "volatile",
-        "heapfree",
-        "memcpy",
-        "memmove",
-        "memset",
         // I/O operations (from Instruction::Write, Instruction::Read, etc. - without result)
         "write",
         "read",
@@ -1254,9 +1212,7 @@ impl<'a> Instruction<'a> {
                 push_value(ptr, &mut vars);
                 push_value(value, &mut vars);
             }
-            Instruction::Load { ptr, .. } | Instruction::Dealloc { ptr, .. } => {
-                push_value(ptr, &mut vars)
-            }
+            Instruction::Load { ptr, .. } => push_value(ptr, &mut vars),
             Instruction::Alloc { .. } => {}
             Instruction::VaStart { ap }
             | Instruction::VaEnd { ap }
@@ -1476,7 +1432,6 @@ impl fmt::Display for Instruction<'_> {
                 allocated_ty,
             } => match alloc_type {
                 AllocType::Stack => write!(f, "%{result} = stackalloc.{allocated_ty}"),
-                AllocType::Heap => write!(f, "%{result} = heapalloc.{allocated_ty}"),
             },
             Instruction::Load {
                 result,
@@ -1496,16 +1451,6 @@ impl fmt::Display for Instruction<'_> {
                 let prefix = if *volatile { "volatile " } else { "" };
                 write!(f, "{prefix}store.{ty} {ptr}, {value}")
             }
-            Instruction::MemCpy { dst, src, size } => {
-                write!(f, "memcpy {dst}, {src}, {size}")
-            }
-            Instruction::MemMove { dst, src, size } => {
-                write!(f, "memmove {dst}, {src}, {size}")
-            }
-            Instruction::MemSet { dst, value, size } => {
-                write!(f, "memset {dst}, {value}, {size}")
-            }
-            Instruction::Dealloc { ptr } => write!(f, "heapfree {ptr}"),
             Instruction::AtomicLoad {
                 result,
                 ty,
@@ -1688,7 +1633,7 @@ impl fmt::Display for Instruction<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Literal, PrimitiveType, StructField, Type, Value}; // Assuming crate root
+    use crate::types::{Literal, PrimitiveType, Type, Value}; // Assuming crate root
 
     #[test]
     fn test_display_binary_op() {
@@ -1717,7 +1662,6 @@ mod tests {
     #[test]
     fn test_display_alloc_type() {
         assert_eq!(format!("{}", AllocType::Stack), "stack");
-        assert_eq!(format!("{}", AllocType::Heap), "heap");
     }
 
     #[test]
@@ -1777,21 +1721,6 @@ mod tests {
             allocated_ty: Type::Primitive(PrimitiveType::I32),
         };
         assert_eq!(format!("{}", instr7), "%ptr1 = stackalloc.i32");
-
-        // Alloc (Heap)
-        let struct_type = Type::Struct(vec![StructField {
-            name: "a",
-            ty: Type::Primitive(PrimitiveType::I32),
-        }]);
-        let instr8 = Instruction::Alloc {
-            result: "heap_ptr",
-            alloc_type: AllocType::Heap,
-            allocated_ty: struct_type.clone(), // Clone necessary if used later
-        };
-        assert_eq!(
-            format!("{}", instr8),
-            "%heap_ptr = heapalloc.struct { a: i32 }"
-        );
 
         // Load
         let instr9 = Instruction::Load {
@@ -1952,35 +1881,5 @@ mod tests {
             format!("{}", instr_switch),
             "switch.i32 %x, default, [0, zero], [1, one]"
         );
-
-        // Dealloc
-        let instr20 = Instruction::Dealloc {
-            ptr: Value::Variable("heap_ptr"),
-        };
-        assert_eq!(format!("{}", instr20), "heapfree %heap_ptr");
-
-        // Memcpy
-        let instr_memcpy = Instruction::MemCpy {
-            dst: Value::Variable("dst"),
-            src: Value::Variable("src"),
-            size: Value::Constant(Literal::I32(16)),
-        };
-        assert_eq!(format!("{}", instr_memcpy), "memcpy %dst, %src, 16");
-
-        // Memmove
-        let instr_memmove = Instruction::MemMove {
-            dst: Value::Variable("dst"),
-            src: Value::Variable("src"),
-            size: Value::Constant(Literal::I32(8)),
-        };
-        assert_eq!(format!("{}", instr_memmove), "memmove %dst, %src, 8");
-
-        // Memset
-        let instr_memset = Instruction::MemSet {
-            dst: Value::Variable("dst"),
-            value: Value::Constant(Literal::I8(0)),
-            size: Value::Constant(Literal::I32(32)),
-        };
-        assert_eq!(format!("{}", instr_memset), "memset %dst, 0, 32");
     }
 }

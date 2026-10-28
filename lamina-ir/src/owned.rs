@@ -607,13 +607,6 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends a heap allocation.
-    pub fn heapalloc(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
-        let t = format!("%{} = heapalloc.{}", result.as_ref(), ty);
-        self.push(t);
-        self
-    }
-
     /// Appends a load instruction.
     pub fn load(&mut self, result: impl AsRef<str>, ty: &OwnedType, ptr: &OwnedValue) -> &mut Self {
         let t = format!("%{} = load.{} {}", result.as_ref(), ty, ptr);
@@ -682,31 +675,6 @@ impl OwnedIRBuilder {
     ) -> &mut Self {
         let t = format!("volatile store.{ty} {ptr}, {val}");
         self.push(t);
-        self
-    }
-
-    /// Appends a heap free.
-    pub fn heapfree(&mut self, ptr: &OwnedValue) -> &mut Self {
-        let t = format!("heapfree {ptr}");
-        self.push(t);
-        self
-    }
-
-    /// Copies `size` bytes from `src` to `dst` (non-overlapping).
-    pub fn memcpy(&mut self, dst: &OwnedValue, src: &OwnedValue, size: &OwnedValue) -> &mut Self {
-        self.push(format!("memcpy {dst}, {src}, {size}"));
-        self
-    }
-
-    /// Copies `size` bytes from `src` to `dst` (overlapping regions allowed).
-    pub fn memmove(&mut self, dst: &OwnedValue, src: &OwnedValue, size: &OwnedValue) -> &mut Self {
-        self.push(format!("memmove {dst}, {src}, {size}"));
-        self
-    }
-
-    /// Sets `size` bytes at `dst` to the byte `value`.
-    pub fn memset(&mut self, dst: &OwnedValue, value: &OwnedValue, size: &OwnedValue) -> &mut Self {
-        self.push(format!("memset {dst}, {value}, {size}"));
         self
     }
 

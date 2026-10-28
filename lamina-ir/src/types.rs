@@ -46,7 +46,6 @@
 //! - **Vector operations**: additional SIMD arithmetic and operations (kept behind `nightly`)
 //!
 //! ### Implemented (previously listed as missing):
-//! - `memcpy`, `memmove`, `memset` — lowered to libc calls in MIR
 //! - `switch` — full multi-way branch lowered to cmp/jmp chains in all backends
 //!
 //! ### Advanced Features:

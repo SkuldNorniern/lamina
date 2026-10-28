@@ -620,52 +620,6 @@ mod tests {
     }
 
     #[test]
-    fn test_heap_allocation() {
-        let mut builder = IRBuilder::new();
-
-        builder
-            .function("heap_ops", Type::Void)
-            .heapalloc("heap_ptr", Type::Primitive(PrimitiveType::I32))
-            .store(
-                Type::Primitive(PrimitiveType::I32),
-                var("heap_ptr"),
-                i32(100),
-            )
-            .heapfree(var("heap_ptr"))
-            .ret_void();
-
-        let module = builder.build();
-
-        assert!(module.functions.contains_key("heap_ops"));
-
-        let func = &module.functions["heap_ops"];
-
-        assert!(func.basic_blocks.contains_key("entry"));
-
-        let entry = &func.basic_blocks["entry"];
-
-        assert_eq!(entry.instructions.len(), 4);
-
-        // Verify heap allocation
-        if let Instruction::Alloc {
-            result, alloc_type, ..
-        } = &entry.instructions[0]
-        {
-            assert_eq!(*result, "heap_ptr");
-            assert!(matches!(alloc_type, AllocType::Heap));
-        } else {
-            panic!("Expected Alloc instruction with Heap type");
-        }
-
-        // Verify deallocation
-        if let Instruction::Dealloc { ptr } = &entry.instructions[2] {
-            assert_eq!(*ptr, var("heap_ptr"));
-        } else {
-            panic!("Expected Dealloc instruction");
-        }
-    }
-
-    #[test]
     fn test_function_call() {
         let mut builder = IRBuilder::new();
 
@@ -1248,79 +1202,6 @@ mod tests {
             assert_eq!(*field_byte_offset, Some(8));
         } else {
             panic!("Expected GetFieldPtr for extra");
-        }
-    }
-
-    #[test]
-    fn test_memcpy_builder() {
-        let mut builder = IRBuilder::new();
-
-        builder
-            .function("copy_fn", Type::Void)
-            .stackalloc("dst", Type::Primitive(PrimitiveType::I8))
-            .stackalloc("src", Type::Primitive(PrimitiveType::I8))
-            .memcpy(var("dst"), var("src"), i32(64))
-            .ret_void();
-
-        let module = builder.build();
-        let entry = &module.functions["copy_fn"].basic_blocks["entry"];
-
-        assert_eq!(entry.instructions.len(), 4);
-
-        if let Instruction::MemCpy { dst, src, size } = &entry.instructions[2] {
-            assert_eq!(*dst, var("dst"));
-            assert_eq!(*src, var("src"));
-            assert_eq!(*size, i32(64));
-        } else {
-            panic!("Expected MemCpy instruction");
-        }
-    }
-
-    #[test]
-    fn test_memmove_builder() {
-        let mut builder = IRBuilder::new();
-
-        builder
-            .function("move_fn", Type::Void)
-            .stackalloc("buf", Type::Primitive(PrimitiveType::I8))
-            .memmove(var("buf"), var("buf"), i32(32))
-            .ret_void();
-
-        let module = builder.build();
-        let entry = &module.functions["move_fn"].basic_blocks["entry"];
-
-        assert_eq!(entry.instructions.len(), 3);
-
-        if let Instruction::MemMove { dst, src, size } = &entry.instructions[1] {
-            assert_eq!(*dst, var("buf"));
-            assert_eq!(*src, var("buf"));
-            assert_eq!(*size, i32(32));
-        } else {
-            panic!("Expected MemMove instruction");
-        }
-    }
-
-    #[test]
-    fn test_memset_builder() {
-        let mut builder = IRBuilder::new();
-
-        builder
-            .function("set_fn", Type::Void)
-            .stackalloc("buf", Type::Primitive(PrimitiveType::I8))
-            .memset(var("buf"), i8(0), i32(128))
-            .ret_void();
-
-        let module = builder.build();
-        let entry = &module.functions["set_fn"].basic_blocks["entry"];
-
-        assert_eq!(entry.instructions.len(), 3);
-
-        if let Instruction::MemSet { dst, value, size } = &entry.instructions[1] {
-            assert_eq!(*dst, var("buf"));
-            assert_eq!(*value, i8(0));
-            assert_eq!(*size, i32(128));
-        } else {
-            panic!("Expected MemSet instruction");
         }
     }
 

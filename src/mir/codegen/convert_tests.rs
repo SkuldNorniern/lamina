@@ -443,7 +443,7 @@ fn width_conversions_reject_equal_widths_and_wrong_directions() {
 #[test]
 fn padded_struct_allocations_use_abi_size() {
     let ir = parse_module(
-        "fn @sizes() -> ptr {\nentry:\n%stack = stackalloc.struct { a: i8, b: i64, c: i8 }\n%heap = heapalloc.[2 x struct { a: i8, b: i64, c: i8 }]\nret.ptr %heap\n}",
+        "fn @sizes() -> ptr {\nentry:\n%stack = stackalloc.struct { a: i8, b: i64, c: i8 }\n%array = stackalloc.[2 x struct { a: i8, b: i64, c: i8 }]\nret.ptr %array\n}",
     ).expect("parse padded allocations");
     let mir = from_ir(&ir, "sizes").expect("lower padded allocations");
     let function = mir.get_function("sizes").expect("sizes function");
@@ -451,10 +451,10 @@ fn padded_struct_allocations_use_abi_size() {
         panic!("expected stack allocation");
     };
     assert_eq!(function.stack_reservations[slot], 2);
-    let Instruction::Call { args, .. } = &function.blocks[0].instructions[1] else {
-        panic!("expected heap allocation");
+    let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[1] else {
+        panic!("expected array allocation");
     };
-    assert_eq!(args, &[Operand::Immediate(Immediate::I64(48))]);
+    assert_eq!(function.stack_reservations[slot], 5);
 }
 
 #[test]

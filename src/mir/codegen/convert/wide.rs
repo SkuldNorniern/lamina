@@ -698,10 +698,6 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
         | IRInst::Br { .. }
         | IRInst::Jmp { .. }
         | IRInst::Unreachable
-        | IRInst::MemCpy { .. }
-        | IRInst::MemMove { .. }
-        | IRInst::MemSet { .. }
-        | IRInst::Dealloc { .. }
         | IRInst::Fence { .. }
         | IRInst::GetFieldPtr { .. }
         | IRInst::GetElemPtr { .. }
@@ -1113,10 +1109,6 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::AtomicBinary { .. }
         | IRInst::AtomicCompareExchange { .. }
         | IRInst::Fence { .. }
-        | IRInst::MemCpy { .. }
-        | IRInst::MemMove { .. }
-        | IRInst::MemSet { .. }
-        | IRInst::Dealloc { .. }
         | IRInst::GetFieldPtr { .. }
         | IRInst::GetElemPtr { .. }
         | IRInst::PtrToInt { .. }

@@ -6,10 +6,7 @@ use std::error::Error;
 mod native {
     use super::*;
     use crate::mir_codegen::test_support::PRINT_I64_HELPERS;
-    use crate::{
-        mir::{Immediate, Instruction, Operand},
-        mir_codegen::test_support::compile,
-    };
+    use crate::{mir::Instruction, mir_codegen::test_support::compile};
     use std::{
         env::temp_dir,
         fs,
@@ -62,16 +59,6 @@ mod native {
                 function.stack_reservations.get(slot).copied().unwrap_or(0) + 1,
                 size / 8
             );
-            let heap_source = source.replace("%p = stackalloc", "%p = heapalloc");
-            let heap_ir = parse_module(&heap_source)?;
-            let heap_mir = from_ir(&heap_ir, "heap").map_err(|error| error.to_string())?;
-            let Instruction::Call { name, args, .. } =
-                &heap_mir.functions["main"].blocks[0].instructions[0]
-            else {
-                panic!("expected heap allocation");
-            };
-            assert_eq!(name, "malloc");
-            assert_eq!(args, &[Operand::Immediate(Immediate::I64(size as i64))]);
             let input = dir.join(format!("case-{case}.lamina"));
             fs::write(&input, source)?;
             for level in ["0", "1", "2", "3"] {

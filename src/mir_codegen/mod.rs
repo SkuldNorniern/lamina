@@ -69,6 +69,25 @@ pub fn retarget_runtime_calls<'a>(
         }
     };
     let mut retargeted = module.clone();
+    let declared: Vec<(String, String)> = retargeted
+        .external_functions
+        .iter()
+        .filter_map(|name| {
+            let symbol = RuntimeSymbol::from_c_name(name)?;
+            Some((name.clone(), builtins.c_name(symbol).to_string()))
+        })
+        .collect();
+    for (old, new) in declared {
+        if old == new {
+            continue;
+        }
+        retargeted.external_functions.remove(&old);
+        retargeted.external_functions.insert(new.clone());
+        if let Some(mut function) = retargeted.functions.remove(&old) {
+            function.sig.name = new.clone();
+            retargeted.functions.insert(new, function);
+        }
+    }
     for function in retargeted.functions.values_mut() {
         for block in &mut function.blocks {
             for instruction in &mut block.instructions {
@@ -658,14 +677,25 @@ mod runtime_symbol_tests {
     use std::borrow::Cow;
 
     const RUNTIME_PROGRAM: &str = r#"
+    @extern
+    fn @malloc(i64 %n) -> ptr
+    @extern
+    fn @free(ptr %p) -> void
+    @extern
+    fn @memcpy(ptr %d, ptr %s, i64 %n) -> ptr
+    @extern
+    fn @memmove(ptr %d, ptr %s, i64 %n) -> ptr
+    @extern
+    fn @memset(ptr %d, i32 %v, i64 %n) -> ptr
+
     fn @main() -> i32 {
       entry:
-        %p = heapalloc.i64
-        %src = heapalloc.i64
-        memcpy %p, %src, 8
-        memmove %p, %src, 8
-        memset %p, 0, 8
-        heapfree %p
+        %p = call @malloc(8)
+        %src = call @malloc(8)
+        call @memcpy(%p, %src, 8)
+        call @memmove(%p, %src, 8)
+        call @memset(%p, 0, 8)
+        call @free(%p)
         ret.i32 0
     }
     "#;

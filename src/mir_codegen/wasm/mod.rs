@@ -416,8 +416,8 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         )));
     }
     for (symbol, instruction, reason) in [
-        ("$malloc", "heapalloc", "WASI preview1 has no allocator"),
-        ("$free", "heapfree", "WASI preview1 has no allocator"),
+        ("$malloc", "call @malloc", "WASI preview1 has no allocator"),
+        ("$free", "call @free", "WASI preview1 has no allocator"),
     ] {
         if wasi && uses(symbol) {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
@@ -445,6 +445,9 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     // Emit import declarations for external functions
     for func_name in external_names(module) {
+        if wasi && matches!(func_name, "memcpy" | "memmove" | "memset") {
+            continue;
+        }
         if let Some(func) = module.functions.get(func_name) {
             let mangled_name = abi.mangle_function_name(func_name);
             write!(

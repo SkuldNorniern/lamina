@@ -1274,23 +1274,28 @@ fn @test_phi_complex(i64 %cond1, i64 %cond2) -> i64 {
     #[test]
     fn test_parse_memory_operations_comprehensive() -> Result<(), LaminaError> {
         let source = r#"
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
 fn @test_memory_ops() -> i64 {
   entry:
-    %ptr1 = heapalloc.i64
-    %ptr2 = heapalloc.i64
+    %ptr1 = call @malloc(8)
+    %ptr2 = call @malloc(8)
     store.i64 %ptr1, 42
     store.i64 %ptr2, 24
     %val1 = load.i64 %ptr1
     %val2 = load.i64 %ptr2
     %sum = add.i64 %val1, %val2
-    heapfree %ptr1
-    heapfree %ptr2
+    call @free(%ptr1)
+    call @free(%ptr2)
     ret.i64 %sum
 }
 "#;
         let module = parse_module(source)?;
 
-        assert_eq!(module.functions.len(), 1);
+        assert_eq!(module.functions.len(), 3);
         let func = module.functions.get("test_memory_ops").unwrap();
 
         assert_eq!(func.basic_blocks["entry"].instructions.len(), 10);
@@ -1738,23 +1743,13 @@ ret.i64 0
     }
 
     #[test]
-    fn test_stackalloc_heapalloc_and_heapfree_parse() {
+    fn test_stackalloc_parse() {
         let input = entry_body("%p = stackalloc.i64");
         assert!(matches!(
             entry_instructions(&input)[0],
             Instruction::Alloc {
                 alloc_type: AllocType::Stack,
                 allocated_ty: Type::Primitive(PrimitiveType::I64),
-                ..
-            }
-        ));
-
-        let input = entry_body("%h = heapalloc.[16 x i8]");
-        assert!(matches!(
-            entry_instructions(&input)[0],
-            Instruction::Alloc {
-                alloc_type: AllocType::Heap,
-                allocated_ty: Type::Array { .. },
                 ..
             }
         ));
@@ -1768,12 +1763,6 @@ ret.i64 0
                 ..
             }
         ));
-
-        let input = entry_body("%h = heapalloc.i64\n    heapfree %h");
-        assert!(matches!(
-            entry_instructions(&input)[1],
-            Instruction::Dealloc { .. }
-        ));
     }
 
     #[test]
@@ -1782,23 +1771,58 @@ ret.i64 0
         assert!(err.contains("stackalloc.<type>"), "{err}");
 
         let err = parse_error("%h = alloc.heap [16 x i8]");
-        assert!(err.contains("heapalloc.<type>"), "{err}");
+        assert!(err.contains("'stackalloc.<type>'"), "{err}");
 
         let err = parse_error("dealloc.heap %h");
-        assert!(err.contains("heapfree <ptr>"), "{err}");
+        assert!(err.contains("call @free(<ptr>)"), "{err}");
+    }
+
+    #[test]
+    fn test_removed_heap_and_memory_spellings_name_their_replacement() {
+        let err = parse_error("%h = heapalloc.i64");
+        assert!(
+            err.contains("Unknown instruction opcode 'heapalloc'"),
+            "{err}"
+        );
+        assert!(err.contains("call @malloc(<size>)"), "{err}");
+
+        let err = parse_error("heapfree %h");
+        assert!(
+            err.contains("Unknown instruction opcode 'heapfree'"),
+            "{err}"
+        );
+        assert!(err.contains("call @free(<ptr>)"), "{err}");
+
+        let err = parse_error("memcpy %d, %s, 8");
+        assert!(err.contains("Unknown instruction opcode 'memcpy'"), "{err}");
+        assert!(err.contains("call @memcpy(<dst>, <src>, <size>)"), "{err}");
+
+        let err = parse_error("memmove %d, %s, 8");
+        assert!(
+            err.contains("Unknown instruction opcode 'memmove'"),
+            "{err}"
+        );
+        assert!(err.contains("call @memmove(<dst>, <src>, <size>)"), "{err}");
+
+        let err = parse_error("memset %d, 0, 8");
+        assert!(err.contains("Unknown instruction opcode 'memset'"), "{err}");
+        assert!(
+            err.contains("call @memset(<dst>, <value>, <size>)"),
+            "{err}"
+        );
     }
 
     #[test]
     fn test_opcode_name_lists_follow_new_spellings() {
         let assignment = get_assignment_opcode_names();
         assert!(assignment.contains(&"stackalloc"));
-        assert!(assignment.contains(&"heapalloc"));
+        assert!(!assignment.contains(&"heapalloc"));
         assert!(!assignment.contains(&"alloc"));
         assert!(!assignment.contains(&"getfield"));
         assert!(!assignment.contains(&"getelementptr"));
 
         let non_assignment = get_non_assignment_opcode_names();
-        assert!(non_assignment.contains(&"heapfree"));
+        assert!(!non_assignment.contains(&"heapfree"));
         assert!(!non_assignment.contains(&"dealloc"));
     }
 
@@ -1817,14 +1841,14 @@ entry:
 fn @main() -> i64 {
 entry:
   %p = stackalloc.i64
-  %h = heapalloc.[16 x i8]
+  %h = call @malloc(16)
   %s = stackalloc.struct { a: i64, b: i64 }
   %f = getfieldptr %s, 1
   %e = getelem.i8 %h, 0
   %a = ptrtoint.i64 %p
   %q = inttoptr.i64 %a
   store.i64 %q, 7
-  heapfree %h
+  call @free(%h)
   %fp = funcaddr @cb
   %cr = callptr.i64 %fp(f32 1.5, i64 %a)
   %vp = funcaddr @sink
@@ -1884,6 +1908,24 @@ entry:
             .ret(&i64t, &var("x"));
         b.function("vfn", OwnedType::Void).ret_void();
         b.external_function("ext", vec![param("c", &i32t)], i32t.clone());
+        let ptr_t = OwnedType::Primitive(PrimitiveType::Ptr);
+        b.external_function("malloc", vec![param("n", &i64t)], ptr_t.clone());
+        b.external_function("free", vec![param("p", &ptr_t)], OwnedType::Void);
+        b.external_function(
+            "memcpy",
+            vec![param("d", &ptr_t), param("s", &ptr_t), param("n", &i64t)],
+            ptr_t.clone(),
+        );
+        b.external_function(
+            "memmove",
+            vec![param("d", &ptr_t), param("s", &ptr_t), param("n", &i64t)],
+            ptr_t.clone(),
+        );
+        b.external_function(
+            "memset",
+            vec![param("d", &ptr_t), param("v", &i32t), param("n", &i64t)],
+            ptr_t.clone(),
+        );
         b.function_with_params(
             "main",
             vec![param("a", &i64t), param("f", &f64t), param("p", &pair)],
@@ -1946,7 +1988,7 @@ entry:
                 },
             ]),
         )
-        .heapalloc("h", &i64t)
+        .call(Some("h"), "malloc", &[OwnedValue::I64(8)])
         .store(&i64t, &var("s"), &var("sum"))
         .load("l", &i64t, &var("s"))
         .load("gl", &i64t, &OwnedValue::Global("g".to_string()))
@@ -1969,9 +2011,13 @@ entry:
         .trunc("tr", PrimitiveType::I64, PrimitiveType::I32, &var("sum"))
         .bitcast("bc", PrimitiveType::I64, PrimitiveType::F64, &var("sum"))
         .select("sel", &i64t, &var("lt"), &var("sum"), &OwnedValue::I64(0))
-        .memcpy(&var("s"), &var("s"), &OwnedValue::I64(8))
-        .memmove(&var("s"), &var("s"), &OwnedValue::I64(8))
-        .memset(&var("s"), &OwnedValue::U8(0), &OwnedValue::I64(8))
+        .call(None, "memcpy", &[var("s"), var("s"), OwnedValue::I64(8)])
+        .call(None, "memmove", &[var("s"), var("s"), OwnedValue::I64(8)])
+        .call(
+            None,
+            "memset",
+            &[var("s"), OwnedValue::I32(0), OwnedValue::I64(8)],
+        )
         .write("w", &var("s"), &OwnedValue::I64(8))
         .read("rd", &var("s"), &OwnedValue::I64(8))
         .write_byte("wb", &OwnedValue::I32(65))
@@ -2019,7 +2065,7 @@ entry:
         .call(Some("c"), "helper", &[var("sum")])
         .call(None, "helper", &[OwnedValue::I64(1)])
         .write_byte("w", &var("c"))
-        .heapfree(&var("h"))
+        .call(None, "free", &[var("h")])
         .switch(
             PrimitiveType::I64,
             &var("sum"),
