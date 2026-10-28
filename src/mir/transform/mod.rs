@@ -14,6 +14,7 @@ mod deadcode;
 mod induction_strength_reduction;
 mod inline;
 mod loop_opt;
+mod loop_rotation;
 mod mem2reg;
 mod memory;
 mod peephole;
@@ -38,6 +39,7 @@ pub use deadcode::{DeadCodeElimination, remove_dead_pure_calls, truncate_after_n
 pub use induction_strength_reduction::InductionStrengthReduction;
 pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::LoopInvariantCodeMotion;
+pub use loop_rotation::LoopRotation;
 pub use mem2reg::Mem2Reg;
 pub use memory::MemoryOptimization;
 pub use peephole::Peephole;
@@ -276,6 +278,7 @@ pub struct TransformPipeline {
     transforms: Vec<Box<dyn Transform>>,
     max_total_iterations: usize,
     inline: bool,
+    rotate_loops: bool,
 }
 
 impl TransformPipeline {
@@ -284,6 +287,7 @@ impl TransformPipeline {
             transforms: Vec::new(),
             max_total_iterations: 1000,
             inline: false,
+            rotate_loops: false,
         }
     }
 
@@ -306,7 +310,7 @@ impl TransformPipeline {
     /// | O0    | (none) |
     /// | O1    | CFG simplify, jump threading, branch opt, DCE |
     /// | O2    | + splitting of field-accessed stack slots (sroa), promotion of stack slots to registers (mem2reg), constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining, bounded unrolling |
-    /// | O3    | + LICM, strength reduction, CSE, instruction scheduling |
+    /// | O3    | + LICM, strength reduction, CSE, instruction scheduling, loop rotation |
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
         pipeline.inline = opt_level >= 2;
@@ -346,6 +350,8 @@ impl TransformPipeline {
         if opt_level >= 2 {
             pipeline = pipeline.add_transform(LoopUnrolling);
         }
+
+        pipeline.rotate_loops = opt_level >= 3;
 
         pipeline
     }
@@ -419,6 +425,14 @@ impl TransformPipeline {
             total_stats.transforms_run += stats.transforms_run;
             total_stats.transforms_changed += stats.transforms_changed;
             total_stats.iterations += stats.iterations;
+        }
+        if self.rotate_loops {
+            for func in module.functions.values_mut() {
+                LoopRotation.apply(func)?;
+            }
+            module
+                .validate_in_pipeline()
+                .map_err(|errors| TransformError::VerificationFailed { errors })?;
         }
         Ok(total_stats)
     }
