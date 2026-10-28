@@ -1,5 +1,11 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+static __attribute__((noinline)) int64_t arg(int argc, char **argv, int i, int64_t fallback) {
+    if (i >= argc) return fallback;
+    return strtoll(argv[i], NULL, 10);
+}
 
 static long long factorial_iterative(int n) {
     if (n == 0 || n == 1) return 1;
@@ -9,15 +15,16 @@ static long long factorial_iterative(int n) {
     return result;
 }
 
-int main(void) {
-    const long long n1 = 10, n2 = 12, n3 = 15, n4 = 18;
-    const int64_t sweep_count = 4000000;
+int main(int argc, char **argv) {
+    const int n1 = (int)arg(argc, argv, 1, 10), n2 = (int)arg(argc, argv, 2, 12);
+    const int n3 = (int)arg(argc, argv, 3, 15), n4 = (int)arg(argc, argv, 4, 18);
+    const int64_t sweep_count = arg(argc, argv, 5, 4000000);
 
     printf("123456789\n");
-    printf("%lld\n", factorial_iterative((int)n1));
-    printf("%lld\n", factorial_iterative((int)n2));
-    printf("%lld\n", factorial_iterative((int)n3));
-    printf("%lld\n", factorial_iterative((int)n4));
+    printf("%lld\n", factorial_iterative(n1));
+    printf("%lld\n", factorial_iterative(n2));
+    printf("%lld\n", factorial_iterative(n3));
+    printf("%lld\n", factorial_iterative(n4));
 
     uint64_t acc = 0;
     for (int64_t s = 0; s < sweep_count; s++)

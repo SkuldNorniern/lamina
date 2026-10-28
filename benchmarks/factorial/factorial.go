@@ -1,6 +1,22 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"strconv"
+)
+
+//go:noinline
+func arg(i int, fallback int64) int64 {
+	if i >= len(os.Args) {
+		return fallback
+	}
+	v, err := strconv.ParseInt(os.Args[i], 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
 
 func factorial_iterative(n int) int64 {
 	if n == 0 || n == 1 {
@@ -14,15 +30,18 @@ func factorial_iterative(n int) int64 {
 }
 
 func main() {
+	n1, n2, n3, n4 := int(arg(1, 10)), int(arg(2, 12)), int(arg(3, 15)), int(arg(4, 18))
+	sweepCount := arg(5, 4000000)
+
 	fmt.Println(123456789)
-	fmt.Println(factorial_iterative(10))
-	fmt.Println(factorial_iterative(12))
-	fmt.Println(factorial_iterative(15))
-	fmt.Println(factorial_iterative(18))
+	fmt.Println(factorial_iterative(n1))
+	fmt.Println(factorial_iterative(n2))
+	fmt.Println(factorial_iterative(n3))
+	fmt.Println(factorial_iterative(n4))
 
 	var acc uint64
-	for s := 0; s < 4000000; s++ {
-		acc += uint64(factorial_iterative(s % 20))
+	for s := int64(0); s < sweepCount; s++ {
+		acc += uint64(factorial_iterative(int(s % 20)))
 	}
 	fmt.Println(acc)
 	fmt.Println(987654321)

@@ -56,6 +56,7 @@ NATIVE_ARGS = {
     "int_arith": ["10000000", "12345"],
     "array_hot_loop": ["256", "60000"],
     "struct_particles": ["20000000", "3", "5"],
+    "factorial": ["10", "12", "15", "18", "4000000"],
 }
 
 # A toolchain that rewrites a loop into a closed form makes its timing measure
