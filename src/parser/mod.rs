@@ -300,6 +300,34 @@ fn module_annotations_conflict(a: &ModuleAnnotation, b: &ModuleAnnotation) -> bo
     )
 }
 
+fn check_typed_call_args(
+    state: &mut ParserState<'_>,
+    module: &Module<'_>,
+) -> Result<(), LaminaError> {
+    for call in mem::take(&mut state.typed_call_args) {
+        let Some(func) = module.functions.get(call.callee) else {
+            continue;
+        };
+        let Some(param) = func.signature.params.get(call.index) else {
+            continue;
+        };
+        if param.ty != call.ty {
+            let message = format!(
+                "Argument {} of call to @{} has type {}, but parameter %{} is declared {}\n  Hint: Write '{} <value>' to match the parameter, or drop the type",
+                call.index + 1,
+                call.callee,
+                call.ty,
+                param.name,
+                param.ty,
+                param.ty
+            );
+            state.set_position(call.position);
+            return Err(state.error(message));
+        }
+    }
+    Ok(())
+}
+
 /// Parses a string containing Lamina IR text into a Module.
 pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
@@ -367,6 +395,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
         }
     }
 
+    check_typed_call_args(&mut state, &module)?;
     offsets::resolve_field_offsets(&mut module);
     module
         .validate()
@@ -989,7 +1018,15 @@ mod tests {
             0,
             "Should have no global declarations"
         );
-        assert_eq!(module.functions.len(), 5, "Should have 5 functions");
+        let declared = source
+            .lines()
+            .filter(|l| l.trim_start().starts_with("fn @"))
+            .count();
+        assert_eq!(
+            module.functions.len(),
+            declared,
+            "every declared function should parse"
+        );
 
         // Check @main function details
         let main_func = module
@@ -1056,14 +1093,26 @@ mod tests {
             .functions
             .get("get_matrix_a_element")
             .expect("Missing @get_matrix_a_element function");
-        assert_eq!(get_a_func.signature.params.len(), 2);
+        assert!(
+            get_a_func
+                .signature
+                .params
+                .iter()
+                .all(|p| matches!(p.ty, Type::Primitive(PrimitiveType::I64)))
+        );
 
         // Check for get_matrix_b_element function
         let get_b_func = module
             .functions
             .get("get_matrix_b_element")
             .expect("Missing @get_matrix_b_element function");
-        assert_eq!(get_b_func.signature.params.len(), 2);
+        assert!(
+            get_b_func
+                .signature
+                .params
+                .iter()
+                .all(|p| matches!(p.ty, Type::Primitive(PrimitiveType::I64)))
+        );
         assert_eq!(
             get_b_func.signature.return_type,
             Type::Primitive(PrimitiveType::I64)
@@ -1534,6 +1583,115 @@ ret.i64 0
 
         let err = parse_error("%e = getelementptr %buf, 0, char");
         assert!(err.contains("getelem.<type> <ptr>, <index>"), "{err}");
+    }
+
+    fn call_module(call: &str) -> String {
+        format!(
+            "fn @main(i64 %p) -> i64 {{\nentry:\n  %v = {call}\n  ret.i64 0\n}}\n\
+             fn @f(i64 %x) -> i64 {{\nentry:\n  ret.i64 %x\n}}\n\
+             fn @g(i64 %a, i64 %b) -> i64 {{\nentry:\n  ret.i64 %a\n}}\n\
+             @extern\nfn @printf(ptr %fmt, ...) -> i32\n"
+        )
+    }
+
+    fn call_error(call: &str) -> String {
+        parse_module(&call_module(call))
+            .expect_err("call should be rejected")
+            .to_string()
+    }
+
+    #[test]
+    fn typed_call_argument_parses_like_untyped() {
+        let source_typed = call_module("call @f(i64 7)");
+        let typed = parse_module(&source_typed).expect("typed call");
+        let source_untyped = call_module("call @f(7)");
+        let untyped = parse_module(&source_untyped).expect("untyped call");
+        assert_eq!(typed, untyped);
+    }
+
+    #[test]
+    fn typed_and_untyped_arguments_mix_in_one_call() {
+        let source_mixed = call_module("call @g(7, i64 %p)");
+        let mixed = parse_module(&source_mixed).expect("mixed call");
+        let source_untyped = call_module("call @g(7, %p)");
+        let untyped = parse_module(&source_untyped).expect("untyped call");
+        assert_eq!(mixed, untyped);
+    }
+
+    #[test]
+    fn typed_call_argument_is_checked_against_declared_parameter() {
+        let err = call_error("call @f(i32 7)");
+        assert!(
+            err.contains("Argument 1 of call to @f has type i32, but parameter %x is declared i64"),
+            "{err}"
+        );
+        assert!(err.contains("Write 'i64 <value>'"), "{err}");
+    }
+
+    #[test]
+    fn typed_call_argument_checks_position_past_the_first() {
+        let err = call_error("call @g(i64 1, i32 2)");
+        assert!(
+            err.contains("Argument 2 of call to @g has type i32, but parameter %b is declared i64"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn typed_call_argument_to_callee_defined_later_is_checked() {
+        let source = "fn @main() -> i64 {\nentry:\n  %v = call @later(bool true)\n  ret.i64 0\n}\n\
+                      fn @later(i64 %x) -> i64 {\nentry:\n  ret.i64 %x\n}\n";
+        let err = parse_module(source).expect_err("bool for i64 must be rejected");
+        assert!(
+            err.to_string()
+                .contains("has type bool, but parameter %x is declared i64"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn typed_call_argument_to_extern_is_checked_and_variadic_tail_is_free() {
+        let source_ok = call_module("call @printf(ptr $fmt, f64 1.5, i64 %p)");
+        let ok = parse_module(&source_ok);
+        assert!(ok.is_ok(), "{ok:?}");
+
+        let err = call_error("call @printf(i32 7, i64 1)");
+        assert!(
+            err.contains(
+                "Argument 1 of call to @printf has type i32, but parameter %fmt is declared ptr"
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn typed_call_arguments_display_in_canonical_untyped_form() {
+        let typed_source = call_module("call @g(i64 7, i64 %p)");
+        let untyped_source = call_module("call @g(7, %p)");
+        let typed = parse_module(&typed_source).expect("typed call");
+        let untyped = parse_module(&untyped_source).expect("untyped call");
+        let typed_text = typed.to_string();
+        assert_eq!(typed_text, untyped.to_string());
+        assert!(typed_text.contains("%v = call @g(7, %p)"), "{typed_text}");
+        assert!(!typed_text.contains("i64 7"), "{typed_text}");
+    }
+
+    #[test]
+    fn call_argument_missing_value_names_callptr() {
+        let err = call_error("call @f(i)");
+        assert!(err.contains("optionally preceded by their type"), "{err}");
+        assert!(err.contains("callptr.<ret-ty>"), "{err}");
+    }
+
+    #[test]
+    fn getelem_and_getfieldptr_name_each_other_in_their_errors() {
+        let err = parse_error("%e = getelem %buf, 0");
+        assert!(err.contains("getfieldptr <ptr>, <index>"), "{err}");
+        assert!(err.contains("element size"), "{err}");
+
+        let err = parse_error("%f = getfieldptr.i64 %buf, 0");
+        assert!(err.contains("getelem.<type> <ptr>, <index>"), "{err}");
+        assert!(err.contains("struct layout"), "{err}");
     }
 
     #[test]

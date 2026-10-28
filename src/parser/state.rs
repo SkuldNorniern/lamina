@@ -1,6 +1,15 @@
 //! Parser state management for Lamina IR parsing.
 
-use crate::{Identifier, Label, LaminaError};
+use crate::{Identifier, Label, LaminaError, ir::Type};
+
+/// A type written before a `call` argument, checked once the callee's signature is known.
+#[derive(Debug)]
+pub struct TypedCallArg<'a> {
+    pub callee: Identifier<'a>,
+    pub index: usize,
+    pub ty: Type<'a>,
+    pub position: usize,
+}
 
 /// Parser state tracking position and input.
 #[derive(Debug)]
@@ -9,6 +18,7 @@ pub struct ParserState<'a> {
     bytes: &'a [u8],
     position: usize,
     type_depth: usize,
+    pub typed_call_args: Vec<TypedCallArg<'a>>,
 }
 
 pub const MAX_TYPE_DEPTH: usize = 256;
@@ -21,6 +31,7 @@ impl<'a> ParserState<'a> {
             bytes: input.as_bytes(),
             position: 0,
             type_depth: 0,
+            typed_call_args: Vec::new(),
         }
     }
 

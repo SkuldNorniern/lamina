@@ -8,7 +8,7 @@ use crate::{
     },
     parser::{
         globals::parse_value_with_type_hint,
-        state::ParserState,
+        state::{ParserState, TypedCallArg},
         types::{parse_type, removed_char_error},
         values::parse_value,
     },
@@ -562,7 +562,7 @@ fn parse_getfield<'a>(
 ) -> Result<Instruction<'a>, LaminaError> {
     if state.current_char() == Some('.') {
         return Err(state.error(
-            "getfieldptr takes no type suffix\n  Hint: Write 'getfieldptr <ptr>, <index>'",
+            "getfieldptr takes no type suffix, because its offset comes from the struct layout\n  Hint: Write 'getfieldptr <ptr>, <index>'. For an array element, use 'getelem.<type> <ptr>, <index>', which needs the element type to scale the index",
         ));
     }
 
@@ -589,7 +589,7 @@ fn parse_getelem<'a>(
 ) -> Result<Instruction<'a>, LaminaError> {
     require_type_suffix(
         state,
-        "getelem takes its element type as a suffix\n  Hint: Write 'getelem.<type> <ptr>, <index>', e.g. 'getelem.i8 %buf, 0'",
+        "getelem takes its element type as a suffix, because the index is scaled by the element size\n  Hint: Write 'getelem.<type> <ptr>, <index>', e.g. 'getelem.i8 %buf, 0'. For a struct field, use 'getfieldptr <ptr>, <index>', which takes no suffix",
     )?;
     let element_type = parse_type_suffix(state)?;
     let array_ptr = parse_value(state)?;
@@ -677,7 +677,24 @@ fn parse_call<'a>(
             state.advance();
             break;
         }
-        args.push(parse_value(state)?);
+        let index = args.len();
+        if starts_untyped_value(state) {
+            args.push(parse_value(state)?);
+        } else {
+            let position = state.position();
+            let ty = parse_type(state).map_err(|_| untyped_call_error(state))?;
+            state.skip_whitespace_and_comments();
+            if matches!(state.current_char(), None | Some(')') | Some(',')) {
+                return Err(untyped_call_error(state));
+            }
+            args.push(parse_value(state)?);
+            state.typed_call_args.push(TypedCallArg {
+                callee: func_name,
+                index,
+                ty,
+                position,
+            });
+        }
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
             state.advance();
@@ -690,6 +707,25 @@ fn parse_call<'a>(
         func_name,
         args,
     })
+}
+
+fn starts_untyped_value(state: &ParserState<'_>) -> bool {
+    match state.current_char() {
+        Some('%' | '$' | '"' | '@' | '-') => true,
+        Some(c) if c.is_ascii_digit() => true,
+        _ => ["true", "false"].iter().any(|word| {
+            state.peek_slice(word.len()) == Some(word)
+                && !state
+                    .peek_char(word.len())
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        }),
+    }
+}
+
+fn untyped_call_error(state: &ParserState<'_>) -> LaminaError {
+    state.error(
+        "call arguments are values, optionally preceded by their type\n  Hint: Write 'call @f(7)' or 'call @f(i64 %x)'; for a call through a function pointer, use 'callptr.<ret-ty> %f(<ty> <arg>, ...)'",
+    )
 }
 
 fn parse_func_addr<'a>(
