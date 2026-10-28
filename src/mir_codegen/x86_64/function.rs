@@ -672,6 +672,11 @@ pub(super) fn classify_argument_descs_with_sret(
                     words,
                 }
             } else {
+                // A 16-byte-aligned aggregate starts on an even stack slot, so an odd
+                // slot before it is left as padding.
+                if aggregate.align >= 16 && stack % 2 == 1 {
+                    stack += 1;
+                }
                 stack += words;
                 ArgLocation::StackWords {
                     first: stack - words,
@@ -787,11 +792,12 @@ pub(super) fn stack_argument_count(locations: &[ArgLocation]) -> usize {
     locations
         .iter()
         .map(|location| match location {
-            ArgLocation::Stack(_) => 1,
-            ArgLocation::StackWords { words, .. } => *words,
+            ArgLocation::Stack(slot) => slot + 1,
+            ArgLocation::StackWords { first, words } => first + words,
             _ => 0,
         })
-        .sum()
+        .max()
+        .unwrap_or(0)
 }
 
 /// Moves the float bits of an xmm register into rax, the form every value takes.

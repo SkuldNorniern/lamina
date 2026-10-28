@@ -1063,17 +1063,23 @@ pub(super) fn emit_instruction_x86_64(
                     classify_argument_descs_with_sret(&descs, target_os, sret_result.is_some());
                 // One entry per eight-byte slot, lowest slot first: an aggregate on the
                 // stack occupies as many as it has words.
-                let stack_args: Vec<(usize, usize)> = locations
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(index, location)| match location {
-                        ArgLocation::Stack(_) => vec![(index, 0)],
-                        ArgLocation::StackWords { words, .. } => {
-                            (0..*words).map(|word| (index, word)).collect()
+                // One entry per stack slot, lowest first. `None` is a padding slot that the
+                // classifier left between a 16-byte-aligned aggregate and the one before.
+                let mut stack_args: Vec<Option<(usize, usize)>> = Vec::new();
+                for (index, location) in locations.iter().enumerate() {
+                    match location {
+                        ArgLocation::Stack(_) => stack_args.push(Some((index, 0))),
+                        ArgLocation::StackWords { first, words } => {
+                            while stack_args.len() < *first {
+                                stack_args.push(None);
+                            }
+                            stack_args.extend((0..*words).map(|word| Some((index, word))));
                         }
-                        _ => Vec::new(),
-                    })
-                    .collect();
+                        ArgLocation::Gpr(_)
+                        | ArgLocation::Xmm(_)
+                        | ArgLocation::GprWords { .. } => {}
+                    }
+                }
                 let num_stack_args = stack_args.len();
 
                 // Windows takes an aggregate that is not register sized as a pointer to a
@@ -1127,8 +1133,15 @@ pub(super) fn emit_instruction_x86_64(
                             writeln!(writer, "    movq %rax, {}(%rsp)", at + word * 8)?;
                         }
                     }
-                    for (slot, &(index, word)) in stack_args.iter().enumerate() {
+                    for (slot, entry) in stack_args.iter().enumerate() {
                         let stack_offset = shadow_space + (slot * stack::SLOT_SIZE);
+                        // Windows never pads: its aggregates that need a stack slot are not
+                        // 16-byte aligned by value.
+                        let Some((index, word)) = *entry else {
+                            return Err(LaminaError::ValidationError(
+                                "Windows stack arguments cannot need alignment padding".to_string(),
+                            ));
+                        };
                         if let Some(at) = copy_offsets[index] {
                             writeln!(writer, "    leaq {at}(%rsp), %rax")?;
                             writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
@@ -1153,7 +1166,11 @@ pub(super) fn emit_instruction_x86_64(
                     if num_stack_args % 2 == 1 {
                         writeln!(writer, "    subq $8, %rsp")?;
                     }
-                    for &(index, word) in stack_args.iter().rev() {
+                    for entry in stack_args.iter().rev() {
+                        let Some((index, word)) = *entry else {
+                            writeln!(writer, "    pushq $0")?;
+                            continue;
+                        };
                         if descs[index].aggregate.is_some() {
                             load_aggregate_word(
                                 &args[index],
