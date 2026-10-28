@@ -210,12 +210,12 @@ fn @test_u64_operations() -> i64 {
 fn @test_bool_operations() -> i64 {
   entry:
     # Boolean literals
-    %true_val = add.bool 1, 0     # true
-    %false_val = add.bool 0, 0    # false
+    %true_val = add.bool true, false     # true
+    %false_val = add.bool false, false    # false
 
     # Boolean operations (using arithmetic as proxy)
-    %not_true = sub.bool 1, %true_val    # false
-    %not_false = sub.bool 1, %false_val  # true
+    %not_true = sub.bool true, %true_val    # false
+    %not_false = sub.bool true, %false_val  # true
 
     # Boolean AND (using multiplication)
     %and_tt = mul.bool %true_val, %true_val   # true
@@ -230,8 +230,8 @@ fn @test_bool_operations() -> i64 {
     %or_ff = add.bool %false_val, %false_val # false
 
     # Comparisons
-    %cmp1 = eq.bool %true_val, 1          # true
-    %cmp2 = eq.bool %false_val, 0         # true
+    %cmp1 = eq.bool %true_val, true          # true
+    %cmp2 = eq.bool %false_val, false         # true
     %cmp3 = ne.bool %true_val, %false_val # true
 
     # Convert to i64 for return

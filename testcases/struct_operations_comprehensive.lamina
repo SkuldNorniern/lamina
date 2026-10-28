@@ -112,7 +112,7 @@ fn @test_complex_data_operations() -> i64 {
     # Store values
     store.u32 %id_ptr, 12345
     store.f64 %value_ptr, 99.99
-    store.bool %active_ptr, 1
+    store.bool %active_ptr, true
 
     # Load and check values
     %id = load.u32 %id_ptr
@@ -147,7 +147,7 @@ fn @test_mixed_types_operations() -> i64 {
     store.i32 %c_ptr, 100000
     store.u64 %d_ptr, 1000000
     store.f32 %e_ptr, 3.14
-    store.bool %f_ptr, 1
+    store.bool %f_ptr, true
     store.i8 %g_ptr, 65  # 'A'
 
     # Load and sum compatible values

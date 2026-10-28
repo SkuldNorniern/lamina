@@ -61,7 +61,7 @@ fn @test_different_types() -> i64 {
     # Store values
     store.i32 %i32_ptr, 100
     store.i64 %i64_ptr, 200
-    store.bool %bool_ptr, 1  # true
+    store.bool %bool_ptr, true  # true
 
     # Load values
     %i32_val = load.i32 %i32_ptr

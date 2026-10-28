@@ -311,8 +311,8 @@ fn @test_u64_conversions() -> i64 {
 # Test bool conversions
 fn @test_bool_conversions() -> i64 {
   entry:
-    %true_val = add.bool 1, 0
-    %false_val = add.bool 0, 0
+    %true_val = add.bool true, false
+    %false_val = add.bool false, false
 
     # Convert bool to all other types
     %true_i8 = zext.bool.i8 %true_val

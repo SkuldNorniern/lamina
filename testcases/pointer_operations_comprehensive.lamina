@@ -200,15 +200,15 @@ fn @test_bool_pointer_operations() -> i64 {
     %ptr = stackalloc.bool
 
     # Store and load bool values
-    store.bool %ptr, 1
+    store.bool %ptr, true
     %loaded_val = load.bool %ptr
 
     # Verify the value
-    %expected = add.bool 1, 0
+    %expected = add.bool true, false
     %is_correct = eq.bool %loaded_val, %expected
 
     # Modify the value
-    %new_val = sub.bool 1, %loaded_val  # Toggle
+    %new_val = sub.bool true, %loaded_val  # Toggle
     store.bool %ptr, %new_val
     %final_val = load.bool %ptr
 

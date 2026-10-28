@@ -154,7 +154,7 @@ fn @bool_field() -> i64 {
     %s = stackalloc.struct { flag: bool, count: i64 }
     %f = getfieldptr %s, 0
     %c = getfieldptr %s, 1
-    store.bool %f, 1
+    store.bool %f, true
     store.i64 %c, 4
     %fv = load.bool %f
     %cv = load.i64 %c

@@ -29,7 +29,7 @@ fn @main() -> i64 {
     store.u16 %bp, 1000
     store.i32 %cp, 70000
     store.u64 %dp, 12345678901
-    store.bool %fp, 1
+    store.bool %fp, true
     store.i8 %gp, 77
     jmp accumulate
 
@@ -38,7 +38,7 @@ fn @main() -> i64 {
     store.u16 %bp, 2
     store.i32 %cp, 3
     store.u64 %dp, 4
-    store.bool %fp, 0
+    store.bool %fp, false
     store.i8 %gp, 12
     jmp accumulate
 

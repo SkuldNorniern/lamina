@@ -7,8 +7,8 @@ fn @main() -> i32 {
     %buf32 = stackalloc.i32
 
     # Write different values to buffers
-    store.i8 %buf8, 255    # Max i8 value
-    store.i16 %buf16, 65535  # Max u16 value
+    store.i8 %buf8, -1     # All bits set: 255 as a byte
+    store.i16 %buf16, -1   # All bits set: 65535 as a u16
     store.i32 %buf32, 123456
 
     # Write buffer contents to stdout: a loaded byte, then raw memory of 2 and 4 bytes

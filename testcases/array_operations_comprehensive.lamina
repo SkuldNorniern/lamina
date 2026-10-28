@@ -239,9 +239,9 @@ fn @test_bool_array_operations() -> i64 {
     %ptr0 = getelem.bool %arr, 0
     %ptr1 = getelem.bool %arr, 1
     %ptr2 = getelem.bool %arr, 2
-    store.bool %ptr0, 1  # true
-    store.bool %ptr1, 0  # false
-    store.bool %ptr2, 1  # true
+    store.bool %ptr0, true  # true
+    store.bool %ptr1, false  # false
+    store.bool %ptr2, true  # true
 
     # Load values
     %val0 = load.bool %ptr0

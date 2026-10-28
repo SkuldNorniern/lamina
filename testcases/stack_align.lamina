@@ -1,0 +1,79 @@
+# Stack slots with `align n` keep their address on the boundary, even when
+# unaligned slots sit between them. Each low-bits value must print 0.
+@align(64)
+global $arena: [256 x i8]
+
+fn @main() -> i64 {
+entry:
+    %a8 = stackalloc.i64 align 8
+    %a16 = stackalloc.i64 align 16
+    %pad = stackalloc.i8
+    %arr = stackalloc.[4 x i64] align 16
+    %a16c = stackalloc.i64 align 16
+    store.i64 %a8, 11
+    store.i64 %a16, 22
+    store.i8 %pad, 1
+    store.i64 %a16c, 33
+    %e3 = getelem.i64 %arr, 3
+    store.i64 %e3, 44
+
+    %ta8 = ptrtoint.i64 %a8
+    %ta16 = ptrtoint.i64 %a16
+    %tarr = ptrtoint.i64 %arr
+    %ta16c = ptrtoint.i64 %a16c
+    %tg = ptrtoint.i64 $arena
+    %m8 = and.i64 %ta8, 7
+    %m16 = and.i64 %ta16, 15
+    %marr = and.i64 %tarr, 15
+    %m16c = and.i64 %ta16c, 15
+    %mg = and.i64 %tg, 63
+    call @print_u64(%m8)
+    call @print_u64(%m16)
+    call @print_u64(%marr)
+    call @print_u64(%m16c)
+    call @print_u64(%mg)
+
+    %v8 = load.i64 %a8
+    %v16 = load.i64 %a16
+    %v16c = load.i64 %a16c
+    %v44 = load.i64 %e3
+    call @print_u64(%v8)
+    call @print_u64(%v16)
+    call @print_u64(%v16c)
+    call @print_u64(%v44)
+
+    %inner = call @aligned_low_bits(7)
+    call @print_u64(%inner)
+    ret.i64 0
+}
+
+fn @aligned_low_bits(i64 %v) -> i64 {
+entry:
+    %slot = stackalloc.i64 align 16
+    store.i64 %slot, %v
+    %t = ptrtoint.i64 %slot
+    %m = and.i64 %t, 15
+    ret.i64 %m
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}

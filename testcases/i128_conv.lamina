@@ -961,7 +961,7 @@ entry:
 
 fn @case80() -> i64 {
 entry:
-  %b = add.bool 1, 0
+  %b = add.bool true, false
   %w = zext.bool.i128 %b
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
@@ -973,7 +973,7 @@ entry:
 
 fn @case81() -> i64 {
 entry:
-  %b = add.bool 0, 0
+  %b = add.bool false, false
   %w = zext.bool.i128 %b
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)

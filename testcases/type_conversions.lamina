@@ -47,8 +47,8 @@ fn @test_zext_arithmetic() -> i64 {
 fn @test_boolean_zext() -> i64 {
   entry:
     # Boolean values
-    %true_val = add.bool 1, 0   # true
-    %false_val = add.bool 0, 0  # false
+    %true_val = add.bool true, false   # true
+    %false_val = add.bool false, false  # false
 
     # Extend to i32
     %true_i32 = zext.bool.i32 %true_val   # Should be 1

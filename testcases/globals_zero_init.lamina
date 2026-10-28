@@ -9,7 +9,7 @@ entry:
  %f0 = load.i8 $flag
  %f0w = zext.i8.i64 %f0
  call @print_i64(%f0w)
- store.i8 $flag, 200
+ store.i8 $flag, -56
  %f1 = load.i8 $flag
  %f1w = zext.i8.i64 %f1
  %acc = load.i64 $acc
