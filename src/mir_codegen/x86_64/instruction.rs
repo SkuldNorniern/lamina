@@ -605,6 +605,46 @@ fn emit_float_to_int<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
 /// Every caller frees the scratch it takes, so an empty pool means one lowering path
 /// holds more at once than the pool has. Falling back to a callee-saved register would
 /// hide that behind a register nothing saves.
+/// Renders `[base + index*scale + offset]` as an x86 memory operand. Operands that live in
+/// stack slots are loaded into scratch registers; the caller hands the returned list to
+/// `release_indexed_scratch` once the access has been emitted.
+pub(super) fn indexed_memory<W: Write>(
+    base: &Register,
+    index: &Register,
+    scale: u8,
+    offset: i8,
+    writer: &mut W,
+    reg_alloc: &mut X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(String, Vec<&'static str>), LaminaError> {
+    let mut scratches = Vec::new();
+    let mut gprs = [base, index].map(|reg| mapped_register(reg, reg_alloc));
+    for (slot, reg) in gprs.iter_mut().zip([base, index]) {
+        if slot.is_some() {
+            continue;
+        }
+        let Register::Virtual(vreg) = reg else {
+            return Err(scratch_error());
+        };
+        let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
+        scratches.push(scratch);
+        load_register_to_register(vreg, writer, reg_alloc, stack_slots, scratch)?;
+        *slot = Some(scratch);
+    }
+    let [Some(b), Some(i)] = gprs else {
+        return Err(scratch_error());
+    };
+    Ok((format!("{offset}(%{b},%{i},{scale})"), scratches))
+}
+
+pub(super) fn release_indexed_scratch(scratches: Vec<&'static str>, reg_alloc: &mut X64RegAlloc) {
+    for scratch in scratches {
+        if scratch != "rbx" {
+            reg_alloc.free_scratch(scratch);
+        }
+    }
+}
+
 pub(super) fn scratch_error() -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(
         "x86_64 scratch registers exhausted".to_string(),
@@ -1479,6 +1519,30 @@ pub(super) fn emit_instruction_x86_64(
                         }
                     }
                 }
+            } else if let AddressMode::BaseIndexScale {
+                base,
+                index,
+                scale,
+                offset,
+                ..
+            } = addr
+            {
+                let (mem, scratches) =
+                    indexed_memory(base, index, *scale, *offset, writer, reg_alloc, stack_slots)?;
+                let dst_phys = match dst {
+                    Register::Virtual(v) => reg_alloc.get_mapping_for(v),
+                    Register::Physical(p) => Some(p.name),
+                };
+                match dst_phys {
+                    Some(dp) => writeln!(writer, "    {} {mem}, %{dp}", load_mnemonic_for(ty))?,
+                    None => {
+                        writeln!(writer, "    {} {mem}, %rax", load_mnemonic_for(ty))?;
+                        if let Register::Virtual(vreg) = dst {
+                            store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                        }
+                    }
+                }
+                release_indexed_scratch(scratches, reg_alloc);
             } else {
                 return Err(LaminaError::ValidationError(format!(
                     "x86_64 backend does not support load address mode {addr:?}"
@@ -1520,6 +1584,22 @@ pub(super) fn emit_instruction_x86_64(
                 && let Some(bp) = mapped_register(base, reg_alloc)
             {
                 writeln!(writer, "    mov{} ${value}, (%{bp})", size_suffix(ty))?;
+            } else if let (
+                Some(sp),
+                AddressMode::BaseIndexScale {
+                    base,
+                    index,
+                    scale,
+                    offset,
+                    ..
+                },
+            ) = (src_phys, addr)
+            {
+                let alias = register_for_size(sp, size).ok_or_else(scratch_error)?;
+                let (mem, scratches) =
+                    indexed_memory(base, index, *scale, *offset, writer, reg_alloc, stack_slots)?;
+                writeln!(writer, "    mov{} %{alias}, {mem}", size_suffix(ty))?;
+                release_indexed_scratch(scratches, reg_alloc);
             } else {
                 load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
                 if let AddressMode::BaseOffset {
@@ -1550,6 +1630,25 @@ pub(super) fn emit_instruction_x86_64(
                     if scratch != "rbx" {
                         reg_alloc.free_scratch(scratch);
                     }
+                } else if let AddressMode::BaseIndexScale {
+                    base,
+                    index,
+                    scale,
+                    offset,
+                    ..
+                } = addr
+                {
+                    let (mem, scratches) = indexed_memory(
+                        base,
+                        index,
+                        *scale,
+                        *offset,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                    )?;
+                    writeln!(writer, "    mov{} %{}, {mem}", size_suffix(ty), rax_for(ty))?;
+                    release_indexed_scratch(scratches, reg_alloc);
                 } else {
                     return Err(LaminaError::ValidationError(format!(
                         "x86_64 backend does not support store address mode {addr:?}"

@@ -1,3 +1,4 @@
+use super::instruction::{indexed_memory, release_indexed_scratch};
 use crate::mir::{AddressMode, Instruction, MirType, Operand, Register, VectorOp};
 
 pub(super) use crate::mir_codegen::simd::reserve_vector_slots;
@@ -170,7 +171,7 @@ pub(super) fn register_eligible_vectors(func: &Function) -> HashSet<VirtualReg> 
 pub(super) fn memory<W: Write>(
     inst: &Instruction,
     writer: &mut RaxTrackingWriter<W>,
-    ra: &X64RegAlloc,
+    ra: &mut X64RegAlloc,
     slots: &HashMap<VirtualReg, i32>,
 ) -> Result<(), LaminaError> {
     let (ty, addr) = match inst {
@@ -178,25 +179,35 @@ pub(super) fn memory<W: Write>(
         _ => unreachable!(),
     };
     lane(ty)?;
-    let AddressMode::BaseOffset { base, offset, .. } = addr else {
-        return Err(unsupported(format!("vector memory address {addr:?}")));
+    let (mem, scratches) = match addr {
+        AddressMode::BaseOffset { base, offset, .. } => {
+            load_operand_to_rax(&Operand::Register(base.clone()), writer, &*ra, slots)?;
+            (format!("{offset}(%rax)"), Vec::new())
+        }
+        AddressMode::BaseIndexScale {
+            base,
+            index,
+            scale,
+            offset,
+            ..
+        } => indexed_memory(base, index, *scale, *offset, writer, ra, slots)?,
     };
-    load_operand_to_rax(&Operand::Register(base.clone()), writer, ra, slots)?;
     match inst {
         Instruction::Load { dst, .. } => {
-            if let Some(xmm) = xmm_of(dst, ra) {
-                writeln!(writer, "    movdqu {offset}(%rax), %{xmm}")?;
+            if let Some(xmm) = xmm_of(dst, &*ra) {
+                writeln!(writer, "    movdqu {mem}, %{xmm}")?;
             } else {
-                writeln!(writer, "    movdqu {offset}(%rax), %{SCRATCH_A}")?;
-                sink(dst, SCRATCH_A, writer, ra, slots)?;
+                writeln!(writer, "    movdqu {mem}, %{SCRATCH_A}")?;
+                sink(dst, SCRATCH_A, writer, &*ra, slots)?;
             }
         }
         Instruction::Store { src, .. } => {
-            let value = source(src, SCRATCH_SRC0, writer, ra, slots)?;
-            writeln!(writer, "    movdqu %{value}, {offset}(%rax)")?;
+            let value = source(src, SCRATCH_SRC0, writer, &*ra, slots)?;
+            writeln!(writer, "    movdqu %{value}, {mem}")?;
         }
         _ => unreachable!(),
     }
+    release_indexed_scratch(scratches, ra);
     Ok(())
 }
 

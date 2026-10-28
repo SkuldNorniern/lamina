@@ -1288,6 +1288,10 @@ entry:
             format!(
                 "{}{}",
                 r#"
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
 @noinline
 fn @padded() -> i64 {
 entry:
@@ -1298,7 +1302,7 @@ entry:
     %last = getfieldptr %stack, 2
     store.i64 %middle, 1234
     store.i8 %last, 99
-    %heap = heapalloc.[2 x struct { a: i8, b: i64, c: i8 }]
+    %heap = call @malloc(48)
     %second = getelem.struct { a: i8, b: i64, c: i8 } %heap, 1
     %heap_last = getfieldptr %second, 2
     store.i8 %heap_last, 77
@@ -1306,7 +1310,7 @@ entry:
     %y = load.i8 %last
     %z = load.i8 %heap_last
     %guard = load.i64 %other
-    heapfree %heap
+    call @free(%heap)
     %wide_y = zext.i8.i64 %y
     %wide_z = zext.i8.i64 %z
     %sum = add.i64 %x, %wide_y
