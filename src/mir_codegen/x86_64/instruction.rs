@@ -153,6 +153,246 @@ pub(super) fn canonicalize_integer(
 
 /// Population count, leading and trailing zero counts and byte swap. The operand is
 /// zero-extended to its width first, so the bits above the type never count.
+fn signed_magic(divisor: i64) -> (u64, u32) {
+    let ad = divisor.unsigned_abs() as u128;
+    let two63: u128 = 1 << 63;
+    let t = two63 + ((divisor as u64) >> 63) as u128;
+    let anc = t - 1 - t % ad;
+    let mut p: u32 = 63;
+    let mut q1 = two63 / anc;
+    let mut r1 = two63 - q1 * anc;
+    let mut q2 = two63 / ad;
+    let mut r2 = two63 - q2 * ad;
+    loop {
+        p += 1;
+        q1 *= 2;
+        r1 *= 2;
+        if r1 >= anc {
+            q1 += 1;
+            r1 -= anc;
+        }
+        q2 *= 2;
+        r2 *= 2;
+        if r2 >= ad {
+            q2 += 1;
+            r2 -= ad;
+        }
+        let delta = ad - r2;
+        if !(q1 < delta || (q1 == delta && r1 == 0)) {
+            break;
+        }
+    }
+    let mut magic = ((q2 + 1) as u64) as i64;
+    if divisor < 0 {
+        magic = magic.wrapping_neg();
+    }
+    (magic as u64, p - 64)
+}
+
+fn unsigned_magic(divisor: u64) -> (u64, u32) {
+    let l = 64 - (divisor - 1).leading_zeros();
+    let d = divisor as u128;
+    let magic = ((1u128 << 64) * ((1u128 << l) - d)) / d + 1;
+    (magic as u64, l)
+}
+
+const CONSTANT_DIVISOR_REDUCTION: bool = false;
+
+fn const_divide_applies(op: IntBinOp, divisor: i64) -> bool {
+    let signed = matches!(op, IntBinOp::SDiv | IntBinOp::SRem);
+    CONSTANT_DIVISOR_REDUCTION && divisor != 0 && !(signed && divisor == -1)
+}
+
+fn emit_times_const<W: Write>(
+    writer: &mut RaxTrackingWriter<W>,
+    divisor: i64,
+) -> Result<(), LaminaError> {
+    if divisor > 0 {
+        let shift = (divisor as u64).trailing_zeros();
+        let odd = (divisor as u64) >> shift;
+        match odd {
+            1 => {}
+            3 | 5 | 9 => writeln!(writer, "    leaq (%rax,%rax,{}), %rax", odd - 1)?,
+            _ if i32::try_from(odd).is_ok() => writeln!(writer, "    imulq ${odd}, %rax, %rax")?,
+            _ => writeln!(writer, "    movabsq ${odd}, %rdx\n    imulq %rdx, %rax")?,
+        }
+        if shift > 0 {
+            writeln!(writer, "    shlq ${shift}, %rax")?;
+        }
+        return Ok(());
+    }
+    if i32::try_from(divisor).is_ok() {
+        writeln!(writer, "    imulq ${divisor}, %rax, %rax")?;
+    } else {
+        writeln!(writer, "    movabsq ${divisor}, %rdx\n    imulq %rdx, %rax")?;
+    }
+    Ok(())
+}
+
+fn emit_const_divide<W: Write>(
+    writer: &mut RaxTrackingWriter<W>,
+    op: IntBinOp,
+    divisor: i64,
+) -> Result<bool, LaminaError> {
+    let signed = matches!(op, IntBinOp::SDiv | IntBinOp::SRem);
+    let remainder = matches!(op, IntBinOp::SRem | IntBinOp::URem);
+    if !const_divide_applies(op, divisor) {
+        return Ok(false);
+    }
+    let unsigned_magnitude = if signed {
+        divisor.unsigned_abs()
+    } else {
+        divisor as u64
+    };
+    let power_of_two = unsigned_magnitude.is_power_of_two();
+    let quotient_only_in_rax = divisor == 1 || (!signed && power_of_two && !remainder);
+    if !quotient_only_in_rax || remainder {
+        writeln!(writer, "    movq %rax, %rcx")?;
+    }
+    if signed {
+        if divisor == 1 {
+            // quotient is the dividend, already in rax
+        } else if power_of_two {
+            let k = unsigned_magnitude.trailing_zeros();
+            writeln!(
+                writer,
+                "    movq %rcx, %rdx\n    sarq $63, %rdx\n    shrq ${}, %rdx\n    addq %rcx, %rdx\n    sarq ${k}, %rdx",
+                64 - k
+            )?;
+            if divisor < 0 {
+                writeln!(writer, "    negq %rdx")?;
+            }
+            writeln!(writer, "    movq %rdx, %rax")?;
+        } else {
+            let (magic, shift) = signed_magic(divisor);
+            writeln!(writer, "    movabsq ${}, %rax", magic as i64)?;
+            writeln!(writer, "    imulq %rcx")?;
+            if divisor > 0 && (magic as i64) < 0 {
+                writeln!(writer, "    addq %rcx, %rdx")?;
+            }
+            if divisor < 0 && (magic as i64) > 0 {
+                writeln!(writer, "    subq %rcx, %rdx")?;
+            }
+            if shift > 0 {
+                writeln!(writer, "    sarq ${shift}, %rdx")?;
+            }
+            writeln!(
+                writer,
+                "    movq %rdx, %rax\n    shrq $63, %rax\n    addq %rdx, %rax"
+            )?;
+        }
+    } else if divisor == 1 {
+        // quotient is the dividend, already in rax
+    } else if power_of_two {
+        let k = unsigned_magnitude.trailing_zeros();
+        writeln!(writer, "    shrq ${k}, %rax")?;
+    } else {
+        let (magic, log) = unsigned_magic(unsigned_magnitude);
+        writeln!(
+            writer,
+            "    movabsq ${}, %rax\n    mulq %rcx\n    movq %rcx, %rax\n    subq %rdx, %rax\n    shrq $1, %rax\n    addq %rdx, %rax\n    shrq ${}, %rax",
+            magic as i64,
+            log - 1
+        )?;
+    }
+    if remainder {
+        if divisor == 1 {
+            writeln!(writer, "    xorl %eax, %eax")?;
+        } else if !signed && power_of_two {
+            writeln!(
+                writer,
+                "    movabsq ${}, %rdx\n    andq %rdx, %rcx\n    movq %rcx, %rax",
+                unsigned_magnitude - 1
+            )?;
+        } else {
+            emit_times_const(writer, divisor)?;
+            writeln!(writer, "    subq %rax, %rcx\n    movq %rcx, %rax")?;
+        }
+    }
+    Ok(true)
+}
+
+fn emit_int_divide<W: Write>(
+    writer: &mut RaxTrackingWriter<W>,
+    op: IntBinOp,
+    ty: &MirType,
+    lhs: &Operand,
+    rhs: &Operand,
+) -> Result<(), LaminaError> {
+    if ty.size_bytes() == 8 {
+        if let Some(divisor) = rhs.integer_constant() {
+            if emit_const_divide(writer, op, divisor)? {
+                return Ok(());
+            }
+        }
+    }
+    if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
+        extend_integer(writer, "rax", ty.size_bytes(), false)?;
+        extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+    }
+    if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) && ty.size_bytes() < 8 {
+        extend_integer(writer, "rax", ty.size_bytes(), true)?;
+        extend_integer(writer, "rcx", ty.size_bytes(), true)?;
+        let (_, overflow) = op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+        if overflow {
+            let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+            writeln!(
+                writer,
+                "    cmpq $-1, %rcx\n    jne 2f\n    cmpq ${minimum}, %rax\n    jne 2f\n    ud2\n2:"
+            )?;
+        }
+    }
+    let signed = matches!(op, IntBinOp::SDiv | IntBinOp::SRem);
+    let remainder = matches!(op, IntBinOp::SRem | IntBinOp::URem);
+    let narrow = ty.size_bytes() == 8 && rhs.integer_constant().is_none();
+    if narrow && signed {
+        writeln!(
+            writer,
+            "    movslq %eax, %rdx\n    cmpq %rdx, %rax\n    jne 3f\n    movslq %ecx, %rdx\n    cmpq %rdx, %rcx\n    jne 3f\n    cmpq $-1, %rcx\n    je 3f\n    cltd\n    idivl %ecx"
+        )?;
+        if remainder {
+            writeln!(writer, "    movslq %edx, %rax")?;
+        } else {
+            writeln!(writer, "    cltq")?;
+        }
+        writeln!(writer, "    jmp 4f\n3:")?;
+    } else if narrow {
+        writeln!(
+            writer,
+            "    movq %rax, %rdx\n    orq %rcx, %rdx\n    shrq $32, %rdx\n    jne 3f\n    xorl %edx, %edx\n    divl %ecx"
+        )?;
+        if remainder {
+            writeln!(writer, "    movl %edx, %eax")?;
+        }
+        writeln!(writer, "    jmp 4f\n3:")?;
+    }
+    match op {
+        IntBinOp::SDiv => {
+            writeln!(writer, "    cqto")?;
+            writeln!(writer, "    idivq %rcx")?;
+        }
+        IntBinOp::UDiv => {
+            writeln!(writer, "    xorq %rdx, %rdx")?;
+            writeln!(writer, "    divq %rcx")?;
+        }
+        IntBinOp::SRem => {
+            writeln!(writer, "    cqto")?;
+            writeln!(writer, "    idivq %rcx")?;
+            writeln!(writer, "    movq %rdx, %rax")?;
+        }
+        IntBinOp::URem => {
+            writeln!(writer, "    xorq %rdx, %rdx")?;
+            writeln!(writer, "    divq %rcx")?;
+            writeln!(writer, "    movq %rdx, %rax")?;
+        }
+        _ => unreachable!(),
+    }
+    if narrow {
+        writeln!(writer, "4:")?;
+    }
+    Ok(())
+}
+
 fn emit_int_unary<W: Write>(
     op: IntUnOp,
     ty: &MirType,
@@ -601,48 +841,14 @@ pub(super) fn emit_instruction_x86_64(
                     IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
                         // Division always goes through rax/rdx; use rcx for divisor to avoid conflicts
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "rax")?;
-                        load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
-                        if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
-                            extend_integer(writer, "rax", ty.size_bytes(), false)?;
-                            extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+                        if !(ty.size_bytes() == 8
+                            && rhs
+                                .integer_constant()
+                                .is_some_and(|d| const_divide_applies(*op, d)))
+                        {
+                            load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
                         }
-                        if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) && ty.size_bytes() < 8 {
-                            extend_integer(writer, "rax", ty.size_bytes(), true)?;
-                            extend_integer(writer, "rcx", ty.size_bytes(), true)?;
-                            let (_, overflow) = op.division_checks(
-                                *ty,
-                                lhs.integer_constant(),
-                                rhs.integer_constant(),
-                            );
-                            if overflow {
-                                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
-                                writeln!(
-                                    writer,
-                                    "    cmpq $-1, %rcx\n    jne 2f\n    cmpq ${minimum}, %rax\n    jne 2f\n    ud2\n2:"
-                                )?;
-                            }
-                        }
-                        match op {
-                            IntBinOp::SDiv => {
-                                writeln!(writer, "    cqto")?;
-                                writeln!(writer, "    idivq %rcx")?;
-                            }
-                            IntBinOp::UDiv => {
-                                writeln!(writer, "    xorq %rdx, %rdx")?;
-                                writeln!(writer, "    divq %rcx")?;
-                            }
-                            IntBinOp::SRem => {
-                                writeln!(writer, "    cqto")?;
-                                writeln!(writer, "    idivq %rcx")?;
-                                writeln!(writer, "    movq %rdx, %rax")?;
-                            }
-                            IntBinOp::URem => {
-                                writeln!(writer, "    xorq %rdx, %rdx")?;
-                                writeln!(writer, "    divq %rcx")?;
-                                writeln!(writer, "    movq %rdx, %rax")?;
-                            }
-                            _ => unreachable!(),
-                        }
+                        emit_int_divide(writer, *op, ty, lhs, rhs)?;
                         // Store result (rax) into dp
                         if dp != "rax" {
                             writeln!(writer, "    movq %rax, %{dp}")?;
@@ -782,48 +988,14 @@ pub(super) fn emit_instruction_x86_64(
                         }
                     },
                     IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
-                        load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
-                        if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
-                            extend_integer(writer, "rax", ty.size_bytes(), false)?;
-                            extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+                        if !(ty.size_bytes() == 8
+                            && rhs
+                                .integer_constant()
+                                .is_some_and(|d| const_divide_applies(*op, d)))
+                        {
+                            load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
                         }
-                        if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) && ty.size_bytes() < 8 {
-                            extend_integer(writer, "rax", ty.size_bytes(), true)?;
-                            extend_integer(writer, "rcx", ty.size_bytes(), true)?;
-                            let (_, overflow) = op.division_checks(
-                                *ty,
-                                lhs.integer_constant(),
-                                rhs.integer_constant(),
-                            );
-                            if overflow {
-                                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
-                                writeln!(
-                                    writer,
-                                    "    cmpq $-1, %rcx\n    jne 2f\n    cmpq ${minimum}, %rax\n    jne 2f\n    ud2\n2:"
-                                )?;
-                            }
-                        }
-                        match op {
-                            IntBinOp::SDiv => {
-                                writeln!(writer, "    cqto")?;
-                                writeln!(writer, "    idivq %rcx")?;
-                            }
-                            IntBinOp::UDiv => {
-                                writeln!(writer, "    xorq %rdx, %rdx")?;
-                                writeln!(writer, "    divq %rcx")?;
-                            }
-                            IntBinOp::SRem => {
-                                writeln!(writer, "    cqto")?;
-                                writeln!(writer, "    idivq %rcx")?;
-                                writeln!(writer, "    movq %rdx, %rax")?;
-                            }
-                            IntBinOp::URem => {
-                                writeln!(writer, "    xorq %rdx, %rdx")?;
-                                writeln!(writer, "    divq %rcx")?;
-                                writeln!(writer, "    movq %rdx, %rax")?;
-                            }
-                            _ => unreachable!(),
-                        }
+                        emit_int_divide(writer, *op, ty, lhs, rhs)?;
                     }
                     _ => {
                         let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
