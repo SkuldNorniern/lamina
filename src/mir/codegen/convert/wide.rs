@@ -265,6 +265,69 @@ impl<'c, 'a> Cx<'c, 'a> {
         Words { lo, hi }
     }
 
+    fn unary_word(&mut self, op: IntUnOp, src: Operand) -> Operand {
+        let dst = self.temp();
+        self.out.push(Instruction::IntUnary {
+            op,
+            ty: MirType::i64(),
+            dst: dst.clone(),
+            src,
+        });
+        Operand::Register(dst)
+    }
+
+    fn popcount(&mut self, a: Words) -> Words {
+        let lo = self.unary_word(IntUnOp::Popcount, a.lo);
+        let hi = self.unary_word(IntUnOp::Popcount, a.hi);
+        Words {
+            lo: self.bin(IntBinOp::Add, lo, hi),
+            hi: imm(0),
+        }
+    }
+
+    /// The high word's count, or 64 plus the low word's when the high word is zero.
+    fn leading_zeros(&mut self, a: Words) -> Words {
+        let high = self.unary_word(IntUnOp::Ctlz, a.hi.clone());
+        let low = self.unary_word(IntUnOp::Ctlz, a.lo.clone());
+        let mask = self.is_zero(a.hi);
+        let mask = self.bin(IntBinOp::Sub, imm(0), mask);
+        let low = self.bin(IntBinOp::And, low, mask);
+        Words {
+            lo: self.bin(IntBinOp::Add, high, low),
+            hi: imm(0),
+        }
+    }
+
+    /// The low word's count, or 64 plus the high word's when the low word is zero.
+    fn trailing_zeros(&mut self, a: Words) -> Words {
+        let low = self.unary_word(IntUnOp::Cttz, a.lo.clone());
+        let high = self.unary_word(IntUnOp::Cttz, a.hi.clone());
+        let mask = self.is_zero(a.lo);
+        let mask = self.bin(IntBinOp::Sub, imm(0), mask);
+        let high = self.bin(IntBinOp::And, high, mask);
+        Words {
+            lo: self.bin(IntBinOp::Add, low, high),
+            hi: imm(0),
+        }
+    }
+
+    /// Rotation by `count` modulo 128. The shifts mask their count, so the opposite
+    /// shift takes `-count`, and a zero count leaves the value unchanged.
+    fn rotate(&mut self, a: Words, count: Operand, left: bool) -> Words {
+        let opposite = self.bin(IntBinOp::Sub, imm(0), count.clone());
+        let (toward, away) = if left {
+            (count, opposite)
+        } else {
+            (opposite, count)
+        };
+        let up = self.shl(a.clone(), toward);
+        let down = self.right_shift(a, away, false);
+        Words {
+            lo: self.bin(IntBinOp::Or, up.lo, down.lo),
+            hi: self.bin(IntBinOp::Or, up.hi, down.hi),
+        }
+    }
+
     fn unsigned_less(&mut self, a: Words, b: Words) -> Operand {
         let lo = self.bin(IntBinOp::Sub, a.lo.clone(), b.lo.clone());
         let borrow = self.borrow_out(a.lo, b.lo, lo);
@@ -625,11 +688,10 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
         IRInst::Call {
             func_name, args, ..
         } => {
-            module
-                .functions
-                .get(func_name)
-                .is_some_and(|callee| is_wide_type(&callee.signature.return_type))
-                || args.iter().any(|arg| is_wide_value(arg, vars))
+            module.functions.get(func_name).is_some_and(|callee| {
+                is_wide_type(&callee.signature.return_type)
+                    || callee.signature.params.iter().any(|p| is_wide_type(&p.ty))
+            }) || args.iter().any(|arg| is_wide_value(arg, vars))
         }
         IRInst::Alloc { .. }
         | IRInst::FuncAddr { .. }
@@ -707,7 +769,8 @@ pub(super) fn lower_instruction<'a>(
                 IRBin::Shr => cx.right_shift(a, b.lo, signed),
                 IRBin::Div => cx.division(signed, false, a, b),
                 IRBin::Rem => cx.division(signed, true, a, b),
-                IRBin::Rotl | IRBin::Rotr => return Err(FromIRError::UnsupportedInstruction),
+                IRBin::Rotl => cx.rotate(a, b.lo, true),
+                IRBin::Rotr => cx.rotate(a, b.lo, false),
             };
             let pair = cx.result_pair(result);
             cx.write_pair(pair, value);
@@ -731,11 +794,14 @@ pub(super) fn lower_instruction<'a>(
                     lo: cx.not(a.lo),
                     hi: cx.not(a.hi),
                 },
-                UnaryOp::Sqrt
-                | UnaryOp::Popcount
-                | UnaryOp::Ctlz
-                | UnaryOp::Cttz
-                | UnaryOp::Bswap => return Err(FromIRError::UnsupportedInstruction),
+                UnaryOp::Popcount => cx.popcount(a),
+                UnaryOp::Ctlz => cx.leading_zeros(a),
+                UnaryOp::Cttz => cx.trailing_zeros(a),
+                UnaryOp::Bswap => Words {
+                    lo: cx.unary_word(IntUnOp::Bswap, a.hi),
+                    hi: cx.unary_word(IntUnOp::Bswap, a.lo),
+                },
+                UnaryOp::Sqrt => return Err(FromIRError::UnsupportedInstruction),
             };
             let pair = cx.result_pair(result);
             cx.write_pair(pair, value);
@@ -952,6 +1018,11 @@ pub(super) fn lower_instruction<'a>(
                 });
             }
         }
+        IRInst::CallIndirect { .. } => {
+            return Err(FromIRError::UnsupportedAggregate(
+                "a 128-bit argument or result of callptr: an indirect call carries no callee signature to pass a 16-byte aggregate by, so call the function directly".to_string(),
+            ));
+        }
         IRInst::IntToFloat {
             result,
             signed,
@@ -1033,7 +1104,6 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::Bitcast { .. }
         | IRInst::FloatConvert { .. }
         | IRInst::FuncAddr { .. }
-        | IRInst::CallIndirect { .. }
         | IRInst::Switch { .. }
         | IRInst::Br { .. }
         | IRInst::Jmp { .. }

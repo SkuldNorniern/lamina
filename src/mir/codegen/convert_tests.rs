@@ -843,3 +843,38 @@ fn atomic_compare_exchange_is_not_lowered_yet() {
     let err = from_ir(&module, "cas").expect_err("cmpxchg must not lower yet");
     assert!(err.to_string().contains("atomic_cmpxchg"), "{err}");
 }
+
+#[test]
+fn literal_argument_to_a_wide_parameter_lowers_as_a_wide_value() {
+    let source = "fn @low(i128 %a) -> i64 {\nentry:\n%t = trunc.i128.i64 %a\nret.i64 %t\n}\nfn @main() -> i64 {\nentry:\n%v = call @low(5718798622190258910)\nret.i64 %v\n}";
+    let ir = parse_module(source).expect("parse wide literal argument");
+    let module = from_ir(&ir, "wide_literal").expect("lower wide literal argument");
+    assert!(module.validate_in_pipeline().is_ok());
+}
+
+#[test]
+fn bit_intrinsics_lower_on_wide_operands() {
+    for op in ["popcount", "ctlz", "cttz", "bswap"] {
+        let source =
+            format!("fn @f(u128 %a) -> u128 {{\nentry:\n%r = {op}.u128 %a\nret.u128 %r\n}}");
+        let ir = parse_module(&source).expect("parse bit intrinsic");
+        let module = from_ir(&ir, "bits").expect("lower wide bit intrinsic");
+        assert!(module.validate_in_pipeline().is_ok(), "{op}");
+    }
+    for op in ["rotl", "rotr"] {
+        let source = format!(
+            "fn @f(i128 %a, i128 %n) -> i128 {{\nentry:\n%r = {op}.i128 %a, %n\nret.i128 %r\n}}"
+        );
+        let ir = parse_module(&source).expect("parse wide rotate");
+        let module = from_ir(&ir, "rotate").expect("lower wide rotate");
+        assert!(module.validate_in_pipeline().is_ok(), "{op}");
+    }
+}
+
+#[test]
+fn callptr_with_a_wide_argument_is_rejected_by_name() {
+    let source = "fn @main() -> i64 {\nentry:\n%f = funcaddr @main\n%r = callptr.i64 %f(i128 1)\nret.i64 %r\n}";
+    let ir = parse_module(source).expect("parse indirect call");
+    let err = from_ir(&ir, "indirect").expect_err("indirect wide argument must not lower");
+    assert!(err.to_string().contains("callptr"), "{err}");
+}
