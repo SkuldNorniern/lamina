@@ -39,7 +39,7 @@ pub use instruction::{
     IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,
 };
 pub use instruction::{AtomicBinOp, MemoryOrdering};
-pub use module::{Global, Module, ModuleBuilder};
+pub use module::{Global, Module, ModuleBuilder, RelocationModel};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 #[cfg(feature = "nightly")]
 pub use simd::{

@@ -26,7 +26,7 @@ use std::{borrow::Cow, collections::HashMap, fmt, io::Write};
 
 use crate::{
     error::LaminaError,
-    mir::{Global, Instruction, MirType, Module, Signature},
+    mir::{Global, Instruction, MirType, Module, RelocationModel, Signature},
 };
 use lamina_codegen::{
     abi::{BuiltinLibrary, RuntimeSymbol},
@@ -149,6 +149,15 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     let retargeted = retarget_runtime_calls(input, &builtins);
     let module: &Module = &retargeted;
     check_compiler_runtime_symbols(module, target_os, &builtins)?;
+    if module.relocation != RelocationModel::Static
+        && !(target_arch == TargetArchitecture::X86_64 && target_os == TargetOperatingSystem::Linux)
+    {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "@pic and @pie are only implemented for x86_64 Linux (ELF); target {target_arch:?}-{target_os:?} is not supported"
+            ),
+        )));
+    }
     let effective_caps = {
         #[cfg(feature = "nightly")]
         {

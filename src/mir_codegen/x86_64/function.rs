@@ -1,5 +1,6 @@
 use super::variadic::{SAVE_AREA_SLOTS, VaArea, spill_register_save_area};
 use super::*;
+use crate::mir::RelocationModel;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::argument_types;
 use crate::mir_codegen::common::io_codegen_error;
@@ -850,6 +851,8 @@ pub(super) struct AbiExtensions {
     return_aggregates: HashMap<String, Aggregate>,
     return_types: HashMap<String, MirType>,
     variadic: HashSet<String>,
+    /// Symbols whose address is loaded through the GOT under `@pic` or `@pie`.
+    got_symbols: HashSet<String>,
 }
 
 impl AbiExtensions {
@@ -903,6 +906,23 @@ impl AbiExtensions {
             .iter()
             .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
             .collect();
+        let got_symbols = match module.relocation {
+            RelocationModel::Static => HashSet::new(),
+            RelocationModel::Pie => module.external_functions.clone(),
+            RelocationModel::Pic => module
+                .external_functions
+                .iter()
+                .chain(&module.exported_functions)
+                .chain(
+                    module
+                        .globals
+                        .iter()
+                        .filter(|(_, global)| global.exported)
+                        .map(|(name, _)| name),
+                )
+                .cloned()
+                .collect(),
+        };
         Self {
             returns,
             external_arguments,
@@ -910,6 +930,7 @@ impl AbiExtensions {
             parameter_aggregates,
             return_types,
             return_aggregates,
+            got_symbols,
             variadic: module
                 .functions
                 .iter()
@@ -917,6 +938,10 @@ impl AbiExtensions {
                 .map(|(name, _)| name.clone())
                 .collect(),
         }
+    }
+
+    pub(super) fn uses_got(&self, symbol: &str) -> bool {
+        self.got_symbols.contains(symbol)
     }
 
     pub(super) fn return_extension(&self, callee: &str) -> Option<NarrowExtension> {

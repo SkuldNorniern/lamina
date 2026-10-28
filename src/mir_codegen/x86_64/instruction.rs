@@ -1849,11 +1849,16 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::SymbolAddress { dst, symbol } => {
             let label = X86ABI::new(target_os).mangle_function_name(symbol);
+            let (load, operand) = if abi_extensions.uses_got(symbol) {
+                ("movq", format!("{label}@GOTPCREL(%rip)"))
+            } else {
+                ("leaq", format!("{label}(%rip)"))
+            };
             if let Some(dp) = mapped_register(dst, reg_alloc) {
-                writeln!(writer, "    leaq {label}(%rip), %{dp}")?;
+                writeln!(writer, "    {load} {operand}, %{dp}")?;
                 return Ok(());
             }
-            writeln!(writer, "    leaq {label}(%rip), %rax")?;
+            writeln!(writer, "    {load} {operand}, %rax")?;
             if let Register::Virtual(vreg) = dst {
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }

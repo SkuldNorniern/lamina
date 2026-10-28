@@ -42,8 +42,12 @@ use crate::{
 };
 
 #[cfg(feature = "nightly")]
+use crate::ir::ModuleAnnotation;
+#[cfg(feature = "nightly")]
 use crate::ir::instruction::SimdOp as IRSimdOp;
 use crate::ir::instruction::{AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRMemOrd};
+#[cfg(feature = "nightly")]
+use crate::mir::RelocationModel;
 #[cfg(feature = "nightly")]
 use crate::mir::SimdOp;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
@@ -257,6 +261,10 @@ fn normalize_lowered_literal(operand: &mut Operand, ty: MirType) {
 /// [`FromIRError`] naming the value.
 pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
+    #[cfg(feature = "nightly")]
+    {
+        mir_module.relocation = relocation_model(&ir.annotations);
+    }
 
     for (global_name, decl) in &ir.global_declarations {
         let resolved = resolve_type_names(&decl.ty, &ir.type_declarations)
@@ -315,6 +323,16 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
         .validate_in_pipeline()
         .map_err(FromIRError::InvalidMir)?;
     Ok(mir_module)
+}
+
+#[cfg(feature = "nightly")]
+fn relocation_model(annotations: &[ModuleAnnotation]) -> RelocationModel {
+    annotations
+        .last()
+        .map_or(RelocationModel::Static, |annotation| match annotation {
+            ModuleAnnotation::PositionIndependentCode => RelocationModel::Pic,
+            ModuleAnnotation::PositionIndependentExecutable => RelocationModel::Pie,
+        })
 }
 
 /// What lowering knows about the values in a function beyond the MIR types: the

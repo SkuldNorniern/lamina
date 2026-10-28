@@ -1,9 +1,31 @@
 use super::*;
 use crate::{
-    mir::{FunctionBuilder, ScalarType, codegen::from_ir},
+    mir::{FunctionBuilder, RelocationModel, ScalarType, codegen::from_ir},
     parser::parse_module,
 };
 use std::{error::Error as StdError, slice};
+
+#[test]
+fn position_independent_modules_load_external_addresses_through_the_got() {
+    let ir = parse_module(
+        "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n",
+    )
+    .unwrap();
+    let mut mir = from_ir(&ir, "pie").unwrap();
+    let assemble = |module: &MirModule| {
+        let mut output = Vec::new();
+        generate_mir_x86_64(module, &mut output, TargetOperatingSystem::Linux).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+    let plain = assemble(&mir);
+    assert!(plain.contains("    leaq printf(%rip), "), "{plain}");
+    assert!(!plain.contains("GOTPCREL"), "{plain}");
+
+    mir.relocation = RelocationModel::Pie;
+    let pie = assemble(&mir);
+    assert!(pie.contains("    movq printf@GOTPCREL(%rip), "), "{pie}");
+    assert!(pie.contains("    leaq twice(%rip), "), "{pie}");
+}
 
 #[test]
 fn calls_that_may_be_variadic_report_vector_count_in_al() {

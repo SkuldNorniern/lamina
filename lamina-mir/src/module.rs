@@ -74,6 +74,18 @@ impl Global {
     }
 }
 
+/// How generated code addresses symbols, set by the `@pic` and `@pie` module annotations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RelocationModel {
+    /// Non-PIC code: symbols are addressed directly.
+    #[default]
+    Static,
+    /// Position-independent code: external and exported symbols are reached through the GOT.
+    Pic,
+    /// Position-independent executable: external symbols are reached through the GOT.
+    Pie,
+}
+
 /// LUMIR module
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
@@ -91,6 +103,9 @@ pub struct Module {
 
     /// Names of functions exported with global linkage
     pub exported_functions: HashSet<String>,
+
+    /// Relocation model requested by the module annotations
+    pub relocation: RelocationModel,
 }
 
 impl Module {
@@ -102,6 +117,7 @@ impl Module {
             globals: HashMap::new(),
             external_functions: HashSet::new(),
             exported_functions: HashSet::new(),
+            relocation: RelocationModel::Static,
         }
     }
 
