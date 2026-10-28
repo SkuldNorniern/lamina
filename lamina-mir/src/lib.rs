@@ -23,6 +23,7 @@ pub mod instruction;
 pub mod module;
 pub mod register;
 pub mod simd;
+pub mod ssa;
 pub mod types;
 pub mod verify;
 

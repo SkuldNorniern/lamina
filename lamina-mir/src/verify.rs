@@ -445,21 +445,31 @@ pub fn calculate_dominators(
     function: &Function,
     block_indices: &HashMap<&str, usize>,
 ) -> Dominators {
-    let block_count = function.blocks.len();
-    let successors = |block_index: usize| -> Vec<usize> {
-        function.blocks[block_index]
-            .instructions
-            .last()
-            .map(|terminator| {
-                instruction_targets(terminator)
-                    .into_iter()
-                    .filter_map(|target| block_indices.get(target).copied())
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
+    let successors: Vec<Vec<usize>> = (0..function.blocks.len())
+        .map(|block_index| {
+            function.blocks[block_index]
+                .instructions
+                .last()
+                .map(|terminator| {
+                    instruction_targets(terminator)
+                        .into_iter()
+                        .filter_map(|target| block_indices.get(target).copied())
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+    dominator_tree(
+        &successors,
+        block_indices.get(function.entry.as_str()).copied(),
+    )
+}
 
-    let Some(entry_index) = block_indices.get(function.entry.as_str()).copied() else {
+/// Dominator tree of a graph given by successor lists, rooted at `entry`.
+pub(crate) fn dominator_tree(successors: &[Vec<usize>], entry: Option<usize>) -> Dominators {
+    let block_count = successors.len();
+
+    let Some(entry_index) = entry else {
         return Dominators {
             idom: vec![None; block_count],
             entry: None,
@@ -474,7 +484,7 @@ pub fn calculate_dominators(
     let mut stack = vec![(entry_index, 0usize)];
     reachable[entry_index] = true;
     while let Some((block_index, next)) = stack.pop() {
-        let edges = successors(block_index);
+        let edges = &successors[block_index];
         if next < edges.len() {
             stack.push((block_index, next + 1));
             let target = edges[next];
@@ -497,7 +507,7 @@ pub fn calculate_dominators(
         if !live {
             continue;
         }
-        for target in successors(block_index) {
+        for &target in &successors[block_index] {
             predecessors[target].push(block_index);
         }
     }
@@ -1198,7 +1208,7 @@ fn verify_register(
     }
 }
 
-fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
+pub(crate) fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
     match instruction {
         Instruction::Copy { ty, .. }
         | Instruction::IntBinary { ty, .. }

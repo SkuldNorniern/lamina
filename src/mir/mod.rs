@@ -11,6 +11,9 @@ pub use lamina_mir::*;
 pub mod codegen; // IR → MIR conversion (lamina-specific)
 pub mod transform; // Optimizations (lamina-specific)
 
+#[cfg(test)]
+mod ssa_corpus_tests;
+
 // Re-export transform types for convenience
 pub use transform::{
     DeadCodeElimination, FunctionInlining, LoopInvariantCodeMotion, LoopUnrolling, ModuleInlining,
