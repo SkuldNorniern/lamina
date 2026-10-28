@@ -636,7 +636,7 @@ frame fmt 0
 frame main 32
 
 [capable_lamina O0]
-insns 665
+insns 663
 spills 233
 calls 32
 branches 12
@@ -652,7 +652,7 @@ frame print_number 64
 frame sum_array 96
 
 [capable_lamina O1]
-insns 605
+insns 603
 spills 97
 calls 32
 branches 12
@@ -668,7 +668,7 @@ frame print_number 32
 frame sum_array 16
 
 [capable_lamina O2]
-insns 1278
+insns 1274
 spills 211
 calls 48
 branches 86
@@ -684,7 +684,7 @@ frame print_number 32
 frame sum_array 16
 
 [capable_lamina O3]
-insns 1273
+insns 1269
 spills 221
 calls 48
 branches 88
@@ -808,7 +808,7 @@ frame print_digits 32
 frame print_number 32
 
 [dealloc_stack_vs_heap_bug_test O0]
-insns 179
+insns 177
 spills 51
 calls 8
 branches 7
@@ -819,7 +819,7 @@ frame test_heap_dealloc 16
 frame test_stack_dealloc 32
 
 [dealloc_stack_vs_heap_bug_test O1]
-insns 186
+insns 184
 spills 36
 calls 8
 branches 7
@@ -830,7 +830,7 @@ frame test_heap_dealloc 16
 frame test_stack_dealloc 16
 
 [dealloc_stack_vs_heap_bug_test O2]
-insns 217
+insns 213
 spills 40
 calls 9
 branches 11
@@ -841,7 +841,7 @@ frame test_heap_dealloc 16
 frame test_stack_dealloc 0
 
 [dealloc_stack_vs_heap_bug_test O3]
-insns 216
+insns 212
 spills 38
 calls 9
 branches 11
@@ -2864,7 +2864,7 @@ frame print_u64 16
 frame put_u64 32
 
 [heap_allocation_bug_test O0]
-insns 334
+insns 328
 spills 116
 calls 17
 branches 7
@@ -2877,7 +2877,7 @@ frame test_heap_struct 64
 frame test_multiple_allocations 96
 
 [heap_allocation_bug_test O1]
-insns 311
+insns 305
 spills 53
 calls 17
 branches 7
@@ -2890,7 +2890,7 @@ frame test_heap_struct 16
 frame test_multiple_allocations 32
 
 [heap_allocation_bug_test O2]
-insns 502
+insns 490
 spills 68
 calls 23
 branches 23
@@ -2903,7 +2903,7 @@ frame test_heap_struct 16
 frame test_multiple_allocations 32
 
 [heap_allocation_bug_test O3]
-insns 503
+insns 491
 spills 70
 calls 23
 branches 23
@@ -2916,7 +2916,7 @@ frame test_heap_struct 16
 frame test_multiple_allocations 32
 
 [heap_memory O0]
-insns 201
+insns 193
 spills 65
 calls 15
 branches 3
@@ -2928,7 +2928,7 @@ frame test_heap_allocation 48
 frame test_multiple_heap_allocations 64
 
 [heap_memory O1]
-insns 200
+insns 192
 spills 34
 calls 15
 branches 3
@@ -2940,7 +2940,7 @@ frame test_heap_allocation 16
 frame test_multiple_heap_allocations 32
 
 [heap_memory O2]
-insns 318
+insns 302
 spills 46
 calls 21
 branches 7
@@ -2952,7 +2952,7 @@ frame test_heap_allocation 16
 frame test_multiple_heap_allocations 32
 
 [heap_memory O3]
-insns 324
+insns 308
 spills 52
 calls 21
 branches 7
@@ -2964,7 +2964,7 @@ frame test_heap_allocation 16
 frame test_multiple_heap_allocations 48
 
 [heapfree_reassigned_heap O0]
-insns 128
+insns 126
 spills 38
 calls 6
 branches 3
@@ -2974,7 +2974,7 @@ frame print_u64 16
 frame put_u64 48
 
 [heapfree_reassigned_heap O1]
-insns 133
+insns 131
 spills 22
 calls 6
 branches 3
@@ -2984,7 +2984,7 @@ frame print_u64 16
 frame put_u64 32
 
 [heapfree_reassigned_heap O2]
-insns 171
+insns 169
 spills 26
 calls 6
 branches 5
@@ -2994,7 +2994,7 @@ frame print_u64 16
 frame put_u64 32
 
 [heapfree_reassigned_heap O3]
-insns 171
+insns 169
 spills 26
 calls 6
 branches 5
@@ -3004,9 +3004,9 @@ frame print_u64 16
 frame put_u64 32
 
 [heapfree_reassigned_stack O0]
-insns 125
-spills 37
-calls 5
+insns 126
+spills 38
+calls 6
 branches 3
 frame main 32
 frame print_i64 64
@@ -3014,9 +3014,9 @@ frame print_u64 16
 frame put_u64 48
 
 [heapfree_reassigned_stack O1]
-insns 131
+insns 132
 spills 22
-calls 5
+calls 6
 branches 3
 frame main 32
 frame print_i64 32
@@ -3024,9 +3024,9 @@ frame print_u64 16
 frame put_u64 32
 
 [heapfree_reassigned_stack O2]
-insns 169
+insns 170
 spills 26
-calls 5
+calls 6
 branches 5
 frame main 32
 frame print_i64 32
@@ -3034,9 +3034,9 @@ frame print_u64 16
 frame put_u64 32
 
 [heapfree_reassigned_stack O3]
-insns 169
+insns 170
 spills 26
-calls 5
+calls 6
 branches 5
 frame main 32
 frame print_i64 32
@@ -7884,7 +7884,7 @@ frame print_u64 16
 frame put_u64 32
 
 [i128_array_heap O0]
-insns 314
+insns 312
 spills 165
 calls 9
 branches 3
@@ -7894,7 +7894,7 @@ frame print_u64 16
 frame put_u64 48
 
 [i128_array_heap O1]
-insns 198
+insns 196
 spills 26
 calls 9
 branches 3
@@ -7904,7 +7904,7 @@ frame print_u64 16
 frame put_u64 32
 
 [i128_array_heap O2]
-insns 309
+insns 307
 spills 41
 calls 9
 branches 11
@@ -7914,7 +7914,7 @@ frame print_u64 16
 frame put_u64 32
 
 [i128_array_heap O3]
-insns 307
+insns 305
 spills 37
 calls 9
 branches 11
@@ -9772,7 +9772,7 @@ frame print_digits 32
 frame print_number 32
 
 [memory_intrinsics O0]
-insns 198
+insns 196
 spills 70
 calls 11
 branches 3
@@ -9782,7 +9782,7 @@ frame print_u64 16
 frame put_u64 48
 
 [memory_intrinsics O1]
-insns 191
+insns 189
 spills 27
 calls 11
 branches 3
@@ -9792,7 +9792,7 @@ frame print_u64 16
 frame put_u64 32
 
 [memory_intrinsics O2]
-insns 376
+insns 374
 spills 53
 calls 11
 branches 13
@@ -9802,7 +9802,7 @@ frame print_u64 16
 frame put_u64 32
 
 [memory_intrinsics O3]
-insns 376
+insns 374
 spills 53
 calls 11
 branches 13
@@ -10188,7 +10188,7 @@ frame print_digits 32
 frame print_number 32
 
 [pointer_operations O0]
-insns 345
+insns 344
 spills 132
 calls 6
 branches 7
@@ -10201,7 +10201,7 @@ frame test_pointer_movement 128
 frame test_variable_index_gep 144
 
 [pointer_operations O1]
-insns 260
+insns 259
 spills 35
 calls 6
 branches 7
@@ -10214,7 +10214,7 @@ frame test_pointer_movement 48
 frame test_variable_index_gep 48
 
 [pointer_operations O2]
-insns 300
+insns 299
 spills 41
 calls 8
 branches 15
@@ -10227,7 +10227,7 @@ frame test_pointer_movement 48
 frame test_variable_index_gep 48
 
 [pointer_operations O3]
-insns 302
+insns 301
 spills 41
 calls 8
 branches 15
@@ -11140,7 +11140,7 @@ frame print_digits 32
 frame print_number 32
 
 [simple_heap_test O0]
-insns 123
+insns 122
 spills 36
 calls 5
 branches 3
@@ -11150,7 +11150,7 @@ frame print_u64 16
 frame put_u64 48
 
 [simple_heap_test O1]
-insns 130
+insns 129
 spills 22
 calls 5
 branches 3
@@ -11160,7 +11160,7 @@ frame print_u64 16
 frame put_u64 32
 
 [simple_heap_test O2]
-insns 168
+insns 167
 spills 26
 calls 5
 branches 5
@@ -11170,7 +11170,7 @@ frame print_u64 16
 frame put_u64 32
 
 [simple_heap_test O3]
-insns 168
+insns 167
 spills 26
 calls 5
 branches 5
