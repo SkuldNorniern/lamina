@@ -297,7 +297,7 @@ branches 9
 frame main 304
 
 [atomics O3]
-insns 396
+insns 399
 spills 47
 calls 52
 branches 9
@@ -353,11 +353,51 @@ branches 2
 frame main 64
 
 [bit_intrinsics O3]
-insns 202
+insns 206
 spills 14
 calls 14
-branches 2
+branches 3
 frame main 80
+
+[call_typed_arguments O0]
+insns 49
+spills 15
+calls 4
+branches 0
+frame add 32
+frame fmt 0
+frame main 32
+frame report 32
+
+[call_typed_arguments O1]
+insns 49
+spills 15
+calls 4
+branches 0
+frame add 32
+frame fmt 0
+frame main 32
+frame report 32
+
+[call_typed_arguments O2]
+insns 61
+spills 12
+calls 2
+branches 0
+frame add 0
+frame fmt 0
+frame main 32
+frame report 32
+
+[call_typed_arguments O3]
+insns 61
+spills 12
+calls 2
+branches 0
+frame add 0
+frame fmt 0
+frame main 32
+frame report 32
 
 [calling_convention_bug_test O0]
 insns 156
@@ -536,10 +576,10 @@ frame print_number 32
 frame sum_array 16
 
 [capable_lamina O3]
-insns 1336
+insns 1340
 spills 221
 calls 48
-branches 82
+branches 84
 frame conversion_demo 0
 frame create_person 32
 frame factorial 32
@@ -904,10 +944,10 @@ frame test_nested_flow 0
 frame test_wrapping 0
 
 [edge_cases_extra O3]
-insns 418
+insns 426
 spills 60
 calls 9
-branches 23
+branches 25
 frame main 48
 frame print_digits 32
 frame print_number 32
@@ -7702,10 +7742,10 @@ frame pick 80
 frame store_through 16
 
 [i128_mem O3]
-insns 490
+insns 492
 spills 52
 calls 24
-branches 2
+branches 3
 frame loop_sum 96
 frame main 208
 frame pick 80
@@ -8175,6 +8215,182 @@ frame test_redundant_loads 0
 frame test_store_forwarding 0
 frame test_volatile_access 0
 
+[loop_rotation_bound_change O0]
+insns 54
+spills 15
+calls 4
+branches 4
+frame main 48
+
+[loop_rotation_bound_change O1]
+insns 54
+spills 15
+calls 4
+branches 4
+frame main 48
+
+[loop_rotation_bound_change O2]
+insns 42
+spills 6
+calls 4
+branches 4
+frame main 32
+
+[loop_rotation_bound_change O3]
+insns 44
+spills 6
+calls 4
+branches 5
+frame main 32
+
+[loop_rotation_counted O0]
+insns 65
+spills 21
+calls 4
+branches 4
+frame main 64
+
+[loop_rotation_counted O1]
+insns 65
+spills 21
+calls 4
+branches 4
+frame main 64
+
+[loop_rotation_counted O2]
+insns 116
+spills 8
+calls 4
+branches 14
+frame main 32
+
+[loop_rotation_counted O3]
+insns 70
+spills 16
+calls 4
+branches 6
+frame main 64
+
+[loop_rotation_header_call O0]
+insns 64
+spills 16
+calls 7
+branches 2
+frame main 32
+frame next_value 32
+
+[loop_rotation_header_call O1]
+insns 64
+spills 16
+calls 7
+branches 2
+frame main 32
+frame next_value 32
+
+[loop_rotation_header_call O2]
+insns 68
+spills 8
+calls 8
+branches 2
+frame main 32
+frame next_value 16
+
+[loop_rotation_header_call O3]
+insns 68
+spills 8
+calls 8
+branches 2
+frame main 32
+frame next_value 16
+
+[loop_rotation_memory_test O0]
+insns 74
+spills 25
+calls 3
+branches 3
+frame main 64
+frame shrink_every_other 64
+
+[loop_rotation_memory_test O1]
+insns 74
+spills 25
+calls 3
+branches 3
+frame main 64
+frame shrink_every_other 64
+
+[loop_rotation_memory_test O2]
+insns 79
+spills 4
+calls 2
+branches 5
+frame main 32
+frame shrink_every_other 0
+
+[loop_rotation_memory_test O3]
+insns 79
+spills 4
+calls 2
+branches 5
+frame main 32
+frame shrink_every_other 0
+
+[loop_rotation_multi_latch O0]
+insns 50
+spills 15
+calls 2
+branches 4
+frame main 48
+
+[loop_rotation_multi_latch O1]
+insns 50
+spills 15
+calls 2
+branches 4
+frame main 48
+
+[loop_rotation_multi_latch O2]
+insns 38
+spills 4
+calls 2
+branches 4
+frame main 16
+
+[loop_rotation_multi_latch O3]
+insns 42
+spills 4
+calls 2
+branches 6
+frame main 16
+
+[loop_rotation_nested O0]
+insns 54
+spills 18
+calls 2
+branches 5
+frame main 64
+
+[loop_rotation_nested O1]
+insns 54
+spills 18
+calls 2
+branches 5
+frame main 64
+
+[loop_rotation_nested O2]
+insns 61
+spills 4
+calls 2
+branches 11
+frame main 16
+
+[loop_rotation_nested O3]
+insns 65
+spills 4
+calls 2
+branches 14
+frame main 16
+
 [loops O0]
 insns 132
 spills 40
@@ -8239,10 +8455,10 @@ frame print_digits 32
 frame print_number 32
 
 [mem2reg O3]
-insns 290
+insns 294
 spills 55
 calls 9
-branches 19
+branches 20
 frame main 80
 frame print_digits 32
 frame print_number 32
@@ -9385,10 +9601,10 @@ frame split_fields 16
 frame volatile_field 32
 
 [sroa_refusals O3]
-insns 467
+insns 469
 spills 34
 calls 43
-branches 5
+branches 6
 frame bool_field 32
 frame dynamic_index 80
 frame escape_call 32
@@ -10271,10 +10487,10 @@ frame main 32
 frame mix 256
 
 [va_arg_mixed O3]
-insns 175
+insns 179
 spills 36
 calls 2
-branches 7
+branches 8
 frame fmt 0
 frame main 32
 frame mix 256
@@ -10346,10 +10562,10 @@ frame noop 208
 frame sum 208
 
 [va_arg_no_variadic O3]
-insns 128
+insns 132
 spills 38
 calls 3
-branches 6
+branches 7
 frame fmt 0
 frame main 48
 frame noop 208
@@ -10383,10 +10599,10 @@ frame main 32
 frame sum 208
 
 [va_arg_sum O3]
-insns 101
+insns 105
 spills 22
 calls 2
-branches 5
+branches 6
 frame fmt 0
 frame main 32
 frame sum 208
