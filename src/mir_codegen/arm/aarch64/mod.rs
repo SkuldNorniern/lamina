@@ -9,6 +9,7 @@ mod util;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::external_names;
+use crate::mir_codegen::common::unsupported_io;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, emit_symbol_visibility, integer_conversion, self_tail_arguments,
@@ -779,6 +780,26 @@ fn compile_single_function_aarch64_with(
 }
 
 /// Generate AArch64 assembly from a MIR module.
+/// Maps the raw result of a read or write call to the I/O contract. A failure becomes
+/// -2, which `carry` reads from the carry flag as Mach-O reports it and otherwise from
+/// the sign of the result. With `end_of_input`, a zero count becomes -1.
+fn emit_io_result<W: Write>(w: &mut W, carry: bool, end_of_input: bool) -> Result<(), LaminaError> {
+    if carry {
+        writeln!(w, "    mov x9, #-2")?;
+        writeln!(w, "    csel x0, x9, x0, cs")?;
+    } else {
+        writeln!(w, "    cmp x0, #0")?;
+        writeln!(w, "    mov x9, #-2")?;
+        writeln!(w, "    csel x0, x9, x0, lt")?;
+    }
+    if end_of_input {
+        writeln!(w, "    cmp x0, #0")?;
+        writeln!(w, "    mov x9, #-1")?;
+        writeln!(w, "    csel x0, x9, x0, eq")?;
+    }
+    Ok(())
+}
+
 pub fn generate_mir_aarch64<W: Write>(
     module: &MirModule,
     writer: &mut W,
@@ -1424,7 +1445,6 @@ fn emit_block<W: Write>(
             }
             MirInst::Call { name, args, ret } => {
                 if name == "lamina.writebyte" && args.len() == 1 {
-                    // Write a single byte to stdout using macOS ARM64 syscall
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
                             writeln!(w, "    sub sp, sp, #16")?;
@@ -1435,14 +1455,14 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
-                            writeln!(w, "    csinv x0, x0, xzr, cc")?;
+                            emit_io_result(w, true, false)?;
                             writeln!(w, "    dmb sy")?;
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
                             }
                             writeln!(w, "    add sp, sp, #16")?;
                         }
-                        _ => {
+                        TargetOperatingSystem::Linux => {
                             emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
                             writeln!(w, "    sub sp, sp, #16")?;
                             writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
@@ -1450,11 +1470,15 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl write")?;
+                            emit_io_result(w, false, false)?;
                             writeln!(w, "    dmb sy")?;
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
                             }
                             writeln!(w, "    add sp, sp, #16")?;
+                        }
+                        other => {
+                            return Err(unsupported_io(name, other));
                         }
                     }
                 } else if name == "lamina.readbyte" && args.is_empty() {
@@ -1468,11 +1492,14 @@ fn emit_block<W: Write>(
                             writeln!(w, "    svc #0")?;
                             writeln!(w, "    csinv x0, x0, xzr, cc")?;
                         }
-                        _ => {
+                        TargetOperatingSystem::Linux => {
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl read")?;
+                        }
+                        other => {
+                            return Err(unsupported_io(name, other));
                         }
                     }
                     if let Some(dst) = ret {
@@ -1488,50 +1515,54 @@ fn emit_block<W: Write>(
                 } else if name == "lamina.write" && args.len() == 2 {
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
-                            // write(fd=1, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #1")?;
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
-                            writeln!(w, "    csinv x0, x0, xzr, cc")?;
-                            if let Some(dst) = ret {
-                                store_result(w, dst, "x0", frame, ra)?;
-                            }
+                            emit_io_result(w, true, false)?;
                         }
-                        _ => {
+                        TargetOperatingSystem::Linux => {
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #1")?;
                             writeln!(w, "    bl write")?;
-                            if let Some(dst) = ret {
-                                store_result(w, dst, "x0", frame, ra)?;
-                            }
+                            emit_io_result(w, false, false)?;
                         }
+                        other => {
+                            return Err(unsupported_io(name, other));
+                        }
+                    }
+                    if let Some(dst) = ret {
+                        store_result(w, dst, "x0", frame, ra)?;
                     }
                 } else if name == "lamina.read" && args.len() == 2 {
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
-                            // read(fd=0, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    cbz x2, 2f")?;
                             writeln!(w, "    mov x16, #3")?;
                             writeln!(w, "    svc #0")?;
-                            writeln!(w, "    csinv x0, x0, xzr, cc")?;
-                            if let Some(dst) = ret {
-                                store_result(w, dst, "x0", frame, ra)?;
-                            }
+                            emit_io_result(w, true, true)?;
+                            writeln!(w, "2:")?;
                         }
-                        _ => {
+                        TargetOperatingSystem::Linux => {
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    cbz x2, 2f")?;
                             writeln!(w, "    bl read")?;
-                            if let Some(dst) = ret {
-                                store_result(w, dst, "x0", frame, ra)?;
-                            }
+                            emit_io_result(w, false, true)?;
+                            writeln!(w, "2:")?;
                         }
+                        other => {
+                            return Err(unsupported_io(name, other));
+                        }
+                    }
+                    if let Some(dst) = ret {
+                        store_result(w, dst, "x0", frame, ra)?;
                     }
                 } else {
                     let kinds = signatures.arguments(name, args);

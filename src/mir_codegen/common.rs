@@ -22,6 +22,12 @@ use crate::{
 use lamina_codegen::{Allocation, LiveInterval, os_uses_coff, os_uses_macho};
 use lamina_platform::TargetOperatingSystem;
 
+pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError {
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+        "{operation} has no implementation for {os:?}"
+    )))
+}
+
 pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
         "Parallel compilation error: {error:?}"

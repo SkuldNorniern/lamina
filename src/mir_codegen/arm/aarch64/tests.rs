@@ -646,7 +646,7 @@ fn register_named_functions_are_rejected() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_one() -> Result<(), Box<dyn Error>> {
+fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
     let module = parse_module(
         "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %w = write %p, 4\n  %r = read %p, 4\n  %b = writebyte 65\n  ret.i64 %w\n}\n",
@@ -657,7 +657,7 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_one() -> Result<(), Box
     let assembly = String::from_utf8(output)?;
     assert_eq!(
         assembly
-            .matches("svc #0\n    csinv x0, x0, xzr, cc\n")
+            .matches("svc #0\n    mov x9, #-2\n    csel x0, x9, x0, cs\n")
             .count(),
         3,
         "{assembly}"
@@ -665,6 +665,6 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_one() -> Result<(), Box
     let mut output = Vec::new();
     generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
-    assert!(!assembly.contains("csinv"), "{assembly}");
+    assert!(!assembly.contains("csel x0, x9, x0, cs"), "{assembly}");
     Ok(())
 }

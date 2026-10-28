@@ -2,7 +2,11 @@ use super::*;
 use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir};
 use crate::mir_codegen::{simd_support::tool_available, test_support::PRINT_I64_HELPERS};
 use crate::parser::parse_module;
-use std::{env, fs, process::Command};
+use std::{
+    env, fs,
+    io::Write,
+    process::{Command, Stdio},
+};
 
 #[test]
 fn float_copy_emits_local_move_not_add() {
@@ -597,4 +601,53 @@ fn wasi_memcpy_and_memset_fill_the_module_memory() {
     assert!(output.status.success(), "{output:?}");
     let expected = format!("{}\n", 0xA5A5_A5A5_0403_0201u64 as i64);
     assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+}
+
+#[test]
+fn wasi_io_outcomes_reach_stdout_as_their_low_byte() {
+    if !tool_available("wasmtime") {
+        return;
+    }
+    let reads = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %r = read %p, 1\n  %w = writebyte %r\n  ret.i64 0\n}\n";
+    let readbyte =
+        "fn @main() -> i64 {\nentry:\n  %r = readbyte\n  %w = writebyte %r\n  ret.i64 0\n}\n";
+    let zero_read = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %r = read %p, 0\n  %w = writebyte %r\n  ret.i64 0\n}\n";
+    let cases: [(&str, &str, &[u8], &[u8]); 7] = [
+        ("readbyte-byte", readbyte, b"A", &[65]),
+        ("readbyte-end-of-input", readbyte, b"", &[255]),
+        ("readbyte-nul", readbyte, b"\0", &[0]),
+        ("read-count", reads, b"x", &[1]),
+        ("read-end-of-input", reads, b"", &[255]),
+        ("read-zero-length", zero_read, b"", &[0]),
+        (
+            "writebyte-count",
+            "fn @main() -> i64 {\nentry:\n  %r = writebyte 65\n  %w = writebyte %r\n  ret.i64 0\n}\n",
+            b"",
+            &[65, 1],
+        ),
+    ];
+    for (tag, source, stdin, expected) in cases {
+        let wat = emit_wasi(source).expect("WASI codegen should succeed");
+        let dir = env::temp_dir().join(format!("lamina-wasi-io-{tag}-{}", id()));
+        fs::create_dir_all(&dir).expect("create test dir");
+        let path = dir.join("module.wat");
+        fs::write(&path, &wat).expect("write wat");
+        let mut child = Command::new("wasmtime")
+            .arg("run")
+            .arg(&path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("run wasmtime");
+        child
+            .stdin
+            .take()
+            .expect("piped stdin")
+            .write_all(stdin)
+            .expect("write stdin");
+        let output = child.wait_with_output().expect("wait for wasmtime");
+        fs::remove_dir_all(&dir).expect("cleanup");
+        assert!(output.status.success(), "{tag}: {output:?}");
+        assert_eq!(output.stdout, expected, "{tag}");
+    }
 }

@@ -1580,7 +1580,7 @@ fn narrow_atomic_add_uses_sized_locked_xadd_and_sign_extends() {
 }
 
 #[test]
-fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_one() {
+fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() {
     let source = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %w = write %p, 4\n  %r = read %p, 4\n  %b = writebyte 65\n  ret.i64 %w\n}\n";
     let ir = parse_module(source).expect("parse io");
     let mir = from_ir(&ir, "io").expect("lower io");
@@ -1588,7 +1588,7 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_one() {
     generate_mir_x86_64(&mir, &mut mach, TargetOperatingSystem::MacOS).expect("emit macos io");
     let mach = String::from_utf8(mach).expect("utf8 assembly");
     assert_eq!(
-        mach.matches("syscall\n    movq $-1, %rdx\n    cmovcq %rdx, %rax\n")
+        mach.matches("syscall\n    movq $-2, %rcx\n    cmovcq %rcx, %rax\n")
             .count(),
         3,
         "{mach}"

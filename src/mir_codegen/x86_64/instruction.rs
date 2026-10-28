@@ -1,6 +1,6 @@
 use super::variadic::SAVE_AREA_SLOTS;
 use super::*;
-use crate::mir_codegen::common::align_up;
+use crate::mir_codegen::common::{align_up, unsupported_io};
 
 /// Frame slots are laid out as the stack slots, then the callee-saved registers, then
 /// the hidden sret pointer, then the variadic register save area, so the saved registers
@@ -81,6 +81,31 @@ fn load_aggregate_word<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static s
 
 /// Rewrite `register` to the canonical in-register form of `ty`, the form every narrow
 /// value is held in between instructions.
+/// Turns the raw result of a read or write syscall into the I/O contract: the count
+/// stays, a failure becomes -2, and with `end_of_input` a zero count (a read that found
+/// nothing) becomes -1. `carry` reads the failure from CF, as Mach-O does; otherwise
+/// the result is signed, as Linux and the CRT report it.
+fn emit_io_result(
+    writer: &mut impl Write,
+    carry: bool,
+    end_of_input: bool,
+) -> Result<(), LaminaError> {
+    if carry {
+        writeln!(writer, "    movq $-2, %rcx")?;
+        writeln!(writer, "    cmovcq %rcx, %rax")?;
+    } else {
+        writeln!(writer, "    testq %rax, %rax")?;
+        writeln!(writer, "    movq $-2, %rcx")?;
+        writeln!(writer, "    cmovsq %rcx, %rax")?;
+    }
+    if end_of_input {
+        writeln!(writer, "    testq %rax, %rax")?;
+        writeln!(writer, "    movq $-1, %rcx")?;
+        writeln!(writer, "    cmoveq %rcx, %rax")?;
+    }
+    Ok(())
+}
+
 pub(super) fn canonicalize_integer(
     writer: &mut impl Write,
     register: &str,
@@ -1078,32 +1103,31 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %rsp, %rsi")?;
                         writeln!(writer, "    movq $1, %rdx")?;
                         writeln!(writer, "    syscall")?;
-                        writeln!(writer, "    movq $-1, %rdx")?;
-                        writeln!(writer, "    cmovcq %rdx, %rax")?;
+                        emit_io_result(writer, true, false)?;
                     }
                     TargetOperatingSystem::Windows => {
-                        // Windows syscall numbers are unstable and cannot be invoked
-                        // directly like on Linux/macOS. Route the byte through the CRT
-                        // (putchar) instead.
+                        // putchar returns the character written, or -1 on failure.
                         writeln!(writer, "    movzbl (%rsp), %ecx")?;
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    call putchar")?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        // putchar yields the character written; the syscall
-                        // paths yield the byte count, so report 1 or -1.
                         writeln!(writer, "    movl %eax, %ecx")?;
                         writeln!(writer, "    movl $1, %eax")?;
-                        writeln!(writer, "    movl $-1, %edx")?;
+                        writeln!(writer, "    movl $-2, %edx")?;
                         writeln!(writer, "    cmpl $-1, %ecx")?;
                         writeln!(writer, "    cmovel %edx, %eax")?;
                         writeln!(writer, "    cltq")?;
                     }
-                    _ => {
+                    TargetOperatingSystem::Linux => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
                         writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
                         writeln!(writer, "    movq %rsp, %rsi")?;
                         writeln!(writer, "    movq $1, %rdx")?;
                         writeln!(writer, "    syscall")?;
+                        emit_io_result(writer, false, false)?;
+                    }
+                    other => {
+                        return Err(unsupported_io(name, other));
                     }
                 }
 
@@ -1169,6 +1193,10 @@ pub(super) fn emit_instruction_x86_64(
                 load_operand_to_rax(&args[0], writer, reg_alloc, stack_slots)?;
                 writeln!(writer, "    movq %rax, %r10")?;
                 load_operand_to_rax(&args[1], writer, reg_alloc, stack_slots)?;
+                if !writing {
+                    writeln!(writer, "    testq %rax, %rax")?;
+                    writeln!(writer, "    je 1f")?;
+                }
                 match target_os {
                     TargetOperatingSystem::Windows => {
                         // Windows syscall numbers are unstable, so the CRT does the work.
@@ -1187,8 +1215,9 @@ pub(super) fn emit_instruction_x86_64(
                         )?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    movslq %eax, %rax")?;
+                        emit_io_result(writer, false, !writing)?;
                     }
-                    _ => {
+                    os if os_uses_macho(os) => {
                         writeln!(writer, "    movq %rax, %rdx")?;
                         writeln!(writer, "    movq %r10, %rsi")?;
                         writeln!(
@@ -1196,19 +1225,38 @@ pub(super) fn emit_instruction_x86_64(
                             "    movq ${}, %rdi",
                             if writing { fd::STDOUT } else { fd::STDIN }
                         )?;
-                        let syscall = match (os_uses_macho(target_os), writing) {
-                            (true, true) => macos::SYS_WRITE,
-                            (true, false) => macos::SYS_READ,
-                            (false, true) => linux::SYS_WRITE,
-                            (false, false) => linux::SYS_READ,
+                        let syscall = if writing {
+                            macos::SYS_WRITE
+                        } else {
+                            macos::SYS_READ
                         };
                         writeln!(writer, "    movq ${syscall}, %rax")?;
                         writeln!(writer, "    syscall")?;
-                        if os_uses_macho(target_os) {
-                            writeln!(writer, "    movq $-1, %rdx")?;
-                            writeln!(writer, "    cmovcq %rdx, %rax")?;
-                        }
+                        emit_io_result(writer, true, !writing)?;
                     }
+                    TargetOperatingSystem::Linux => {
+                        writeln!(writer, "    movq %rax, %rdx")?;
+                        writeln!(writer, "    movq %r10, %rsi")?;
+                        writeln!(
+                            writer,
+                            "    movq ${}, %rdi",
+                            if writing { fd::STDOUT } else { fd::STDIN }
+                        )?;
+                        let syscall = if writing {
+                            linux::SYS_WRITE
+                        } else {
+                            linux::SYS_READ
+                        };
+                        writeln!(writer, "    movq ${syscall}, %rax")?;
+                        writeln!(writer, "    syscall")?;
+                        emit_io_result(writer, false, !writing)?;
+                    }
+                    other => {
+                        return Err(unsupported_io(name, other));
+                    }
+                }
+                if !writing {
+                    writeln!(writer, "1:")?;
                 }
                 if let Some(ret_reg) = ret
                     && let Register::Virtual(vreg) = ret_reg

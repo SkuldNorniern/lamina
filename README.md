@@ -348,6 +348,21 @@ A `callptr` names the type of every argument, as a function signature does:
 literal operand is materialised as and what the ABI classifies the argument by, so
 `callptr.i64 %f(f32 1.5)` passes a single-precision `1.5`.
 
+### I/O Operations
+
+`write`, `read`, `writebyte` and `readbyte` return the same values on every backend that implements them. This contract is frozen for 0.2.0.
+
+| Operation | Success | End of input | Failure |
+|-----------|---------|--------------|---------|
+| `write %buf, n` | bytes written (0 when `n` is 0) | not produced | -2 |
+| `writebyte b` | 1 | not produced | -2 |
+| `read %buf, n` | bytes read (0 when `n` is 0) | -1 | -2 |
+| `readbyte` | the byte, 0 to 255 | -1 | -2 |
+
+-1 is only ever end of input. A request for zero bytes is a success and returns 0 without consulting the input, so it never reports end of input. A NUL byte reads as 0, not as end of input.
+
+On WebAssembly, the non-WASI target imports these operations from the host under the same names, and the host must follow this table. A target that cannot implement an operation rejects it at code generation.
+
 ## Future Directions
 
 - **Enhanced Optimizations**: Complete optimization pipeline, loop analysis, auto-vectorization

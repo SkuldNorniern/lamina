@@ -1372,6 +1372,9 @@ fn emit_instruction_riscv<W: Write>(
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "a2")?;
                 writeln!(writer, "    li a0, {}", i32::from(name == "lamina.write"))?;
+                if name == "lamina.read" {
+                    writeln!(writer, "    beqz a2, 1f")?;
+                }
                 let libc = if name == "lamina.write" {
                     "write"
                 } else {
@@ -1381,6 +1384,19 @@ fn emit_instruction_riscv<W: Write>(
                     .call_stub(libc)
                     .unwrap_or_else(|| abi.mangle_function_name(libc));
                 writeln!(writer, "    call {callee}")?;
+                if name == "lamina.write" {
+                    writeln!(writer, "    bgez a0, 1f")?;
+                    writeln!(writer, "    li a0, -2")?;
+                    writeln!(writer, "1:")?;
+                } else {
+                    writeln!(writer, "    bgez a0, 2f")?;
+                    writeln!(writer, "    li a0, -2")?;
+                    writeln!(writer, "    j 1f")?;
+                    writeln!(writer, "2:")?;
+                    writeln!(writer, "    bnez a0, 1f")?;
+                    writeln!(writer, "    li a0, -1")?;
+                    writeln!(writer, "1:")?;
+                }
             } else if name == "lamina.writebyte" && args.len() == 1 {
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a0")?;
                 writeln!(writer, "    addi sp, sp, -16")?;
@@ -1392,6 +1408,9 @@ fn emit_instruction_riscv<W: Write>(
                     .call_stub("write")
                     .unwrap_or_else(|| abi.mangle_function_name("write"));
                 writeln!(writer, "    call {write}")?;
+                writeln!(writer, "    bgez a0, 1f")?;
+                writeln!(writer, "    li a0, -2")?;
+                writeln!(writer, "1:")?;
                 writeln!(writer, "    addi sp, sp, 16")?;
             } else if name == "lamina.readbyte" && args.is_empty() {
                 writeln!(writer, "    addi sp, sp, -16")?;

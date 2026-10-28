@@ -1286,6 +1286,10 @@ fn emit_instruction_ppc64<W: Write>(
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "5")?;
                 writeln!(writer, "    li 3, {}", i32::from(name == "lamina.write"))?;
+                if name == "lamina.read" {
+                    writeln!(writer, "    cmpdi 0, 5, 0")?;
+                    writeln!(writer, "    beq 1f")?;
+                }
                 let libc = if name == "lamina.write" {
                     "write"
                 } else {
@@ -1296,6 +1300,14 @@ fn emit_instruction_ppc64<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name(libc));
                 writeln!(writer, "    bl {callee}")?;
                 writeln!(writer, "    nop")?;
+                writeln!(writer, "    cmpdi 0, 3, 0")?;
+                writeln!(writer, "    li 4, -2")?;
+                writeln!(writer, "    isel 3, 4, 3, 0")?;
+                if name == "lamina.read" {
+                    writeln!(writer, "    li 4, -1")?;
+                    writeln!(writer, "    isel 3, 4, 3, 2")?;
+                    writeln!(writer, "1:")?;
+                }
             } else if name == "lamina.writebyte" && args.len() == 1 {
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "3")?;
                 writeln!(writer, "    addi 1, 1, -16")?;
@@ -1308,6 +1320,9 @@ fn emit_instruction_ppc64<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name("write"));
                 writeln!(writer, "    bl {write}")?;
                 writeln!(writer, "    nop")?;
+                writeln!(writer, "    cmpdi 0, 3, 0")?;
+                writeln!(writer, "    li 4, -2")?;
+                writeln!(writer, "    isel 3, 4, 3, 0")?;
                 writeln!(writer, "    addi 1, 1, 16")?;
             } else if name == "lamina.readbyte" && args.is_empty() {
                 writeln!(writer, "    addi 1, 1, -16")?;

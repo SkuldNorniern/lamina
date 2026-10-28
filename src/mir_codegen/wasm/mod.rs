@@ -674,8 +674,8 @@ const WASI_MEMSET_HELPER: &str = r#"  (func $memset (param $dst i64) (param $byt
     local.get $dst
   )"#;
 
-/// Each helper returns what its native counterpart returns: the byte count moved, or the
-/// negated errno. A single byte travels through address 16.
+/// Each helper returns the byte count moved, -1 at end of input for a read, or -2 when
+/// the call fails. A single byte travels through address 16.
 const WASI_WRITE_HELPERS: &str = r#"  (func $lamina_writeout (param $ptr i32) (param $len i32) (result i64)
     (local $err i32)
     i32.const 0
@@ -692,10 +692,7 @@ const WASI_WRITE_HELPERS: &str = r#"  (func $lamina_writeout (param $ptr i32) (p
     local.set $err
     (if (result i64) (local.get $err)
       (then
-        i64.const 0
-        local.get $err
-        i64.extend_i32_u
-        i64.sub)
+        i64.const -2)
       (else
         i32.const 8
         i32.load
@@ -720,28 +717,39 @@ const WASI_WRITE_HELPERS: &str = r#"  (func $lamina_writeout (param $ptr i32) (p
 
 const WASI_READ_HELPERS: &str = r#"  (func $lamina_readin (param $ptr i32) (param $len i32) (result i64)
     (local $err i32)
-    i32.const 0
-    local.get $ptr
-    i32.store
-    i32.const 4
+    (local $n i32)
     local.get $len
-    i32.store
-    i32.const 0
-    i32.const 0
-    i32.const 1
-    i32.const 8
-    call $fd_read
-    local.set $err
-    (if (result i64) (local.get $err)
-      (then
-        i64.const 0
-        local.get $err
-        i64.extend_i32_u
-        i64.sub)
-      (else
-        i32.const 8
-        i32.load
-        i64.extend_i32_u))
+    i32.eqz
+    (if (result i64) (then
+      i64.const 0
+    ) (else
+      i32.const 0
+      local.get $ptr
+      i32.store
+      i32.const 4
+      local.get $len
+      i32.store
+      i32.const 0
+      i32.const 0
+      i32.const 1
+      i32.const 8
+      call $fd_read
+      local.set $err
+      (if (result i64) (local.get $err)
+        (then
+          i64.const -2)
+        (else
+          i32.const 8
+          i32.load
+          local.tee $n
+          i32.eqz
+          (if (result i64) (then
+            i64.const -1
+          ) (else
+            local.get $n
+            i64.extend_i32_u
+          ))))
+    ))
   )
   (func $readbyte (result i64)
     (local $n i64)
@@ -757,12 +765,6 @@ const WASI_READ_HELPERS: &str = r#"  (func $lamina_readin (param $ptr i32) (para
       i64.extend_i32_u
     ) (else
       local.get $n
-      i64.eqz
-      (if (result i64) (then
-        i64.const -1
-      ) (else
-        i64.const -2
-      ))
     ))
   )
   (func $read (param $p i64) (param $n i64) (result i64)
