@@ -95,7 +95,7 @@ Lamina directly generates machine code for multiple target architectures without
 - **Function Calls**: Recursive and non-recursive function calls with proper ABI
 - **Memory Operations**: Stack and heap allocations, load/store operations
 - **Type System**: Primitives, arrays, structs, and pointers
-- **I/O Operations**: Print statements with printf integration for all supported architectures
+- **I/O Operations**: Raw byte I/O (`write`, `read`, `writebyte`, `readbyte`) on all supported architectures, plus libc calls such as `printf` through `@extern` declarations
 - **Performance**: Competitive with systems languages in benchmarks
 - **Optimization Pipeline**: Configurable optimization levels with multiple transform passes
 

@@ -10,13 +10,13 @@ fn @main() -> i32 {
     memcpy %p, %src, 8
     memmove %p, %src, 8
     memset %p, 0, 8
-    print 7
+    %w = writebyte 55
     heapfree %p
     ret.i32 0
 }
 "#;
 
-const OVERRIDES: &str = "malloc=k_alloc,dealloc=k_free,print=k_print,fflush=k_flush,memcpy=k_cpy,memmove=k_mv,memset=k_set";
+const OVERRIDES: &str = "malloc=k_alloc,dealloc=k_free,memcpy=k_cpy,memmove=k_mv,memset=k_set";
 
 fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
     let dir = env::temp_dir();
@@ -50,9 +50,7 @@ fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
 #[test]
 fn default_output_uses_c_runtime_names() {
     let asm = compile_asm("default-linux", "x86_64_linux", None);
-    for name in [
-        "malloc", "printf", "fflush", "memcpy", "memmove", "memset", "free",
-    ] {
+    for name in ["malloc", "memcpy", "memmove", "memset", "free"] {
         assert!(asm.contains(&format!("call {name}\n")), "{name}:\n{asm}");
     }
     assert!(!asm.contains("k_"), "{asm}");
@@ -61,14 +59,10 @@ fn default_output_uses_c_runtime_names() {
 #[test]
 fn lamina_builtins_retargets_every_runtime_call_x86_64() {
     let asm = compile_asm("override-linux", "x86_64_linux", Some(OVERRIDES));
-    for name in [
-        "k_alloc", "k_free", "k_print", "k_flush", "k_cpy", "k_mv", "k_set",
-    ] {
+    for name in ["k_alloc", "k_free", "k_cpy", "k_mv", "k_set"] {
         assert!(asm.contains(&format!("call {name}\n")), "{name}:\n{asm}");
     }
-    for name in [
-        "malloc", "printf", "fflush", "memcpy", "memmove", "memset", "free",
-    ] {
+    for name in ["malloc", "memcpy", "memmove", "memset", "free"] {
         assert!(!asm.contains(&format!("call {name}\n")), "{name}:\n{asm}");
     }
 }
@@ -76,11 +70,8 @@ fn lamina_builtins_retargets_every_runtime_call_x86_64() {
 #[test]
 fn lamina_builtins_retargets_every_runtime_call_aarch64_macos() {
     let asm = compile_asm("override-aarch64-macos", "aarch64_macos", Some(OVERRIDES));
-    for name in [
-        "_k_alloc", "_k_free", "_k_print", "_k_flush", "_k_cpy", "_k_mv", "_k_set",
-    ] {
+    for name in ["_k_alloc", "_k_free", "_k_cpy", "_k_mv", "_k_set"] {
         assert!(asm.contains(&format!("{name}\n")), "{name}:\n{asm}");
     }
     assert!(!asm.contains("_malloc"), "{asm}");
-    assert!(!asm.contains("_printf"), "{asm}");
 }
