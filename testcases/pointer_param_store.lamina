@@ -1,0 +1,123 @@
+global $tbl: [4 x i64] = [10, 20, 30, 40]
+
+fn @setit(ptr %p) -> i64 {
+  entry:
+    %cp = getelem.i64 %p, 0
+    store.i64 %cp, 42
+    ret.i64 0
+}
+
+fn @fieldset(ptr %p) -> i64 {
+  entry:
+    %fp = getfieldptr %p, 1
+    store.i64 %fp, 7
+    %v = load.i64 %fp
+    ret.i64 %v
+}
+
+fn @idxset(ptr %p, i64 %i) -> i64 {
+  entry:
+    %ep = getelem.i64 %p, %i
+    store.i64 %ep, 99
+    %v = load.i64 %ep
+    ret.i64 %v
+}
+
+fn @chain(ptr %p) -> i64 {
+  entry:
+    %a = getelem.i64 %p, 1
+    %b = getelem.i64 %a, 1
+    store.i64 %b, 555
+    ret.i64 0
+}
+
+fn @pass(ptr %p) -> ptr {
+  entry:
+    ret.ptr %p
+}
+
+fn @viaret(ptr %p) -> i64 {
+  entry:
+    %q = call @pass(%p)
+    %e = getelem.i64 %q, 2
+    store.i64 %e, 321
+    ret.i64 0
+}
+
+fn @forward(ptr %p) -> i64 {
+  entry:
+    %r = call @fieldset(%p)
+    ret.i64 %r
+}
+
+fn @read_elem(ptr %p) -> i64 {
+  entry:
+    %e = getelem.i64 %p, 3
+    %v = load.i64 %e
+    ret.i64 %v
+}
+
+fn @read_global_elem() -> i64 {
+  entry:
+    %e = getelem.i64 $tbl, 2
+    %v = load.i64 %e
+    ret.i64 %v
+}
+
+fn @main() -> i64 {
+  entry:
+    %s = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }
+    %f0 = getfieldptr %s, 0
+    store.i64 %f0, 1
+    %f1 = getfieldptr %s, 1
+    store.i64 %f1, 2
+    %f2 = getfieldptr %s, 2
+    store.i64 %f2, 3
+    %f3 = getfieldptr %s, 3
+    store.i64 %f3, 4
+
+    %r0 = call @setit(%s)
+    %c0 = load.i64 %f0
+    print %c0
+
+    %r1 = call @fieldset(%s)
+    %c1 = load.i64 %f1
+    print %r1
+    print %c1
+
+    %r2 = call @idxset(%s, 2)
+    %c2 = load.i64 %f2
+    print %r2
+    print %c2
+
+    %r3 = call @chain(%s)
+    %c3 = load.i64 %f3
+    print %c3
+
+    %r4 = call @viaret(%s)
+    %c4 = load.i64 %f2
+    print %c4
+
+    %r5 = call @forward(%s)
+    print %r5
+
+    %r6 = call @read_elem($tbl)
+    print %r6
+
+    %r7 = call @read_global_elem()
+    print %r7
+
+    %slot = stackalloc.ptr
+    store.ptr %slot, %s
+    %lp = load.ptr %slot
+    %le = getelem.i64 %lp, 0
+    store.i64 %le, 808
+    %c5 = load.i64 %f0
+    print %c5
+
+    %ge = getelem.i64 $tbl, 0
+    store.i64 %ge, 11
+    %g0 = load.i64 $tbl
+    print %g0
+    ret.i64 0
+}
