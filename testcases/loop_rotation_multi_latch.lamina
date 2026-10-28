@@ -1,0 +1,30 @@
+# Two back edges reach the same test: a continue path and the normal end of the body.
+fn @main() -> i64 {
+  entry:
+    %i = add.i64 0, 0
+    %sum = add.i64 0, 0
+    jmp head
+
+  head:
+    %more = lt.i64 %i, 15
+    br %more, body, done
+
+  body:
+    %half = div.i64 %i, 2
+    %back = mul.i64 %half, 2
+    %even = eq.i64 %back, %i
+    br %even, skip, work
+
+  skip:
+    %i = add.i64 %i, 1
+    jmp head
+
+  work:
+    %sum = add.i64 %sum, %i
+    %i = add.i64 %i, 1
+    jmp head
+
+  done:
+    print %sum
+    ret.i64 0
+}

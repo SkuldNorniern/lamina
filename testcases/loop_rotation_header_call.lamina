@@ -1,0 +1,31 @@
+# The loop test calls a function with a side effect, so the test is not copied and
+# every evaluation of it, including the last one, must still print.
+fn @main() -> i64 {
+  entry:
+    %i = add.i64 0, 0
+    %total = add.i64 0, 0
+    jmp head
+
+  head:
+    %v = call @next_value(%i)
+    %more = lt.i64 %v, 20
+    br %more, body, done
+
+  body:
+    %total = add.i64 %total, %v
+    %i = add.i64 %i, 1
+    jmp head
+
+  done:
+    print %total
+    print %i
+    ret.i64 0
+}
+
+fn @next_value(i64 %x) -> i64 {
+  entry:
+    print %x
+    %y = mul.i64 %x, 3
+    %z = add.i64 %y, 1
+    ret.i64 %z
+}

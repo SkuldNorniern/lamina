@@ -1,0 +1,36 @@
+# Counted loops that rotation must keep exact: a multiplying sum and a non-unit stride.
+fn @main() -> i64 {
+  entry:
+    %i = add.i64 0, 0
+    %sq = add.i64 0, 0
+    jmp sq_head
+
+  sq_head:
+    %more = lt.i64 %i, 100
+    br %more, sq_body, sq_done
+
+  sq_body:
+    %t = mul.i64 %i, %i
+    %sq = add.i64 %sq, %t
+    %i = add.i64 %i, 1
+    jmp sq_head
+
+  sq_done:
+    print %sq
+    %k = add.i64 0, 0
+    %stride = add.i64 0, 0
+    jmp st_head
+
+  st_head:
+    %more3 = lt.i64 %k, 100
+    br %more3, st_body, st_done
+
+  st_body:
+    %stride = add.i64 %stride, %k
+    %k = add.i64 %k, 3
+    jmp st_head
+
+  st_done:
+    print %stride
+    ret.i64 0
+}

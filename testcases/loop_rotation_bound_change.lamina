@@ -1,0 +1,30 @@
+# The loop bound is rewritten inside the body, so the test must see each new value.
+fn @main() -> i64 {
+  entry:
+    %n = add.i64 0, 10
+    %i = add.i64 0, 0
+    %sum = add.i64 0, 0
+    jmp head
+
+  head:
+    %more = lt.i64 %i, %n
+    br %more, body, done
+
+  body:
+    %sum = add.i64 %sum, %i
+    %at4 = eq.i64 %i, 4
+    br %at4, grow, next
+
+  grow:
+    %n = add.i64 %n, 6
+    jmp next
+
+  next:
+    %i = add.i64 %i, 1
+    jmp head
+
+  done:
+    print %sum
+    print %n
+    ret.i64 0
+}

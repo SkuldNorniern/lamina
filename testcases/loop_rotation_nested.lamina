@@ -1,0 +1,38 @@
+# Nested loops whose inner test depends on the outer induction variable, with an
+# early exit out of the inner body.
+fn @main() -> i64 {
+  entry:
+    %i = add.i64 0, 0
+    %acc = add.i64 0, 0
+    jmp outer_head
+
+  outer_head:
+    %outer_more = lt.i64 %i, 6
+    br %outer_more, outer_body, outer_done
+
+  outer_body:
+    %j = add.i64 0, 0
+    jmp inner_head
+
+  inner_head:
+    %inner_more = lt.i64 %j, %i
+    br %inner_more, inner_body, outer_next
+
+  inner_body:
+    %limit = eq.i64 %j, 4
+    br %limit, outer_next, inner_step
+
+  inner_step:
+    %prod = mul.i64 %i, %j
+    %acc = add.i64 %acc, %prod
+    %j = add.i64 %j, 1
+    jmp inner_head
+
+  outer_next:
+    %i = add.i64 %i, 1
+    jmp outer_head
+
+  outer_done:
+    print %acc
+    ret.i64 0
+}

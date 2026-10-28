@@ -1,0 +1,41 @@
+# The loop test loads its bound from memory that a call in the body rewrites, so the
+# test is not pure and the loop must keep re-reading the cell on every iteration.
+fn @shrink_every_other(ptr %p, i64 %i) -> i64 {
+  entry:
+    %half = div.i64 %i, 2
+    %back = mul.i64 %half, 2
+    %even = eq.i64 %back, %i
+    br %even, shrink, keep
+
+  shrink:
+    %cur = load.i64 %p
+    %next = sub.i64 %cur, 1
+    store.i64 %p, %next
+    ret.i64 0
+
+  keep:
+    ret.i64 0
+}
+
+fn @main() -> i64 {
+  entry:
+    %cell = stackalloc.[1 x i64]
+    %p = getelem.i64 %cell, 0
+    store.i64 %p, 12
+    %i = add.i64 0, 0
+    jmp head
+
+  head:
+    %bound = load.i64 %p
+    %more = lt.i64 %i, %bound
+    br %more, body, done
+
+  body:
+    %dummy = call @shrink_every_other(%p, %i)
+    %i = add.i64 %i, 1
+    jmp head
+
+  done:
+    print %i
+    ret.i64 0
+}
