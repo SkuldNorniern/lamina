@@ -1435,6 +1435,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
+                            writeln!(w, "    csinv x0, x0, xzr, cc")?;
                             writeln!(w, "    dmb sy")?;
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
@@ -1493,6 +1494,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x0, #1")?;
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
+                            writeln!(w, "    csinv x0, x0, xzr, cc")?;
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
                             }
@@ -1516,6 +1518,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x16, #3")?;
                             writeln!(w, "    svc #0")?;
+                            writeln!(w, "    csinv x0, x0, xzr, cc")?;
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
                             }

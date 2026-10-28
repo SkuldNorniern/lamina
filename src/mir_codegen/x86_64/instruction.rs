@@ -1078,6 +1078,8 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %rsp, %rsi")?;
                         writeln!(writer, "    movq $1, %rdx")?;
                         writeln!(writer, "    syscall")?;
+                        writeln!(writer, "    movq $-1, %rdx")?;
+                        writeln!(writer, "    cmovcq %rdx, %rax")?;
                     }
                     TargetOperatingSystem::Windows => {
                         // Windows syscall numbers are unstable and cannot be invoked
@@ -1202,6 +1204,10 @@ pub(super) fn emit_instruction_x86_64(
                         };
                         writeln!(writer, "    movq ${syscall}, %rax")?;
                         writeln!(writer, "    syscall")?;
+                        if os_uses_macho(target_os) {
+                            writeln!(writer, "    movq $-1, %rdx")?;
+                            writeln!(writer, "    cmovcq %rdx, %rax")?;
+                        }
                     }
                 }
                 if let Some(ret_reg) = ret

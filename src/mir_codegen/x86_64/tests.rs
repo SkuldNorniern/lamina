@@ -1578,3 +1578,24 @@ fn narrow_atomic_add_uses_sized_locked_xadd_and_sign_extends() {
     assert!(asm.contains("lock xaddb %al, (%"), "{asm}");
     assert!(asm.contains("movsbq %al, %rax"), "{asm}");
 }
+
+#[test]
+fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_one() {
+    let source = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %w = write %p, 4\n  %r = read %p, 4\n  %b = writebyte 65\n  ret.i64 %w\n}\n";
+    let ir = parse_module(source).expect("parse io");
+    let mir = from_ir(&ir, "io").expect("lower io");
+    let mut mach = Vec::new();
+    generate_mir_x86_64(&mir, &mut mach, TargetOperatingSystem::MacOS).expect("emit macos io");
+    let mach = String::from_utf8(mach).expect("utf8 assembly");
+    assert_eq!(
+        mach.matches("syscall\n    movq $-1, %rdx\n    cmovcq %rdx, %rax\n")
+            .count(),
+        3,
+        "{mach}"
+    );
+
+    let mut linux = Vec::new();
+    generate_mir_x86_64(&mir, &mut linux, TargetOperatingSystem::Linux).expect("emit linux io");
+    let linux = String::from_utf8(linux).expect("utf8 assembly");
+    assert!(!linux.contains("cmovcq"), "{linux}");
+}
