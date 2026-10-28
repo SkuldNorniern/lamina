@@ -20,6 +20,7 @@ import fnmatch
 import json
 import os
 import platform
+import random
 import shutil
 import statistics
 import subprocess
@@ -40,10 +41,15 @@ BENCH_DIR = ROOT / "benchmarks"
 COMPILER = ROOT / "target" / "release" / ("lamina.exe" if os.name == "nt" else "lamina")
 TARGET = "x86_64_linux"
 LEVELS = (0, 1, 2, 3)
-DEFAULT_RUNS = 15
-DEFAULT_WARMUP = 1
+DEFAULT_RUNS = 50
+DEFAULT_WARMUP = 3
 SHORT_MS = 20.0
 MIN_EFFECT = 0.02
+OUTLIER_K = 3.0
+MIN_OUTLIER_N = 8
+MAX_DROP = 0.20
+BOOT_ROUNDS = 2000
+BOOT_SEED = 1
 
 # Lamina cannot read argv, so its sizes are literals in each .lamina file. The
 # native ports read the same values from argv, so the compilers cannot fold the
@@ -183,13 +189,42 @@ def check_output(proc, expected):
     return None
 
 
+def quartiles(xs):
+    if len(xs) < 2:
+        return xs[0], xs[0], xs[0]
+    q1, _, q3 = statistics.quantiles(xs, n=4, method="inclusive")
+    return q1, statistics.median(xs), q3
+
+
+def fence(samples):
+    q1, _, q3 = quartiles(samples)
+    return q1 - OUTLIER_K * (q3 - q1), q3 + OUTLIER_K * (q3 - q1)
+
+
+def keep_mask(samples):
+    if len(samples) < MIN_OUTLIER_N:
+        return [True] * len(samples)
+    lo, hi = fence(samples)
+    return [lo <= s <= hi for s in samples]
+
+
 def summarize(samples):
+    kept = [s for s, k in zip(samples, keep_mask(samples)) if k]
+    kq1, kmed, kq3 = quartiles(kept)
     return {
-        "median": statistics.median(samples),
+        "median": kmed,
+        "q1": kq1,
+        "q3": kq3,
+        "iqr": kq3 - kq1,
         "min": min(samples),
         "max": max(samples),
-        "stdev": statistics.stdev(samples) if len(samples) > 1 else 0.0,
+        "stdev": statistics.stdev(kept) if len(kept) > 1 else 0.0,
+        "n": len(samples),
+        "kept": len(kept),
+        "dropped": len(samples) - len(kept),
+        "fence": list(fence(samples)) if len(samples) >= MIN_OUTLIER_N else None,
         "samples": samples,
+        "kept_samples": kept,
     }
 
 
@@ -252,21 +287,86 @@ def measure(sources, runs, warmup, compiler, vs_tools=()):
     return results
 
 
-def real_change(before, after):
-    """True when the ranges are disjoint and the medians differ by MIN_EFFECT or more."""
-    disjoint = after["max"] < before["min"] or after["min"] > before["max"]
-    return disjoint and abs(after["median"] / before["median"] - 1) >= MIN_EFFECT
+def unreliable(stats):
+    return stats["dropped"] > MAX_DROP * stats["n"]
+
+
+def bootstrap_ci(values):
+    rng = random.Random(BOOT_SEED)
+    meds = sorted(statistics.median(rng.choices(values, k=len(values))) for _ in range(BOOT_ROUNDS))
+    return meds[int(0.025 * BOOT_ROUNDS)], meds[int(0.975 * BOOT_ROUNDS) - 1]
+
+
+def compare(base, cur, paired=True):
+    """Returns (cur/base change factor, bootstrap 95% CI or None, state).
+
+    paired: per round, excluding a round when either binary was an outlier in it; used within one run,
+    where every binary of a benchmark runs in the same rounds. Unpaired: cell medians, for --compare.
+    state is 'real' only when the CI excludes 1.00 and the change is MIN_EFFECT or more.
+    """
+    if paired:
+        keep_b, keep_c = keep_mask(base["samples"]), keep_mask(cur["samples"])
+        ratios = [c / b for b, c, kb, kc in zip(base["samples"], cur["samples"], keep_b, keep_c) if kb and kc]
+        factor = statistics.median(ratios) if ratios else 1.0
+        if not ratios or unreliable(base) or unreliable(cur):
+            return factor, None, "unreliable"
+        lo, hi = bootstrap_ci(ratios)
+    else:
+        factor = cur["median"] / base["median"]
+        if unreliable(base) or unreliable(cur):
+            return factor, None, "unreliable"
+        lo, hi = bootstrap_ci_cells(base, cur)
+    if (lo > 1 or hi < 1) and abs(factor - 1) >= MIN_EFFECT:
+        return factor, (lo, hi), "real"
+    return factor, (lo, hi), "noise"
+
+
+def bootstrap_ci_cells(base, cur):
+    rng = random.Random(BOOT_SEED)
+    b, c = base["kept_samples"], cur["kept_samples"]
+    ratios = sorted(
+        statistics.median(rng.choices(c, k=len(c))) / statistics.median(rng.choices(b, k=len(b)))
+        for _ in range(BOOT_ROUNDS)
+    )
+    return ratios[int(0.025 * BOOT_ROUNDS)], ratios[int(0.975 * BOOT_ROUNDS) - 1]
 
 
 def speedup_cell(base, cur):
-    if not real_change(base, cur):
-        return "noise"
-    ratio = base["median"] / cur["median"]
-    return f"{ratio:.2f}x" if ratio > 1 else f"{ratio:.2f}x SLOWER"
+    factor, _, state = compare(base, cur)
+    if state != "real":
+        return state
+    speed = 1 / factor
+    return f"{speed:.2f}x" if speed > 1 else f"{speed:.2f}x SLOWER"
 
 
 def time_cell(stats):
-    return f"{stats['median']:9.2f} [{stats['min']:.2f}-{stats['max']:.2f}]"
+    drop = f" -{stats['dropped']}" if stats["dropped"] else ""
+    flag = "!" if unreliable(stats) else ""
+    return f"{stats['median']:8.2f} [{stats['q1']:.2f}-{stats['q3']:.2f}]{drop}{flag}"
+
+
+def short_cell(stats):
+    drop = f" -{stats['dropped']}" if stats["dropped"] else ""
+    return f"{stats['median']:.2f}{drop}{'!' if unreliable(stats) else ''}"
+
+
+def print_outlier_summary(results):
+    cells = []
+    for name, entry in results.items():
+        if entry["status"] != "ok":
+            continue
+        for lv, stats in entry["levels"].items():
+            cells.append((f"{name} O{lv}", stats))
+        for key, stats in entry["natives"].items():
+            cells.append((f"{name} {key}", stats))
+    if not cells:
+        return
+    dropped = sum(s["dropped"] for _, s in cells)
+    total = sum(s["n"] for _, s in cells)
+    print(f"outliers: dropped {dropped} of {total} timed samples ({dropped / total:.1%}) across {len(cells)} cells")
+    for label, s in cells:
+        if unreliable(s):
+            print(f"unreliable: {label} dropped {s['dropped']} of {s['n']} samples ({s['dropped'] / s['n']:.0%}); no verdict")
 
 
 def tool_version(tool):
@@ -286,14 +386,20 @@ def print_header(compiler, runs, warmup, vs_tools):
     for tool in vs_tools:
         print(f"native:    {tool_version(tool)}")
     print("methodology:")
-    print(f"  - each opt level is a separate binary built with --opt-level N")
+    print("  - each opt level is a separate binary built with --opt-level N")
     print(f"  - {warmup} warmup run(s) per binary, discarded; then {runs} timed runs per binary")
-    print(f"  - all binaries of a benchmark alternate within each round, so drift hits all alike")
-    print(f"  - time is wall clock around the child process, so it includes exec and startup (~1-2 ms)")
-    print(f"  - cell: median [min-max] in ms; speedup = O0 median / Ox median")
-    print(f"  - a difference is shown only when the two min-max ranges are disjoint AND the medians differ by >= {MIN_EFFECT:.0%};")
-    print(f"    anything else is 'noise', not a speedup or a slowdown")
-    print(f"  - stdout is checked against expected_output.txt on every run; a mismatch voids the row")
+    print("  - all binaries of a benchmark alternate within each round, so drift hits all alike")
+    print("  - time is wall clock around the child process, so it includes exec and startup (~1-2 ms)")
+    print(f"  - outliers: Tukey far-out fence, a sample is dropped when outside Q1-{OUTLIER_K:g}*IQR .. Q3+{OUTLIER_K:g}*IQR")
+    print(f"    (applied with >= {MIN_OUTLIER_N} samples); a cell with more than {MAX_DROP:.0%} dropped is '!' and unreliable")
+    print("  - cell: median of kept samples [Q1-Q3] in ms; '-N' = N samples dropped")
+    print("  - speedup = median over rounds of O0/Ox, paired within each round (a round is excluded when")
+    print("    either binary was an outlier in it); rounds are shared by all binaries of a benchmark")
+    print(f"  - significance: bootstrap 95% CI over rounds ({BOOT_ROUNDS} resamples, seed {BOOT_SEED});")
+    print(f"    a speedup is shown only when the CI excludes 1.00 AND the medians differ by >= {MIN_EFFECT:.0%};")
+    print("    anything else is 'noise', not a speedup or a slowdown; unreliable cells get no verdict")
+    print("  - raw min/max and all samples, with kept/dropped counts, are in the --save JSON")
+    print("  - stdout is checked against expected_output.txt on every run; a mismatch voids the row")
     if "go" in vs_tools:
         print("  - go has no -O levels: go build optimizes by default, so its column is 'go', not an O3")
         print("    its binary links the Go runtime and GC, so it is far larger than the C binaries")
@@ -301,14 +407,14 @@ def print_header(compiler, runs, warmup, vs_tools):
         print("  - zig-O3 is zig build-exe -OReleaseFast (ReleaseSafe keeps bounds and overflow checks)")
     if vs_tools:
         print(f"  - native ports (C/Rust/Go/Zig) read their problem sizes from argv: {NATIVE_ARGS}")
-        print(f"    Lamina has no argv, so its sizes are literals in the .lamina source")
-        print(f"  - ratio = Lamina O3 median / fastest native median; above 1.00 means Lamina is slower")
-        print(f"    '~' marks a ratio whose min-max ranges overlap, so the gap is not clearly separated")
+        print("    Lamina has no argv, so its sizes are literals in the .lamina source")
+        print(f"  - ratio = median over rounds of Lamina O3 / fastest native; above 1.00 means Lamina is slower")
+        print(f"    '~' marks a ratio whose bootstrap CI includes 1.00, so the gap is not clearly separated")
     print()
 
 
 def print_table(results):
-    header = f"{'benchmark':<22}" + "".join(f"{'O' + str(lv) + ' ms [min-max]':<34}" for lv in LEVELS)
+    header = f"{'benchmark':<22}" + "".join(f"{'O' + str(lv) + ' ms [Q1-Q3]':<34}" for lv in LEVELS)
     header += "".join(f"{'O' + str(lv) + ' vs O0':<16}" for lv in LEVELS[1:])
     header += f"{'O3 vs O2':<16}"
     print(header)
@@ -345,14 +451,13 @@ def print_native_table(results, vs_tools):
             continue
         stats = {"L-O2": entry["levels"]["2"], "L-O3": entry["levels"]["3"]}
         stats.update(entry["natives"])
-        row = f"{name:<20}" + "".join(f"{stats[c]['median']:<{width}.2f}" if c in stats else f"{'excluded':<{width}}" for c in cols)
+        row = f"{name:<20}" + "".join(f"{short_cell(stats[c]):<{width}}" if c in stats else f"{'excluded':<{width}}" for c in cols)
         for tool, why in entry.get("excluded", {}).items():
             excluded_notes.append(f"excluded {name} {tool}: {why}")
         best_key = min((k for k in keys if k in stats), key=lambda k: stats[k]["median"])
         best = stats[best_key]
-        ratio = stats["L-O3"]["median"] / best["median"]
-        overlap = not (stats["L-O3"]["max"] < best["min"] or stats["L-O3"]["min"] > best["max"])
-        mark = "~" if overlap else ""
+        ratio, ci, state = compare(best, stats["L-O3"])
+        mark = "!" if state == "unreliable" else ("~" if ci[0] <= 1 <= ci[1] else "")
         cell = f"{ratio:.2f}x{mark}"
         row += f"{cell:<14}{best_key:<14}"
         print(row)
@@ -412,21 +517,20 @@ def print_compare(results, baseline_path):
     baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))["results"]
     print()
     print(f"comparison against {baseline_path}")
-    print(f"{'benchmark':<22}{'level':<7}{'before ms':<26}{'after ms':<26}{'change':<18}")
-    print("-" * 99)
+    print("  unpaired: rounds of two separate runs do not line up, so cell medians are compared")
+    print(f"{'benchmark':<22}{'level':<7}{'before ms':<34}{'after ms':<34}{'change':<18}")
+    print("-" * 115)
     for name, entry in results.items():
         base_entry = baseline.get(name)
         if entry["status"] != "ok" or base_entry is None or base_entry["status"] != "ok":
             print(f"{name:<22}skipped (status now {entry['status']}, before {base_entry['status'] if base_entry else 'missing'})")
             continue
         for lv in LEVELS:
-            before = base_entry["levels"][str(lv)]
+            before = summarize(base_entry["levels"][str(lv)]["samples"])
             after = entry["levels"][str(lv)]
-            if real_change(before, after):
-                change = f"{(after['median'] / before['median'] - 1) * 100:+.1f}%"
-            else:
-                change = "noise"
-            print(f"{name:<22}O{lv:<6}{time_cell(before):<26}{time_cell(after):<26}{change:<18}")
+            factor, _, state = compare(before, after, paired=False)
+            change = f"{(factor - 1) * 100:+.1f}%" if state == "real" else state
+            print(f"{name:<22}O{lv:<6}{time_cell(before):<34}{time_cell(after):<34}{change:<18}")
 
 
 def main():
@@ -483,6 +587,7 @@ def main():
         print_native_table(results, vs_tools)
     else:
         print_table(results)
+    print_outlier_summary(results)
 
     if args.save:
         record = {
@@ -493,6 +598,15 @@ def main():
             "vs": vs_tools,
             "runs": args.runs,
             "warmup": args.warmup,
+            "methodology": {
+                "outlier": f"tukey far-out fence k={OUTLIER_K:g}",
+                "min_outlier_n": MIN_OUTLIER_N,
+                "max_drop": MAX_DROP,
+                "min_effect": MIN_EFFECT,
+                "ci": 0.95,
+                "bootstrap_rounds": BOOT_ROUNDS,
+                "bootstrap_seed": BOOT_SEED,
+            },
             "results": results,
         }
         args.save.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
