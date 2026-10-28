@@ -52,6 +52,7 @@ use crate::mir::{Function, Module, verify_function_in_pipeline};
 use std::fmt;
 
 #[cfg(feature = "nightly")]
+#[allow(unused_imports)]
 pub use vectorization::AutoVectorization;
 
 /// Error returned by transform passes.
@@ -340,11 +341,6 @@ impl TransformPipeline {
             pipeline = pipeline.add_transform(DeadCodeElimination);
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
             pipeline = pipeline.add_transform(InstructionScheduling);
-
-            #[cfg(feature = "nightly")]
-            {
-                pipeline = pipeline.add_transform(AutoVectorization);
-            }
         }
 
         if opt_level >= 2 {
