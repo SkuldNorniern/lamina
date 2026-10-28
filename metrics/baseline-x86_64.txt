@@ -7371,6 +7371,50 @@ calls 10
 branches 0
 frame main 16
 
+[i128_bit_intrinsics O0]
+insns 24458
+spills 14511
+calls 299
+branches 0
+frame main 52624
+frame mk_i128 208
+frame mk_u128 208
+frame show_i 176
+frame show_u 160
+
+[i128_bit_intrinsics O1]
+insns 14239
+spills 602
+calls 299
+branches 0
+frame main 5968
+frame mk_i128 16
+frame mk_u128 16
+frame show_i 48
+frame show_u 48
+
+[i128_bit_intrinsics O2]
+insns 13846
+spills 598
+calls 299
+branches 0
+frame main 5968
+frame mk_i128 16
+frame mk_u128 16
+frame show_i 32
+frame show_u 32
+
+[i128_bit_intrinsics O3]
+insns 15749
+spills 3377
+calls 299
+branches 0
+frame main 15824
+frame mk_i128 16
+frame mk_u128 16
+frame show_i 48
+frame show_u 48
+
 [i128_conv O0]
 insns 11325
 spills 5768
@@ -8110,6 +8154,38 @@ frame case7 64
 frame case8 64
 frame case9 64
 frame main 1248
+
+[i128_literal_call_arg_bug_test O0]
+insns 53
+spills 17
+calls 3
+branches 0
+frame low64 64
+frame main 48
+
+[i128_literal_call_arg_bug_test O1]
+insns 46
+spills 6
+calls 3
+branches 0
+frame low64 16
+frame main 32
+
+[i128_literal_call_arg_bug_test O2]
+insns 46
+spills 6
+calls 3
+branches 0
+frame low64 16
+frame main 32
+
+[i128_literal_call_arg_bug_test O3]
+insns 46
+spills 6
+calls 3
+branches 0
+frame low64 16
+frame main 32
 
 [i128_mem O0]
 insns 801
