@@ -1,0 +1,57 @@
+fn @main() -> i64 {
+entry:
+  %acc = stackalloc.i64
+  store.i64 %acc, 0
+  %i = stackalloc.i64
+  store.i64 %i, 1
+  jmp loop
+loop:
+  %iv = load.i64 %i
+  %more = le.i64 %iv, 40
+  br %more, body, done
+body:
+  %m = mul.i64 %iv, 2654435761
+  %p = popcount.i64 %m
+  %lz = ctlz.i64 %m
+  %tz = cttz.i64 %m
+  %bs = bswap.i64 %m
+  %r1 = rotl.i64 %m, %iv
+  %r2 = rotr.i64 %m, %iv
+  %t1 = add.i64 %p, %lz
+  %t2 = add.i64 %t1, %tz
+  %t3 = xor.i64 %bs, %r1
+  %t4 = xor.i64 %t3, %r2
+  %a0 = load.i64 %acc
+  %a1 = add.i64 %a0, %t2
+  %a2 = xor.i64 %a1, %t4
+  store.i64 %acc, %a2
+  %inext = add.i64 %iv, 1
+  store.i64 %i, %inext
+  jmp loop
+done:
+  %res = load.i64 %acc
+  print %res
+  %b = trunc.i64.i8 %res
+  %pb = popcount.i8 %b
+  %rb = rotl.i8 %b, 3
+  %sb = bswap.i8 %rb
+  %x1 = zext.i8.i64 %pb
+  print %x1
+  %x2 = sext.i8.i64 %sb
+  print %x2
+  %w = trunc.i64.u16 %res
+  %bw = bswap.u16 %w
+  %x3 = zext.u16.i64 %bw
+  print %x3
+  %u = trunc.i64.u32 %res
+  %cu = ctlz.u32 %u
+  %tu = cttz.u32 %u
+  %x4 = zext.u32.i64 %cu
+  print %x4
+  %x5 = zext.u32.i64 %tu
+  print %x5
+  %ru = rotr.u32 %u, 7
+  %x6 = zext.u32.i64 %ru
+  print %x6
+  ret.i64 0
+}
