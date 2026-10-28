@@ -816,6 +816,8 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
+    let abi = AArch64ABI::new(target_os);
+    reject_register_symbols(module, &abi)?;
     let settings_arc = Arc::new(settings.clone());
     let signatures = Arc::new(AggregateSignatures::from_module(module));
     let results =
@@ -834,8 +836,6 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     writeln!(writer, ".text")?;
     emit_debug_file(writer, settings)?;
 
-    let abi = AArch64ABI::new(target_os);
-
     for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
@@ -853,6 +853,46 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     })?;
     emit_gnu_stack_note(writer, target_os)?;
 
+    Ok(())
+}
+
+/// Whether the assembler reads `label` as a register name rather than a symbol.
+fn is_aarch64_register_name(label: &str) -> bool {
+    let lower = label.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "sp" | "wsp" | "xzr" | "wzr" | "lr" | "fp" | "ip0" | "ip1"
+    ) {
+        return true;
+    }
+    let mut chars = lower.chars();
+    let (Some(prefix), digits) = (chars.next(), chars.as_str()) else {
+        return false;
+    };
+    let last = match prefix {
+        'x' | 'w' | 'b' | 'h' | 's' | 'd' | 'q' | 'v' | 'z' => 31,
+        'p' => 15,
+        _ => return false,
+    };
+    !digits.is_empty()
+        && digits.bytes().all(|b| b.is_ascii_digit())
+        && digits.parse::<u8>().is_ok_and(|n| n <= last)
+}
+
+/// A function named like a register would be emitted as `bl <name>`, which the assembler
+/// rejects. Symbols are not mangled to avoid that, since the name is the ABI symbol.
+fn reject_register_symbols(module: &MirModule, abi: &AArch64ABI) -> Result<(), LaminaError> {
+    let mut names: Vec<&str> = module.functions.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    for name in names {
+        if is_aarch64_register_name(&abi.mangle_function_name(name)) {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "@{name} is an AArch64 register name, so the assembler cannot use it as a branch target; rename the function"
+                ),
+            )));
+        }
+    }
     Ok(())
 }
 

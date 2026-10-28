@@ -615,3 +615,33 @@ fn darwin_sends_variadic_arguments_to_stack() -> Result<(), Box<dyn Error>> {
     );
     Ok(())
 }
+
+#[test]
+fn register_named_functions_are_rejected() -> Result<(), Box<dyn Error>> {
+    use crate::mir::Block;
+    for name in ["x0", "W30", "d0", "q0", "v0", "b1", "sp", "lr", "fp"] {
+        assert!(is_aarch64_register_name(name), "{name}");
+    }
+    for name in ["x32", "x", "foo", "_x0", "xzr2", "main"] {
+        assert!(!is_aarch64_register_name(name), "{name}");
+    }
+    let mut func = Function::new(Signature::new("x0").with_return(MirType::i64()));
+    let mut block = Block::new("entry");
+    block.push(MirInst::Ret {
+        value: Some(Operand::Immediate(Immediate::I64(7))),
+    });
+    func.add_block(block);
+    let mut module = MirModule::new("registers");
+    module.functions.insert("x0".to_string(), func);
+    let mut out = Vec::new();
+    let error = generate_mir_aarch64(&module, &mut out, TargetOperatingSystem::Linux)
+        .err()
+        .ok_or("expected a rejection")?;
+    assert!(
+        error
+            .to_string()
+            .contains("@x0 is an AArch64 register name"),
+        "{error}"
+    );
+    Ok(())
+}
