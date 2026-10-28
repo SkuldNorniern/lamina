@@ -461,7 +461,7 @@ pub(super) fn compile_single_function_x86_64(
             .unwrap_or("");
         output.rax_value = None;
         if loop_headers.contains(&block_index) {
-            writeln!(output, "    .p2align 4,,10").map_err(io_codegen_error)?;
+            writeln!(output, "    .p2align 5,,31").map_err(io_codegen_error)?;
         }
         writeln!(output, ".L_{}.{}:", func_name, block.label).map_err(io_codegen_error)?;
 

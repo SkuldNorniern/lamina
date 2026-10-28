@@ -1574,7 +1574,7 @@ impl FunctionEmissionPlan {
         let loops = natural_loops(func);
         let mut order = block_layout(func);
         let rotations = rotate_loops(func, &loops, &mut order);
-        let aligned_headers = aligned_loop_headers(func, &loops, 24)
+        let aligned_headers = aligned_loop_headers(func, &loops, 2)
             .into_iter()
             .map(|header| rotations.get(&header).copied().unwrap_or(header))
             .collect();
