@@ -1,8 +1,13 @@
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
 # Test heap memory allocation and deallocation
 fn @test_heap_allocation() -> i64 {
   entry:
     # Allocate memory on heap
-    %heap_ptr = heapalloc.i32
+    %heap_ptr = call @malloc(4)
     %value = add.i32 42, 0
 
     # Store value in heap memory
@@ -18,7 +23,7 @@ fn @test_heap_allocation() -> i64 {
     %result = add.i64 %loaded_i64, 8
 
     # Always deallocate heap memory
-    heapfree %heap_ptr
+    call @free(%heap_ptr)
 
     ret.i64 %result
 }
@@ -26,9 +31,9 @@ fn @test_heap_allocation() -> i64 {
 fn @test_multiple_heap_allocations() -> i64 {
   entry:
     # Allocate multiple heap objects
-    %ptr1 = heapalloc.i64
-    %ptr2 = heapalloc.i64
-    %ptr3 = heapalloc.i64
+    %ptr1 = call @malloc(8)
+    %ptr2 = call @malloc(8)
+    %ptr3 = call @malloc(8)
 
     # Store different values
     store.i64 %ptr1, 100
@@ -44,9 +49,9 @@ fn @test_multiple_heap_allocations() -> i64 {
     %total = add.i64 %sum1, %val3
 
     # Clean up all allocations
-    heapfree %ptr1
-    heapfree %ptr2
-    heapfree %ptr3
+    call @free(%ptr1)
+    call @free(%ptr2)
+    call @free(%ptr3)
 
     ret.i64 %total
 }

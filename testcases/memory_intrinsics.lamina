@@ -1,8 +1,15 @@
+@extern
+fn @memcpy(ptr %d, ptr %s, i64 %n) -> ptr
+@extern
+fn @memmove(ptr %d, ptr %s, i64 %n) -> ptr
+@extern
+fn @memset(ptr %d, i32 %v, i64 %n) -> ptr
+
 fn @main() -> i64 {
 entry:
   %buf = stackalloc.[8 x i8]
   %base = getelem.i8 %buf, 0
-  memset %base, 65, 8
+  call @memset(%base, 65, 8)
   %p3 = getelem.i8 %buf, 3
   store.i8 %p3, 90
   %c3 = load.i8 %p3
@@ -10,13 +17,13 @@ entry:
   call @print_i64(%c3w)
   %copy = stackalloc.[8 x i8]
   %cbase = getelem.i8 %copy, 0
-  memcpy %cbase, %base, 8
+  call @memcpy(%cbase, %base, 8)
   %q3 = getelem.i8 %copy, 3
   %d3 = load.i8 %q3
   %d3w = sext.i8.i64 %d3
   call @print_i64(%d3w)
   %q0 = getelem.i8 %copy, 0
-  memmove %q0, %q3, 4
+  call @memmove(%q0, %q3, 4)
   %e0 = load.i8 %q0
   %e0w = sext.i8.i64 %e0
   call @print_i64(%e0w)

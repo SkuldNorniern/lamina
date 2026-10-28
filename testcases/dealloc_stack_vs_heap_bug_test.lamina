@@ -1,6 +1,9 @@
-# Test case to expose stack vs heap deallocation bug
-# The dealloc instruction always assumes heap memory, but should handle both stack and heap
-# This test creates both stack and heap allocations and tries to deallocate them
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
+# A stack slot and a malloc'd block, each read back before the block is freed.
 
 fn @test_stack_dealloc() -> i64 {
   entry:
@@ -11,9 +14,6 @@ fn @test_stack_dealloc() -> i64 {
     # Load the value back
     %val = load.i64 %stack_data
 
-    # Try to deallocate stack allocation (this should be a no-op or error)
-    heapfree %stack_data
-
     # Return the value
     ret.i64 %val
 }
@@ -21,14 +21,14 @@ fn @test_stack_dealloc() -> i64 {
 fn @test_heap_dealloc() -> i64 {
   entry:
     # Allocate on heap
-    %heap_data = heapalloc.i64
+    %heap_data = call @malloc(8)
     store.i64 %heap_data, 100
 
     # Load the value back
     %val = load.i64 %heap_data
 
-    # Deallocate heap allocation (this should work)
-    heapfree %heap_data
+    # Deallocate heap allocation
+    call @free(%heap_data)
 
     # Return the value
     ret.i64 %val

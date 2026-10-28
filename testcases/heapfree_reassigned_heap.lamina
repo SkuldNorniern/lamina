@@ -1,12 +1,16 @@
-# A name first bound to a stack slot and then reassigned to a heap block. The heapfree
-# must release the heap block; a stack-keyed fact would skip the free and leak it.
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
+# A name first bound to a stack slot and then reassigned to a malloc'd block, which is freed.
 fn @main() -> i64 {
   entry:
     %p = stackalloc.i64
-    %p = heapalloc.i64
+    %p = call @malloc(8)
     store.i64 %p, 7
     %v = load.i64 %p
-    heapfree %p
+    call @free(%p)
     call @print_i64(%v)
     ret.i64 0
 }

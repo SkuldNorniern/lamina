@@ -1,3 +1,8 @@
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
 # i128 elements of a stack array, and a 128-bit value in a heap allocation.
 fn @main() -> i64 {
 entry:
@@ -20,12 +25,12 @@ entry:
   call @print_i64(%hl)
   %sl = trunc.i128.i64 %s
   call @print_i64(%sl)
-  %h = heapalloc.i128
+  %h = call @malloc(16)
   store.i128 %h, 99999999999999999999999
   %hv = load.i128 %h
   %hvl = trunc.i128.i64 %hv
   call @print_i64(%hvl)
-  heapfree %h
+  call @free(%h)
   ret.i64 0
 }
 

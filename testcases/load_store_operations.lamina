@@ -83,7 +83,7 @@ fn @test_different_types() -> i64 {
 # fn @test_heap_load_store() -> i64 {
 #   entry:
 #     # Allocate on heap
-#     # %heap_ptr = heapalloc.i64
+#     # %heap_ptr = call @malloc(8)
 #
 #     # Store value
 #     %value = add.i64 999, 0
@@ -100,7 +100,7 @@ fn @test_different_types() -> i64 {
 #     %final = load.i64 %heap_ptr
 #
 #     # TODO: Clean up
-#     # # heapfree %heap_ptr
+#     # # call @free(%heap_ptr)
 #
 #     ret.i64 %final  # Should be 1000
 # }

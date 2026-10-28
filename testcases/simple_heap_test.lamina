@@ -1,10 +1,15 @@
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
 fn @main() -> i64 {
   entry:
-    %ptr = heapalloc.i64
+    %ptr = call @malloc(8)
     store.i64 %ptr, 42
     %val = load.i64 %ptr
     call @print_i64(%val)
-    # heapfree %ptr
+    # call @free(%ptr)
     ret.i64 0
 }
 

@@ -1,3 +1,8 @@
+@extern
+fn @malloc(i64 %n) -> ptr
+@extern
+fn @free(ptr %p) -> void
+
 # Lamina Capabilities Demonstration Tool
 # A comprehensive showcase of Lamina's language features
 
@@ -86,7 +91,7 @@ fn @sum_array(ptr %arr, i64 %size) -> i64 {
 fn @heap_demo() -> i64 {
   entry:
     # Allocate on heap
-    %heap_data = heapalloc.i64
+    %heap_data = call @malloc(8)
     store.i64 %heap_data, 42
 
     # Load and modify
@@ -98,7 +103,7 @@ fn @heap_demo() -> i64 {
     %final_val = load.i64 %heap_data
 
     # Clean up
-    heapfree %heap_data
+    call @free(%heap_data)
 
     ret.i64 %final_val
 }
