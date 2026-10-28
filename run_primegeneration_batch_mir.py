@@ -18,7 +18,7 @@ LAMINA_OUTPUT_BINARY = "primegeneration_lamina" # Consistent naming
 
 # Determine target OS for assembly generation
 import platform
-LAMINA_FLAG = ["--emit-mir-asm","--opt-level", "3"]
+LAMINA_FLAG = ["--emit-asm","--opt-level", "3"]
 BATCH_RUNS = 250  # Number of times to run each benchmark (fewer since prime generation is slower)
 TIME_THRESHOLD = 2.0  # Seconds - prime generation can be slower
 

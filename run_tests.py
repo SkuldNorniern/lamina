@@ -163,7 +163,7 @@ def compile_and_run_test(test_path, use_mir=False):
     }
 
     # Compile the test
-    cmd_flags = "--emit-mir-asm" if use_mir else ""
+    cmd_flags = "--emit-asm" if use_mir else ""
     compile_cmd = (
         f'cargo run --release --quiet -- {test_path} {cmd_flags} -o "{executable_path}"'
     )

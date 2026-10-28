@@ -17,7 +17,7 @@ LAMINA_SOURCE = "benchmarks/factorial/factorial.lamina" # Keep lamina source pat
 LAMINA_OUTPUT_BINARY = "factorial_lamina" # Consistent naming
 
 # Determine target OS for assembly generation
-LAMINA_FLAG = ["--emit-mir-asm","--opt-level", "3"]
+LAMINA_FLAG = ["--emit-asm","--opt-level", "3"]
 BATCH_RUNS = 1000  # Number of times to run each benchmark (more for factorial since it's faster)
 TIME_THRESHOLD = 0.5  # Seconds - factorial is faster than fibonacci
 
