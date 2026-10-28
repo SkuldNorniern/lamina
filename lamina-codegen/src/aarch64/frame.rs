@@ -43,6 +43,17 @@ impl FrameMap {
                 // multi-slot block, so it sits at the deepest slot of that block.
                 let extra = f.stack_reservations.get(v).copied().unwrap_or(0) as i32;
                 offset -= 8 * extra;
+                if let Some(align) = f.stack_alignments.get(v) {
+                    let align = *align as i32;
+                    let limit = offset - 8 * align;
+                    while offset % align != 0 {
+                        offset -= 8;
+                        assert!(
+                            offset > limit,
+                            "no slot within {align} steps lands on a {align}-byte boundary"
+                        );
+                    }
+                }
                 slots.insert(r.clone(), offset);
                 offset -= 8;
             }

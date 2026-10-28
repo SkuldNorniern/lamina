@@ -173,7 +173,11 @@ impl ModuleInlining {
         for param in &caller.sig.params {
             record(&param.reg);
         }
-        for slot in caller.stack_reservations.keys() {
+        for slot in caller
+            .stack_reservations
+            .keys()
+            .chain(caller.stack_alignments.keys())
+        {
             record(&Register::Virtual(*slot));
         }
         for block in &caller.blocks {
@@ -214,11 +218,22 @@ impl ModuleInlining {
             copy.normalize_integer_immediates(None);
             copies.push(copy);
         }
-        let mut reservations: Vec<_> = callee.stack_reservations.iter().collect();
-        reservations.sort_unstable_by_key(|(slot, _)| **slot);
-        for (slot, size) in reservations {
-            if let Register::Virtual(fresh) = rename(&Register::Virtual(*slot)) {
-                caller.stack_reservations.insert(fresh, *size);
+        let mut slots: Vec<VirtualReg> = callee
+            .stack_reservations
+            .keys()
+            .chain(callee.stack_alignments.keys())
+            .copied()
+            .collect();
+        slots.sort_unstable();
+        slots.dedup();
+        for slot in slots {
+            if let Register::Virtual(fresh) = rename(&Register::Virtual(slot)) {
+                if let Some(size) = callee.stack_reservations.get(&slot) {
+                    caller.stack_reservations.insert(fresh, *size);
+                }
+                if let Some(align) = callee.stack_alignments.get(&slot) {
+                    caller.stack_alignments.insert(fresh, *align);
+                }
             }
         }
         let id = self.inline_counter.get();

@@ -70,12 +70,11 @@ pub(super) fn assign_stack_slots_where(
 
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
     let mut next_slot = 0usize;
-    // A reserved register addresses the lowest byte of its block, which sits at
-    // the deepest slot, so the extra slots are claimed ahead of it.
     let claim = |vreg: &VirtualReg, slots: &mut HashMap<VirtualReg, i32>, next: &mut usize| {
         let extra = func.stack_reservations.get(vreg).copied().unwrap_or(0);
-        slots.insert(*vreg, offset_for_slot(*next + extra));
-        *next += extra + 1;
+        let align = func.stack_alignments.get(vreg).copied();
+        let index = claim_stack_slot(next, extra, align, &offset_for_slot);
+        slots.insert(*vreg, offset_for_slot(index));
     };
     for vreg in &def_regs {
         if needs_slot(vreg) && !stack_slots.contains_key(vreg) {
@@ -88,6 +87,32 @@ pub(super) fn assign_stack_slots_where(
         }
     }
     (stack_slots, def_regs, next_slot)
+}
+
+/// Claims the slot block of one register and returns the index its address uses.
+///
+/// The block is `extra` slots deep beyond `next`, and the register addresses its
+/// deepest slot. When `align` is set, that index is stepped upward until its offset
+/// is a multiple of `align`, and the skipped indices stay unused.
+pub(super) fn claim_stack_slot(
+    next: &mut usize,
+    extra: usize,
+    align: Option<usize>,
+    offset_for_slot: &impl Fn(usize) -> i32,
+) -> usize {
+    let mut index = *next + extra;
+    if let Some(align) = align {
+        let limit = index + align;
+        while i64::from(offset_for_slot(index)) % align as i64 != 0 {
+            index += 1;
+            assert!(
+                index < limit,
+                "no slot index within {align} steps lands on a {align}-byte boundary"
+            );
+        }
+    }
+    *next = index + 1;
+    index
 }
 
 pub(super) fn integer_conversion(instruction: &Instruction) -> Option<Vec<Instruction>> {
@@ -955,6 +980,41 @@ mod tests {
             id,
             class: RegisterClass::Gpr,
         }
+    }
+
+    fn frame_with_def_then_slot() -> Function {
+        let mut func = Function::new(Signature::new("f"));
+        let mut block = Block::new("entry");
+        block.push(Instruction::StackAddr {
+            dst: Register::Virtual(vreg(0)),
+            slot: vreg(5),
+        });
+        func.add_block(block);
+        func
+    }
+
+    #[test]
+    fn aligned_slot_is_placed_on_its_alignment() {
+        let mut func = frame_with_def_then_slot();
+        func.stack_alignments.insert(vreg(0), 16);
+
+        let (slots, _, total) = assign_stack_slots(&func, |i| -((i as i32) + 1) * 8);
+
+        assert_eq!(slots[&vreg(0)], -16);
+        assert_eq!(slots[&vreg(0)] % 16, 0);
+        assert_eq!(slots[&vreg(5)], -24);
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn unaligned_slot_placement_is_unchanged() {
+        let func = frame_with_def_then_slot();
+
+        let (slots, _, total) = assign_stack_slots(&func, |i| -((i as i32) + 1) * 8);
+
+        assert_eq!(slots[&vreg(0)], -8);
+        assert_eq!(slots[&vreg(5)], -16);
+        assert_eq!(total, 2);
     }
 
     /// A stack allocation wider than one slot must not share space with the

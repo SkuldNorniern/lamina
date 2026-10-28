@@ -339,6 +339,7 @@ fn split(func: &mut Function) -> bool {
     let split_slots: HashSet<VirtualReg> = layouts.keys().copied().collect();
     for slot in &split_slots {
         func.stack_reservations.remove(slot);
+        func.stack_alignments.remove(slot);
     }
 
     let retarget = |addr: AddressMode| -> AddressMode {

@@ -682,6 +682,7 @@ pub enum Instruction<'a> {
         result: Identifier<'a>,
         alloc_type: AllocType,
         allocated_ty: Type<'a>,
+        align: Option<u32>,
     },
     /// Load a value of type `ty` from the address in `ptr`.
     ///
@@ -1430,8 +1431,15 @@ impl fmt::Display for Instruction<'_> {
                 result,
                 alloc_type,
                 allocated_ty,
+                align,
             } => match alloc_type {
-                AllocType::Stack => write!(f, "%{result} = stackalloc.{allocated_ty}"),
+                AllocType::Stack => {
+                    write!(f, "%{result} = stackalloc.{allocated_ty}")?;
+                    if let Some(align) = align {
+                        write!(f, " align {align}")?;
+                    }
+                    Ok(())
+                }
             },
             Instruction::Load {
                 result,
@@ -1719,8 +1727,16 @@ mod tests {
             result: "ptr1",
             alloc_type: AllocType::Stack,
             allocated_ty: Type::Primitive(PrimitiveType::I32),
+            align: None,
         };
         assert_eq!(format!("{}", instr7), "%ptr1 = stackalloc.i32");
+        let instr8 = Instruction::Alloc {
+            result: "ptr2",
+            alloc_type: AllocType::Stack,
+            allocated_ty: Type::Primitive(PrimitiveType::I64),
+            align: Some(16),
+        };
+        assert_eq!(format!("{}", instr8), "%ptr2 = stackalloc.i64 align 16");
 
         // Load
         let instr9 = Instruction::Load {

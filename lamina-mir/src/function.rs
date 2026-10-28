@@ -208,6 +208,10 @@ pub struct Function {
     /// stack allocations larger than one slot. The register addresses the
     /// lowest byte of the reservation.
     pub stack_reservations: HashMap<VirtualReg, usize>,
+
+    /// Required alignment in bytes for a virtual register's stack slot, set by
+    /// `stackalloc ... align n` when n exceeds the 8-byte slot size.
+    pub stack_alignments: HashMap<VirtualReg, usize>,
 }
 
 impl Function {
@@ -218,6 +222,7 @@ impl Function {
             blocks: Vec::new(),
             entry: "entry".to_string(),
             stack_reservations: HashMap::new(),
+            stack_alignments: HashMap::new(),
         }
     }
 

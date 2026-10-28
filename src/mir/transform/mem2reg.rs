@@ -320,6 +320,9 @@ fn promote(func: &mut Function) -> bool {
         direct_access_base(addr).and_then(|base| promoted_pointer.get(base).copied())
     };
 
+    for slot in &promoted {
+        func.stack_alignments.remove(slot);
+    }
     for block in &mut func.blocks {
         rewrite_block(block, &promoted, &promoted_access, &slot_reg);
     }

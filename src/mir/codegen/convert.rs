@@ -696,6 +696,7 @@ fn convert_function<'a>(
     };
     let mut register_types = HashMap::new();
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
+    let mut alignments: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
 
     let mut aggregate_prelude = Vec::new();
@@ -805,6 +806,7 @@ fn convert_function<'a>(
                 &mut vreg_alloc,
                 &mut var_to_reg,
                 &mut reservations,
+                &mut alignments,
                 &ValueFacts {
                     types: &register_types,
                     variadic_fixed: &variadic_fixed,
@@ -1213,6 +1215,7 @@ fn convert_function<'a>(
     }
 
     mir_func.stack_reservations = reservations;
+    mir_func.stack_alignments = alignments;
     libcalls.extend(mem::take(&mut var_to_reg.libcalls));
 
     Ok(mir_func)
@@ -1279,6 +1282,7 @@ fn convert_instruction<'a>(
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut VarBindings<'a>,
     reservations: &mut HashMap<VirtualReg, usize>,
+    alignments: &mut HashMap<VirtualReg, usize>,
     facts: &ValueFacts<'_, 'a>,
     globals: &mut GlobalAddresses<'a>,
 ) -> Result<Vec<Instruction>, FromIRError> {
@@ -2222,6 +2226,7 @@ fn convert_instruction<'a>(
             result,
             alloc_type,
             allocated_ty,
+            align,
         } => {
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
 
@@ -2234,6 +2239,16 @@ fn convert_instruction<'a>(
                         .map_err(|_| FromIRError::UnsupportedType)?;
                     if slots_needed > 1 {
                         reservations.insert(storage_vreg, slots_needed - 1);
+                    }
+                    if let Some(align) = *align {
+                        if align > 16 {
+                            return Err(FromIRError::UnsupportedAlignment(format!(
+                                "stackalloc align {align} for %{result}: frames are only 16-byte aligned and frame realignment is not implemented yet"
+                            )));
+                        }
+                        if align > 8 {
+                            alignments.insert(storage_vreg, align as usize);
+                        }
                     }
                     Ok(vec![Instruction::StackAddr {
                         dst,

@@ -31,7 +31,10 @@ pub(super) fn kernels(
             return Err(error("invalid or duplicate kernel symbol"));
         }
         if (!allow_parameters && !function.sig.params.is_empty()) || !function.sig.is_void()
-            || !function.stack_reservations.is_empty() || function.blocks.len() != 1 {
+            || !function.stack_reservations.is_empty()
+            || !function.stack_alignments.is_empty()
+            || function.blocks.len() != 1
+        {
             return Err(error("only single-block void kernels without parameters or stack storage are supported"));
         }
         if !matches!(function.blocks[0].instructions.last(), Some(Instruction::Ret { value: None })) {

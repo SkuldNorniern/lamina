@@ -3,6 +3,7 @@ use super::*;
 use crate::mir::RelocationModel;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::argument_types;
+use crate::mir_codegen::common::claim_stack_slot;
 use crate::mir_codegen::common::io_codegen_error;
 use crate::mir_codegen::common::{ClobberIndex, FunctionEmissionPlan};
 
@@ -91,8 +92,10 @@ pub(super) fn layout_global_stack_slots(
     for reg in address_taken {
         if let Entry::Vacant(entry) = slots.entry(reg) {
             let extra = func.stack_reservations.get(&reg).copied().unwrap_or(0);
-            entry.insert(X86Frame::calculate_stack_offset(total + extra));
-            total += extra + 1;
+            let align = func.stack_alignments.get(&reg).copied();
+            let index =
+                claim_stack_slot(&mut total, extra, align, &X86Frame::calculate_stack_offset);
+            entry.insert(X86Frame::calculate_stack_offset(index));
         }
     }
     (slots, defs, total)

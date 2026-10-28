@@ -16,6 +16,7 @@ impl<'a> IRBuilder<'a> {
             result,
             alloc_type: AllocType::Stack,
             allocated_ty: ty,
+            align: None,
         })
     }
 

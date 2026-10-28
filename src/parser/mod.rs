@@ -923,6 +923,7 @@ mod tests {
                 result,
                 allocated_ty,
                 alloc_type,
+                ..
             } => {
                 assert_eq!(*result, "arr_ptr");
                 if let Type::Array { element_type, size } = allocated_ty {
@@ -1852,6 +1853,58 @@ ret.i64 0
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn test_stackalloc_align_modifier() {
+        let input = entry_body("%p = stackalloc.i64 align 16");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::Alloc {
+                allocated_ty: Type::Primitive(PrimitiveType::I64),
+                align: Some(16),
+                ..
+            }
+        ));
+
+        let input = entry_body("%a = stackalloc.[16 x f64] align 8");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::Alloc { align: Some(8), .. }
+        ));
+
+        let input = entry_body("%p = stackalloc.i64 align 32");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::Alloc {
+                align: Some(32),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_stackalloc_without_align_leaves_next_line_alone() {
+        let input = entry_body("%p = stackalloc.i64");
+        let instructions = entry_instructions(&input);
+        assert_eq!(instructions.len(), 2);
+        assert!(matches!(
+            instructions[0],
+            Instruction::Alloc { align: None, .. }
+        ));
+        assert!(matches!(instructions[1], Instruction::Ret { .. }));
+
+        let input = "fn @main() -> i64 {\n  entry:\n    %p = stackalloc.i64\n    jmp align\n  align:\n    ret.i64 0\n}\n";
+        let module = parse_module(input).expect("Parsing failed");
+        let func = module.functions.get("main").expect("Function not found");
+        assert!(func.basic_blocks.contains_key("align"));
+    }
+
+    #[test]
+    fn test_stackalloc_align_rejects_non_power_of_two() {
+        let err = parse_error("%p = stackalloc.i64 align 3");
+        assert!(err.contains("Invalid alignment: align 3"), "{err}");
+        assert!(err.contains("power of two"), "{err}");
     }
 
     #[test]

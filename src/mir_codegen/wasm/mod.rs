@@ -898,6 +898,10 @@ fn stack_frame_layout(func: &Function) -> StackFrame {
     let mut size = 0i64;
     for slot in slots {
         let units = 1 + func.stack_reservations.get(slot).copied().unwrap_or(0);
+        if let Some(align) = func.stack_alignments.get(slot) {
+            let align = *align as i64;
+            size = (size + align - 1) / align * align;
+        }
         offsets.insert(*slot, size);
         size += 8 * units as i64;
     }

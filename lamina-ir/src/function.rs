@@ -1087,6 +1087,7 @@ mod tests {
                     result: "p",
                     alloc_type: AllocType::Stack,
                     allocated_ty: Type::Primitive(PrimitiveType::I32),
+                    align: None,
                 },
                 Instruction::Store {
                     ty: Type::Primitive(PrimitiveType::I32),

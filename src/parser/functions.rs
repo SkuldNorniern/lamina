@@ -12,12 +12,18 @@ pub fn parse_alignment_argument(state: &mut ParserState<'_>) -> Result<u32, Lami
     state.expect_char('(')?;
     let bytes = state.parse_integer()?;
     state.expect_char(')')?;
-    match u32::try_from(bytes) {
-        Ok(alignment) if alignment.is_power_of_two() => Ok(alignment),
-        _ => Err(state.error(format!(
+    alignment_from_bytes(bytes).ok_or_else(|| {
+        state.error(format!(
             "Invalid alignment: @align({bytes})\n  Hint: Alignment must be a power of two, e.g. @align(16)"
-        ))),
-    }
+        ))
+    })
+}
+
+/// The alignment in bytes when `bytes` is a power of two that fits in a `u32`.
+pub fn alignment_from_bytes(bytes: i64) -> Option<u32> {
+    u32::try_from(bytes)
+        .ok()
+        .filter(|alignment| alignment.is_power_of_two())
 }
 
 /// The hint for an unknown annotation: a did-you-mean when a name is close, else the full list.

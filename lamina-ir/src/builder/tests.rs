@@ -143,6 +143,7 @@ mod tests {
             result,
             alloc_type,
             allocated_ty,
+            ..
         } = &entry.instructions[0]
         {
             assert_eq!(*result, "ptr");

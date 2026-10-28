@@ -177,6 +177,17 @@ fn claim_ppc64_slot(
     next: &mut usize,
 ) {
     let extra = func.stack_reservations.get(vreg).copied().unwrap_or(0);
+    if let Some(align) = func.stack_alignments.get(vreg) {
+        let align = *align as i32;
+        let limit = *next + align as usize;
+        while Ppc64Frame::calculate_stack_offset(*next) % align != 0 {
+            *next += 1;
+            assert!(
+                *next < limit,
+                "no slot within {align} steps lands on a {align}-byte boundary"
+            );
+        }
+    }
     slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(*next));
     *next += extra + 1;
 }

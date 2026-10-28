@@ -39,6 +39,8 @@ pub enum FromIRError {
     VariadicArgument(String),
     /// A value name is defined with two different register classes or signedness.
     ConflictingDefinitions(String),
+    /// A stack allocation requests an alignment the frame cannot provide yet.
+    UnsupportedAlignment(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -85,6 +87,9 @@ impl fmt::Display for FromIRError {
             }
             FromIRError::ConflictingDefinitions(name) => {
                 write!(f, "'%{name}' is defined with conflicting types")
+            }
+            FromIRError::UnsupportedAlignment(reason) => {
+                write!(f, "alignment not yet supported: {reason}")
             }
             FromIRError::InvalidMir(errors) => {
                 write!(f, "lowering produced invalid MIR: {}", errors.join("; "))

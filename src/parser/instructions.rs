@@ -7,6 +7,7 @@ use crate::{
         PrimitiveType, Type, UnaryOp, Value,
     },
     parser::{
+        functions::alignment_from_bytes,
         globals::parse_value_with_type_hint,
         state::{ParserState, TypedCallArg},
         types::{parse_type, removed_char_error},
@@ -507,18 +508,50 @@ fn parse_cmp_op<'a>(
     })
 }
 
-/// Parses `stackalloc.T`.
+/// Parses `stackalloc.T` with an optional trailing `align n`.
 fn parse_alloc<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
     alloc_type: AllocType,
 ) -> Result<Instruction<'a>, LaminaError> {
     let allocated_ty = parse_type_suffix(state)?;
+    let align = parse_alloc_align(state)?;
     Ok(Instruction::Alloc {
         result,
         alloc_type,
         allocated_ty,
+        align,
     })
+}
+
+/// Parses the optional `align n` that may follow a stackalloc type. Anything else
+/// is left unread, so the next line still parses as its own instruction.
+fn parse_alloc_align(state: &mut ParserState<'_>) -> Result<Option<u32>, LaminaError> {
+    let start = state.position();
+    state.skip_whitespace_and_comments();
+    let word_ends = !state
+        .peek_byte(5)
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
+    if state.peek_slice(5) != Some("align") || !word_ends {
+        state.set_position(start);
+        return Ok(None);
+    }
+    state.advance_by(5);
+    state.skip_whitespace_and_comments();
+    if !state
+        .current_char()
+        .is_some_and(|c| c.is_ascii_digit() || c == '-')
+    {
+        state.set_position(start);
+        return Ok(None);
+    }
+    let bytes = state.parse_integer()?;
+    match alignment_from_bytes(bytes) {
+        Some(alignment) => Ok(Some(alignment)),
+        None => Err(state.error(format!(
+            "Invalid alignment: align {bytes}\n  Hint: Alignment must be a power of two, e.g. stackalloc.i64 align 16"
+        ))),
+    }
 }
 
 fn parse_volatile_assignment<'a>(
