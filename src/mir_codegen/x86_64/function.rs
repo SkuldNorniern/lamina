@@ -1,9 +1,9 @@
 use super::variadic::{SAVE_AREA_SLOTS, VaArea, spill_register_save_area};
 use super::*;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
-use crate::mir_codegen::common::FunctionEmissionPlan;
 use crate::mir_codegen::common::argument_types;
 use crate::mir_codegen::common::io_codegen_error;
+use crate::mir_codegen::common::{ClobberIndex, FunctionEmissionPlan};
 
 pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
     matches!(reg, "rbx" | "r12" | "r13" | "r14" | "r15")
@@ -132,25 +132,19 @@ pub(super) fn compile_single_function_x86_64(
     let mut saved_regs = Vec::new();
     if settings.regalloc != RegallocStrategy::Incremental {
         let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
-        let clobbers: Vec<_> = func
-            .blocks
-            .iter()
-            .flat_map(|block| &block.instructions)
-            .map(|inst| {
-                let mut regs = instruction_clobbers(inst, is_leaf, target_os, func_name);
-                for reg in inst.use_regs().into_iter().chain(inst.def_reg()) {
-                    if let Register::Physical(phys) = reg {
-                        regs.push(phys.name);
-                    }
+        let mut clobbers = ClobberIndex::default();
+        let instructions = func.blocks.iter().flat_map(|block| &block.instructions);
+        for (index, inst) in instructions.enumerate() {
+            for name in instruction_clobbers(inst, is_leaf, target_os, func_name) {
+                clobbers.mark(name, index);
+            }
+            for reg in inst.use_regs().into_iter().chain(inst.def_reg()) {
+                if let Register::Physical(phys) = reg {
+                    clobbers.mark(phys.name, index);
                 }
-                regs
-            })
-            .collect();
-        let allowed = |interval: &LiveInterval, reg| {
-            clobbers[interval.start..=interval.end]
-                .iter()
-                .all(|regs| !regs.contains(&reg))
-        };
+            }
+        }
+        let allowed = |interval: &LiveInterval, reg| clobbers.is_clear(reg, interval);
         let mut address_taken: BTreeSet<_> = func
             .blocks
             .iter()

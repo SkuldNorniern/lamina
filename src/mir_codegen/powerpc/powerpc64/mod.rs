@@ -23,7 +23,7 @@ use crate::mir_codegen::common::{
     CallSignatures, emit_debug_file, emit_gnu_stack_note, print_format_label,
 };
 use crate::mir_codegen::common::{
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
+    ClobberIndex, CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
 
@@ -265,21 +265,21 @@ fn compile_single_function_ppc64(
             .collect();
         // Every allocatable register is volatile in ELFv2, so a bl destroys whatever the
         // plan is holding across it.
-        let calls: Vec<bool> = func
+        let mut calls = ClobberIndex::default();
+        for (index, inst) in func
             .blocks
             .iter()
             .flat_map(|block| &block.instructions)
-            .map(|inst| {
-                matches!(
-                    inst,
-                    MirInst::Call { .. } | MirInst::CallIndirect { .. } | MirInst::TailCall { .. }
-                )
-            })
-            .collect();
-        let allowed = |interval: &LiveInterval, _reg| {
-            let end = interval.end.min(calls.len().saturating_sub(1));
-            !calls[interval.start..=end].iter().any(|call| *call)
-        };
+            .enumerate()
+        {
+            if matches!(
+                inst,
+                MirInst::Call { .. } | MirInst::CallIndirect { .. } | MirInst::TailCall { .. }
+            ) {
+                calls.mark((), index);
+            }
+        }
+        let allowed = |interval: &LiveInterval, _reg| calls.is_clear((), interval);
         let mut plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
                 LinearScanAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)

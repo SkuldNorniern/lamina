@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt::{Debug, Display},
+    hash::Hash,
     io::Write,
     mem,
     sync::{Arc, mpsc},
@@ -1047,6 +1048,30 @@ fn virtual_register(reg: &Register) -> Option<VirtualReg> {
     }
 }
 
+/// Instruction positions at which each key is clobbered, in ascending order.
+#[derive(Default)]
+pub(super) struct ClobberIndex<K> {
+    positions: HashMap<K, Vec<usize>>,
+}
+
+impl<K: Copy + Eq + Hash> ClobberIndex<K> {
+    /// Record that `key` is clobbered at `index`. Calls must come in ascending index order.
+    pub(super) fn mark(&mut self, key: K, index: usize) {
+        let list = self.positions.entry(key).or_default();
+        if list.last() != Some(&index) {
+            list.push(index);
+        }
+    }
+
+    /// Whether `key` is clobbered nowhere in the closed range `[interval.start, interval.end]`.
+    pub(super) fn is_clear(&self, key: K, interval: &LiveInterval) -> bool {
+        self.positions.get(&key).is_none_or(|list| {
+            let next = list.partition_point(|&index| index < interval.start);
+            list.get(next).is_none_or(|&index| index > interval.end)
+        })
+    }
+}
+
 pub(super) fn block_live_out(func: &Function) -> Vec<HashSet<VirtualReg>> {
     let labels: HashMap<_, _> = func
         .blocks
@@ -1119,8 +1144,50 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
         }
     }
     let live_out = block_live_out(func);
-    let mut points = Vec::new();
     let mut definitions = HashMap::new();
+    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+        if let Some(dst) = inst.def_reg().and_then(virtual_reg) {
+            *definitions.entry(dst).or_insert(0) += 1;
+        }
+    }
+    let mut candidates = Vec::new();
+    let mut block_start = func
+        .blocks
+        .iter()
+        .map(|b| b.instructions.len())
+        .sum::<usize>();
+    for (index, block) in func.blocks.iter().enumerate().rev() {
+        block_start -= block.instructions.len();
+        let mut live = live_out[index].clone();
+        let mut block_candidates = Vec::new();
+        for (offset, inst) in block.instructions.iter().enumerate().rev() {
+            let dst = inst.def_reg().and_then(virtual_reg);
+            if let Some((dst, src)) = dying_input(inst)
+                && !(matches!(inst, Instruction::IntBinary { .. })
+                    && !affinities.contains(&(dst, src)))
+                && !live.contains(&src)
+                && definitions.get(&dst) == Some(&1)
+                && !func
+                    .sig
+                    .params
+                    .iter()
+                    .any(|param| virtual_reg(&param.reg) == Some(dst))
+            {
+                block_candidates.push((block_start + offset, dst, src));
+            }
+            if let Some(dst) = dst {
+                live.remove(&dst);
+            }
+            live.extend(inst.use_regs().into_iter().filter_map(virtual_reg));
+        }
+        candidates.extend(block_candidates);
+    }
+    candidates.reverse();
+    if candidates.is_empty() {
+        return plan;
+    }
+
+    let mut points = Vec::new();
     for (index, block) in func.blocks.iter().enumerate() {
         let mut live = live_out[index].clone();
         let mut block_points = Vec::new();
@@ -1129,7 +1196,6 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
             let dst = inst.def_reg().and_then(virtual_reg);
             if let Some(dst) = dst {
                 live.remove(&dst);
-                *definitions.entry(dst).or_insert(0) += 1;
             }
             live.extend(inst.use_regs().into_iter().filter_map(virtual_reg));
             block_points.push((inst, live.clone(), after, dst));
@@ -1140,21 +1206,16 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
         .iter()
         .map(|interval| (interval.vreg, interval))
         .collect();
-    for (inst, _, after, _) in &points {
-        let Some((dst, src)) = dying_input(inst) else {
-            continue;
-        };
-        if (matches!(inst, Instruction::IntBinary { .. }) && !affinities.contains(&(dst, src)))
-            || after.contains(&src)
-            || definitions.get(&dst) != Some(&1)
-            || func
-                .sig
-                .params
-                .iter()
-                .any(|param| virtual_reg(&param.reg) == Some(dst))
-        {
-            continue;
+    let mut touching: HashMap<VirtualReg, Vec<usize>> = HashMap::new();
+    for (index, (_, before, after, defined)) in points.iter().enumerate() {
+        for vreg in before.iter().chain(after).chain(defined.iter()) {
+            let list = touching.entry(*vreg).or_default();
+            if list.last() != Some(&index) {
+                list.push(index);
+            }
         }
+    }
+    for (_, dst, src) in candidates {
         let (Some(output), Some(Allocation::Register(reg))) =
             (by_reg.get(&dst), plan.get(&src).copied())
         else {
@@ -1163,21 +1224,25 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
         if !allowed(output, reg) {
             continue;
         }
-        let interferes = |other| {
-            points.iter().any(|(inst, before, after, defined)| {
-                (before.contains(&dst) && before.contains(&other))
-                    || (after.contains(&dst) && after.contains(&other))
-                    || (*defined == Some(dst)
-                        && before.contains(&other)
-                        && dying_input(inst) != Some((dst, other)))
-                    || (*defined == Some(other)
-                        && before.contains(&dst)
-                        && dying_input(inst) != Some((other, dst)))
-            })
+        let held = |other: &VirtualReg| {
+            *other != dst && plan.get(other) == Some(&Allocation::Register(reg))
         };
-        if plan.iter().any(|(&other, &allocation)| {
-            other != dst && allocation == Allocation::Register(reg) && interferes(other)
-        }) {
+        let conflicts = touching.get(&dst).is_some_and(|indices| {
+            indices.iter().any(|&index| {
+                let (inst, before, after, defined) = &points[index];
+                let dying = dying_input(inst);
+                let dst_before = before.contains(&dst);
+                (dst_before && before.iter().any(held))
+                    || (after.contains(&dst) && after.iter().any(held))
+                    || (*defined == Some(dst)
+                        && before
+                            .iter()
+                            .any(|other| held(other) && dying != Some((dst, *other))))
+                    || (dst_before
+                        && defined.is_some_and(|other| held(&other) && dying != Some((other, dst))))
+            })
+        });
+        if conflicts {
             continue;
         }
         plan.insert(dst, Allocation::Register(reg));
