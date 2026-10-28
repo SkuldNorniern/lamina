@@ -1,0 +1,33 @@
+@weak
+@align(64)
+fn @weak_add(i64 %a, i64 %b) -> i64 {
+entry:
+  %s = add.i64 %a, %b
+  ret.i64 %s
+}
+
+@section(".text.custom")
+@align(16)
+fn @placed(i64 %x) -> i64 {
+entry:
+  %y = mul.i64 %x, 3
+  ret.i64 %y
+}
+
+@hot
+@align(8)
+fn @hot_fn() -> i64 {
+entry:
+  ret.i64 7
+}
+
+fn @main() -> i64 {
+entry:
+  %a = call @weak_add(40, 2)
+  print %a
+  %b = call @placed(5)
+  print %b
+  %c = call @hot_fn()
+  print %c
+  ret.i64 0
+}
