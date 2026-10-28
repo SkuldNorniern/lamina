@@ -236,44 +236,44 @@ frame test_u64_array_operations 96
 frame test_u8_array_operations 80
 
 [array_operations_comprehensive O2]
-insns 1053
-spills 44
+insns 471
+spills 26
 calls 26
 branches 0
-frame main 400
+frame main 112
 frame test_bool_array_operations 16
-frame test_char_array_operations 16
-frame test_f32_array_operations 48
-frame test_f64_array_operations 32
-frame test_i16_array_operations 16
-frame test_i32_array_operations 48
-frame test_i64_array_operations 48
-frame test_i8_array_operations 16
-frame test_multidimensional_array 32
-frame test_u16_array_operations 16
-frame test_u32_array_operations 16
-frame test_u64_array_operations 32
-frame test_u8_array_operations 16
+frame test_char_array_operations 0
+frame test_f32_array_operations 0
+frame test_f64_array_operations 0
+frame test_i16_array_operations 0
+frame test_i32_array_operations 0
+frame test_i64_array_operations 0
+frame test_i8_array_operations 0
+frame test_multidimensional_array 0
+frame test_u16_array_operations 0
+frame test_u32_array_operations 0
+frame test_u64_array_operations 0
+frame test_u8_array_operations 0
 
 [array_operations_comprehensive O3]
-insns 1050
-spills 50
+insns 458
+spills 8
 calls 26
 branches 0
-frame main 416
+frame main 48
 frame test_bool_array_operations 16
-frame test_char_array_operations 16
-frame test_f32_array_operations 48
-frame test_f64_array_operations 32
-frame test_i16_array_operations 16
-frame test_i32_array_operations 48
-frame test_i64_array_operations 48
-frame test_i8_array_operations 16
-frame test_multidimensional_array 32
-frame test_u16_array_operations 16
-frame test_u32_array_operations 16
-frame test_u64_array_operations 32
-frame test_u8_array_operations 16
+frame test_char_array_operations 0
+frame test_f32_array_operations 0
+frame test_f64_array_operations 0
+frame test_i16_array_operations 0
+frame test_i32_array_operations 0
+frame test_i64_array_operations 0
+frame test_i8_array_operations 0
+frame test_multidimensional_array 0
+frame test_u16_array_operations 0
+frame test_u32_array_operations 0
+frame test_u64_array_operations 0
+frame test_u8_array_operations 0
 
 [atomics O0]
 insns 405
@@ -1234,7 +1234,7 @@ frame test_float_operations 16
 frame test_float_to_int_conversion 32
 
 [floating_point_register_bug_test O2]
-insns 240
+insns 222
 spills 36
 calls 5
 branches 7
@@ -1242,12 +1242,12 @@ frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_double_operations 0
-frame test_float_array 16
+frame test_float_array 0
 frame test_float_operations 0
 frame test_float_to_int_conversion 0
 
 [floating_point_register_bug_test O3]
-insns 240
+insns 222
 spills 36
 calls 5
 branches 7
@@ -1255,7 +1255,7 @@ frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_double_operations 0
-frame test_float_array 16
+frame test_float_array 0
 frame test_float_operations 0
 frame test_float_to_int_conversion 0
 
@@ -1588,28 +1588,28 @@ frame test_i64_array_gep 80
 frame test_i8_array_gep 208
 
 [gep_element_size_comprehensive_bug_test O2]
-insns 329
+insns 260
 spills 36
 calls 5
 branches 7
-frame main 48
+frame main 32
 frame print_digits 32
 frame print_number 32
-frame test_i16_array_gep 16
-frame test_i64_array_gep 16
-frame test_i8_array_gep 16
+frame test_i16_array_gep 0
+frame test_i64_array_gep 0
+frame test_i8_array_gep 0
 
 [gep_element_size_comprehensive_bug_test O3]
-insns 329
+insns 260
 spills 36
 calls 5
 branches 7
-frame main 48
+frame main 32
 frame print_digits 32
 frame print_number 32
-frame test_i16_array_gep 16
-frame test_i64_array_gep 16
-frame test_i8_array_gep 16
+frame test_i16_array_gep 0
+frame test_i64_array_gep 0
+frame test_i8_array_gep 0
 
 [gep_variable_indices O0]
 insns 413
@@ -1686,7 +1686,7 @@ frame test_mixed_field_sizes 16
 frame test_packed_struct 144
 
 [getfieldptr_offset_bug_test O2]
-insns 216
+insns 192
 spills 36
 calls 5
 branches 7
@@ -1694,10 +1694,10 @@ frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_mixed_field_sizes 0
-frame test_packed_struct 32
+frame test_packed_struct 0
 
 [getfieldptr_offset_bug_test O3]
-insns 216
+insns 192
 spills 36
 calls 5
 branches 7
@@ -1705,7 +1705,7 @@ frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_mixed_field_sizes 0
-frame test_packed_struct 32
+frame test_packed_struct 0
 
 [global_element_list O0]
 insns 72
@@ -2754,20 +2754,20 @@ frame print_digits 80
 frame print_number 64
 
 [narrow_store_width O2]
-insns 187
+insns 176
 spills 36
 calls 5
 branches 7
-frame main 48
+frame main 32
 frame print_digits 32
 frame print_number 32
 
 [narrow_store_width O3]
-insns 187
+insns 176
 spills 36
 calls 5
 branches 7
-frame main 48
+frame main 32
 frame print_digits 32
 frame print_number 32
 
@@ -3022,27 +3022,27 @@ frame test_pointer_movement 128
 frame test_variable_index_gep 144
 
 [pointer_operations O2]
-insns 376
+insns 335
 spills 41
 calls 8
 branches 11
-frame main 48
+frame main 32
 frame print_digits 32
 frame print_number 32
-frame test_array_access 48
+frame test_array_access 0
 frame test_heap_array_operations 16
 frame test_pointer_movement 48
 frame test_variable_index_gep 48
 
 [pointer_operations O3]
-insns 378
+insns 337
 spills 41
 calls 8
 branches 11
-frame main 48
+frame main 32
 frame print_digits 32
 frame print_number 32
-frame test_array_access 48
+frame test_array_access 0
 frame test_heap_array_operations 16
 frame test_pointer_movement 48
 frame test_variable_index_gep 48
@@ -3675,6 +3675,66 @@ calls 3
 branches 0
 frame main 16
 
+[sroa_refusals O0]
+insns 401
+spills 153
+calls 30
+branches 6
+frame bool_field 80
+frame dynamic_index 192
+frame escape_call 80
+frame escape_store 80
+frame main 64
+frame overlap 64
+frame set_word 16
+frame split_fields 112
+frame volatile_field 64
+
+[sroa_refusals O1]
+insns 401
+spills 153
+calls 30
+branches 6
+frame bool_field 80
+frame dynamic_index 192
+frame escape_call 80
+frame escape_store 80
+frame main 64
+frame overlap 64
+frame set_word 16
+frame split_fields 112
+frame volatile_field 64
+
+[sroa_refusals O2]
+insns 518
+spills 38
+calls 44
+branches 8
+frame bool_field 32
+frame dynamic_index 64
+frame escape_call 32
+frame escape_store 16
+frame main 128
+frame overlap 32
+frame set_word 0
+frame split_fields 16
+frame volatile_field 32
+
+[sroa_refusals O3]
+insns 467
+spills 34
+calls 43
+branches 5
+frame bool_field 32
+frame dynamic_index 80
+frame escape_call 32
+frame escape_store 16
+frame main 80
+frame overlap 32
+frame set_word 0
+frame split_fields 16
+frame volatile_field 32
+
 [stack_allocation O0]
 insns 105
 spills 33
@@ -3746,34 +3806,34 @@ frame test_many_small_allocations 2224
 frame test_nested_function_calls 64
 
 [stack_frame_overflow_bug_test O2]
-insns 364
+insns 268
 spills 36
 calls 5
 branches 7
-frame helper_func_1 400
-frame helper_func_2 400
-frame helper_func_3 400
+frame helper_func_1 0
+frame helper_func_2 0
+frame helper_func_3 0
 frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_large_stack_allocation 0
-frame test_many_small_allocations 2000
-frame test_nested_function_calls 1200
+frame test_many_small_allocations 0
+frame test_nested_function_calls 0
 
 [stack_frame_overflow_bug_test O3]
-insns 364
+insns 268
 spills 36
 calls 5
 branches 7
-frame helper_func_1 400
-frame helper_func_2 400
-frame helper_func_3 400
+frame helper_func_1 0
+frame helper_func_2 0
+frame helper_func_3 0
 frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_large_stack_allocation 0
-frame test_many_small_allocations 2000
-frame test_nested_function_calls 1200
+frame test_many_small_allocations 0
+frame test_nested_function_calls 0
 
 [stack_operations O0]
 insns 77
@@ -3982,34 +4042,34 @@ frame test_struct_array_operations 208
 frame test_struct_copy_operations 144
 
 [struct_operations_comprehensive O2]
-insns 883
+insns 540
 spills 22
 calls 16
 branches 0
-frame main 224
+frame main 112
 frame test_complex_data_operations 32
 frame test_mixed_types_operations 48
-frame test_nested_struct_operations 16
-frame test_person_operations 16
-frame test_point2d_operations 16
-frame test_point3d_operations 32
-frame test_struct_array_operations 32
-frame test_struct_copy_operations 16
+frame test_nested_struct_operations 0
+frame test_person_operations 0
+frame test_point2d_operations 0
+frame test_point3d_operations 0
+frame test_struct_array_operations 16
+frame test_struct_copy_operations 0
 
 [struct_operations_comprehensive O3]
-insns 878
-spills 46
+insns 530
+spills 18
 calls 16
 branches 0
-frame main 336
+frame main 112
 frame test_complex_data_operations 32
 frame test_mixed_types_operations 32
-frame test_nested_struct_operations 16
-frame test_person_operations 16
-frame test_point2d_operations 16
-frame test_point3d_operations 32
-frame test_struct_array_operations 32
-frame test_struct_copy_operations 16
+frame test_nested_struct_operations 0
+frame test_person_operations 0
+frame test_point2d_operations 0
+frame test_point3d_operations 0
+frame test_struct_array_operations 16
+frame test_struct_copy_operations 0
 
 [switch_dispatch O0]
 insns 99
