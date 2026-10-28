@@ -6,7 +6,9 @@ use crate::mir::{
     Block, Function, Immediate, Instruction, Operand, Register,
     function::Signature,
     gpu::GpuIntrinsic,
-    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+    transform::{
+        CalleeReturns, ReturnShape, Transform, TransformCategory, TransformError, TransformLevel,
+    },
     types::{MirType, ScalarType},
 };
 
@@ -35,12 +37,24 @@ impl Transform for TailCallOptimization {
     }
 
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        self.apply_internal(func)
+        self.apply_internal(func, &CalleeReturns::new())
+    }
+
+    fn apply_with_callees(
+        &self,
+        func: &mut Function,
+        callees: &CalleeReturns,
+    ) -> Result<bool, TransformError> {
+        self.apply_internal(func, callees)
     }
 }
 
 impl TailCallOptimization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+    fn apply_internal(
+        &self,
+        func: &mut Function,
+        callees: &CalleeReturns,
+    ) -> Result<bool, TransformError> {
         if func.sig.variadic {
             return Ok(false);
         }
@@ -53,7 +67,7 @@ impl TailCallOptimization {
         }
 
         for block in &mut func.blocks {
-            if self.optimize_block_tail_calls(&func_sig, block, &stack_addresses) {
+            if self.optimize_block_tail_calls(&func_sig, block, &stack_addresses, callees) {
                 changed = true;
             }
         }
@@ -118,6 +132,7 @@ impl TailCallOptimization {
         func_sig: &Signature,
         block: &mut Block,
         stack_addresses: &HashSet<Register>,
+        callees: &CalleeReturns,
     ) -> bool {
         let mut changed = false;
 
@@ -135,7 +150,7 @@ impl TailCallOptimization {
                     if !args.iter().any(
                         |arg| matches!(arg, Operand::Register(r) if stack_addresses.contains(r)),
                     ) && self.is_tail_call(value, ret)
-                        && self.is_tail_call_safe(func_sig, name, args, ret)
+                        && self.is_tail_call_safe(func_sig, name, args, ret, callees)
                         && self.convert_to_tail_call(&mut block.instructions[second_last_idx])
                     {
                         // The call no longer defines the returned register, so the return
@@ -184,29 +199,38 @@ impl TailCallOptimization {
     /// Handles generalized tail calls (not just self-recursion) by strictly
     /// checking signature compatibility. This is required for Windows x86 (stdcall).
     ///
-    /// Helper for checking if the caller and callee have compatible signatures.
-    /// Since we don't have access to the callee's definition here, we infer its
-    /// signature from the call instruction's arguments and return value.
+    /// The callee's return shape comes from the module when it defines the callee;
+    /// otherwise only a returned call result can be trusted.
     fn is_tail_call_safe(
         &self,
         func_sig: &Signature,
         call_name: &str,
         call_args: &[Operand],
         call_ret: &Option<Register>,
+        callees: &CalleeReturns,
     ) -> bool {
         // An intrinsic is not a symbol a jump can reach: each one lowers to its own
         // sequence, and `print` loads a format string before calling printf.
         if GpuIntrinsic::from_name(call_name).is_some() || call_name.starts_with("lamina.") {
             return false;
         }
-        // 1. Check return type compatibility
-        match (&func_sig.ret_ty, call_ret) {
-            (Some(_func_ty), Some(_ret_reg)) => {
-                // Ideally checks types, but register type is unknown here.
-                // Optimistically assume registers match if present.
+        // 1. The callee must hand back exactly what the caller does. A callee the
+        // module does not define is only trusted when its result is returned.
+        match callees.get(call_name) {
+            Some(callee) => {
+                let caller = ReturnShape {
+                    ty: func_sig.ret_ty,
+                    aggregate: func_sig.ret_aggregate.is_some(),
+                };
+                if *callee != caller {
+                    return false;
+                }
             }
-            (None, None) => {} // Both void
-            _ => return false, // Mismatch (void vs scalar)
+            None => {
+                if call_ret.is_none() || func_sig.ret_aggregate.is_some() {
+                    return false;
+                }
+            }
         }
 
         // 2. Check argument compatibility (Stack size / Calling Convention)
@@ -491,5 +515,144 @@ mod tests {
         } else {
             panic!("Expected Call instruction first");
         }
+    }
+
+    fn tail_call_candidate(
+        caller_ret: Option<MirType>,
+        callee: &str,
+        call_ret: Option<Register>,
+        ret_value: Option<Operand>,
+    ) -> Function {
+        let mut builder = FunctionBuilder::new("caller")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .block("entry");
+        if let Some(ty) = caller_ret {
+            builder = builder.returns(ty);
+        }
+        builder
+            .instr(Instruction::Call {
+                name: callee.into(),
+                args: vec![Operand::Register(VirtualReg::gpr(0).into())],
+                ret: call_ret,
+            })
+            .instr(Instruction::Ret { value: ret_value })
+            .build()
+    }
+
+    fn callees(entries: &[(&str, Option<MirType>)]) -> CalleeReturns {
+        entries
+            .iter()
+            .map(|(name, ty)| {
+                (
+                    (*name).to_string(),
+                    ReturnShape {
+                        ty: *ty,
+                        aggregate: false,
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn assert_stays_call(func: &Function) {
+        let instructions = &func.blocks[0].instructions;
+        assert!(matches!(
+            instructions[instructions.len() - 2],
+            Instruction::Call { .. }
+        ));
+        assert!(matches!(
+            instructions[instructions.len() - 1],
+            Instruction::Ret { .. }
+        ));
+    }
+
+    fn assert_becomes_tail_call(func: &Function) {
+        let instructions = &func.blocks[0].instructions;
+        assert!(matches!(
+            instructions.last(),
+            Some(Instruction::TailCall { .. })
+        ));
+    }
+
+    #[test]
+    fn void_caller_discarding_nonvoid_result_is_not_a_tail_call() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let known = callees(&[("f", Some(i64_ty))]);
+        let mut func = tail_call_candidate(None, "f", None, None);
+        assert!(
+            !TailCallOptimization
+                .apply_with_callees(&mut func, &known)
+                .expect("optimize")
+        );
+        assert_stays_call(&func);
+
+        let mut unknown = tail_call_candidate(None, "f", None, None);
+        assert!(!TailCallOptimization.apply(&mut unknown).expect("optimize"));
+        assert_stays_call(&unknown);
+    }
+
+    #[test]
+    fn nonvoid_caller_with_void_callee_is_not_a_tail_call() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let known = callees(&[("g", None)]);
+        let mut func = tail_call_candidate(
+            Some(i64_ty),
+            "g",
+            None,
+            Some(Operand::Register(VirtualReg::gpr(0).into())),
+        );
+        assert!(
+            !TailCallOptimization
+                .apply_with_callees(&mut func, &known)
+                .expect("optimize")
+        );
+        assert_stays_call(&func);
+    }
+
+    #[test]
+    fn matching_scalar_return_stays_a_tail_call() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let known = callees(&[("f", Some(i64_ty))]);
+        let mut func = tail_call_candidate(
+            Some(i64_ty),
+            "f",
+            Some(VirtualReg::gpr(1).into()),
+            Some(Operand::Register(VirtualReg::gpr(1).into())),
+        );
+        assert!(
+            TailCallOptimization
+                .apply_with_callees(&mut func, &known)
+                .expect("optimize")
+        );
+        assert_becomes_tail_call(&func);
+    }
+
+    #[test]
+    fn matching_void_return_stays_a_tail_call() {
+        let known = callees(&[("g", None)]);
+        let mut func = tail_call_candidate(None, "g", None, None);
+        assert!(
+            TailCallOptimization
+                .apply_with_callees(&mut func, &known)
+                .expect("optimize")
+        );
+        assert_becomes_tail_call(&func);
+    }
+
+    #[test]
+    fn mismatched_scalar_widths_are_not_a_tail_call() {
+        let known = callees(&[("f", Some(MirType::Scalar(ScalarType::I64)))]);
+        let mut func = tail_call_candidate(
+            Some(MirType::Scalar(ScalarType::I32)),
+            "f",
+            Some(VirtualReg::gpr(1).into()),
+            Some(Operand::Register(VirtualReg::gpr(1).into())),
+        );
+        assert!(
+            !TailCallOptimization
+                .apply_with_callees(&mut func, &known)
+                .expect("optimize")
+        );
+        assert_stays_call(&func);
     }
 }

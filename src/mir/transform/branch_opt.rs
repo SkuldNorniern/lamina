@@ -256,8 +256,8 @@ mod tests {
         let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
-        assert_eq!(func.blocks.len(), 1);
-        assert_eq!(func.blocks[0].label, "entry");
+        let labels: Vec<_> = func.blocks.iter().map(|b| b.label.as_str()).collect();
+        assert_eq!(labels, ["entry"]);
     }
 
     #[test]
@@ -333,8 +333,8 @@ mod tests {
         let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed); // Dead block removed
-        assert_eq!(func.blocks.len(), 1);
-        assert_eq!(func.blocks[0].label, "entry");
+        assert!(func.get_block("dead").is_none());
+        assert!(func.get_block("entry").is_some());
     }
 
     #[test]

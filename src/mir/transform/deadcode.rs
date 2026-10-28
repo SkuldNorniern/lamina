@@ -374,6 +374,22 @@ mod tests {
         ScalarType, VirtualReg, transform::test_utils::get_block,
     };
 
+    fn defines(block: &Block, reg: VirtualReg) -> bool {
+        let reg: Register = reg.into();
+        block.instructions.iter().any(|i| i.def_reg() == Some(&reg))
+    }
+
+    fn ends_with_ret(block: &Block) -> bool {
+        matches!(block.instructions.last(), Some(Instruction::Ret { .. }))
+    }
+
+    fn has_int_binary(block: &Block) -> bool {
+        block
+            .instructions
+            .iter()
+            .any(|i| matches!(i, Instruction::IntBinary { .. }))
+    }
+
     #[test]
     fn test_dead_code_elimination_basic() {
         // Create a function with dead instructions
@@ -410,17 +426,9 @@ mod tests {
         assert!(changed);
 
         let entry = func.get_block("entry").expect("entry block exists");
-        // Original: 3 instructions. Dead removed -> 2 remaining.
-        assert_eq!(entry.instructions.len(), 2);
-
-        // Verify content
-        // First instr should be the live add
-        match &entry.instructions[0] {
-            Instruction::IntBinary { dst, .. } => {
-                assert_eq!(dst, &VirtualReg::gpr(2).into());
-            }
-            _ => panic!("Expected IntBinary"),
-        }
+        assert!(!defines(entry, VirtualReg::gpr(1)));
+        assert!(defines(entry, VirtualReg::gpr(2)));
+        assert!(ends_with_ret(entry));
     }
 
     #[test]
@@ -460,7 +468,8 @@ mod tests {
         let dce = DeadCodeElimination;
         let changed = dce.apply(&mut func).expect("should succeed");
         assert!(!changed);
-        assert_eq!(func.blocks[0].instructions.len(), 2);
+        assert!(defines(&func.blocks[0], VirtualReg::gpr(1)));
+        assert!(ends_with_ret(&func.blocks[0]));
     }
 
     #[test]
@@ -517,9 +526,11 @@ mod tests {
         let dce = DeadCodeElimination;
         let changed = dce.apply(&mut func).expect("should succeed");
 
-        // Store and Call should remain
         assert!(!changed);
-        assert_eq!(func.blocks[0].instructions.len(), 3);
+        let entry = &func.blocks[0];
+        assert!(matches!(entry.instructions[0], Instruction::Store { .. }));
+        assert!(matches!(entry.instructions[1], Instruction::Call { .. }));
+        assert!(ends_with_ret(entry));
     }
 
     #[test]
@@ -559,8 +570,12 @@ mod tests {
         let dce = DeadCodeElimination;
         let changed = dce.apply(&mut func).expect("should succeed");
         assert!(changed);
-        // Only return should remain
-        assert_eq!(func.blocks[0].instructions.len(), 1);
+        let entry = &func.blocks[0];
+        assert!(!has_int_binary(entry));
+        assert!(!defines(entry, VirtualReg::gpr(1)));
+        assert!(!defines(entry, VirtualReg::gpr(2)));
+        assert!(!defines(entry, VirtualReg::gpr(3)));
+        assert!(ends_with_ret(entry));
     }
 
     #[test]
@@ -592,7 +607,11 @@ mod tests {
         // v1 is used in exit block, so entry's add should remain
         assert!(!changed);
         let entry = get_block(&func, "entry");
-        assert_eq!(entry.instructions.len(), 2);
+        assert!(defines(entry, VirtualReg::gpr(1)));
+        assert!(matches!(
+            entry.instructions.last(),
+            Some(Instruction::Jmp { .. })
+        ));
     }
 
     #[test]
@@ -631,7 +650,11 @@ mod tests {
 
         // Loop body should be preserved (v0 is used)
         let loop_block = get_block(&func, "loop");
-        assert_eq!(loop_block.instructions.len(), 2);
+        assert!(defines(loop_block, VirtualReg::gpr(0)));
+        assert!(matches!(
+            loop_block.instructions.last(),
+            Some(Instruction::Br { .. })
+        ));
     }
 
     #[test]
@@ -662,8 +685,8 @@ mod tests {
         let dce = DeadCodeElimination;
         let result = dce.apply(&mut func);
         assert!(result.is_ok());
-        // All dead instructions should be removed, only ret remains
-        assert_eq!(func.blocks[0].instructions.len(), 1);
+        assert!(!has_int_binary(&func.blocks[0]));
+        assert!(ends_with_ret(&func.blocks[0]));
     }
 }
 

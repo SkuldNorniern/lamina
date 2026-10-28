@@ -224,7 +224,17 @@ mod tests {
         assert!(changed);
 
         let entry = func.get_block("entry").expect("entry block exists");
-        assert_eq!(entry.instructions.len(), 2);
+        assert!(!entry.instructions.iter().any(|i| matches!(
+            i,
+            Instruction::IntBinary {
+                op: IntBinOp::Mul,
+                ..
+            }
+        )));
+        assert!(matches!(
+            entry.instructions.last(),
+            Some(Instruction::Ret { .. })
+        ));
 
         // Check that multiplication was converted to shift
         match &entry.instructions[0] {

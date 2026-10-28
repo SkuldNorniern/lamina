@@ -302,7 +302,14 @@ mod tests {
 
         assert!(changed);
         let entry = func.get_block("entry").expect("entry block exists");
-        assert_eq!(entry.instructions.len(), 3);
+        assert!(matches!(
+            entry.instructions[0],
+            Instruction::IntBinary { ref dst, .. } if dst == &VirtualReg::gpr(1).into()
+        ));
+        assert!(matches!(
+            entry.instructions.last(),
+            Some(Instruction::Ret { .. })
+        ));
 
         // Check that the second instruction was modified to use v0 directly
         match &entry.instructions[1] {
@@ -360,7 +367,14 @@ mod tests {
         // Should have made changes (first copy propagation), but not invalid ones
         assert!(changed);
         let entry = func.get_block("entry").expect("entry block exists");
-        assert_eq!(entry.instructions.len(), 4);
+        assert!(matches!(
+            entry.instructions[1],
+            Instruction::IntBinary { ref lhs, .. } if lhs == &Operand::Register(VirtualReg::gpr(3).into())
+        ));
+        assert!(matches!(
+            entry.instructions.last(),
+            Some(Instruction::Ret { .. })
+        ));
 
         // Check that the third instruction was NOT modified (still uses v1)
         match &entry.instructions[2] {

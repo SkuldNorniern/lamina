@@ -50,8 +50,20 @@ pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 pub use unroll::LoopUnrolling;
 
-use crate::mir::{Function, Module, verify_function_in_pipeline};
+use crate::mir::{Function, MirType, Module, verify_function_in_pipeline};
+use std::collections::HashMap;
 use std::fmt;
+
+/// What a function hands back to its caller: the scalar type (None for void) and
+/// whether the value is an aggregate copied through the caller's slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReturnShape {
+    pub ty: Option<MirType>,
+    pub aggregate: bool,
+}
+
+/// Return shape of every function in a module, keyed by name.
+pub type CalleeReturns = HashMap<String, ReturnShape>;
 
 #[cfg(feature = "nightly")]
 #[allow(unused_imports)]
@@ -169,6 +181,16 @@ pub trait Transform {
 
     /// Apply this transform to a function. Returns true if any changes were made.
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError>;
+
+    /// Apply this transform to a function within a module, given the return types of
+    /// the module's functions.
+    fn apply_with_callees(
+        &self,
+        func: &mut Function,
+        _callees: &CalleeReturns,
+    ) -> Result<bool, TransformError> {
+        self.apply(func)
+    }
 }
 
 /// Stability level of a transform.
@@ -283,6 +305,14 @@ impl TransformPipeline {
     /// output across the testcases, so the order the pipeline is built in is what
     /// decides what a pass sees.
     pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, TransformError> {
+        self.apply_to_function_with(func, &CalleeReturns::new())
+    }
+
+    fn apply_to_function_with(
+        &self,
+        func: &mut Function,
+        callees: &CalleeReturns,
+    ) -> Result<TransformStats, TransformError> {
         let mut stats = TransformStats::default();
         let mut total_iterations = 0;
 
@@ -295,12 +325,12 @@ impl TransformPipeline {
             }
 
             stats.transforms_run += 1;
-            let changed = transform
-                .apply(func)
-                .map_err(|e| TransformError::PassFailed {
+            let changed = transform.apply_with_callees(func, callees).map_err(|e| {
+                TransformError::PassFailed {
                     pass: transform.name(),
                     source: Box::new(e),
-                })?;
+                }
+            })?;
             if changed {
                 stats.transforms_changed += 1;
             }
@@ -352,9 +382,22 @@ impl TransformPipeline {
     fn apply_function_stages(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
         let mut total_stats = TransformStats::default();
         let mut failed_functions = Vec::new();
+        let callees: CalleeReturns = module
+            .functions
+            .iter()
+            .map(|(name, func)| {
+                (
+                    name.clone(),
+                    ReturnShape {
+                        ty: func.sig.ret_ty,
+                        aggregate: func.sig.ret_aggregate.is_some(),
+                    },
+                )
+            })
+            .collect();
 
         for (func_name, func) in module.functions.iter_mut() {
-            match self.apply_to_function(func) {
+            match self.apply_to_function_with(func, &callees) {
                 Ok(func_stats) => {
                     total_stats.transforms_run += func_stats.transforms_run;
                     total_stats.transforms_changed += func_stats.transforms_changed;
