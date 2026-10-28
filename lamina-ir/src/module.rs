@@ -319,7 +319,7 @@ impl fmt::Display for ModuleAnnotation {
             ModuleAnnotation::OptimizeForSize => write!(f, "@optimize_size"),
             ModuleAnnotation::IncludeDebugInfo => write!(f, "@debug"),
             ModuleAnnotation::StripSymbols => write!(f, "@strip"),
-            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple({triple})"),
+            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple(\"{triple}\")"),
         }
     }
 }
@@ -499,6 +499,14 @@ impl fmt::Display for GlobalDeclaration<'_> {
 
 impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[cfg(feature = "nightly")]
+        if !self.annotations.is_empty() {
+            for annotation in &self.annotations {
+                writeln!(f, "{annotation}")?;
+            }
+            writeln!(f)?;
+        }
+
         let mut type_names: Vec<_> = self.type_declarations.keys().collect();
         type_names.sort();
         for name in &type_names {

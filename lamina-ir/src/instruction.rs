@@ -244,6 +244,16 @@ pub enum BinaryOp {
     /// For unsigned integers, consider using logical right shift in MIR (`IntBinOp::LShr`)
     /// or an explicit mask after an arithmetic shift.
     Shr,
+    /// Rotate left: the bits shifted out at the top re-enter at the bottom.
+    ///
+    /// Only valid for integer types. The count is taken modulo `bit_width(lhs)`, so a
+    /// count of zero (or a multiple of the width) returns `lhs` unchanged.
+    Rotl,
+    /// Rotate right: the bits shifted out at the bottom re-enter at the top.
+    ///
+    /// Only valid for integer types. The count is taken modulo `bit_width(lhs)`, so a
+    /// count of zero (or a multiple of the width) returns `lhs` unchanged.
+    Rotr,
 }
 
 impl BinaryOp {
@@ -263,6 +273,8 @@ impl BinaryOp {
             name_for(BinaryOp::Xor),
             name_for(BinaryOp::Shl),
             name_for(BinaryOp::Shr),
+            name_for(BinaryOp::Rotl),
+            name_for(BinaryOp::Rotr),
         ];
         NAMES
     }
@@ -280,6 +292,8 @@ impl BinaryOp {
             BinaryOp::Xor => "xor",
             BinaryOp::Shl => "shl",
             BinaryOp::Shr => "shr",
+            BinaryOp::Rotl => "rotl",
+            BinaryOp::Rotr => "rotr",
         }
     }
 }
@@ -302,11 +316,30 @@ pub enum UnaryOp {
     /// Square root, rounded to nearest with ties to even. Float types only.
     /// A negative input other than `-0.0` yields NaN.
     Sqrt,
+    /// Population count: `result` is the number of set bits in `value`.
+    ///
+    /// Integer types only. Only the bits within the width of `ty` are counted, so
+    /// `popcount.i8 -1` yields 8. The result has type `ty` and lies in `0..=bit_width`.
+    Popcount,
+    /// Count leading zeros: the number of zero bits above the most significant set bit,
+    /// counted within the width of `ty`.
+    ///
+    /// Integer types only. `ctlz` of zero is the bit width of `ty`, not an undefined value.
+    Ctlz,
+    /// Count trailing zeros: the number of zero bits below the least significant set bit,
+    /// counted within the width of `ty`.
+    ///
+    /// Integer types only. `cttz` of zero is the bit width of `ty`, not an undefined value.
+    Cttz,
+    /// Byte swap: reverses the order of the bytes of `value`.
+    ///
+    /// Integer types only. `bswap.i8` and `bswap.u8` return the value unchanged.
+    Bswap,
 }
 
 impl UnaryOp {
     pub fn all_names() -> &'static [&'static str] {
-        &["neg", "not", "sqrt"]
+        &["neg", "not", "sqrt", "popcount", "ctlz", "cttz", "bswap"]
     }
 
     pub const fn as_str(&self) -> &'static str {
@@ -314,6 +347,10 @@ impl UnaryOp {
             UnaryOp::Neg => "neg",
             UnaryOp::Not => "not",
             UnaryOp::Sqrt => "sqrt",
+            UnaryOp::Popcount => "popcount",
+            UnaryOp::Ctlz => "ctlz",
+            UnaryOp::Cttz => "cttz",
+            UnaryOp::Bswap => "bswap",
         }
     }
 }
@@ -634,6 +671,12 @@ pub enum Instruction<'a> {
         ty: Type<'a>,
         value: Option<Value<'a>>,
     },
+    /// Marks a point that control flow must never reach. Terminates a basic block.
+    ///
+    /// # Preconditions
+    /// - Execution must never reach this instruction. Reaching it is undefined
+    ///   behavior; the x86_64 backend traps instead.
+    Unreachable,
     // --- Memory Operations ---
     /// Allocate memory for a value of type `allocated_ty`.
     ///
@@ -941,6 +984,10 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "neg",
         "not",
         "sqrt",
+        "popcount",
+        "ctlz",
+        "cttz",
+        "bswap",
         "funcaddr",
         "callptr",
         "select",
@@ -989,6 +1036,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "xor",
         "shl",
         "shr",
+        "rotl",
+        "rotr",
         // From CmpOp enum (dynamically generated via CmpOp::all_names())
         "eq",
         "ne",
@@ -1007,6 +1056,10 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "neg",
         "not",
         "sqrt",
+        "popcount",
+        "ctlz",
+        "cttz",
+        "bswap",
         "funcaddr",
         "callptr",
         "select",
@@ -1042,6 +1095,7 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "jmp",
         "br",
         "switch",
+        "unreachable",
         // Function calls (from Instruction::Call - without result)
         "call",
         "callptr",
@@ -1075,6 +1129,7 @@ impl<'a> Instruction<'a> {
                 | Instruction::Jmp { .. }
                 | Instruction::Br { .. }
                 | Instruction::Switch { .. }
+                | Instruction::Unreachable
         )
     }
 
@@ -1150,7 +1205,9 @@ impl<'a> Instruction<'a> {
             Instruction::Alloc { .. } => {}
             Instruction::Br { condition, .. } => push_value(condition, &mut vars),
             Instruction::Ret { value: Some(v), .. } => push_value(v, &mut vars),
-            Instruction::Ret { value: None, .. } | Instruction::Jmp { .. } => {}
+            Instruction::Ret { value: None, .. }
+            | Instruction::Jmp { .. }
+            | Instruction::Unreachable => {}
             Instruction::Switch { value, .. }
             | Instruction::WriteByte { value, .. }
             | Instruction::ZeroExtend { value, .. }
@@ -1344,6 +1401,7 @@ impl fmt::Display for Instruction<'_> {
                 false_label,
             } => write!(f, "br {condition}, {true_label}, {false_label}"),
             Instruction::Jmp { target_label } => write!(f, "jmp {target_label}"),
+            Instruction::Unreachable => write!(f, "unreachable"),
             Instruction::Ret { ty, value } => match value {
                 Some(v) => write!(f, "ret.{ty} {v}"),
                 None => write!(f, "ret.void"),

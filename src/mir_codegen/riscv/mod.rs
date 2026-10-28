@@ -412,8 +412,10 @@ fn instruction_type(instruction: &MirInst) -> Option<&MirType> {
     match instruction {
         MirInst::Copy { ty, .. }
         | MirInst::IntBinary { ty, .. }
+        | MirInst::IntRotate { ty, .. }
         | MirInst::FloatBinary { ty, .. }
         | MirInst::FloatUnary { ty, .. }
+        | MirInst::IntUnary { ty, .. }
         | MirInst::IntCmp { ty, .. }
         | MirInst::FloatCmp { ty, .. }
         | MirInst::Select { ty, .. }
@@ -2084,6 +2086,16 @@ fn emit_instruction_riscv<W: Write>(
             // No-op in AOT path.
         }
         MirInst::VectorOp { .. } => simd::emit(inst, writer, reg_alloc, stack_slots, ctx.target)?,
+        MirInst::IntUnary { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "RISC-V backend does not support integer bit intrinsics yet".to_string(),
+            )));
+        }
+        MirInst::IntRotate { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "RISC-V backend does not support integer rotates yet".to_string(),
+            )));
+        }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!("RISC-V backend: instruction not yet supported: {other}"),

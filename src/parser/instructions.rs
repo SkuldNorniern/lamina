@@ -31,10 +31,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
         let opcode_str = state.parse_identifier_str()?;
 
         match opcode_str {
-            "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr" => {
-                parse_binary_op(state, result, opcode_str)
+            "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr" | "rotl"
+            | "rotr" => parse_binary_op(state, result, opcode_str),
+            "neg" | "not" | "sqrt" | "popcount" | "ctlz" | "cttz" | "bswap" => {
+                parse_unary_op(state, result, opcode_str)
             }
-            "neg" | "not" | "sqrt" => parse_unary_op(state, result, opcode_str),
             "eq" | "ne" | "gt" | "ge" | "lt" | "le" => parse_cmp_op(state, result, opcode_str),
             "zext" => parse_zext(state, result),
             "trunc" => parse_trunc(state, result),
@@ -149,6 +150,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "br" => parse_br(state),
             "jmp" => parse_jmp(state),
             "ret" => parse_ret(state),
+            "unreachable" => Ok(Instruction::Unreachable),
             "heapfree" => parse_heapfree(state),
             "dealloc" => Err(removed_opcode_error(state, opcode_str, "'heapfree <ptr>'")),
             "call" => parse_call(state, None),
@@ -352,7 +354,12 @@ fn parse_unary_op<'a>(
     let op = match op_str {
         "neg" => UnaryOp::Neg,
         "not" => UnaryOp::Not,
-        _ => UnaryOp::Sqrt,
+        "sqrt" => UnaryOp::Sqrt,
+        "popcount" => UnaryOp::Popcount,
+        "ctlz" => UnaryOp::Ctlz,
+        "cttz" => UnaryOp::Cttz,
+        "bswap" => UnaryOp::Bswap,
+        _ => return Err(state.error(format!("Unknown unary operation '{op_str}'"))),
     };
     let ty = parse_primitive_type_suffix(state)?;
     let float = matches!(ty, PrimitiveType::F32 | PrimitiveType::F64);
@@ -363,7 +370,18 @@ fn parse_unary_op<'a>(
         UnaryOp::Sqrt if !float => {
             return Err(state.error(format!("sqrt takes f32 or f64, found {ty}")));
         }
-        _ => {}
+        UnaryOp::Popcount | UnaryOp::Ctlz | UnaryOp::Cttz | UnaryOp::Bswap
+            if !is_integer_type(ty) =>
+        {
+            return Err(state.error(format!("{op_str} takes an integer type, found {ty}")));
+        }
+        UnaryOp::Neg
+        | UnaryOp::Not
+        | UnaryOp::Sqrt
+        | UnaryOp::Popcount
+        | UnaryOp::Ctlz
+        | UnaryOp::Cttz
+        | UnaryOp::Bswap => {}
     }
     let value = parse_typed_operand(state, &Type::Primitive(ty))?;
     Ok(Instruction::Unary {
@@ -390,9 +408,14 @@ fn parse_binary_op<'a>(
         "xor" => BinaryOp::Xor,
         "shl" => BinaryOp::Shl,
         "shr" => BinaryOp::Shr,
-        _ => unreachable!(),
+        "rotl" => BinaryOp::Rotl,
+        "rotr" => BinaryOp::Rotr,
+        _ => return Err(state.error(format!("Unknown binary operation '{op_str}'"))),
     };
     let ty = parse_primitive_type_suffix(state)?;
+    if matches!(op, BinaryOp::Rotl | BinaryOp::Rotr) && !is_integer_type(ty) {
+        return Err(state.error(format!("{op_str} takes an integer type, found {ty}")));
+    }
     let lhs = parse_typed_operand(state, &Type::Primitive(ty))?;
     state.expect_char(',')?;
     let rhs = parse_typed_operand(state, &Type::Primitive(ty))?;
@@ -403,6 +426,20 @@ fn parse_binary_op<'a>(
         lhs,
         rhs,
     })
+}
+
+fn is_integer_type(ty: PrimitiveType) -> bool {
+    matches!(
+        ty,
+        PrimitiveType::I8
+            | PrimitiveType::I16
+            | PrimitiveType::I32
+            | PrimitiveType::I64
+            | PrimitiveType::U8
+            | PrimitiveType::U16
+            | PrimitiveType::U32
+            | PrimitiveType::U64
+    )
 }
 
 fn parse_cmp_op<'a>(

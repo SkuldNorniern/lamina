@@ -1073,6 +1073,16 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_r);
                 ra.free_scratch(s_d);
             }
+            MirInst::IntUnary { .. } => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "AArch64 backend does not support integer bit intrinsics yet".to_string(),
+                )));
+            }
+            MirInst::IntRotate { .. } => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "AArch64 backend does not support integer rotates yet".to_string(),
+                )));
+            }
             MirInst::FloatUnary { op, src, dst, ty } => {
                 let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;

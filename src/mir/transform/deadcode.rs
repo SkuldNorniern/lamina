@@ -233,6 +233,8 @@ impl DeadCodeElimination {
             | Instruction::IntBinary { .. }
             | Instruction::FloatBinary { .. }
             | Instruction::FloatUnary { .. }
+            | Instruction::IntUnary { .. }
+            | Instruction::IntRotate { .. }
             | Instruction::IntCmp { .. }
             | Instruction::FloatCmp { .. }
             | Instruction::Select { .. }

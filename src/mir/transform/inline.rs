@@ -329,11 +329,13 @@ impl ModuleInlining {
             | Instruction::FloatToInt { dst, src, .. }
             | Instruction::FloatConvert { dst, src, .. }
             | Instruction::Bitcast { dst, src, .. }
-            | Instruction::FloatUnary { dst, src, .. } => {
+            | Instruction::FloatUnary { dst, src, .. }
+            | Instruction::IntUnary { dst, src, .. } => {
                 *dst = map(dst);
                 operand(src, map);
             }
             Instruction::IntBinary { dst, lhs, rhs, .. }
+            | Instruction::IntRotate { dst, lhs, rhs, .. }
             | Instruction::FloatBinary { dst, lhs, rhs, .. }
             | Instruction::IntCmp { dst, lhs, rhs, .. }
             | Instruction::FloatCmp { dst, lhs, rhs, .. } => {

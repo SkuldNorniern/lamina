@@ -11,12 +11,14 @@ pub mod state;
 mod types;
 mod values;
 
-use std::mem;
+use std::{mem, str::from_utf8};
 
 use self::{
     functions::parse_function_def, globals::parse_global_declaration, state::ParserState,
     types::parse_type_declaration,
 };
+#[cfg(feature = "nightly")]
+use crate::ir::ModuleAnnotation;
 use crate::{
     LaminaError,
     ir::{AllocType, Module, PrimitiveType, assignment_opcode_names, non_assignment_opcode_names},
@@ -163,6 +165,9 @@ pub fn get_annotation_names() -> &'static [&'static str] {
         "private",
         "hidden",
         "protected",
+        "weak",
+        "section",
+        "align",
     ]
 }
 
@@ -184,6 +189,117 @@ pub fn get_non_assignment_opcode_names() -> &'static [&'static str] {
     non_assignment_opcode_names()
 }
 
+const MODULE_ANNOTATION_NAMES: &[&str] = &[
+    "pic",
+    "pie",
+    "optimize_speed",
+    "optimize_size",
+    "debug",
+    "strip",
+    "target_triple",
+];
+
+/// The name after a leading `@`, when the upcoming token is an `@` followed by an identifier.
+fn upcoming_annotation_name<'s>(state: &'s ParserState<'_>) -> &'s str {
+    let bytes = state.bytes();
+    let start = state.position() + 1;
+    let Some(rest) = bytes.get(start..) else {
+        return "";
+    };
+    let len = rest
+        .iter()
+        .position(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+        .unwrap_or(rest.len());
+    from_utf8(&rest[..len]).unwrap_or("")
+}
+
+#[cfg(feature = "nightly")]
+fn parse_module_annotation_if_present(
+    state: &mut ParserState<'_>,
+    module: &mut Module<'_>,
+) -> Result<bool, LaminaError> {
+    if state.current_char() != Some('@') {
+        return Ok(false);
+    }
+    let name = upcoming_annotation_name(state).to_string();
+    if !MODULE_ANNOTATION_NAMES.contains(&name.as_str()) {
+        return Ok(false);
+    }
+    state.advance();
+    state.parse_identifier_str()?;
+    let annotation = parse_module_annotation_body(state, &name)?;
+    if module
+        .annotations
+        .iter()
+        .any(|existing| mem::discriminant(existing) == mem::discriminant(&annotation))
+    {
+        return Err(state.error(format!("Duplicate module annotation: @{name}")));
+    }
+    if module
+        .annotations
+        .iter()
+        .any(|existing| module_annotations_conflict(existing, &annotation))
+    {
+        return Err(state.error(format!(
+            "Conflicting module annotations: @{name} cannot be combined with another module annotation"
+        )));
+    }
+    module.annotations.push(annotation);
+    Ok(true)
+}
+
+#[cfg(not(feature = "nightly"))]
+fn parse_module_annotation_if_present(
+    state: &mut ParserState<'_>,
+    _module: &mut Module<'_>,
+) -> Result<bool, LaminaError> {
+    if state.current_char() != Some('@') {
+        return Ok(false);
+    }
+    let name = upcoming_annotation_name(state);
+    if MODULE_ANNOTATION_NAMES.contains(&name) {
+        return Err(state.error(format!(
+            "Module annotation @{name} is only available with the nightly feature"
+        )));
+    }
+    Ok(false)
+}
+
+#[cfg(feature = "nightly")]
+fn parse_module_annotation_body(
+    state: &mut ParserState<'_>,
+    name: &str,
+) -> Result<ModuleAnnotation, LaminaError> {
+    Ok(match name {
+        "pic" => ModuleAnnotation::PositionIndependentCode,
+        "pie" => ModuleAnnotation::PositionIndependentExecutable,
+        "optimize_speed" => ModuleAnnotation::OptimizeForSpeed,
+        "optimize_size" => ModuleAnnotation::OptimizeForSize,
+        "debug" => ModuleAnnotation::IncludeDebugInfo,
+        "strip" => ModuleAnnotation::StripSymbols,
+        _ => {
+            state.expect_char('(')?;
+            let triple = state.parse_string_literal()?;
+            state.expect_char(')')?;
+            ModuleAnnotation::TargetTriple(triple.to_string())
+        }
+    })
+}
+
+#[cfg(feature = "nightly")]
+fn module_annotations_conflict(a: &ModuleAnnotation, b: &ModuleAnnotation) -> bool {
+    use ModuleAnnotation::{
+        OptimizeForSize, OptimizeForSpeed, PositionIndependentCode, PositionIndependentExecutable,
+    };
+    matches!(
+        (a, b),
+        (PositionIndependentCode, PositionIndependentExecutable)
+            | (PositionIndependentExecutable, PositionIndependentCode)
+            | (OptimizeForSpeed, OptimizeForSize)
+            | (OptimizeForSize, OptimizeForSpeed)
+    )
+}
+
 /// Parses a string containing Lamina IR text into a Module.
 pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
@@ -193,6 +309,10 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
         state.skip_whitespace_and_comments();
         if state.is_eof() {
             break;
+        }
+
+        if parse_module_annotation_if_present(&mut state, &mut module)? {
+            continue;
         }
 
         let keyword_slice = state.peek_slice(6).unwrap_or("");
@@ -2026,5 +2146,216 @@ entry:
             };
             assert!(error.to_string().contains(expected), "{error}");
         }
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::ir::Instruction;
+
+    fn round_trip(source: &str) {
+        let module = parse_module(source).expect("parse canonical source");
+        assert_eq!(module.to_string(), source);
+    }
+
+    fn rejects(source: &str, expected: &str) {
+        let error = parse_module(source).expect_err("source should be rejected");
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+
+    #[test]
+    fn bit_intrinsics_round_trip() {
+        round_trip(
+            "fn @f(i64 %x, i64 %n, u8 %b, u32 %w) -> i64 {\n\
+             entry:\n  \
+             %p = popcount.i64 %x\n  \
+             %c = ctlz.i64 %x\n  \
+             %t = cttz.u8 %b\n  \
+             %s = bswap.u32 %w\n  \
+             %l = rotl.i64 %x, %n\n  \
+             %r = rotr.u8 %b, 3\n  \
+             ret.i64 %p\n\
+             }\n",
+        );
+    }
+
+    #[test]
+    fn bit_intrinsics_reject_non_integer_types() {
+        rejects(
+            "fn @f(f64 %x) -> f64 {\nentry:\n  %r = popcount.f64 %x\n  ret.f64 %r\n}\n",
+            "popcount takes an integer type",
+        );
+        rejects(
+            "fn @f(f32 %x, i32 %n) -> f32 {\nentry:\n  %r = rotl.f32 %x, %n\n  ret.f32 %r\n}\n",
+            "rotl takes an integer type",
+        );
+        rejects(
+            "fn @f(ptr %x) -> i64 {\nentry:\n  %r = bswap.ptr %x\n  ret.i64 0\n}\n",
+            "bswap takes an integer type",
+        );
+    }
+
+    #[test]
+    fn unreachable_round_trips_as_terminator() {
+        round_trip("fn @f() -> void {\nentry:\n  unreachable\n}\n");
+        let module = parse_module(
+            "fn @f(i64 %x) -> i64 {\nentry:\n  %c = eq.i64 %x, 0\n  br %c, zero, other\nzero:\n  ret.i64 1\nother:\n  unreachable\n}\n",
+        )
+        .expect("parse unreachable block");
+        assert!(matches!(
+            module.functions["f"].basic_blocks["other"]
+                .instructions
+                .last(),
+            Some(Instruction::Unreachable)
+        ));
+    }
+
+    #[test]
+    fn function_placement_annotations_round_trip() {
+        round_trip(
+            "@weak\n@section(\".text.hot\")\n@align(32)\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+        );
+    }
+
+    #[test]
+    fn function_placement_annotations_reject_bad_arguments() {
+        rejects(
+            "@align(3)\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "power of two",
+        );
+        rejects(
+            "@section(\"\")\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "Invalid section name",
+        );
+        rejects(
+            "@section(\".a\")\n@section(\".b\")\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "Conflicting annotations",
+        );
+        rejects(
+            "@align(8)\n@align(16)\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "Conflicting annotations",
+        );
+    }
+
+    #[cfg(feature = "nightly")]
+    #[test]
+    fn module_annotations_round_trip() {
+        round_trip(
+            "@pic\n@optimize_speed\n@debug\n@target_triple(\"x86_64-unknown-linux-gnu\")\n\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+        );
+        round_trip("@pie\n@optimize_size\n@strip\n\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n");
+    }
+
+    #[cfg(feature = "nightly")]
+    #[test]
+    fn module_annotations_reject_conflicts() {
+        rejects(
+            "@pic\n@pie\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "Conflicting module annotations",
+        );
+        rejects(
+            "@debug\n@debug\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "Duplicate module annotation",
+        );
+    }
+
+    #[cfg(not(feature = "nightly"))]
+    #[test]
+    fn module_annotations_require_nightly() {
+        rejects(
+            "@pic\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "only available with the nightly feature",
+        );
+    }
+}
+
+#[cfg(test)]
+mod bit_builder_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::ir::{
+        FunctionParameter, IRBuilder, Instruction, OwnedIRBuilder, OwnedParam, OwnedType,
+        OwnedValue, Type, builder::var,
+    };
+    use std::panic;
+
+    #[test]
+    fn bit_intrinsic_builders_agree_with_text_syntax() {
+        let i64_ty = Type::Primitive(PrimitiveType::I64);
+        let mut b = IRBuilder::new();
+        b.function_with_params(
+            "f",
+            vec![
+                FunctionParameter {
+                    name: "x",
+                    ty: i64_ty.clone(),
+                    annotations: vec![],
+                },
+                FunctionParameter {
+                    name: "n",
+                    ty: i64_ty.clone(),
+                    annotations: vec![],
+                },
+            ],
+            i64_ty.clone(),
+        )
+        .popcount("p", PrimitiveType::I64, var("x"))
+        .ctlz("l", PrimitiveType::U8, var("x"))
+        .cttz("t", PrimitiveType::I32, var("x"))
+        .bswap("s", PrimitiveType::U16, var("x"))
+        .rotl("a", PrimitiveType::I64, var("x"), var("n"))
+        .rotr("b", PrimitiveType::U32, var("x"), var("n"))
+        .unreachable();
+        let built = b.build();
+        let built = built.functions["f"].basic_blocks["entry"]
+            .instructions
+            .clone();
+
+        let mut o = OwnedIRBuilder::new();
+        let x = OwnedValue::Variable("x".to_string());
+        let n = OwnedValue::Variable("n".to_string());
+        let i64_owned = OwnedType::Primitive(PrimitiveType::I64);
+        o.function_with_params(
+            "f",
+            vec![
+                OwnedParam {
+                    name: "x".to_string(),
+                    ty: i64_owned.clone(),
+                },
+                OwnedParam {
+                    name: "n".to_string(),
+                    ty: i64_owned.clone(),
+                },
+            ],
+            i64_owned,
+        )
+        .popcount("p", PrimitiveType::I64, &x)
+        .ctlz("l", PrimitiveType::U8, &x)
+        .cttz("t", PrimitiveType::I32, &x)
+        .bswap("s", PrimitiveType::U16, &x)
+        .rotl("a", PrimitiveType::I64, &x, &n)
+        .rotr("b", PrimitiveType::U32, &x, &n)
+        .unreachable();
+        let text = o.build_ir_text();
+        let parsed = parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));
+        assert_eq!(
+            parsed.functions["f"].basic_blocks["entry"].instructions,
+            built
+        );
+        assert!(matches!(built.last(), Some(Instruction::Unreachable)));
+    }
+
+    #[test]
+    fn bit_intrinsic_builders_reject_floats() {
+        let result = panic::catch_unwind(|| {
+            let mut b = IRBuilder::new();
+            b.function("f", Type::Void)
+                .popcount("p", PrimitiveType::F64, var("x"));
+        });
+        assert!(result.is_err());
     }
 }

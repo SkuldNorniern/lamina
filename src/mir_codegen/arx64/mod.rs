@@ -5,6 +5,7 @@
 //! scalar GPR operations, base+offset loads/stores, calls, branches, and returns.
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
+use crate::mir_codegen::common::reject_function_placement;
 use crate::mir_codegen::common::{
     CopyLocation, emit_global_directives, integer_conversion, self_tail_arguments,
     self_tail_schedule,
@@ -65,6 +66,7 @@ pub fn generate_mir_arx64_with_units_and_settings<W: Write>(
     }
 
     validate_module_call_parameters(module, TargetArchitecture::Arx64)?;
+    reject_function_placement(module, "ARX64")?;
 
     writeln!(writer, ".section .text").map_err(io_error)?;
     emit_global_directives(writer, module, str::to_string)?;
@@ -432,6 +434,12 @@ fn emit_instruction<W: Write>(
         Instruction::Unreachable => writeln!(writer, "    ebreak").map_err(io_error),
         Instruction::SafePoint | Instruction::StackMap { .. } | Instruction::PatchPoint { .. } => {
             Ok(())
+        }
+        Instruction::IntUnary { .. } => {
+            unsupported("ARX64 backend does not support integer bit intrinsics yet")
+        }
+        Instruction::IntRotate { .. } => {
+            unsupported("ARX64 backend does not support integer rotates yet")
         }
         other => unsupported(format!("ARX64 backend does not support MIR op {other:?}")),
     }

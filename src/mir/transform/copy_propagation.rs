@@ -143,13 +143,14 @@ impl CopyPropagation {
                 changed |= self.replace_operand(src, value_map);
             }
             Instruction::IntBinary { lhs, rhs, .. }
+            | Instruction::IntRotate { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
             | Instruction::FloatCmp { lhs, rhs, .. } => {
                 changed |= self.replace_operand(lhs, value_map);
                 changed |= self.replace_operand(rhs, value_map);
             }
-            Instruction::FloatUnary { src, .. } => {
+            Instruction::FloatUnary { src, .. } | Instruction::IntUnary { src, .. } => {
                 changed |= self.replace_operand(src, value_map);
             }
             Instruction::Select {

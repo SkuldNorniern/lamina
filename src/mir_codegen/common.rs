@@ -355,12 +355,18 @@ where
                 }
                 match compile_func_arc(&task.func_name, &task.func, target_os) {
                     Ok(assembly) => {
-                        let assembly = place_function_assembly(
+                        let assembly = match place_function_assembly(
                             &task.func_name,
                             &task.func,
                             target_os,
                             assembly,
-                        );
+                        ) {
+                            Ok(assembly) => assembly,
+                            Err(e) => {
+                                error_occurred = Some(e);
+                                continue;
+                            }
+                        };
                         if result_sender
                             .send(CompilationResult {
                                 func_name: task.func_name,
@@ -469,7 +475,7 @@ where
             func,
             target_os,
             compile_func(func_name, func, target_os)?,
-        );
+        )?;
         results.push(CompilationResult {
             func_name: func_name.to_string(),
             func_index: idx,
@@ -492,28 +498,43 @@ pub fn emit_debug_file<W: Write>(
     Ok(())
 }
 
-/// Puts `@cold` and `@hot` functions in their own ELF text section, so the linker can
-/// group them apart from the rest of the code. Other targets keep one text section.
+/// Places a function's assembly: `@section` names its section, otherwise `@cold` and `@hot`
+/// functions get their own ELF text section so the linker can group them apart from the
+/// rest of the code. `@align` pads the entry to its boundary.
 fn place_function_assembly(
     func_name: &str,
     func: &Function,
     target_os: TargetOperatingSystem,
     assembly: Vec<u8>,
-) -> Vec<u8> {
-    let Some(placement) = func.sig.placement else {
-        return assembly;
+) -> Result<Vec<u8>, CodegenError> {
+    let elf = os_uses_elf_visibility(target_os);
+    let section = match (&func.sig.section, func.sig.placement) {
+        (Some(_), _) if !elf => {
+            return Err(CodegenError::UnsupportedFeature(format!(
+                "@section on '{func_name}' is only supported on ELF targets"
+            )));
+        }
+        (Some(name), _) => Some(name.clone()),
+        (None, Some(CodePlacement::Cold)) if elf => Some(format!(".text.unlikely.{func_name}")),
+        (None, Some(CodePlacement::Hot)) if elf => Some(format!(".text.hot.{func_name}")),
+        (None, _) => None,
     };
-    if !os_uses_elf_visibility(target_os) {
-        return assembly;
+    if section.is_none() && func.sig.align.is_none() {
+        return Ok(assembly);
     }
-    let section = match placement {
-        CodePlacement::Cold => ".text.unlikely",
-        CodePlacement::Hot => ".text.hot",
-    };
-    let mut placed = format!("    .section {section}.{func_name},\"ax\",@progbits\n").into_bytes();
+    let mut placed = Vec::new();
+    if let Some(section) = &section {
+        placed.extend_from_slice(format!("    .section {section},\"ax\",@progbits\n").as_bytes());
+    }
+    if let Some(alignment) = func.sig.align {
+        placed
+            .extend_from_slice(format!("    .p2align {}\n", alignment.trailing_zeros()).as_bytes());
+    }
     placed.extend_from_slice(&assembly);
-    placed.extend_from_slice(b"    .text\n");
-    placed
+    if section.is_some() {
+        placed.extend_from_slice(b"    .text\n");
+    }
+    Ok(placed)
 }
 
 /// ELF targets take `.internal`, `.hidden` and `.protected`. Mach-O has only
@@ -551,7 +572,8 @@ fn visibility_directive(
     })
 }
 
-/// Emits the symbol-visibility directive for every function annotated with one.
+/// Emits the symbol-visibility and weak-linkage directives for every function annotated
+/// with one.
 pub fn emit_symbol_visibility<W: Write>(
     writer: &mut W,
     module: &MirModule,
@@ -569,6 +591,21 @@ pub fn emit_symbol_visibility<W: Write>(
         if let Some(directive) = visibility_directive(visibility, target_os) {
             writeln!(writer, "{directive} {}", mangle(name))?;
         }
+    }
+    let mut weak: Vec<&str> = module
+        .functions
+        .iter()
+        .filter(|(name, func)| !module.is_external(name) && func.sig.weak)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    weak.sort_unstable();
+    let directive = if os_uses_macho(target_os) {
+        ".weak_definition"
+    } else {
+        ".weak"
+    };
+    for name in weak {
+        writeln!(writer, "{directive} {}", mangle(name))?;
     }
     Ok(())
 }
@@ -623,6 +660,20 @@ pub fn reject_module_globals(module: &MirModule, backend: &str) -> Result<(), La
     Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
         format!("{backend} does not yet support global variables"),
     )))
+}
+
+/// Rejects `@weak`, `@section` and `@align` functions for backends that do not emit them.
+pub fn reject_function_placement(module: &MirModule, backend: &str) -> Result<(), LaminaError> {
+    let placed = module
+        .functions
+        .iter()
+        .find(|(_, func)| func.sig.weak || func.sig.section.is_some() || func.sig.align.is_some());
+    match placed {
+        None => Ok(()),
+        Some((name, _)) => Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!("{backend} does not yet support @weak, @section or @align (function '{name}')"),
+        ))),
+    }
 }
 
 /// Without this note the linker marks the stack executable, so every ELF target emits it

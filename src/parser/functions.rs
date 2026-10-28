@@ -34,6 +34,33 @@ pub fn parse_annotations(
                 "private" => FunctionAnnotation::Private,
                 "hidden" => FunctionAnnotation::Hidden,
                 "protected" => FunctionAnnotation::Protected,
+                "weak" => FunctionAnnotation::Weak,
+                "section" => {
+                    state.expect_char('(')?;
+                    let name = state.parse_string_literal()?;
+                    state.expect_char(')')?;
+                    if name.is_empty() || name.contains('\\') {
+                        return Err(state.error(
+                            "Invalid section name\n  Hint: Give a non-empty name without backslashes, e.g. @section(\".text.hot\")",
+                        ));
+                    }
+                    FunctionAnnotation::Section(name.to_string())
+                }
+                "align" => {
+                    state.expect_char('(')?;
+                    let bytes = state.parse_integer()?;
+                    state.expect_char(')')?;
+                    match u32::try_from(bytes) {
+                        Ok(alignment) if alignment.is_power_of_two() => {
+                            FunctionAnnotation::Align(alignment)
+                        }
+                        _ => {
+                            return Err(state.error(format!(
+                                "Invalid alignment: @align({bytes})\n  Hint: Alignment must be a power of two, e.g. @align(16)"
+                            )));
+                        }
+                    }
+                }
                 _ => {
                     let valid = super::get_annotation_names();
                     let suggestions = super::suggest_alternatives(name, valid);
@@ -107,12 +134,15 @@ pub fn parse_annotations(
 }
 
 fn conflicts(a: &FunctionAnnotation, b: &FunctionAnnotation) -> bool {
-    use FunctionAnnotation::{Cold, Export, Hidden, Hot, Internal, Private, Protected};
+    use FunctionAnnotation::{
+        Align, Cold, Export, Hidden, Hot, Internal, Private, Protected, Section,
+    };
     let visibility = |x: &FunctionAnnotation| matches!(x, Internal | Private | Hidden | Protected);
     let local = |x: &FunctionAnnotation| matches!(x, Internal | Private);
     a != b
         && ((visibility(a) && visibility(b))
             || (matches!((a, b), (Cold, Hot) | (Hot, Cold)))
+            || matches!((a, b), (Section(_), Section(_)) | (Align(_), Align(_)))
             || (local(a) && *b == Export)
             || (*a == Export && local(b)))
 }

@@ -350,6 +350,127 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a population count instruction (`popcount.<ty>`).
+    ///
+    /// # Panics
+    /// Panics if `ty` is not an integer type.
+    pub fn popcount(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        self.bit_unary("popcount", result, ty, value)
+    }
+
+    /// Appends a count-leading-zeros instruction (`ctlz.<ty>`). `ctlz` of zero is the bit width.
+    ///
+    /// # Panics
+    /// Panics if `ty` is not an integer type.
+    pub fn ctlz(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        self.bit_unary("ctlz", result, ty, value)
+    }
+
+    /// Appends a count-trailing-zeros instruction (`cttz.<ty>`). `cttz` of zero is the bit width.
+    ///
+    /// # Panics
+    /// Panics if `ty` is not an integer type.
+    pub fn cttz(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        self.bit_unary("cttz", result, ty, value)
+    }
+
+    /// Appends a byte-swap instruction (`bswap.<ty>`).
+    ///
+    /// # Panics
+    /// Panics if `ty` is not an integer type.
+    pub fn bswap(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        self.bit_unary("bswap", result, ty, value)
+    }
+
+    /// Appends a rotate-left instruction (`rotl.<ty>`). The count is taken modulo the bit width.
+    ///
+    /// # Panics
+    /// Panics if `ty` is not an integer type.
+    pub fn rotl(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+        count: &OwnedValue,
+    ) -> &mut Self {
+        self.bit_binary("rotl", result, ty, value, count)
+    }
+
+    /// Appends a rotate-right instruction (`rotr.<ty>`). The count is taken modulo the bit width.
+    ///
+    /// # Panics
+    /// Panics if `ty` is not an integer type.
+    pub fn rotr(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+        count: &OwnedValue,
+    ) -> &mut Self {
+        self.bit_binary("rotr", result, ty, value, count)
+    }
+
+    fn bit_unary(
+        &mut self,
+        name: &str,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        assert!(
+            is_integer(ty),
+            "{name} takes an integer type, found {}",
+            ty.as_str()
+        );
+        let t = format!("%{} = {name}.{} {}", result.as_ref(), ty.as_str(), value);
+        self.push(t);
+        self
+    }
+
+    fn bit_binary(
+        &mut self,
+        name: &str,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+        count: &OwnedValue,
+    ) -> &mut Self {
+        assert!(
+            is_integer(ty),
+            "{name} takes an integer type, found {}",
+            ty.as_str()
+        );
+        let t = format!(
+            "%{} = {name}.{} {}, {}",
+            result.as_ref(),
+            ty.as_str(),
+            value,
+            count
+        );
+        self.push(t);
+        self
+    }
+
     // -----------------------------------------------------------------------
     // Control flow
     // -----------------------------------------------------------------------
@@ -443,6 +564,12 @@ impl OwnedIRBuilder {
     /// Appends a void return.
     pub fn ret_void(&mut self) -> &mut Self {
         self.push("ret.void");
+        self
+    }
+
+    /// Appends an unreachable terminator. Reaching it is undefined behavior.
+    pub fn unreachable(&mut self) -> &mut Self {
+        self.push("unreachable");
         self
     }
 

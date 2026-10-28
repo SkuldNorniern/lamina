@@ -1,4 +1,5 @@
 use super::gpu::{aggregate_parameter_function, error, kernels};
+use crate::mir_codegen::common::reject_function_placement;
 use crate::{
     error::LaminaError,
     mir::{
@@ -279,6 +280,16 @@ impl Kernel {
                     "atomic instruction `{instruction}` is not yet supported by the PTX backend"
                 )));
             }
+            Instruction::IntUnary { .. } => {
+                return Err(error(
+                    "integer bit intrinsics are not yet supported by the PTX backend",
+                ));
+            }
+            Instruction::IntRotate { .. } => {
+                return Err(error(
+                    "integer rotates are not yet supported by the PTX backend",
+                ));
+            }
             _ => return Err(error("unsupported PTX instruction")),
         }
         Ok(())
@@ -299,6 +310,7 @@ impl Kernel {
 }
 
 pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError> {
+    reject_function_placement(module, "PTX")?;
     if !module.globals.is_empty() {
         return Err(error("PTX does not yet support global variables"));
     }

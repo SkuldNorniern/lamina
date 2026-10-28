@@ -56,6 +56,11 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
+    /// Creates an unreachable terminator. Reaching it is undefined behavior.
+    pub fn unreachable(&mut self) -> &mut Self {
+        self.inst(Instruction::Unreachable)
+    }
+
     /// Creates a void return instruction (returns nothing)
     pub fn ret_void(&mut self) -> &mut Self {
         self.inst(Instruction::Ret {

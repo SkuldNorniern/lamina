@@ -2,6 +2,7 @@ mod simd;
 pub mod util;
 
 use crate::mir_codegen::common::external_names;
+use crate::mir_codegen::common::reject_function_placement;
 use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
 use crate::mir_codegen::simd::vector_slots;
 
@@ -361,6 +362,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
+    reject_function_placement(module, "WASM")?;
     let arch = match memory {
         Memory::I32 => TargetArchitecture::Wasm32,
         Memory::I64 => TargetArchitecture::Wasm64,
@@ -1717,6 +1719,16 @@ fn emit_instruction_wasm(
         }
         MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {
             // No-op in AOT/WASM path.
+        }
+        MirInst::IntUnary { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "WASM backend does not support integer bit intrinsics yet".to_string(),
+            )));
+        }
+        MirInst::IntRotate { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "WASM backend does not support integer rotates yet".to_string(),
+            )));
         }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(

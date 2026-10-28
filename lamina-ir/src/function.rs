@@ -384,16 +384,19 @@ pub enum FunctionAnnotation {
     /// a custom convention by name (e.g., "vectorcall", "thiscall", etc.).
     CallingConvention(String),
 
-    /// Specify that this function should be placed in a specific section.
+    /// Place this function in the named section, written `@section("name")`.
     ///
     /// Section placement can affect memory layout, performance, and linking.
-    /// Common sections include ".text", ".text.hot", ".text.cold", etc.
+    /// Common sections include ".text", ".text.hot", ".text.cold", etc. Honored on
+    /// ELF targets. At most one section annotation is allowed per function.
     Section(String),
 
-    /// Specify the minimum alignment for this function in bytes.
+    /// Align this function's entry to the given power-of-two byte boundary, written
+    /// `@align(n)`.
     ///
     /// Function alignment can improve performance by making the function
     /// starts at an address that works well for the target architecture.
+    /// At most one alignment annotation is allowed per function.
     Align(u32),
 
     /// Mark this function as unsafe (bypasses safety checks).
@@ -807,7 +810,7 @@ impl fmt::Display for FunctionAnnotation {
             FunctionAnnotation::CCswift => write!(f, "@cc_swift"),
             FunctionAnnotation::CCtail => write!(f, "@cc_tail"),
             FunctionAnnotation::CallingConvention(cc) => write!(f, "@calling_convention({cc})"),
-            FunctionAnnotation::Section(section) => write!(f, "@section({section})"),
+            FunctionAnnotation::Section(section) => write!(f, "@section(\"{section}\")"),
             FunctionAnnotation::Align(alignment) => write!(f, "@align({alignment})"),
             FunctionAnnotation::Unsafe => write!(f, "@unsafe"),
             FunctionAnnotation::Deprecated(None) => write!(f, "@deprecated"),

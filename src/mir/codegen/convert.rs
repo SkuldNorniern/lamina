@@ -29,9 +29,9 @@ use crate::{
     },
     mir::{
         AddressMode, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
-        Immediate, Instruction, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand,
-        Parameter, Register, RegisterClass, ScalarType, Signature, SymbolVisibility, VirtualReg,
-        VirtualRegAllocator,
+        Immediate, Instruction, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MemoryAttrs, MirType,
+        Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature,
+        SymbolVisibility, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of},
@@ -77,9 +77,9 @@ fn float_binary(
 /// Map an IR binary op to its MIR opcode, choosing signed vs. unsigned variants
 /// based on the operand type. Float-applicable ops on float types are handled
 /// separately by the caller before this function is reached.
-fn lower_int_binop(op: &IRBin, ty: IRPrim) -> IntBinOp {
+fn lower_int_binop(op: &IRBin, ty: IRPrim) -> Option<IntBinOp> {
     let unsigned = matches!(ty, IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64);
-    match op {
+    Some(match op {
         IRBin::Add => IntBinOp::Add,
         IRBin::Sub => IntBinOp::Sub,
         IRBin::Mul => IntBinOp::Mul,
@@ -109,7 +109,32 @@ fn lower_int_binop(op: &IRBin, ty: IRPrim) -> IntBinOp {
                 IntBinOp::AShr
             }
         }
+        IRBin::Rotl | IRBin::Rotr => return None,
+    })
+}
+
+fn lower_int_unop(op: &IRUnary) -> Option<IntUnOp> {
+    match op {
+        IRUnary::Popcount => Some(IntUnOp::Popcount),
+        IRUnary::Ctlz => Some(IntUnOp::Ctlz),
+        IRUnary::Cttz => Some(IntUnOp::Cttz),
+        IRUnary::Bswap => Some(IntUnOp::Bswap),
+        IRUnary::Neg | IRUnary::Not | IRUnary::Sqrt => None,
     }
+}
+
+fn is_integer_prim(ty: IRPrim) -> bool {
+    matches!(
+        ty,
+        IRPrim::I8
+            | IRPrim::I16
+            | IRPrim::I32
+            | IRPrim::I64
+            | IRPrim::U8
+            | IRPrim::U16
+            | IRPrim::U32
+            | IRPrim::U64
+    )
 }
 
 /// Bindings from IR value names to MIR registers, together with the register class each
@@ -631,6 +656,17 @@ fn convert_function<'a>(
         FunctionAnnotation::Hot => Some(CodePlacement::Hot),
         _ => None,
     });
+    mir_sig.weak = f.annotations.contains(&FunctionAnnotation::Weak);
+    // A weak definition may be overridden at link time, so calls must reach the symbol.
+    mir_sig.no_inline |= mir_sig.weak;
+    mir_sig.section = f.annotations.iter().find_map(|a| match a {
+        FunctionAnnotation::Section(name) => Some(name.clone()),
+        _ => None,
+    });
+    mir_sig.align = f.annotations.iter().find_map(|a| match a {
+        FunctionAnnotation::Align(alignment) => Some(*alignment),
+        _ => None,
+    });
     mir_sig.variadic = f.signature.variadic;
     if f.annotations.contains(&FunctionAnnotation::Kernel) {
         mir_sig.kernel = Some(Default::default());
@@ -795,9 +831,9 @@ fn convert_function<'a>(
                     _ => vreg_alloc.allocate_gpr(),
                 });
                 match last {
-                    Instruction::IntBinary { dst, .. } | Instruction::FloatBinary { dst, .. } => {
-                        *dst = fresh.clone()
-                    }
+                    Instruction::IntBinary { dst, .. }
+                    | Instruction::IntRotate { dst, .. }
+                    | Instruction::FloatBinary { dst, .. } => *dst = fresh.clone(),
                     Instruction::Call { ret, .. } => *ret = Some(fresh.clone()),
                     _ => return Err(FromIRError::UnsupportedInstruction),
                 }
@@ -854,6 +890,8 @@ fn convert_function<'a>(
                         | Instruction::IntBinary { ty, .. }
                         | Instruction::FloatBinary { ty, .. }
                         | Instruction::FloatUnary { ty, .. }
+                        | Instruction::IntUnary { ty, .. }
+                        | Instruction::IntRotate { ty, .. }
                         | Instruction::Select { ty, .. }
                         | Instruction::Load { ty, .. }
                         | Instruction::AtomicLoad { ty, .. }
@@ -1261,12 +1299,32 @@ fn convert_instruction<'a>(
                 (IRBin::Div, IRPrim::F32 | IRPrim::F64) => {
                     float_binary(FloatBinOp::FDiv, mir_ty, dst, lhs_op, rhs_op)
                 }
-                (op, prim_ty) => Instruction::IntBinary {
-                    op: lower_int_binop(op, prim_ty),
+                (IRBin::Rotl | IRBin::Rotr, IRPrim::F32 | IRPrim::F64) => {
+                    return Err(FromIRError::UnsupportedInstruction);
+                }
+                (IRBin::Rotl, _) => Instruction::IntRotate {
+                    op: IntRotOp::Rotl,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
+                },
+                (IRBin::Rotr, _) => Instruction::IntRotate {
+                    op: IntRotOp::Rotr,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (op, prim_ty) => match lower_int_binop(op, prim_ty) {
+                    Some(op) => Instruction::IntBinary {
+                        op,
+                        ty: mir_ty,
+                        dst,
+                        lhs: lhs_op,
+                        rhs: rhs_op,
+                    },
+                    None => return Err(FromIRError::UnsupportedInstruction),
                 },
             };
             Ok(vec![mir])
@@ -1332,6 +1390,23 @@ fn convert_instruction<'a>(
                     lhs: src,
                     rhs: Operand::Immediate(all_ones_immediate(mir_ty)),
                 },
+                (IRUnary::Popcount | IRUnary::Ctlz | IRUnary::Cttz | IRUnary::Bswap, true) => {
+                    return Err(FromIRError::UnsupportedInstruction);
+                }
+                (IRUnary::Popcount | IRUnary::Ctlz | IRUnary::Cttz | IRUnary::Bswap, false)
+                    if !is_integer_prim(*ty) =>
+                {
+                    return Err(FromIRError::UnsupportedInstruction);
+                }
+                (IRUnary::Popcount | IRUnary::Ctlz | IRUnary::Cttz | IRUnary::Bswap, false) => {
+                    let op = lower_int_unop(op).ok_or(FromIRError::UnsupportedInstruction)?;
+                    Instruction::IntUnary {
+                        op,
+                        ty: mir_ty,
+                        dst,
+                        src,
+                    }
+                }
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             Ok(vec![instruction])
@@ -1559,6 +1634,7 @@ fn convert_instruction<'a>(
         IRInst::Jmp { target_label } => Ok(vec![Instruction::Jmp {
             target: (*target_label).to_string(),
         }]),
+        IRInst::Unreachable => Ok(vec![Instruction::Unreachable]),
         IRInst::Ret { ty, value } => {
             if matches!(ty, IRType::Void) {
                 return Ok(vec![Instruction::Ret { value: None }]);

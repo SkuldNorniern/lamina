@@ -36,7 +36,7 @@ pub use function::{
 pub use instruction::SimdOp;
 pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
-    MemoryAttrs, Operand, VectorOp,
+    IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,
 };
 pub use instruction::{AtomicBinOp, MemoryOrdering};
 pub use module::{Global, Module, ModuleBuilder};

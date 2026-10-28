@@ -28,6 +28,79 @@ pub enum IntBinOp {
     AShr,
 }
 
+/// Integer bit operations on a single operand. The result has the operand's type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntUnOp {
+    /// Number of set bits within the operand's width.
+    Popcount,
+    /// Leading zero bits within the operand's width; zero yields the width.
+    Ctlz,
+    /// Trailing zero bits within the operand's width; zero yields the width.
+    Cttz,
+    /// Byte-reversed operand.
+    Bswap,
+}
+
+impl IntUnOp {
+    /// Evaluate on a concrete operand, returning the canonical value of the operand's type.
+    pub fn evaluate(self, ty: MirType, value: i64) -> i64 {
+        let bits = ty.size_bytes() as u32 * 8;
+        let unsigned = ty.unsigned_integer(value);
+        let result = match self {
+            Self::Popcount => u64::from(unsigned.count_ones()),
+            Self::Ctlz => u64::from(unsigned.leading_zeros() - (64 - bits)),
+            Self::Cttz => u64::from(unsigned.trailing_zeros().min(bits)),
+            Self::Bswap => unsigned.swap_bytes() >> (64 - bits),
+        };
+        ty.signed_integer(result as i64)
+    }
+}
+
+impl fmt::Display for IntUnOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            IntUnOp::Popcount => "popcount",
+            IntUnOp::Ctlz => "ctlz",
+            IntUnOp::Cttz => "cttz",
+            IntUnOp::Bswap => "bswap",
+        };
+        write!(f, "{s}")
+    }
+}
+
+/// Integer rotation. The count is taken modulo the operand's bit width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntRotOp {
+    /// Rotate left. See IR `BinaryOp::Rotl`.
+    Rotl,
+    /// Rotate right. See IR `BinaryOp::Rotr`.
+    Rotr,
+}
+
+impl IntRotOp {
+    /// Evaluate on concrete operands, returning the canonical value of `ty`.
+    pub fn evaluate(self, ty: MirType, value: i64, count: i64) -> i64 {
+        let bits = ty.size_bytes() as u32 * 8;
+        let unsigned = ty.unsigned_integer(value);
+        let count = (ty.unsigned_integer(count) % u64::from(bits)) as u32;
+        let (near, far) = match self {
+            Self::Rotl => (count, (bits - count) % bits),
+            Self::Rotr => ((bits - count) % bits, count),
+        };
+        let rotated = (unsigned << near) | (unsigned >> far);
+        ty.signed_integer(rotated as i64)
+    }
+}
+
+impl fmt::Display for IntRotOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IntRotOp::Rotl => write!(f, "rotl"),
+            IntRotOp::Rotr => write!(f, "rotr"),
+        }
+    }
+}
+
 impl IntBinOp {
     /// Evaluate concrete operands, returning None when division would trap.
     pub fn evaluate(self, ty: MirType, lhs: i64, rhs: i64) -> Option<i64> {
@@ -598,6 +671,25 @@ pub enum Instruction {
         src: Operand,
     },
 
+    /// Integer bit operation on `src`; `dst` has the same integer type `ty`.
+    /// See IR `UnaryOp::Popcount`, `Ctlz`, `Cttz` and `Bswap` for the contract.
+    IntUnary {
+        op: IntUnOp,
+        ty: MirType,
+        dst: Register,
+        src: Operand,
+    },
+
+    /// Integer rotation of `lhs` by `rhs`; both operands and `dst` have type `ty`.
+    /// See IR `BinaryOp::Rotl` and `BinaryOp::Rotr` for the contract.
+    IntRotate {
+        op: IntRotOp,
+        ty: MirType,
+        dst: Register,
+        lhs: Operand,
+        rhs: Operand,
+    },
+
     // Comparisons
     IntCmp {
         op: IntCmpOp,
@@ -893,6 +985,7 @@ impl Instruction {
     pub fn normalize_integer_immediates(&mut self, return_type: Option<MirType>) {
         match self {
             Instruction::IntBinary { ty, lhs, rhs, .. }
+            | Instruction::IntRotate { ty, lhs, rhs, .. }
             | Instruction::IntCmp { ty, lhs, rhs, .. } => {
                 normalize_immediate(lhs, *ty);
                 normalize_immediate(rhs, *ty);
@@ -900,6 +993,7 @@ impl Instruction {
             Instruction::Store { ty, src, .. }
             | Instruction::Copy { ty, src, .. }
             | Instruction::IntConvert { from: ty, src, .. }
+            | Instruction::IntUnary { ty, src, .. }
             | Instruction::IntToFloat { from: ty, src, .. }
             | Instruction::FloatToInt { from: ty, src, .. }
             | Instruction::FloatConvert { from: ty, src, .. }
@@ -932,6 +1026,8 @@ impl Instruction {
             | Instruction::IntBinary { dst, .. }
             | Instruction::FloatBinary { dst, .. }
             | Instruction::FloatUnary { dst, .. }
+            | Instruction::IntUnary { dst, .. }
+            | Instruction::IntRotate { dst, .. }
             | Instruction::IntCmp { dst, .. }
             | Instruction::FloatCmp { dst, .. }
             | Instruction::Select { dst, .. }
@@ -992,6 +1088,7 @@ impl Instruction {
             } => regs.push(r),
             Instruction::Copy { .. } => {}
             Instruction::IntBinary { lhs, rhs, .. }
+            | Instruction::IntRotate { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
             | Instruction::FloatCmp { lhs, rhs, .. } => {
@@ -1007,6 +1104,10 @@ impl Instruction {
                 regs.push(base);
             }
             Instruction::FloatUnary {
+                src: Operand::Register(r),
+                ..
+            }
+            | Instruction::IntUnary {
                 src: Operand::Register(r),
                 ..
             } => {
@@ -1245,6 +1346,18 @@ impl fmt::Display for Instruction {
             }
             Instruction::FloatUnary { op, ty, dst, src } => {
                 write!(f, "{dst} = {op}.{ty} {src}")
+            }
+            Instruction::IntUnary { op, ty, dst, src } => {
+                write!(f, "{dst} = {op}.{ty} {src}")
+            }
+            Instruction::IntRotate {
+                op,
+                ty,
+                dst,
+                lhs,
+                rhs,
+            } => {
+                write!(f, "{dst} = {op}.{ty} {lhs}, {rhs}")
             }
             Instruction::IntCmp {
                 op,
@@ -1584,5 +1697,39 @@ mod tests {
         assert!(ret.is_terminator());
         assert!(jmp.is_terminator());
         assert!(!add.is_terminator());
+    }
+
+    #[test]
+    fn bit_unary_evaluates_within_operand_width() {
+        let popcount = |ty: MirType, v: i64| IntUnOp::Popcount.evaluate(ty, v);
+        assert_eq!(popcount(MirType::i8(), -1), 8);
+        assert_eq!(popcount(MirType::i64(), -1), 64);
+        assert_eq!(popcount(MirType::i64(), 0), 0);
+        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i8(), 1), 7);
+        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i8(), 0), 8);
+        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i64(), 0), 64);
+        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i16(), 0), 16);
+        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i64(), 0), 64);
+        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i32(), 8), 3);
+        assert_eq!(IntUnOp::Bswap.evaluate(MirType::i16(), 0x1234), 0x3412);
+        assert_eq!(
+            IntUnOp::Bswap.evaluate(MirType::i32(), 0x0102_0304),
+            0x0403_0201
+        );
+        assert_eq!(IntUnOp::Bswap.evaluate(MirType::i8(), -127), -127);
+    }
+
+    #[test]
+    fn rotate_evaluates_with_count_modulo_width() {
+        let rotl = |ty: MirType, v: i64, n: i64| IntRotOp::Rotl.evaluate(ty, v, n);
+        let rotr = |ty: MirType, v: i64, n: i64| IntRotOp::Rotr.evaluate(ty, v, n);
+        assert_eq!(rotl(MirType::i8(), -127, 1), 3);
+        assert_eq!(rotr(MirType::i8(), -127, 1), -64);
+        assert_eq!(rotl(MirType::i32(), 0x8000_0001, 4), 0x18);
+        assert_eq!(rotl(MirType::i64(), 1, 63), i64::MIN);
+        assert_eq!(rotr(MirType::i64(), 1, 1), i64::MIN);
+        assert_eq!(rotl(MirType::i64(), 77, 64), 77);
+        assert_eq!(rotr(MirType::i16(), 1, 1), i64::from(i16::MIN));
+        assert_eq!(rotl(MirType::i8(), 5, 9), 10);
     }
 }

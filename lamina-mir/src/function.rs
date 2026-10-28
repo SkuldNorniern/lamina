@@ -117,6 +117,15 @@ pub struct Signature {
     /// Set by `@cold` or `@hot`.
     pub placement: Option<CodePlacement>,
 
+    /// Set by `@weak`; the symbol is emitted as a weak definition.
+    pub weak: bool,
+
+    /// Set by `@section("name")`; the function is emitted into that ELF section.
+    pub section: Option<String>,
+
+    /// Set by `@align(n)`; the function entry is aligned to `n` bytes.
+    pub align: Option<u32>,
+
     /// Set by a trailing `...` on an `@extern` declaration. A call to one follows the
     /// variadic side of the platform convention.
     pub variadic: bool,
@@ -138,6 +147,9 @@ impl Signature {
             pure: false,
             visibility: None,
             placement: None,
+            weak: false,
+            section: None,
+            align: None,
             variadic: false,
         }
     }

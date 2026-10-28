@@ -864,6 +864,48 @@ fn verify_instruction_types(
                         &mut instruction_errors,
                     );
                 }
+                Instruction::IntUnary { ty, dst, src, .. } => {
+                    if !is_integer_or_pointer(*ty) {
+                        instruction_errors.push(format!(
+                            "expected IntUnary type to be an integer or pointer scalar, found {ty}"
+                        ));
+                    }
+                    verify_destination(dst, *ty, "IntUnary", config, &mut instruction_errors);
+                    verify_operand(
+                        src,
+                        *ty,
+                        "IntUnary source",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
+                Instruction::IntRotate {
+                    ty, dst, lhs, rhs, ..
+                } => {
+                    if !is_integer_or_pointer(*ty) {
+                        instruction_errors.push(format!(
+                            "expected IntRotate type to be an integer or pointer scalar, found {ty}"
+                        ));
+                    }
+                    verify_destination(dst, *ty, "IntRotate", config, &mut instruction_errors);
+                    verify_operand(
+                        lhs,
+                        *ty,
+                        "IntRotate lhs",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                    verify_operand(
+                        rhs,
+                        *ty,
+                        "IntRotate rhs",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::IntCmp {
                     ty, dst, lhs, rhs, ..
                 } => {
@@ -1119,6 +1161,8 @@ fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
         | Instruction::IntBinary { ty, .. }
         | Instruction::FloatBinary { ty, .. }
         | Instruction::FloatUnary { ty, .. }
+        | Instruction::IntUnary { ty, .. }
+        | Instruction::IntRotate { ty, .. }
         | Instruction::Select { ty, .. }
         | Instruction::Load { ty, .. } => Some(*ty),
         Instruction::VectorOp {

@@ -144,6 +144,102 @@ fn canonicalize_integer(
     Ok(())
 }
 
+/// Population count, leading and trailing zero counts and byte swap. The operand is
+/// zero-extended to its width first, so the bits above the type never count.
+fn emit_int_unary<W: Write>(
+    op: IntUnOp,
+    ty: &MirType,
+    dst: &Register,
+    src: &Operand,
+    writer: &mut RaxTrackingWriter<W>,
+    reg_alloc: &X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    let bytes = ty.size_bytes();
+    let bits = bytes * 8;
+    load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
+    extend_integer(writer, "rax", bytes, false)?;
+    match op {
+        IntUnOp::Popcount => writeln!(writer, "    popcntq %rax, %rax")?,
+        IntUnOp::Ctlz => {
+            writeln!(writer, "    movq $-1, %rcx")?;
+            writeln!(writer, "    bsrq %rax, %rax")?;
+            writeln!(writer, "    cmovzq %rcx, %rax")?;
+            writeln!(writer, "    negq %rax")?;
+            writeln!(writer, "    addq ${}, %rax", bits - 1)?;
+        }
+        IntUnOp::Cttz => {
+            writeln!(writer, "    movq ${bits}, %rcx")?;
+            writeln!(writer, "    bsfq %rax, %rax")?;
+            writeln!(writer, "    cmovzq %rcx, %rax")?;
+        }
+        IntUnOp::Bswap => match bytes {
+            1 => {}
+            2 => writeln!(writer, "    rolw $8, %ax")?,
+            4 => writeln!(writer, "    bswapl %eax")?,
+            _ => writeln!(writer, "    bswapq %rax")?,
+        },
+    }
+    canonicalize_integer(writer, "rax", ty)?;
+    store_integer_result(dst, writer, reg_alloc, stack_slots)
+}
+
+/// Rotation of `lhs` by `rhs` modulo the bit width. Bits of `rdx` above the width are
+/// discarded by the final canonicalization, so only the low width bits must be right.
+fn emit_int_rotate<W: Write>(
+    op: IntRotOp,
+    ty: &MirType,
+    dst: &Register,
+    (lhs, rhs): (&Operand, &Operand),
+    writer: &mut RaxTrackingWriter<W>,
+    reg_alloc: &X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    let bytes = ty.size_bytes();
+    let bits = bytes * 8;
+    load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
+    extend_integer(writer, "rax", bytes, false)?;
+    load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
+    writeln!(writer, "    andl ${}, %ecx", bits - 1)?;
+    writeln!(writer, "    movq %rax, %rdx")?;
+    match op {
+        IntRotOp::Rotl => {
+            writeln!(writer, "    shlq %cl, %rdx")?;
+            writeln!(writer, "    negl %ecx")?;
+            writeln!(writer, "    addl ${bits}, %ecx")?;
+            writeln!(writer, "    andl $63, %ecx")?;
+            writeln!(writer, "    shrq %cl, %rax")?;
+            writeln!(writer, "    orq %rdx, %rax")?;
+        }
+        IntRotOp::Rotr => {
+            writeln!(writer, "    shrq %cl, %rax")?;
+            writeln!(writer, "    negl %ecx")?;
+            writeln!(writer, "    addl ${bits}, %ecx")?;
+            writeln!(writer, "    andl $63, %ecx")?;
+            writeln!(writer, "    shlq %cl, %rdx")?;
+            writeln!(writer, "    orq %rdx, %rax")?;
+        }
+    }
+    canonicalize_integer(writer, "rax", ty)?;
+    store_integer_result(dst, writer, reg_alloc, stack_slots)
+}
+
+fn store_integer_result<W: Write>(
+    dst: &Register,
+    writer: &mut RaxTrackingWriter<W>,
+    reg_alloc: &X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    match dst {
+        Register::Virtual(vreg) => store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?,
+        Register::Physical(physical) if physical.name != "rax" => {
+            writeln!(writer, "    movq %rax, %{}", physical.name)?;
+        }
+        Register::Physical(_) => {}
+    }
+    Ok(())
+}
+
 fn fixed_bits(value: f64, is_f32: bool) -> i64 {
     if is_f32 {
         i64::from((value as f32).to_bits())
@@ -327,6 +423,7 @@ pub(super) fn scratch_error() -> LaminaError {
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_instruction_x86_64(
     inst: &MirInst,
     writer: &mut RaxTrackingWriter<impl Write>,
@@ -1750,6 +1847,18 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::Unreachable => {
             writeln!(writer, "    ud2")?;
+        }
+        MirInst::IntUnary { op, ty, dst, src } => {
+            emit_int_unary(*op, ty, dst, src, writer, reg_alloc, stack_slots)?;
+        }
+        MirInst::IntRotate {
+            op,
+            ty,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            emit_int_rotate(*op, ty, dst, (lhs, rhs), writer, reg_alloc, stack_slots)?;
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {

@@ -1,4 +1,5 @@
 use super::gpu::{aggregate_parameter_function, error, kernels};
+use crate::mir_codegen::common::reject_function_placement;
 use crate::{
     error::LaminaError,
     mir::{
@@ -635,6 +636,16 @@ impl Kernel {
                     "atomic instruction `{instruction}` is not yet supported by the AMDGPU backend"
                 )));
             }
+            Instruction::IntUnary { .. } => {
+                return Err(error(
+                    "integer bit intrinsics are not yet supported by the AMDGPU backend",
+                ));
+            }
+            Instruction::IntRotate { .. } => {
+                return Err(error(
+                    "integer rotates are not yet supported by the AMDGPU backend",
+                ));
+            }
             _ => return Err(error("unsupported AMDGPU instruction")),
         }
         Ok(())
@@ -653,6 +664,7 @@ pub fn emit_with_target<W: Write>(
     if !module.globals.is_empty() {
         return Err(error("AMDGPU does not yet support global variables"));
     }
+    reject_function_placement(module, "AMDGPU")?;
     if let Some(name) = aggregate_parameter_function(module) {
         return Err(error(&format!(
             "AMDGPU does not yet pass aggregates by value, as @{name} does"

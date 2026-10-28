@@ -1864,6 +1864,16 @@ fn emit_instruction_ppc64<W: Write>(
                 ),
             )));
         }
+        MirInst::IntUnary { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "PowerPC64 backend does not support integer bit intrinsics yet".to_string(),
+            )));
+        }
+        MirInst::IntRotate { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "PowerPC64 backend does not support integer rotates yet".to_string(),
+            )));
+        }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!("PowerPC64 backend: instruction not yet supported: {other:?}"),

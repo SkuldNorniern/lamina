@@ -34,9 +34,9 @@ use crate::{
     error::LaminaError,
     mir::{
         AddressMode, Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
-        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
-        Parameter, Register, ScalarType, Signature, Signedness, VirtualReg, instruction::Immediate,
-        register::RegisterClass,
+        Instruction as MirInst, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MirType,
+        Module as MirModule, Operand, Parameter, Register, ScalarType, Signature, Signedness,
+        VirtualReg, instruction::Immediate, register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,

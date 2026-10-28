@@ -174,6 +174,21 @@ pub(crate) fn interpret_mir_function(
                     })?;
                     register_values.insert(dst.clone(), result);
                 }
+                Instruction::IntUnary { op, ty, dst, src } => {
+                    let value = evaluate_operand(src, &register_values)?;
+                    register_values.insert(dst.clone(), op.evaluate(*ty, value));
+                }
+                Instruction::IntRotate {
+                    op,
+                    ty,
+                    dst,
+                    lhs,
+                    rhs,
+                } => {
+                    let value = evaluate_operand(lhs, &register_values)?;
+                    let count = evaluate_operand(rhs, &register_values)?;
+                    register_values.insert(dst.clone(), op.evaluate(*ty, value, count));
+                }
                 Instruction::IntCmp {
                     op,
                     ty,
