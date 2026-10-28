@@ -302,7 +302,7 @@ fn assemble_native(
 ///
 /// Prefers a system assembler (gas/clang) when one is installed, because ras
 /// cannot yet assemble programs that reference data symbols or external calls
-/// (e.g. `print`/printf). ras is used only as a fallback when no system
+/// (e.g. `printf`). ras is used only as a fallback when no system
 /// assembler is present; select it explicitly with `--assembler ras` or
 /// `-c lamina` for the standalone, no-toolchain path.
 pub fn detect_assembler_backend(

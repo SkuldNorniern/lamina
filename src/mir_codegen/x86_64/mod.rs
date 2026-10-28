@@ -54,9 +54,8 @@ use std::{collections::hash_map::Entry, sync::Arc};
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CodegenBase, CopyLocation, assign_stack_slots, assign_stack_slots_where, coalesce_dying_inputs,
-    compile_functions_parallel, emit_global_data, emit_global_directives,
-    emit_print_format_section, emit_symbol_visibility, parallel_codegen_error,
-    parallel_copy_schedule, self_tail_entry_label, use_counts,
+    compile_functions_parallel, emit_global_data, emit_global_directives, emit_symbol_visibility,
+    parallel_codegen_error, parallel_copy_schedule, self_tail_entry_label, use_counts,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 
@@ -184,8 +183,6 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::X86_64)?;
     let abi = X86ABI::new(target_os);
-
-    emit_print_format_section(writer, target_os)?;
 
     // Emit external function declarations first
     for func_name in external_names(module) {

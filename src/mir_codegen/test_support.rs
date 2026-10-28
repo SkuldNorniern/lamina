@@ -38,3 +38,45 @@ pub(crate) fn cross_assembler_ready(dir: &Path, args: &[&str]) -> bool {
     }
     matches!(Command::new("llvm-objdump-18").arg("--version").output(), Ok(out) if out.status.success())
 }
+
+/// Decimal printing written in Lamina, so a test needs no libc. Append it to a module and
+/// call `@print_i64` or `@print_u64`; each writes its digits and a newline.
+pub(crate) const PRINT_I64_HELPERS: &str = r#"
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
+"#;

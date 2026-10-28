@@ -41,10 +41,6 @@ impl Ppc64Abi {
         ".text"
     }
 
-    pub fn get_print_format(&self) -> &'static str {
-        ".L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_uint: .string \"%llu\\n\"\n.L_mir_fmt_float: .string \"%g\\n\""
-    }
-
     pub const ARG_REGISTERS: &'static [&'static str] = &["3", "4", "5", "6", "7", "8", "9", "10"];
 
     pub fn call_stub(&self, name: &str) -> Option<String> {
@@ -80,7 +76,6 @@ mod tests {
     #[test]
     fn test_ppc64_call_stub_linux() {
         let abi = Ppc64Abi::new(TargetOperatingSystem::Linux);
-        assert_eq!(abi.call_stub("print"), Some("printf".to_string()));
         assert_eq!(abi.call_stub("malloc"), Some("malloc".to_string()));
         assert_eq!(abi.call_stub("unknown"), None);
     }

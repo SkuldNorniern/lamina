@@ -14,9 +14,7 @@ use crate::mir_codegen::common::{
     emit_global_directives, emit_symbol_visibility, integer_conversion, self_tail_arguments,
     self_tail_schedule,
 };
-use crate::mir_codegen::common::{
-    emit_debug_file, emit_gnu_stack_note, print_format_label, promoted_argument_type,
-};
+use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
 use crate::mir_codegen::simd::reserve_vector_slots;
 
 use std::{
@@ -36,15 +34,11 @@ use crate::{
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
         capability::CapabilitySet,
-        common::{
-            CodegenBase, compile_functions_parallel, emit_print_format_section,
-            parallel_codegen_error,
-        },
+        common::{CodegenBase, compile_functions_parallel, parallel_codegen_error},
         validate_module_call_parameters,
     },
 };
 
-use lamina_codegen::abi::{Abi, RuntimeSymbol};
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
@@ -832,7 +826,6 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
         })
         .map_err(parallel_codegen_error)?;
 
-    emit_print_format_section(writer, target_os)?;
     writeln!(writer, ".text")?;
     emit_debug_file(writer, settings)?;
 
@@ -1430,70 +1423,7 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::Call { name, args, ret } => {
-                if (name == "lamina.print" || name == "lamina.printu") && args.len() == 1 {
-                    let fmt = print_format_label(name);
-                    let printf = abi.builtin_library().symbol(RuntimeSymbol::Printf);
-                    let fflush = abi.builtin_library().symbol(RuntimeSymbol::Fflush);
-                    // Special-case intrinsic: print(integer) via printf("%lld\n", value)
-                    emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
-                    match abi.target_os() {
-                        os if os_uses_macho(os) => {
-                            // Darwin AArch64 variadic ABI requires arguments to be available in the stack home area
-                            // Ensure 16-byte alignment and spill the first vararg to stack
-                            writeln!(w, "    sub sp, sp, #32")?; // create home area
-                            writeln!(w, "    adrp x0, {fmt}@PAGE")?;
-                            writeln!(w, "    add x0, x0, {fmt}@PAGEOFF")?;
-                            writeln!(w, "    str x1, [sp]")?; // spill the vararg as required by ABI
-                            writeln!(w, "    bl {printf}")?;
-                            // Flush stdout to ensure output appears immediately when mixing with syscall I/O
-                            writeln!(w, "    mov x0, #0")?; // NULL flushes all streams
-                            writeln!(w, "    bl {fflush}")?;
-                            writeln!(w, "    add sp, sp, #32")?; // restore stack
-                        }
-                        _ => {
-                            writeln!(w, "    adrp x0, {fmt}")?;
-                            writeln!(w, "    add x0, x0, :lo12:{fmt}")?;
-                            writeln!(w, "    bl {printf}")?;
-                            // Flush stdout to ensure output appears immediately when mixing with syscall I/O
-                            writeln!(w, "    mov x0, #0")?; // NULL flushes all streams
-                            writeln!(w, "    bl {fflush}")?;
-                        }
-                    }
-                    if let Some(dst) = ret {
-                        store_result(w, dst, "x0", frame, ra)?;
-                    }
-                } else if (name == "lamina.printf32" || name == "lamina.printf64")
-                    && args.len() == 1
-                {
-                    let printf = abi.builtin_library().symbol(RuntimeSymbol::Printf);
-                    let fflush = abi.builtin_library().symbol(RuntimeSymbol::Fflush);
-                    emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
-                    if name == "lamina.printf32" {
-                        writeln!(w, "    fmov s0, w1")?;
-                        writeln!(w, "    fcvt d0, s0")?;
-                        writeln!(w, "    fmov x1, d0")?;
-                    }
-                    match abi.target_os() {
-                        os if os_uses_macho(os) => {
-                            writeln!(w, "    sub sp, sp, #32")?;
-                            writeln!(w, "    adrp x0, .L_mir_fmt_float@PAGE")?;
-                            writeln!(w, "    add x0, x0, .L_mir_fmt_float@PAGEOFF")?;
-                            writeln!(w, "    str x1, [sp]")?;
-                            writeln!(w, "    bl {printf}")?;
-                            writeln!(w, "    mov x0, #0")?;
-                            writeln!(w, "    bl {fflush}")?;
-                            writeln!(w, "    add sp, sp, #32")?;
-                        }
-                        _ => {
-                            writeln!(w, "    fmov d0, x1")?;
-                            writeln!(w, "    adrp x0, .L_mir_fmt_float")?;
-                            writeln!(w, "    add x0, x0, :lo12:.L_mir_fmt_float")?;
-                            writeln!(w, "    bl {printf}")?;
-                            writeln!(w, "    mov x0, #0")?;
-                            writeln!(w, "    bl {fflush}")?;
-                        }
-                    }
-                } else if name == "lamina.writebyte" && args.len() == 1 {
+                if name == "lamina.writebyte" && args.len() == 1 {
                     // Write a single byte to stdout using macOS ARM64 syscall
                     match abi.target_os() {
                         os if os_uses_macho(os) => {

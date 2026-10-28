@@ -72,14 +72,14 @@
 //! Builtin functions can be overridden via the `LAMINA_BUILTINS` environment variable:
 //!
 //! ```bash
-//! LAMINA_BUILTINS="print=printf,malloc=jemalloc_malloc,dealloc=jemalloc_free"
+//! LAMINA_BUILTINS="malloc=jemalloc_malloc,dealloc=jemalloc_free"
 //! ```
 //!
 //! Every runtime helper the compiler calls is a [`RuntimeSymbol`]. Keys are the
-//! C names (`malloc`, `free`, `printf`, `fflush`, `exit`, `memcpy`, `memmove`,
-//! `memset`), plus the legacy aliases `print` (printf) and `dealloc` (free).
+//! C names (`malloc`, `free`, `exit`, `memcpy`, `memmove`, `memset`), plus the
+//! legacy alias `dealloc` (free).
 //! The compiler-rt routines for 128-bit integers (`__divti3`, `__floattidf`, ...)
-//! are keys too, so an embedder can supply them. Platform decoration (`_printf`
+//! are keys too, so an embedder can supply them. Platform decoration (`_free`
 //! on macOS) is applied to the override as well.
 //!
 //! ## Backend-Specific ABIs
@@ -102,8 +102,6 @@ use std::{collections::HashMap, env};
 pub enum RuntimeSymbol {
     Malloc,
     Free,
-    Printf,
-    Fflush,
     Exit,
     Memcpy,
     Memmove,
@@ -135,11 +133,9 @@ pub enum RuntimeSymbol {
 }
 
 impl RuntimeSymbol {
-    pub const ALL: [RuntimeSymbol; 20] = [
+    pub const ALL: [RuntimeSymbol; 18] = [
         RuntimeSymbol::Malloc,
         RuntimeSymbol::Free,
-        RuntimeSymbol::Printf,
-        RuntimeSymbol::Fflush,
         RuntimeSymbol::Exit,
         RuntimeSymbol::Memcpy,
         RuntimeSymbol::Memmove,
@@ -163,8 +159,6 @@ impl RuntimeSymbol {
         match self {
             RuntimeSymbol::Malloc => "malloc",
             RuntimeSymbol::Free => "free",
-            RuntimeSymbol::Printf => "printf",
-            RuntimeSymbol::Fflush => "fflush",
             RuntimeSymbol::Exit => "exit",
             RuntimeSymbol::Memcpy => "memcpy",
             RuntimeSymbol::Memmove => "memmove",
@@ -191,11 +185,10 @@ impl RuntimeSymbol {
 
     /// Looks up a symbol by a `LAMINA_BUILTINS` key or builtin name.
     ///
-    /// Accepts the C name plus the legacy keys `print` (printf) and `dealloc` (free).
+    /// Accepts the C name plus the legacy key `dealloc` (free).
     pub fn from_builtin_name(name: &str) -> Option<Self> {
         match name {
             "dealloc" => Some(RuntimeSymbol::Free),
-            "print" => Some(RuntimeSymbol::Printf),
             _ => Self::from_c_name(name),
         }
     }
@@ -315,7 +308,7 @@ pub trait Abi {
     ///
     /// Returns `None` if the name is not a known intrinsic that needs
     /// special handling. This lets backends map internal names
-    /// (like "print") to platform-specific symbols (like "_printf" on macOS).
+    /// (like "dealloc") to platform-specific symbols (like "_free" on macOS).
     ///
     /// Default implementation returns `None` for all names, meaning
     /// no special mapping is needed.
@@ -416,12 +409,10 @@ mod tests {
     #[test]
     fn test_builtin_library_default_symbols() {
         let lib_macos = BuiltinLibrary::from_env(TargetOperatingSystem::MacOS);
-        assert_eq!(lib_macos.resolve("print"), Some("_printf".to_string()));
         assert_eq!(lib_macos.resolve("malloc"), Some("_malloc".to_string()));
         assert_eq!(lib_macos.resolve("dealloc"), Some("_free".to_string()));
 
         let lib_linux = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
-        assert_eq!(lib_linux.resolve("print"), Some("printf".to_string()));
         assert_eq!(lib_linux.resolve("malloc"), Some("malloc".to_string()));
         assert_eq!(lib_linux.resolve("dealloc"), Some("free".to_string()));
     }
@@ -434,14 +425,6 @@ mod tests {
 
     #[test]
     fn test_common_call_stub() {
-        assert_eq!(
-            common_call_stub("print", TargetOperatingSystem::MacOS),
-            Some("_printf".to_string())
-        );
-        assert_eq!(
-            common_call_stub("print", TargetOperatingSystem::Linux),
-            Some("printf".to_string())
-        );
         assert_eq!(
             common_call_stub("malloc", TargetOperatingSystem::MacOS),
             Some("_malloc".to_string())
@@ -502,9 +485,8 @@ mod runtime_symbol_tests {
     fn resolve_maps_legacy_builtin_keys() {
         let lib = BuiltinLibrary::new(
             TargetOperatingSystem::Linux,
-            parse_builtin_overrides("print=k_print,dealloc=k_free"),
+            parse_builtin_overrides("dealloc=k_free"),
         );
-        assert_eq!(lib.resolve("print"), Some("k_print".to_string()));
         assert_eq!(lib.resolve("dealloc"), Some("k_free".to_string()));
         assert_eq!(lib.resolve("free"), Some("k_free".to_string()));
         assert_eq!(lib.resolve("write"), None);

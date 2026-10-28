@@ -388,7 +388,7 @@ mod emission_tests {
             "@kernel fn @empty() -> void {\nentry:\ncall @__lamina_gpu_workgroup_barrier()\nret.void\n}\n",
         )?;
         for (target, extension, expected) in [("nvptx64_cuda", "ptx", ".visible .entry empty()")] {
-            for mode in [None, Some("--emit-asm"), Some("--emit-mir-asm")] {
+            for mode in [None, Some("--emit-asm")] {
                 let output_path = directory.join(target);
                 let mut flags = vec!["--target", target];
                 if let Some(mode) = mode {

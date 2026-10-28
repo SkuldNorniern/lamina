@@ -318,96 +318,13 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
 }
 
 /// What lowering knows about the values in a function beyond the MIR types: the
-/// type of each register, and which names hold an unsigned integer.
+/// type of each register.
 struct ValueFacts<'t, 'a> {
     types: &'t HashMap<Register, MirType>,
-    unsigned: &'t HashSet<&'a str>,
     /// Named parameter count of each variadic callee, which says where its default
     /// argument promotions begin.
     variadic_fixed: &'t HashMap<&'a str, usize>,
     module: &'t IRModule<'a>,
-}
-
-/// Names of values whose IR type is an unsigned integer. `print` needs this because
-/// MIR keeps no signedness on a register. Every definition of a name must agree, since the
-/// name is one register.
-fn unsigned_results<'a>(
-    f: &IRFunction<'a>,
-    module: &IRModule<'a>,
-) -> Result<HashSet<&'a str>, FromIRError> {
-    fn unsigned_prim(p: IRPrim) -> bool {
-        matches!(p, IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64)
-    }
-    fn unsigned_type(ty: &IRType<'_>) -> bool {
-        matches!(ty, IRType::Primitive(p) if unsigned_prim(*p))
-    }
-
-    let mut facts: HashMap<&'a str, bool> = HashMap::new();
-    let mut record = |name: &'a str, unsigned: bool| -> Result<(), FromIRError> {
-        let first = *facts.entry(name).or_insert(unsigned);
-        if first != unsigned {
-            return Err(conflicting_definitions(name));
-        }
-        Ok(())
-    };
-    for param in &f.signature.params {
-        record(param.name, unsigned_type(&param.ty))?;
-    }
-    for block in f.basic_blocks.values() {
-        for instr in &block.instructions {
-            let fact = match instr {
-                IRInst::Binary { result, ty, .. } | IRInst::Unary { result, ty, .. } => {
-                    Some((*result, unsigned_prim(*ty)))
-                }
-                IRInst::Load { result, ty, .. }
-                | IRInst::AtomicLoad { result, ty, .. }
-                | IRInst::AtomicBinary { result, ty, .. }
-                | IRInst::Phi { result, ty, .. }
-                | IRInst::Select { result, ty, .. } => Some((*result, unsigned_type(ty))),
-                IRInst::ZeroExtend {
-                    result,
-                    target_type,
-                    ..
-                }
-                | IRInst::Trunc {
-                    result,
-                    target_type,
-                    ..
-                }
-                | IRInst::SignExtend {
-                    result,
-                    target_type,
-                    ..
-                }
-                | IRInst::Bitcast {
-                    result,
-                    target_type,
-                    ..
-                }
-                | IRInst::FloatToInt {
-                    result,
-                    target_type,
-                    ..
-                } => Some((*result, unsigned_prim(*target_type))),
-                IRInst::Call {
-                    result: Some(result),
-                    func_name,
-                    ..
-                } => module
-                    .functions
-                    .get(func_name)
-                    .map(|callee| (*result, unsigned_type(&callee.signature.return_type))),
-                _ => None,
-            };
-            if let Some((name, unsigned)) = fact {
-                record(name, unsigned)?;
-            }
-        }
-    }
-    Ok(facts
-        .into_iter()
-        .filter_map(|(name, unsigned)| unsigned.then_some(name))
-        .collect())
 }
 
 fn conflicting_definitions(name: &str) -> FromIRError {
@@ -847,7 +764,6 @@ fn convert_function<'a>(
         ..Default::default()
     };
     let mut register_types = HashMap::new();
-    let unsigned = unsigned_results(f, module)?;
     let entry_provenance = block_entry_provenance(f);
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
@@ -963,7 +879,6 @@ fn convert_function<'a>(
                 &mut reservations,
                 &ValueFacts {
                     types: &register_types,
-                    unsigned: &unsigned,
                     variadic_fixed: &variadic_fixed,
                     module,
                 },
@@ -1453,7 +1368,6 @@ fn convert_instruction<'a>(
         return Ok(wide_cx.out);
     }
     let register_types = facts.types;
-    let unsigned = facts.unsigned;
     fn ir_address_mode_to_mir<'b>(
         ptr: &IRVal<'b>,
         vreg_alloc: &mut VirtualRegAllocator,
@@ -2348,58 +2262,6 @@ fn convert_instruction<'a>(
                 ])
             }
         }
-        // Debug and I/O operations: lower to calls with conventional names
-        IRInst::Print { value } => {
-            if matches!(value, IRVal::Constant(IRLit::String(_))) {
-                return Err(FromIRError::PrintStringLiteralUnsupported);
-            }
-            let (arg, is_unsigned) = match value {
-                IRVal::Constant(lit) => match unsigned_constant_bits(lit) {
-                    Some(bits) => (Operand::Immediate(Immediate::I64(bits)), true),
-                    None => (
-                        resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
-                        false,
-                    ),
-                },
-                IRVal::Variable(id) => (
-                    resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
-                    unsigned.contains(id),
-                ),
-                IRVal::Global(_) => (
-                    resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
-                    false,
-                ),
-            };
-            let ty = operand_type(&arg, register_types);
-            let name = match ty {
-                MirType::Scalar(ScalarType::F32) => "lamina.printf32",
-                MirType::Scalar(ScalarType::F64) => "lamina.printf64",
-                _ if is_unsigned => "lamina.printu",
-                _ => "lamina.print",
-            };
-            // A narrow value sits sign-extended in its register, so an unsigned one
-            // needs widening before printf reads all 64 bits.
-            let mut out = Vec::new();
-            let arg = if is_unsigned && ty.size_bytes() < 8 {
-                let wide = Register::Virtual(vreg_alloc.allocate_gpr());
-                out.push(Instruction::IntConvert {
-                    from: ty,
-                    to: MirType::i64(),
-                    signed: false,
-                    dst: wide.clone(),
-                    src: arg,
-                });
-                Operand::Register(wide)
-            } else {
-                arg
-            };
-            out.push(Instruction::Call {
-                name: name.to_string(),
-                args: vec![arg],
-                ret: None,
-            });
-            Ok(out)
-        }
         IRInst::Write {
             buffer,
             size,
@@ -2654,17 +2516,6 @@ fn convert_instruction<'a>(
         | IRInst::SimdInsert { .. }
         | IRInst::SimdLoad { .. }
         | IRInst::SimdStore { .. } => Err(FromIRError::UnsupportedInstruction),
-    }
-}
-
-/// The zero-extended bits of an unsigned literal, `None` for any other literal.
-fn unsigned_constant_bits(lit: &IRLit<'_>) -> Option<i64> {
-    match lit {
-        IRLit::U8(v) => Some(i64::from(*v)),
-        IRLit::U16(v) => Some(i64::from(*v)),
-        IRLit::U32(v) => Some(i64::from(*v)),
-        IRLit::U64(v) => Some(*v as i64),
-        _ => None,
     }
 }
 

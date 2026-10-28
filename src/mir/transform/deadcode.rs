@@ -505,7 +505,7 @@ mod tests {
                 attrs: MemoryAttrs::default(),
             })
             .instr(Instruction::Call {
-                name: "lamina.print".to_string(),
+                name: "lamina.writebyte".to_string(),
                 args: vec![Operand::Immediate(Immediate::I64(1))],
                 ret: None,
             })

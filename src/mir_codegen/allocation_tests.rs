@@ -5,6 +5,7 @@ use std::error::Error;
 #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
 mod native {
     use super::*;
+    use crate::mir_codegen::test_support::PRINT_I64_HELPERS;
     use crate::{
         mir::{Immediate, Instruction, Operand},
         mir_codegen::test_support::compile,
@@ -48,7 +49,7 @@ mod native {
         ];
         for (case, (ty, address)) in cases.iter().enumerate() {
             let source = format!(
-                "type !Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\n%guard = stackalloc.i64\nstore.i64 %guard, 55\nstore.i64 %last, 99\nprint %sentinel\n%live = load.i64 %guard\nprint %live\n%stored = load.i64 %last\nprint %stored\nret.i64 0\n}}\n"
+                "type !Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\n%guard = stackalloc.i64\nstore.i64 %guard, 55\nstore.i64 %last, 99\ncall @print_i64(%sentinel)\n%live = load.i64 %guard\ncall @print_i64(%live)\n%stored = load.i64 %last\ncall @print_i64(%stored)\nret.i64 0\n}}\n{PRINT_I64_HELPERS}"
             );
             let ir = parse_module(&source)?;
             let mir = from_ir(&ir, "aggregate").map_err(|error| error.to_string())?;
@@ -85,7 +86,7 @@ mod native {
                 );
             }
             let minimal = format!(
-                "type !Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\nstore.i64 %last, 99\nprint %sentinel\nret.i64 0\n}}\n"
+                "type !Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\nstore.i64 %last, 99\ncall @print_i64(%sentinel)\nret.i64 0\n}}\n{PRINT_I64_HELPERS}"
             );
             fs::write(&input, minimal)?;
             for level in ["0", "1", "2", "3"] {

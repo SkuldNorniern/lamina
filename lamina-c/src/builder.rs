@@ -994,20 +994,6 @@ pub unsafe extern "C" fn lia_builder_read_byte(
     }))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_print(
-    builder: *mut LaminaBuilder,
-    value: *const LaminaValue,
-) -> LaminaStatus {
-    catch(AssertUnwindSafe(|| unsafe {
-        let b = require_mut!(builder, "builder");
-        let v = require_ref!(value, "value");
-        b.0.print(&v.0);
-        clear_error();
-        LaminaStatus::Ok
-    }))
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

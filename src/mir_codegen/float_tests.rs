@@ -1,4 +1,4 @@
-use super::test_support::compile;
+use super::test_support::{PRINT_I64_HELPERS, compile};
 use std::{
     env::temp_dir,
     error::Error,
@@ -62,12 +62,13 @@ int main(void) { CHECK(float); CHECK(double); return 0; }
             source.push_str(&format!(" jmp {ty}_{i}\n{ty}_{i}:\n"));
             for j in 0..9 {
                 for op in ["eq", "ne", "lt", "le", "gt", "ge"] {
-                    source.push_str(&format!(" %r{ty}_{i}_{j}_{op} = {op}.{ty} %v{ty}_{i}, %v{ty}_{j}\n print %r{ty}_{i}_{j}_{op}\n"));
+                    source.push_str(&format!(" %r{ty}_{i}_{j}_{op} = {op}.{ty} %v{ty}_{i}, %v{ty}_{j}\n %z{ty}_{i}_{j}_{op} = zext.bool.i64 %r{ty}_{i}_{j}_{op}\n call @print_i64(%z{ty}_{i}_{j}_{op})\n"));
                 }
             }
         }
     }
     source.push_str(" ret.i64 0\n}\n");
+    source.push_str(PRINT_I64_HELPERS);
     let input = dir.join("comparisons.lamina");
     fs::write(&input, source)?;
     for level in ["0", "1", "2", "3"] {

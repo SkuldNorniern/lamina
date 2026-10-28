@@ -34,18 +34,6 @@ impl RiscVAbi {
         ".text"
     }
 
-    /// Get the format strings for printing integers and floats
-    pub fn get_print_format(&self) -> &'static str {
-        match self.target_os {
-            TargetOperatingSystem::MacOS => {
-                "__mir_fmt_int: .asciz \"%lld\\n\"\n__mir_fmt_uint: .asciz \"%llu\\n\"\n__mir_fmt_float: .asciz \"%g\\n\""
-            }
-            _ => {
-                ".L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_uint: .string \"%llu\\n\"\n.L_mir_fmt_float: .string \"%g\\n\""
-            }
-        }
-    }
-
     /// RISC-V calling convention argument registers (first 8 arguments)
     pub const ARG_REGISTERS: &'static [&'static str] =
         &["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];

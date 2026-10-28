@@ -415,11 +415,6 @@ pub fn generate_mir_wasm_with_units<W: Write>(
             "WASI passes pointers as i32, so it has no wasm64 form".to_string(),
         )));
     }
-    if wasi && uses("$logf") {
-        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-            "WASI prints no floats; there is no formatter for one".to_string(),
-        )));
-    }
     for (symbol, instruction, reason) in [
         ("$malloc", "heapalloc", "WASI preview1 has no allocator"),
         ("$free", "heapfree", "WASI preview1 has no allocator"),
@@ -430,8 +425,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
             )));
         }
     }
-    let wasi_printing = wasi && (uses("$log") || uses("$logu"));
-    let wasi_writing = wasi && (wasi_printing || uses("$writebyte") || uses("$write"));
+    let wasi_writing = wasi && (uses("$writebyte") || uses("$write"));
     let wasi_reading = wasi && (uses("$readbyte") || uses("$read"));
     if wasi_writing {
         writeln!(writer, "  {WASI_FD_WRITE_IMPORT}")?;
@@ -531,9 +525,6 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     if wasi_writing {
         writeln!(writer, "{WASI_WRITE_HELPERS}")?;
     }
-    if wasi_printing {
-        writeln!(writer, "{WASI_PRINT_HELPERS}")?;
-    }
     if wasi_reading {
         writeln!(writer, "{WASI_READ_HELPERS}")?;
     }
@@ -613,7 +604,7 @@ fn undeclared_call(assembly: &[u8]) -> Result<(), LaminaError> {
 }
 
 /// Whether the emitted body calls `symbol`. The name has to end where the match does,
-/// so `$log` does not answer for `$logu`.
+/// so `$write` does not answer for `$writebyte`.
 fn calls(assembly: &[u8], symbol: &str) -> bool {
     let needle = format!("call {symbol}");
     let Ok(text) = str::from_utf8(assembly) else {
@@ -637,9 +628,6 @@ const WASI_FD_READ_IMPORT: &str = "(import \"wasi_snapshot_preview1\" \"fd_read\
 
 /// Runtime helpers WASI defines in the module itself, so they are never imported from `env`.
 const WASI_LOWERED: &[&str] = &[
-    "$log",
-    "$logu",
-    "$logf",
     "$writebyte",
     "$readbyte",
     "$write",
@@ -774,78 +762,6 @@ const WASI_READ_HELPERS: &str = r#"  (func $lamina_readin (param $ptr i32) (para
     local.get $n
     i32.wrap_i64
     call $lamina_readin
-  )"#;
-
-const WASI_PRINT_HELPERS: &str = r#"  (func $lamina_digits (param $v i64) (param $neg i32) (result i32)
-    (local $pos i32)
-    i32.const 40
-    local.set $pos
-    local.get $pos
-    i32.const 10
-    i32.store8
-    (loop $next
-      local.get $pos
-      i32.const 1
-      i32.sub
-      local.set $pos
-      local.get $pos
-      local.get $v
-      i64.const 10
-      i64.rem_u
-      i32.wrap_i64
-      i32.const 48
-      i32.add
-      i32.store8
-      local.get $v
-      i64.const 10
-      i64.div_u
-      local.set $v
-      local.get $v
-      i64.const 0
-      i64.ne
-      br_if $next
-    )
-    (if (local.get $neg) (then
-      local.get $pos
-      i32.const 1
-      i32.sub
-      local.set $pos
-      local.get $pos
-      i32.const 45
-      i32.store8
-    ))
-    local.get $pos
-  )
-  (func $lamina_write (param $pos i32)
-    local.get $pos
-    i32.const 41
-    local.get $pos
-    i32.sub
-    call $lamina_writeout
-    drop
-  )
-  (func $logu (param $v i64)
-    local.get $v
-    i32.const 0
-    call $lamina_digits
-    call $lamina_write
-  )
-  (func $log (param $v i64)
-    (local $neg i32)
-    local.get $v
-    i64.const 0
-    i64.lt_s
-    local.set $neg
-    (if (local.get $neg) (then
-      i64.const 0
-      local.get $v
-      i64.sub
-      local.set $v
-    ))
-    local.get $v
-    local.get $neg
-    call $lamina_digits
-    call $lamina_write
   )"#;
 
 /// Globals occupy linear memory from this address upward, below the stack. What sits
@@ -1173,54 +1089,28 @@ fn emit_instruction_wasm(
             }
         }
         MirInst::Call { name, args, ret } => {
-            if name == "lamina.print" || name == "lamina.printu" {
-                // Handle print intrinsic
-                if let Some(arg) = args.first() {
-                    load_operand_wasm(arg, writer, vreg_to_local)?;
-                    if name == "lamina.printu" {
-                        writeln!(writer, "      call $logu")?;
-                    } else {
-                        writeln!(writer, "      call $log")?;
-                    }
-                }
-            } else if name == "lamina.printf32" || name == "lamina.printf64" {
-                if let Some(arg) = args.first() {
-                    load_operand_wasm(arg, writer, vreg_to_local)?;
-                    if name == "lamina.printf32" {
-                        writeln!(writer, "      i32.wrap_i64")?;
-                        writeln!(writer, "      f32.reinterpret_i32")?;
-                        writeln!(writer, "      f64.promote_f32")?;
-                    } else {
-                        writeln!(writer, "      f64.reinterpret_i64")?;
-                    }
-                    writeln!(writer, "      call $logf")?;
-                }
-            } else {
-                let shape = addresses.imports.get(name);
-                for (index, arg) in args.iter().enumerate() {
-                    load_operand_wasm(arg, writer, vreg_to_local)?;
-                    if let Some(ty) = shape
-                        .and_then(|shape| shape.params.get(index))
-                        .and_then(Option::as_ref)
-                    {
-                        reinterpret_out(writer, ty)?;
-                    }
-                }
-
-                // An intrinsic is imported under its bare name, which is also the name
-                // the host knows it by.
-                let symbol = name.strip_prefix("lamina.").unwrap_or(name);
-                writeln!(writer, "      call ${symbol}")?;
-
-                if let Some(ty) = shape.and_then(|shape| shape.result.as_ref()) {
-                    reinterpret_in(writer, ty)?;
-                }
-                if addresses.wasi
-                    && ret.is_none()
-                    && matches!(symbol, "memcpy" | "memmove" | "memset")
+            let shape = addresses.imports.get(name);
+            for (index, arg) in args.iter().enumerate() {
+                load_operand_wasm(arg, writer, vreg_to_local)?;
+                if let Some(ty) = shape
+                    .and_then(|shape| shape.params.get(index))
+                    .and_then(Option::as_ref)
                 {
-                    writeln!(writer, "      drop")?;
+                    reinterpret_out(writer, ty)?;
                 }
+            }
+
+            // An intrinsic is imported under its bare name, which is also the name
+            // the host knows it by.
+            let symbol = name.strip_prefix("lamina.").unwrap_or(name);
+            writeln!(writer, "      call ${symbol}")?;
+
+            if let Some(ty) = shape.and_then(|shape| shape.result.as_ref()) {
+                reinterpret_in(writer, ty)?;
+            }
+            if addresses.wasi && ret.is_none() && matches!(symbol, "memcpy" | "memmove" | "memset")
+            {
+                writeln!(writer, "      drop")?;
             }
 
             // Handle return value (already on stack if function returns)

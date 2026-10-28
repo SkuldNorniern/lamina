@@ -709,7 +709,6 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
         | IRInst::Read { .. }
         | IRInst::WriteByte { .. }
         | IRInst::ReadByte { .. }
-        | IRInst::Print { .. }
         | IRInst::VaStart { .. }
         | IRInst::VaEnd { .. }
         | IRInst::VaCopy { .. } => false,
@@ -1126,7 +1125,6 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::Read { .. }
         | IRInst::WriteByte { .. }
         | IRInst::ReadByte { .. }
-        | IRInst::Print { .. }
         | IRInst::VaStart { .. }
         | IRInst::VaArg { .. }
         | IRInst::VaEnd { .. }

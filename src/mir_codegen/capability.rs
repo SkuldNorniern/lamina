@@ -61,9 +61,6 @@ pub enum CodegenCapability {
     /// Recursive function calls
     Recursion,
 
-    /// Print/log output (may require runtime support)
-    Print,
-
     /// Memory allocation on the heap
     HeapAllocation,
 
@@ -113,7 +110,6 @@ impl CodegenCapability {
             Self::ControlFlow => "Control flow (branches, jumps, loops)",
             Self::FunctionCalls => "Function calls",
             Self::Recursion => "Recursive function calls",
-            Self::Print => "Print/log output",
             Self::HeapAllocation => "Heap memory allocation",
             Self::StackAllocation => "Stack allocation",
             Self::MemoryOperations => "Memory load/store operations",
@@ -207,7 +203,7 @@ impl CapabilitySet {
     /// Standard native backend capabilities (x86_64, AArch64, RISC-V).
     ///
     /// Includes: integer/float arithmetic, control flow, function calls,
-    /// recursion, print, stack/memory operations, system calls, inline assembly, FFI.
+    /// recursion, stack/memory operations, system calls, inline assembly, FFI.
     pub fn standard_native() -> Self {
         [
             CodegenCapability::IntegerArithmetic,
@@ -215,7 +211,6 @@ impl CapabilitySet {
             CodegenCapability::ControlFlow,
             CodegenCapability::FunctionCalls,
             CodegenCapability::Recursion,
-            CodegenCapability::Print,
             CodegenCapability::StackAllocation,
             CodegenCapability::MemoryOperations,
             CodegenCapability::SystemCalls,
@@ -286,7 +281,7 @@ impl CapabilitySet {
     /// WASM backend capabilities.
     ///
     /// Includes: integer/float arithmetic, control flow, function calls,
-    /// recursion, print, memory operations. Excludes: heap allocation,
+    /// recursion, memory operations. Excludes: heap allocation,
     /// system calls, inline assembly (WASM is sandboxed).
     pub fn wasm() -> Self {
         [
@@ -295,7 +290,6 @@ impl CapabilitySet {
             CodegenCapability::ControlFlow,
             CodegenCapability::FunctionCalls,
             CodegenCapability::Recursion,
-            CodegenCapability::Print,
             CodegenCapability::MemoryOperations,
         ]
         .into_iter()
@@ -311,10 +305,8 @@ mod tests {
     fn test_capability_set() {
         let mut caps = CapabilitySet::new();
         caps.add(CodegenCapability::IntegerArithmetic);
-        caps.add(CodegenCapability::Print);
 
         assert!(caps.supports(&CodegenCapability::IntegerArithmetic));
-        assert!(caps.supports(&CodegenCapability::Print));
         assert!(!caps.supports(&CodegenCapability::HeapAllocation));
     }
 
@@ -326,7 +318,6 @@ mod tests {
                 CodegenCapability::HeapAllocation,
                 CodegenCapability::SystemCalls,
                 CodegenCapability::Recursion,
-                CodegenCapability::Print,
             ] {
                 assert!(!caps.supports(&cap));
             }

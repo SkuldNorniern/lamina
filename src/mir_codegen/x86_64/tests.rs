@@ -617,7 +617,10 @@ int main(void) {
 
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod debug_line_tests {
-    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use crate::mir_codegen::{
+        simd_support::tools_available,
+        test_support::{PRINT_I64_HELPERS, compile},
+    };
     use std::{
         env,
         error::Error,
@@ -640,8 +643,8 @@ fn @main() -> i64 {
 entry:
  %a = call @double(10)
  %b = call @triple(10)
- print %a
- print %b
+ call @print_i64(%a)
+ call @print_i64(%b)
  ret.i64 0
 }
 "#;
@@ -654,7 +657,7 @@ entry:
         let directory = env::temp_dir().join(format!("lamina-debug-lines-{}", process::id()));
         fs::create_dir_all(&directory)?;
         let source = directory.join("two_functions.lamina");
-        fs::write(&source, SOURCE)?;
+        fs::write(&source, format!("{SOURCE}{PRINT_I64_HELPERS}"))?;
 
         let assembly = directory.join("two_functions");
         compile(&source, &assembly, &["-g", "--emit-asm"])?;
@@ -1433,14 +1436,14 @@ fn external_declarations_come_out_in_one_order() {
 
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod edge_move_tests {
-    use crate::mir_codegen::test_support::compile;
+    use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
     use std::{env, error::Error, fs, process, process::Command};
 
     fn run(name: &str, lamina: &str) -> Result<String, Box<dyn Error>> {
         let directory = env::temp_dir().join(format!("lamina-edge-{name}-{}", process::id()));
         fs::create_dir_all(&directory)?;
         let source = directory.join(format!("{name}.lamina"));
-        fs::write(&source, lamina)?;
+        fs::write(&source, format!("{lamina}{PRINT_I64_HELPERS}"))?;
         let executable = directory.join(name);
         compile(&source, &executable, &[])?;
         let output = Command::new(&executable).output()?;
@@ -1453,7 +1456,7 @@ mod edge_move_tests {
         // a and b trade places three times, so the loop leaves a = 1 and b = 2.
         let printed = run(
             "swap",
-            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %a = phi.i64 [1, entry], [%b, loop]\n  %b = phi.i64 [2, entry], [%a, loop]\n  %c = phi.i64 [0, entry], [%cn, loop]\n  %cn = add.i64 %c, 1\n  %go = lt.i64 %cn, 3\n  br %go, loop, done\ndone:\n  %t = mul.i64 %a, 10\n  %r = add.i64 %t, %b\n  print %r\n  ret.i64 0\n}\n",
+            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %a = phi.i64 [1, entry], [%b, loop]\n  %b = phi.i64 [2, entry], [%a, loop]\n  %c = phi.i64 [0, entry], [%cn, loop]\n  %cn = add.i64 %c, 1\n  %go = lt.i64 %cn, 3\n  br %go, loop, done\ndone:\n  %t = mul.i64 %a, 10\n  %r = add.i64 %t, %b\n  call @print_i64(%r)\n  ret.i64 0\n}\n",
         )?;
         assert_eq!(printed, "12\n");
         Ok(())
@@ -1464,7 +1467,7 @@ mod edge_move_tests {
         // i is read by the switch, so i <- n must not happen before the comparison.
         let printed = run(
             "switch",
-            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %i = phi.i64 [0, entry], [%n, loop]\n  %n = add.i64 %i, 2\n  switch.i64 %i, loop, [4, done]\ndone:\n  print %n\n  ret.i64 0\n}\n",
+            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %i = phi.i64 [0, entry], [%n, loop]\n  %n = add.i64 %i, 2\n  switch.i64 %i, loop, [4, done]\ndone:\n  call @print_i64(%n)\n  ret.i64 0\n}\n",
         )?;
         assert_eq!(printed, "6\n");
         Ok(())
@@ -1473,16 +1476,16 @@ mod edge_move_tests {
 
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod intrinsic_namespace_tests {
-    use crate::mir_codegen::test_support::compile;
+    use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
     use std::{env, error::Error, fs, process, process::Command};
 
     #[test]
     fn a_function_may_take_an_intrinsic_name() -> Result<(), Box<dyn Error>> {
         let directory = env::temp_dir().join(format!("lamina-intrinsic-{}", process::id()));
         fs::create_dir_all(&directory)?;
-        for name in ["print", "printu", "write", "read", "writebyte", "readbyte"] {
+        for name in ["write", "read", "writebyte", "readbyte"] {
             let lamina = format!(
-                "fn @{name}(i64 %x) -> i64 {{\nentry:\n  %r = add.i64 %x, 100\n  ret.i64 %r\n}}\n\nfn @main() -> i64 {{\nentry:\n  %v = call @{name}(5)\n  print %v\n  ret.i64 0\n}}\n"
+                "fn @{name}(i64 %x) -> i64 {{\nentry:\n  %r = add.i64 %x, 100\n  ret.i64 %r\n}}\n\nfn @main() -> i64 {{\nentry:\n  %v = call @{name}(5)\n  call @print_i64(%v)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
             );
             let source = directory.join(format!("{name}.lamina"));
             fs::write(&source, lamina)?;

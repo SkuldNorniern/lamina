@@ -140,7 +140,7 @@ mod tests {
     fn rejects_host_calls_without_partial_output() {
         let module = module(vec![
             Instruction::Call {
-                name: "lamina.print".into(),
+                name: "lamina.writebyte".into(),
                 args: vec![],
                 ret: None,
             },

@@ -149,22 +149,21 @@ fn float_copy_emits_bit_move_not_add() {
 #[test]
 fn mach_o_targets_call_underscored_libc_symbols() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir =
-        "fn @main() -> i64 {\nentry:\n  %v = add.i64 1, 2\n  call @print(%v)\n  ret.i64 0\n}\n";
+    let ir = "@extern\nfn @labs(i64 %x) -> i64\n\nfn @main() -> i64 {\nentry:\n  %v = add.i64 1, 2\n  %r = call @labs(%v)\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "print_test").expect("lower print module");
+    let mir = from_ir(&module, "libc_test").expect("lower libc call module");
     for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::IOS] {
         let mut output = Vec::new();
         generate_mir_aarch64(&mir, &mut output, os)?;
         let assembly = String::from_utf8(output)?;
-        assert!(assembly.contains("bl _printf\n"), "{os:?}: {assembly}");
+        assert!(assembly.contains("bl _labs\n"), "{os:?}: {assembly}");
         assert!(assembly.contains("_main:\n"), "{os:?}: {assembly}");
-        assert!(!assembly.contains("bl printf\n"), "{os:?}: {assembly}");
+        assert!(!assembly.contains("bl labs\n"), "{os:?}: {assembly}");
     }
     let mut output = Vec::new();
     generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
-    assert!(assembly.contains("bl printf\n"), "{assembly}");
+    assert!(assembly.contains("bl labs\n"), "{assembly}");
     Ok(())
 }
 

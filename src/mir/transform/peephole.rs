@@ -108,7 +108,6 @@ impl Peephole {
                 false_val,
                 ..
             } => self.try_fold_select(cond, true_val, false_val),
-            Instruction::Call { name, args, .. } => self.try_optimize_intrinsic_call(name, args),
             _ => false,
         }
     }
@@ -522,15 +521,6 @@ impl Peephole {
             return false;
         }
         false
-    }
-
-    fn try_optimize_intrinsic_call(&self, name: &str, args: &mut [Operand]) -> bool {
-        match name {
-            "lamina.print" => {
-                matches!(args.first(), Some(Operand::Immediate(Immediate::I64(0))))
-            }
-            _ => false,
-        }
     }
 }
 

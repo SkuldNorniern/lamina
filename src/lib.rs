@@ -122,7 +122,7 @@
 //!     .stackalloc("local", Type::Primitive(PrimitiveType::I32))
 //!     .store(Type::Primitive(PrimitiveType::I32), var("local"), i32(42))
 //!     .load("value", Type::Primitive(PrimitiveType::I32), var("local"))
-//!     .print(var("value"))
+//!     .write_byte(var("value"), "written")
 //!     .ret_void();
 //! ```
 //!
@@ -201,7 +201,7 @@
 //!     .load("current", Type::Primitive(PrimitiveType::I32), var("temp"))
 //!     .binary(BinaryOp::Mul, "doubled", PrimitiveType::I32, var("current"), i32(2))
 //!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("doubled"))
-//!     .print(var("doubled"))
+//!     .write_byte(var("doubled"), "written")
 //!     .jump("cleanup")
 //!
 //!     // Negative path: take absolute value
@@ -209,13 +209,13 @@
 //!     .load("current", Type::Primitive(PrimitiveType::I32), var("temp"))
 //!     .binary(BinaryOp::Sub, "abs", PrimitiveType::I32, i32(0), var("current"))
 //!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("abs"))
-//!     .print(var("abs"))
+//!     .write_byte(var("abs"), "written")
 //!     .jump("cleanup")
 //!
-//!     // Cleanup: print final result (print is debug-only; for portable output use writebyte)
+//!     // Cleanup: write the final result as one byte
 //!     .block("cleanup")
 //!     .load("final_result", Type::Primitive(PrimitiveType::I32), var("temp"))
-//!     .print(var("final_result"))
+//!     .write_byte(var("final_result"), "written")
 //!     .ret_void();
 //!
 //! let module = builder.build();

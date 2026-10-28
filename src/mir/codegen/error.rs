@@ -27,8 +27,6 @@ pub enum FromIRError {
     MissingEntryBlock,
     /// A variable reference cannot be resolved.
     UnknownVariable,
-    /// print with string literal is not supported; use writebyte for portable output.
-    PrintStringLiteralUnsupported,
     /// Lowering produced MIR that failed verification.
     InvalidMir(Vec<String>),
     /// A global declaration uses a form the backend cannot lower yet.
@@ -73,10 +71,6 @@ impl fmt::Display for FromIRError {
                     "Variable reference cannot be resolved in current context"
                 )
             }
-            FromIRError::PrintStringLiteralUnsupported => write!(
-                f,
-                "print with string literal is not supported. Use writebyte in a loop for portable output. See docs/OUTPUT_SEMANTICS.md"
-            ),
             FromIRError::UnsupportedGlobal(reason) => {
                 write!(f, "global not yet supported: {reason}")
             }

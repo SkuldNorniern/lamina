@@ -11,8 +11,7 @@ use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
 
 use crate::mir_codegen::common::{
-    align_up, integer_conversion_with_width, io_codegen_error, print_format_label,
-    promoted_argument_type,
+    align_up, integer_conversion_with_width, io_codegen_error, promoted_argument_type,
 };
 
 use util::{
@@ -38,7 +37,6 @@ use crate::{
     },
 };
 
-use lamina_codegen::abi::{Abi, RuntimeSymbol};
 use lamina_codegen::{
     GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
     riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen},
@@ -506,7 +504,6 @@ fn emit_riscv_module<W: Write>(
     let abi = RiscVAbi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
-    writeln!(writer, "{}", abi.get_print_format())?;
     writeln!(writer, "{}", abi.get_text_section())?;
     emit_debug_file(writer, settings)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
@@ -805,33 +802,6 @@ fn store_incoming_arguments<W: Write>(
         }
     }
     Ok(())
-}
-
-/// Format label for a print intrinsic. Mach-O has no local label prefix, so the same
-/// strings are emitted with two leading underscores there.
-fn fmt_label(call: &str, target_os: TargetOperatingSystem) -> String {
-    let label = print_format_label(call);
-    match target_os {
-        TargetOperatingSystem::MacOS => format!("__{}", label.trim_start_matches(".L_")),
-        _ => label.to_string(),
-    }
-}
-
-/// Flushes every stream after a print.
-///
-/// The print intrinsics go through buffered `printf` while the byte intrinsics write
-/// straight out, so without this the two leave in a different order here than on the
-/// other backends.
-fn emit_flush<W: Write>(writer: &mut W, abi: &RiscVAbi) -> Result<(), LaminaError> {
-    let fflush = abi.builtin_library().symbol(RuntimeSymbol::Fflush);
-    writeln!(writer, "    li a0, 0")?;
-    writeln!(writer, "    call {fflush}")?;
-    Ok(())
-}
-
-/// Name of printf for this target, honouring any stub the ABI prefers.
-fn printf_symbol(abi: &RiscVAbi) -> String {
-    abi.builtin_library().symbol(RuntimeSymbol::Printf)
 }
 
 #[derive(Clone, Copy)]
@@ -1397,7 +1367,7 @@ fn emit_instruction_riscv<W: Write>(
             let caller_saved_mappings = reg_alloc.caller_saved_mappings(live_vregs);
             spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
-            // Handle print intrinsic
+            // Handle write and read intrinsics
             if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "a2")?;
@@ -1437,25 +1407,6 @@ fn emit_instruction_riscv<W: Write>(
                 writeln!(writer, "    lbu a0, 0(sp)")?;
                 writeln!(writer, "1:")?;
                 writeln!(writer, "    addi sp, sp, 16")?;
-            } else if name == "lamina.printf32" || name == "lamina.printf64" {
-                if let Some(arg) = args.first() {
-                    writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
-                    if name == "lamina.printf32" {
-                        writeln!(writer, "    fmv.w.x ft0, a1")?;
-                        writeln!(writer, "    fcvt.d.s ft0, ft0")?;
-                        writeln!(writer, "    fmv.x.d a1, ft0")?;
-                    }
-                    writeln!(writer, "    call {}", printf_symbol(&abi))?;
-                    emit_flush(writer, &abi)?;
-                }
-            } else if name == "lamina.print" || name == "lamina.printu" {
-                if let Some(arg) = args.first() {
-                    writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
-                    writeln!(writer, "    call {}", printf_symbol(&abi))?;
-                    emit_flush(writer, &abi)?;
-                }
             } else {
                 // General function call implementation
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
@@ -1605,11 +1556,6 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::TailCall { name, args } => {
             let abi = RiscVAbi::new(target_os);
-            if name == "lamina.print" {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "RISC-V: TailCall to print is not supported".to_string(),
-                )));
-            }
             if ctx.ret_aggregate.is_some()
                 || ctx.signatures.result(name).is_some()
                 || ctx

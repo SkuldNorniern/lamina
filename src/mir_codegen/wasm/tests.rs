@@ -1,6 +1,6 @@
 use super::*;
 use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir};
-use crate::mir_codegen::simd_support::tool_available;
+use crate::mir_codegen::{simd_support::tool_available, test_support::PRINT_I64_HELPERS};
 use crate::parser::parse_module;
 use std::{env, fs, process::Command};
 
@@ -87,15 +87,11 @@ module = wasmtime.Module.from_file(engine, sys.argv[1])
 linker = wasmtime.Linker(engine)
 for imp in module.imports:
     def callback(*args, name=imp.name):
-        if name == 'log':
-            print(*args)
-            return None
-        if name == 'logu':
-            print(args[0] & 0xffffffffffffffff)
-            return None
-        if name == 'logf':
-            print('%g' % args[0])
-            return None
+        if name == 'writebyte':
+            sys.stdout.flush()
+            sys.stdout.buffer.write(bytes([args[0] & 0xff]))
+            sys.stdout.buffer.flush()
+            return 1
         return None if name == 'free' else 0
     linker.define(store, imp.module, imp.name,
                   wasmtime.Func(store, imp.type, callback))
@@ -110,7 +106,8 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
     if !cfg!(target_os = "linux") || !tool_available("uv") {
         return None;
     }
-    let ir = parse_module(source).expect("source should parse");
+    let source = format!("{source}\n{PRINT_I64_HELPERS}");
+    let ir = parse_module(&source).expect("source should parse");
     let mut mir = from_ir(&ir, "module").expect("source should lower");
     TransformPipeline::default_for_opt_level(opt_level)
         .apply_to_module(&mut mir)
@@ -152,7 +149,7 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
 fn distinct_stack_slots_in_one_frame_do_not_alias() {
     let Some(stdout) = run_wasm_main(
         "slots",
-        "fn @main() -> i64 {\nentry:\n %p = stackalloc.i64\n %q = stackalloc.i64\n store.i64 %p, 11\n store.i64 %q, 22\n %x = load.i64 %p\n print %x\n ret.i64 0\n}",
+        "fn @main() -> i64 {\nentry:\n %p = stackalloc.i64\n %q = stackalloc.i64\n store.i64 %p, 11\n store.i64 %q, 22\n %x = load.i64 %p\n call @print_i64(%x)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -188,7 +185,7 @@ fn stack_frames_are_released_on_every_return() {
 fn signed_byte_compares_on_loaded_operands_read_the_sign() {
     let Some(stdout) = run_wasm_main(
         "cmp8",
-        "fn @main() -> i64 {\nentry:\n %p = stackalloc.i8\n store.i8 %p, -1\n %x = load.i8 %p\n %a = lt.i8 %x, 0\n print %a\n %b = eq.i8 %x, -1\n print %b\n %c = lt.u8 %x, 1\n print %c\n %d = gt.i8 %x, -2\n print %d\n %e = gt.u8 %x, 1\n print %e\n %f = add.i8 %x, 0\n %g = lt.i8 %f, 0\n print %g\n ret.i64 0\n}",
+        "fn @main() -> i64 {\nentry:\n %p = stackalloc.i8\n store.i8 %p, -1\n %x = load.i8 %p\n %a = lt.i8 %x, 0\n %pv0 = zext.bool.i64 %a\n call @print_i64(%pv0)\n %b = eq.i8 %x, -1\n %pv1 = zext.bool.i64 %b\n call @print_i64(%pv1)\n %c = lt.u8 %x, 1\n %pv2 = zext.bool.i64 %c\n call @print_i64(%pv2)\n %d = gt.i8 %x, -2\n %pv3 = zext.bool.i64 %d\n call @print_i64(%pv3)\n %e = gt.u8 %x, 1\n %pv4 = zext.bool.i64 %e\n call @print_i64(%pv4)\n %f = add.i8 %x, 0\n %g = lt.i8 %f, 0\n %pv5 = zext.bool.i64 %g\n call @print_i64(%pv5)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -200,7 +197,7 @@ fn signed_byte_compares_on_loaded_operands_read_the_sign() {
 fn narrow_compares_normalize_operands_at_their_width() {
     let Some(stdout) = run_wasm_main(
         "cmpwidths",
-        "fn @main() -> i64 {\nentry:\n %p8 = stackalloc.i8\n %p16 = stackalloc.i16\n %p32 = stackalloc.i32\n store.i8 %p8, -128\n store.i16 %p16, -32768\n store.i32 %p32, -2147483648\n %a8 = load.i8 %p8\n %a16 = load.i16 %p16\n %a32 = load.i32 %p32\n %s8 = lt.i8 %a8, 0\n print %s8\n %s16 = lt.i16 %a16, 0\n print %s16\n %s32 = le.i32 %a32, -2147483648\n print %s32\n %u8 = lt.u8 %a8, 127\n print %u8\n %u16 = gt.u16 %a16, 32767\n print %u16\n %e8 = eq.i8 %a8, -128\n print %e8\n %c8 = add.i8 %a8, 0\n %g8 = gt.i8 %c8, -127\n print %g8\n ret.i64 0\n}",
+        "fn @main() -> i64 {\nentry:\n %p8 = stackalloc.i8\n %p16 = stackalloc.i16\n %p32 = stackalloc.i32\n store.i8 %p8, -128\n store.i16 %p16, -32768\n store.i32 %p32, -2147483648\n %a8 = load.i8 %p8\n %a16 = load.i16 %p16\n %a32 = load.i32 %p32\n %s8 = lt.i8 %a8, 0\n %pv0 = zext.bool.i64 %s8\n call @print_i64(%pv0)\n %s16 = lt.i16 %a16, 0\n %pv1 = zext.bool.i64 %s16\n call @print_i64(%pv1)\n %s32 = le.i32 %a32, -2147483648\n %pv2 = zext.bool.i64 %s32\n call @print_i64(%pv2)\n %u8 = lt.u8 %a8, 127\n %pv3 = zext.bool.i64 %u8\n call @print_i64(%pv3)\n %u16 = gt.u16 %a16, 32767\n %pv4 = zext.bool.i64 %u16\n call @print_i64(%pv4)\n %e8 = eq.i8 %a8, -128\n %pv5 = zext.bool.i64 %e8\n call @print_i64(%pv5)\n %c8 = add.i8 %a8, 0\n %g8 = gt.i8 %c8, -127\n %pv6 = zext.bool.i64 %g8\n call @print_i64(%pv6)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -212,7 +209,7 @@ fn narrow_compares_normalize_operands_at_their_width() {
 fn narrow_arguments_keep_their_declared_signedness_across_calls() {
     let Some(stdout) = run_wasm_main(
         "boundary_signedness",
-        "fn @mk() -> i8 {\nentry:\n %v = trunc.i64.i8 255\n ret.i8 %v\n}\nfn @take(u8 %u, i8 %c) -> i64 {\nentry:\n %a = lt.u8 %u, 1\n print %a\n %b = lt.i8 %c, 0\n print %b\n ret.i64 0\n}\nfn @main() -> i64 {\nentry:\n %c = call @mk()\n %u = trunc.i64.u8 255\n %r = call @take(%u, %c)\n ret.i64 0\n}",
+        "fn @mk() -> i8 {\nentry:\n %v = trunc.i64.i8 255\n ret.i8 %v\n}\nfn @take(u8 %u, i8 %c) -> i64 {\nentry:\n %a = lt.u8 %u, 1\n %pv0 = zext.bool.i64 %a\n call @print_i64(%pv0)\n %b = lt.i8 %c, 0\n %pv1 = zext.bool.i64 %b\n call @print_i64(%pv1)\n ret.i64 0\n}\nfn @main() -> i64 {\nentry:\n %c = call @mk()\n %u = trunc.i64.u8 255\n %r = call @take(%u, %c)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -256,21 +253,6 @@ fn optimized_tail_calls_run_in_constant_stack() {
         return;
     };
     assert_eq!(stdout, "main returned 42\n");
-}
-
-#[test]
-fn printed_floats_reach_the_host_as_floats() {
-    let Some(stdout) = run_wasm_main(
-        "floats",
-        "fn @main() -> i64 {\nentry:\n %a = add.f64 1.5, 2.25\n print %a\n %b = add.f32 0.5, 0.25\n print %b\n ret.i64 0\n}",
-        0,
-    ) else {
-        return;
-    };
-    assert!(
-        stdout.starts_with("3.75\n0.75\n"),
-        "unexpected output: {stdout}"
-    );
 }
 
 fn emit_wat(source: &str, arch: TargetArchitecture) -> String {
@@ -320,11 +302,13 @@ fn module_imports_only_helpers_it_calls() {
     assert!(!quiet.contains("(import"), "{quiet}");
 
     let printing = emit_wat(
-        "fn @main() -> i64 {\nentry:\n  print 7\n  ret.i64 0\n}\n",
+        "fn @main() -> i64 {\nentry:\n  %w = writebyte 55\n  ret.i64 0\n}\n",
         TargetArchitecture::Wasm32,
     );
-    assert!(printing.contains("(func $log "), "{printing}");
-    assert!(!printing.contains("$logu"), "{printing}");
+    assert!(
+        printing.contains("(import \"env\" \"writebyte\""),
+        "{printing}"
+    );
     assert!(!printing.contains("$malloc"), "{printing}");
 }
 
@@ -357,8 +341,8 @@ fn call_through_pointer_indexes_function_table() {
 }
 
 #[test]
-fn wasi_prints_without_a_console_import() {
-    let source = "fn @main() -> i64 {\nentry:\n  print 42\n  print -7\n  ret.i64 0\n}\n";
+fn wasi_writes_without_a_console_import() {
+    let source = "fn @main() -> i64 {\nentry:\n  %a = writebyte 79\n  %b = writebyte 75\n  %c = writebyte 10\n  ret.i64 0\n}\n";
     let ir = parse_module(source).expect("source should parse");
     let mir = from_ir(&ir, "module").expect("source should lower");
     let mut wat = Vec::new();
@@ -392,7 +376,7 @@ fn wasi_prints_without_a_console_import() {
         .expect("run wasmtime");
     fs::remove_dir_all(&dir).expect("cleanup");
     assert!(output.status.success(), "{output:?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "42\n-7\n");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "OK\n");
 }
 
 #[test]
@@ -444,7 +428,7 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         ("i32", "i64.load32_s"),
     ] {
         let source = format!(
-            "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.{ty}\n  store.{ty} %p, -1\n  %x = load.{ty} %p\n  print %x\n  ret.i64 0\n}}\n"
+            "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.{ty}\n  store.{ty} %p, -1\n  %x = load.{ty} %p\n  %w = sext.{ty}.i64 %x\n  call @print_i64(%w)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
         );
         let wat = emit_wat(&source, TargetArchitecture::Wasm32);
         assert!(wat.contains(signed), "{ty}: {wat}");
@@ -454,10 +438,10 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
     if !tool_available("wasmtime") {
         return;
     }
-    let ir = parse_module(
-        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, -1\n  %x = load.i8 %p\n  print %x\n  ret.i64 0\n}\n",
-    )
-    .expect("parse");
+    let source = format!(
+        "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, -1\n  %x = load.i8 %p\n  %pv0 = sext.i8.i64 %x\n  call @print_i64(%pv0)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
+    );
+    let ir = parse_module(&source).expect("parse");
     let mir = from_ir(&ir, "module").expect("lower");
     let mut wat = Vec::new();
     generate_mir_wasm(
@@ -581,7 +565,11 @@ fn wasi_writebyte_reaches_stdout() {
 #[test]
 fn wasi_memcpy_and_memset_fill_the_module_memory() {
     let wat = emit_wasi(
-        "fn @main() -> i64 {\nentry:\n  %src = stackalloc.i64\n  %dst = stackalloc.i64\n  store.i64 %src, 578437695752307201\n  memset %dst, 165, 8\n  memcpy %dst, %src, 4\n  %x = load.i64 %dst\n  print %x\n  ret.i64 0\n}\n",
+        &[
+        "fn @main() -> i64 {\nentry:\n  %src = stackalloc.i64\n  %dst = stackalloc.i64\n  store.i64 %src, 578437695752307201\n  memset %dst, 165, 8\n  memcpy %dst, %src, 4\n  %x = load.i64 %dst\n  call @print_i64(%x)\n  ret.i64 0\n}\n",
+            PRINT_I64_HELPERS,
+        ]
+        .concat(),
     )
     .expect("WASI codegen should succeed");
     assert!(!wat.contains("\"env\""), "{wat}");

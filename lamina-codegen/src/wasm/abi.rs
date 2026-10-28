@@ -31,18 +31,6 @@ impl WasmABI {
     pub fn get_runtime_imports(&self) -> &'static [(&'static str, &'static str)] {
         &[
             (
-                "$log",
-                "(import \"console\" \"log\" (func $log (param i64)))",
-            ),
-            (
-                "$logu",
-                "(import \"console\" \"logu\" (func $logu (param i64)))",
-            ),
-            (
-                "$logf",
-                "(import \"console\" \"logf\" (func $logf (param f64)))",
-            ),
-            (
                 "$writebyte",
                 "(import \"env\" \"writebyte\" (func $writebyte (param i64) (result i64)))",
             ),

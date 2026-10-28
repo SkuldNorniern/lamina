@@ -751,7 +751,7 @@ mod execution_tests {
                             directory.join(format!("{case}-{level}-{allocator}-{mir}"));
                         let mut flags = vec!["--opt-level", level, "--regalloc", allocator];
                         if mir {
-                            flags.extend(["--emit-mir-asm", "--target", "x86_64_linux"]);
+                            flags.extend(["--emit-asm", "--target", "x86_64_linux"]);
                         }
                         compile(&source, &executable, &flags)?;
                         if mir {

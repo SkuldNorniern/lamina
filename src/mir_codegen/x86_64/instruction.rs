@@ -1,7 +1,6 @@
 use super::variadic::SAVE_AREA_SLOTS;
 use super::*;
-use crate::mir_codegen::common::{align_up, print_format_label};
-use lamina_codegen::abi::{BuiltinLibrary, RuntimeSymbol};
+use crate::mir_codegen::common::align_up;
 
 /// Frame slots are laid out as the stack slots, then the callee-saved registers, then
 /// the hidden sret pointer, then the variadic register save area, so the saved registers
@@ -19,61 +18,6 @@ fn restore_saved_registers<W: Write>(
         let offset = X86Frame::calculate_stack_offset(first_slot + index);
         writeln!(writer, "    movq {offset}(%rbp), %{reg}")?;
     }
-    Ok(())
-}
-
-/// Where the value printf reads is waiting.
-#[derive(Clone, Copy)]
-enum PrintArg {
-    /// In the integer argument register: rdx on Windows, rsi elsewhere.
-    Integer,
-    /// In xmm0, already widened to double.
-    Double,
-}
-
-/// Calls printf with `fmt` and one value, then flushes, so printed output keeps its
-/// order against the writes that go out through a syscall.
-fn emit_printf_and_flush<W: Write>(
-    writer: &mut RaxTrackingWriter<W>,
-    target_os: TargetOperatingSystem,
-    builtins: &BuiltinLibrary,
-    fmt: &str,
-    arg: PrintArg,
-) -> Result<(), LaminaError> {
-    let shadow = windows::SHADOW_SPACE_SIZE;
-    let printf = builtins.symbol(RuntimeSymbol::Printf);
-    let fflush = builtins.symbol(RuntimeSymbol::Fflush);
-    if target_os == TargetOperatingSystem::Windows {
-        writeln!(writer, "    subq ${shadow}, %rsp")?;
-        writeln!(writer, "    leaq {fmt}(%rip), %rcx")?;
-        match arg {
-            PrintArg::Integer => {}
-            PrintArg::Double => writeln!(writer, "    movq %xmm0, %rdx")?,
-        }
-        writeln!(writer, "    call {printf}")?;
-        writeln!(writer, "    addq ${shadow}, %rsp")?;
-        writeln!(writer, "    subq ${shadow}, %rsp")?;
-        writeln!(writer, "    movq $0, %rcx")?;
-        writeln!(writer, "    call {fflush}")?;
-        writeln!(writer, "    addq ${shadow}, %rsp")?;
-        return Ok(());
-    }
-
-    writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
-    // al carries the vector-register count for a variadic call; printf reads it
-    // before saving xmm state.
-    let vector_count = match arg {
-        PrintArg::Integer => 0,
-        PrintArg::Double => 1,
-    };
-    if vector_count == 0 {
-        writeln!(writer, "    xorl %eax, %eax")?;
-    } else {
-        writeln!(writer, "    movl ${vector_count}, %eax")?;
-    }
-    writeln!(writer, "    call {printf}")?;
-    writeln!(writer, "    movq $0, %rdi")?;
-    writeln!(writer, "    call {fflush}")?;
     Ok(())
 }
 
@@ -1079,55 +1023,7 @@ pub(super) fn emit_instruction_x86_64(
             }
         }
         MirInst::Call { name, args, ret } => {
-            if name == "lamina.print" || name == "lamina.printu" {
-                let fmt = print_format_label(name);
-                if let Some(arg) = args.first() {
-                    let value_reg = if target_os == TargetOperatingSystem::Windows {
-                        "rdx"
-                    } else {
-                        "rsi"
-                    };
-                    match arg {
-                        Operand::Register(Register::Virtual(v)) if writer.rax_value == Some(*v) => {
-                            writeln!(writer, "    movq %rax, %{value_reg}")?;
-                        }
-                        _ => load_operand_to_register(
-                            arg,
-                            writer,
-                            reg_alloc,
-                            stack_slots,
-                            value_reg,
-                        )?,
-                    }
-                    emit_printf_and_flush(
-                        writer,
-                        target_os,
-                        &BuiltinLibrary::from_env(target_os),
-                        fmt,
-                        PrintArg::Integer,
-                    )?;
-                }
-            } else if (name == "lamina.printf32" || name == "lamina.printf64") && args.len() == 1 {
-                let arg = args.first().ok_or_else(|| {
-                    LaminaError::ValidationError("print requires one argument".to_string())
-                })?;
-                let ty = if name == "lamina.printf32" {
-                    MirType::f32()
-                } else {
-                    MirType::f64()
-                };
-                load_float_operand_to_xmm(arg, writer, reg_alloc, stack_slots, "xmm0", &ty)?;
-                if name == "lamina.printf32" {
-                    writeln!(writer, "    cvtss2sd %xmm0, %xmm0")?;
-                }
-                emit_printf_and_flush(
-                    writer,
-                    target_os,
-                    &BuiltinLibrary::from_env(target_os),
-                    print_format_label(name),
-                    PrintArg::Double,
-                )?;
-            } else if name == "lamina.writebyte" && args.len() == 1 {
+            if name == "lamina.writebyte" && args.len() == 1 {
                 let arg = args.first().ok_or_else(|| {
                     LaminaError::ValidationError("writebyte requires one argument".to_string())
                 })?;
@@ -1146,7 +1042,7 @@ pub(super) fn emit_instruction_x86_64(
                     TargetOperatingSystem::Windows => {
                         // Windows syscall numbers are unstable and cannot be invoked
                         // directly like on Linux/macOS. Route the byte through the CRT
-                        // (putchar) instead, matching how `print` uses `printf`.
+                        // (putchar) instead.
                         writeln!(writer, "    movzbl (%rsp), %ecx")?;
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    call putchar")?;
@@ -2407,7 +2303,10 @@ pub(super) fn emit_int_compare(
 
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod narrow_integer_tests {
-    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use crate::mir_codegen::{
+        simd_support::tools_available,
+        test_support::{PRINT_I64_HELPERS, compile},
+    };
     use std::{
         env,
         error::Error,
@@ -2460,7 +2359,7 @@ mod narrow_integer_tests {
                 )?;
                 writeln!(
                     body,
-                    "%a{id} = add.i{width} {left}, 0\n%b{id} = add.i{width} {right}, 0\n%r{id} = {op}.i{width} %a{id}, %b{id}\n%z{id} = {conversion} %r{id}\nprint %z{id}\n%c{id} = call @op{id}(%a{id}, %b{id})\nprint %c{id}"
+                    "%a{id} = add.i{width} {left}, 0\n%b{id} = add.i{width} {right}, 0\n%r{id} = {op}.i{width} %a{id}, %b{id}\n%z{id} = {conversion} %r{id}\ncall @print_i64(%z{id})\n%c{id} = call @op{id}(%a{id}, %b{id})\ncall @print_i64(%c{id})"
                 )?;
                 writeln!(expected, "{result}\n{result}")?;
                 id += 1;
@@ -2469,20 +2368,22 @@ mod narrow_integer_tests {
             let minimum = -(1_i64 << (width - 1));
             writeln!(
                 body,
-                "%overflow{width} = add.i{width} {maximum}, 1\n%negative{width} = shr.i{width} %overflow{width}, 3\n%wide{width} = sext.i{width}.i64 %negative{width}\nprint %wide{width}\n%unsigned{width} = zext.i{width}.i64 %overflow{width}\nprint %unsigned{width}"
+                "%overflow{width} = add.i{width} {maximum}, 1\n%negative{width} = shr.i{width} %overflow{width}, 3\n%wide{width} = sext.i{width}.i64 %negative{width}\ncall @print_i64(%wide{width})\n%unsigned{width} = zext.i{width}.i64 %overflow{width}\ncall @print_i64(%unsigned{width})"
             )?;
             writeln!(expected, "{}\n{}", minimum >> 3, 1_i64 << (width - 1))?;
             // Adjacent elements catch stores that overwrite beyond their type width.
             writeln!(
                 body,
-                "%array{width} = stackalloc.[2 x i{width}]\n%low{width} = getelem.i{width} %array{width}, 0\n%high{width} = getelem.i{width} %array{width}, 1\nstore.i{width} %high{width}, 99\nstore.i{width} %low{width}, -20\n%load{width} = load.i{width} %low{width}\n%div{width} = div.i{width} %load{width}, 3\n%loaded{width} = sext.i{width}.i64 %div{width}\nprint %loaded{width}\n%neighbor{width} = load.i{width} %high{width}\n%neighborwide{width} = sext.i{width}.i64 %neighbor{width}\nprint %neighborwide{width}"
+                "%array{width} = stackalloc.[2 x i{width}]\n%low{width} = getelem.i{width} %array{width}, 0\n%high{width} = getelem.i{width} %array{width}, 1\nstore.i{width} %high{width}, 99\nstore.i{width} %low{width}, -20\n%load{width} = load.i{width} %low{width}\n%div{width} = div.i{width} %load{width}, 3\n%loaded{width} = sext.i{width}.i64 %div{width}\ncall @print_i64(%loaded{width})\n%neighbor{width} = load.i{width} %high{width}\n%neighborwide{width} = sext.i{width}.i64 %neighbor{width}\ncall @print_i64(%neighborwide{width})"
             )?;
             writeln!(expected, "-6\n99")?;
         }
         let source = directory.join("narrow.lamina");
         fs::write(
             &source,
-            format!("{functions}\n@export\nfn @main() -> i64 {{\nentry:\n{body}\nret.i64 0\n}}\n"),
+            format!(
+                "{functions}\n@export\nfn @main() -> i64 {{\nentry:\n{body}\nret.i64 0\n}}\n{PRINT_I64_HELPERS}"
+            ),
         )?;
         for level in ["0", "1", "2", "3"] {
             for allocator in ["incremental", "linear", "graph"] {
@@ -2531,14 +2432,16 @@ mod narrow_integer_tests {
             )?;
             writeln!(
                 body,
-                "%p{width} = trunc.i64.u{width} {maximum}\n%r{width} = call @ident{width}(%p{width})\n%w{width} = zext.u{width}.i64 %r{width}\nprint %w{width}\n%e{width} = call @same{width}(%p{width})\nprint %e{width}\n%x{width} = xor.u{width} %r{width}, 0\n%q{width} = eq.u{width} %r{width}, %x{width}\n%qz{width} = zext.bool.i64 %q{width}\nprint %qz{width}\n%d{width} = div.u{width} %r{width}, 7\n%dz{width} = zext.u{width}.i64 %d{width}\nprint %dz{width}\n%g{width} = gt.u{width} %r{width}, 1\n%gz{width} = zext.bool.i64 %g{width}\nprint %gz{width}"
+                "%p{width} = trunc.i64.u{width} {maximum}\n%r{width} = call @ident{width}(%p{width})\n%w{width} = zext.u{width}.i64 %r{width}\ncall @print_i64(%w{width})\n%e{width} = call @same{width}(%p{width})\ncall @print_i64(%e{width})\n%x{width} = xor.u{width} %r{width}, 0\n%q{width} = eq.u{width} %r{width}, %x{width}\n%qz{width} = zext.bool.i64 %q{width}\ncall @print_i64(%qz{width})\n%d{width} = div.u{width} %r{width}, 7\n%dz{width} = zext.u{width}.i64 %d{width}\ncall @print_i64(%dz{width})\n%g{width} = gt.u{width} %r{width}, 1\n%gz{width} = zext.bool.i64 %g{width}\ncall @print_i64(%gz{width})"
             )?;
             writeln!(expected, "{maximum}\n1\n1\n{}\n1", maximum / 7)?;
         }
         let source = directory.join("unsigned.lamina");
         fs::write(
             &source,
-            format!("{functions}\n@export\nfn @main() -> i64 {{\nentry:\n{body}\nret.i64 0\n}}\n"),
+            format!(
+                "{functions}\n@export\nfn @main() -> i64 {{\nentry:\n{body}\nret.i64 0\n}}\n{PRINT_I64_HELPERS}"
+            ),
         )?;
         for level in ["0", "1", "2", "3"] {
             for allocator in ["incremental", "linear", "graph"] {
@@ -2562,215 +2465,5 @@ mod narrow_integer_tests {
         }
         fs::remove_dir_all(directory)?;
         Ok(())
-    }
-
-    #[test]
-    fn narrow_unsigned_mir_operations_preserve_bit_patterns() -> Result<(), Box<dyn Error>> {
-        if !tools_available(&["cc", "timeout"]) {
-            return Ok(());
-        }
-        use crate::mir::{
-            FunctionBuilder, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Module, Operand,
-            Register, VirtualReg,
-        };
-        use crate::mir_codegen::{
-            MirCodegenSettings, RegallocStrategy,
-            x86_64::generate_mir_x86_64_with_units_and_settings,
-        };
-        use lamina_platform::TargetOperatingSystem;
-
-        let directory = env::temp_dir().join(format!("lamina-narrow-mir-{}", process::id()));
-        fs::create_dir_all(&directory)?;
-        let mut main = FunctionBuilder::new("main")
-            .returns(MirType::i64())
-            .block("entry");
-        let mut expected = String::new();
-        let mut next = 0;
-        let mut register = || {
-            let reg = Register::Virtual(VirtualReg::gpr(next));
-            next += 1;
-            reg
-        };
-        for (width, ty, immediate) in [
-            (8, MirType::i8(), Immediate::I8(-20)),
-            (16, MirType::i16(), Immediate::I16(-20)),
-            (32, MirType::i32(), Immediate::I32(-20)),
-        ] {
-            let unsigned = (1_i64 << width) - 20;
-            for (binary, comparison, right, result) in [
-                (Some(IntBinOp::UDiv), None, 3, unsigned / 3),
-                (Some(IntBinOp::URem), None, 3, unsigned % 3),
-                (Some(IntBinOp::LShr), None, 3, unsigned >> 3),
-                (Some(IntBinOp::UDiv), None, -3, 0),
-                (Some(IntBinOp::URem), None, -3, unsigned),
-                (Some(IntBinOp::LShr), None, 0, unsigned),
-                (None, Some(IntCmpOp::ULt), 3, 0),
-                (None, Some(IntCmpOp::ULe), 3, 0),
-                (None, Some(IntCmpOp::UGt), 3, 1),
-                (None, Some(IntCmpOp::UGe), 3, 1),
-            ] {
-                let lhs = register();
-                let rhs = register();
-                let dst = register();
-                let wide = register();
-                let imm3 = match width {
-                    8 => Immediate::I8(right as i8),
-                    16 => Immediate::I16(right as i16),
-                    _ => Immediate::I32(right),
-                };
-                main = main
-                    .instr(Instruction::Copy {
-                        ty,
-                        dst: lhs.clone(),
-                        src: Operand::Immediate(immediate),
-                    })
-                    .instr(Instruction::Copy {
-                        ty,
-                        dst: rhs.clone(),
-                        src: Operand::Immediate(imm3),
-                    });
-                let operation = if let Some(op) = binary {
-                    Instruction::IntBinary {
-                        op,
-                        ty,
-                        dst: dst.clone(),
-                        lhs: Operand::Register(lhs),
-                        rhs: Operand::Register(rhs),
-                    }
-                } else {
-                    Instruction::IntCmp {
-                        op: comparison.ok_or("missing comparison")?,
-                        ty,
-                        dst: dst.clone(),
-                        lhs: Operand::Register(lhs),
-                        rhs: Operand::Register(rhs),
-                    }
-                };
-                main = main
-                    .instr(operation)
-                    .instr(Instruction::IntConvert {
-                        from: if binary.is_some() { ty } else { MirType::i1() },
-                        to: MirType::i64(),
-                        signed: false,
-                        dst: wide.clone(),
-                        src: Operand::Register(dst),
-                    })
-                    .instr(Instruction::Call {
-                        name: "lamina.print".into(),
-                        args: vec![Operand::Register(wide)],
-                        ret: None,
-                    });
-                writeln!(expected, "{result}")?;
-            }
-        }
-        main = main.instr(Instruction::Ret {
-            value: Some(Operand::Immediate(Immediate::I64(0))),
-        });
-        let mut module = Module::new("unsigned");
-        module.add_function(main.build());
-        for regalloc in [
-            RegallocStrategy::Incremental,
-            RegallocStrategy::LinearScanGlobal,
-            RegallocStrategy::GraphColorGlobal,
-        ] {
-            let settings = MirCodegenSettings {
-                regalloc,
-                ..MirCodegenSettings::default()
-            };
-            let mut assembly = Vec::new();
-            generate_mir_x86_64_with_units_and_settings(
-                &module,
-                &mut assembly,
-                TargetOperatingSystem::Linux,
-                1,
-                &settings,
-            )?;
-            let source = directory.join("unsigned.s");
-            let executable = directory.join("unsigned");
-            fs::write(&source, &assembly)?;
-            let compiled = Command::new("cc")
-                .arg(&source)
-                .args(["-no-pie", "-o"])
-                .arg(&executable)
-                .output()?;
-            assert!(compiled.status.success(), "{regalloc:?}: {compiled:?}");
-            let output = Command::new("timeout")
-                .arg("10")
-                .arg(&executable)
-                .output()?;
-            assert!(output.status.success(), "{regalloc:?}: {output:?}");
-            assert_eq!(
-                String::from_utf8_lossy(&output.stdout),
-                expected,
-                "{regalloc:?}"
-            );
-        }
-        fs::remove_dir_all(directory)?;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod runtime_symbol_tests {
-    #![allow(clippy::expect_used)]
-
-    use super::*;
-    use std::collections::HashMap;
-
-    fn emit_print(
-        target_os: TargetOperatingSystem,
-        overrides: HashMap<RuntimeSymbol, String>,
-    ) -> String {
-        let mut writer = RaxTrackingWriter {
-            inner: Vec::new(),
-            rax_value: None,
-        };
-        let builtins = BuiltinLibrary::new(target_os, overrides);
-        emit_printf_and_flush(&mut writer, target_os, &builtins, "fmt", PrintArg::Integer)
-            .expect("emit");
-        String::from_utf8(writer.inner).expect("utf8")
-    }
-
-    fn overrides() -> HashMap<RuntimeSymbol, String> {
-        [
-            (RuntimeSymbol::Printf, "k_print".to_string()),
-            (RuntimeSymbol::Fflush, "k_flush".to_string()),
-        ]
-        .into_iter()
-        .collect()
-    }
-
-    #[test]
-    fn print_defaults_to_c_names() {
-        let linux = emit_print(TargetOperatingSystem::Linux, HashMap::new());
-        assert!(
-            linux.contains("call printf\n") && linux.contains("call fflush\n"),
-            "{linux}"
-        );
-        let macos = emit_print(TargetOperatingSystem::MacOS, HashMap::new());
-        assert!(
-            macos.contains("call _printf\n") && macos.contains("call _fflush\n"),
-            "{macos}"
-        );
-    }
-
-    #[test]
-    fn print_uses_overrides() {
-        let linux = emit_print(TargetOperatingSystem::Linux, overrides());
-        assert!(
-            linux.contains("call k_print\n") && linux.contains("call k_flush\n"),
-            "{linux}"
-        );
-        assert!(!linux.contains("call printf\n"), "{linux}");
-        let windows = emit_print(TargetOperatingSystem::Windows, overrides());
-        assert!(
-            windows.contains("call k_print\n") && windows.contains("call k_flush\n"),
-            "{windows}"
-        );
-        let macos = emit_print(TargetOperatingSystem::MacOS, overrides());
-        assert!(
-            macos.contains("call _k_print\n") && macos.contains("call _k_flush\n"),
-            "{macos}"
-        );
     }
 }

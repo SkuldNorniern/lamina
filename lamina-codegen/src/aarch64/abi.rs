@@ -91,13 +91,11 @@ mod tests {
     #[test]
     fn test_aarch64_call_stub() {
         let abi_linux = AArch64ABI::new(TargetOperatingSystem::Linux);
-        assert_eq!(abi_linux.call_stub("print"), Some("printf".to_string()));
         assert_eq!(abi_linux.call_stub("malloc"), Some("malloc".to_string()));
         assert_eq!(abi_linux.call_stub("dealloc"), Some("free".to_string()));
         assert_eq!(abi_linux.call_stub("unknown"), None);
 
         let abi_macos = AArch64ABI::new(TargetOperatingSystem::MacOS);
-        assert_eq!(abi_macos.call_stub("print"), Some("_printf".to_string()));
         assert_eq!(abi_macos.call_stub("malloc"), Some("_malloc".to_string()));
     }
 

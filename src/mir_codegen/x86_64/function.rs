@@ -1063,7 +1063,10 @@ pub(super) fn emit_narrow_param_normalization<W: Write>(
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 #[allow(clippy::expect_used)]
 mod global_regalloc_tests {
-    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use crate::mir_codegen::{
+        simd_support::tools_available,
+        test_support::{PRINT_I64_HELPERS, compile},
+    };
     use std::{
         env, fs,
         path::Path,
@@ -1135,7 +1138,9 @@ mod global_regalloc_tests {
         let source = directory.join("arguments.lamina");
         fs::write(
             &source,
-            r#"
+            format!(
+                "{}{}",
+                r#"
 @noinline
 fn @digits(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h) -> i64 {
 entry:
@@ -1166,10 +1171,12 @@ entry:
 fn @main() -> i64 {
 entry:
     %result = call @probe(1, 2, 3, 4, 5, 6, 7, 8)
-    print %result
+    call @print_i64(%result)
     ret.i64 0
 }
 "#,
+                PRINT_I64_HELPERS
+            ),
         )
         .expect("write source");
         for allocator in ["linear", "graph"] {
@@ -1229,33 +1236,37 @@ entry:
     }
 
     #[test]
-    fn print_of_u64_constant_above_i64_max_is_unsigned() {
+    fn u64_constant_above_i64_max_is_unsigned() {
         if !tools_available(&["as", "gcc", "timeout"]) {
             return;
         }
-        let directory = env::temp_dir().join(format!("lamina-print-u64-{}", process::id()));
+        let directory = env::temp_dir().join(format!("lamina-u64-constant-{}", process::id()));
         fs::create_dir_all(&directory).expect("create executable directory");
         let source = directory.join("print_u64.lamina");
         fs::write(
             &source,
-            r#"
+            format!(
+                "{}{}",
+                r#"
 fn @main() -> i64 {
 entry:
-    print 18446744073709551615
-    print 9223372036854775808
-    print 9223372036854775807
+    call @print_u64(18446744073709551615)
+    call @print_u64(9223372036854775808)
+    call @print_u64(9223372036854775807)
     ret.i64 0
 }
 "#,
+                PRINT_I64_HELPERS
+            ),
         )
-        .expect("write print source");
+        .expect("write u64 source");
         let executable = directory.join("print_u64");
         compile(&source, &executable, &["--opt-level", "0"]).expect("compile program");
         let output = Command::new("timeout")
             .arg("10")
             .arg(&executable)
             .output()
-            .expect("run print executable");
+            .expect("run u64 executable");
         assert!(output.status.success(), "{output:?}");
         assert_eq!(
             output.stdout,
@@ -1274,7 +1285,9 @@ entry:
         let source = directory.join("padded.lamina");
         fs::write(
             &source,
-            r#"
+            format!(
+                "{}{}",
+                r#"
 @noinline
 fn @padded() -> i64 {
 entry:
@@ -1304,10 +1317,12 @@ entry:
 fn @main() -> i64 {
 entry:
     %result = call @padded()
-    print %result
+    call @print_i64(%result)
     ret.i64 0
 }
 "#,
+                PRINT_I64_HELPERS
+            ),
         )
         .expect("write padded source");
         for allocator in ["incremental", "linear", "graph"] {

@@ -859,49 +859,6 @@ pub fn align_up(value: usize, align: usize) -> usize {
     value.div_ceil(align) * align
 }
 
-/// Label of the printf format string the `print` family reads, by call name.
-pub fn print_format_label(call: &str) -> &'static str {
-    match call {
-        "lamina.printu" => ".L_mir_fmt_uint",
-        "lamina.printf32" | "lamina.printf64" => ".L_mir_fmt_float",
-        _ => ".L_mir_fmt_int",
-    }
-}
-
-/// Helper to emit rodata section with format string for print intrinsics.
-pub fn emit_print_format_section<W: Write>(
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    match target_os {
-        os if os_uses_macho(os) => {
-            writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_uint: .asciz \"%llu\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_float: .asciz \"%g\\n\"")?;
-        }
-        TargetOperatingSystem::Windows => {
-            writeln!(writer, ".section .rdata,\"dr\"")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_uint: .asciz \"%llu\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_float: .asciz \"%g\\n\"")?;
-        }
-        TargetOperatingSystem::Linux => {
-            writeln!(writer, ".section .rodata")?;
-            writeln!(writer, ".L_mir_fmt_int: .string \"%lld\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_uint: .string \"%llu\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_float: .string \"%g\\n\"")?;
-        }
-        _ => {
-            writeln!(writer, ".section .rodata")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_uint: .asciz \"%llu\\n\"")?;
-            writeln!(writer, ".L_mir_fmt_float: .asciz \"%g\\n\"")?;
-        }
-    }
-    Ok(())
-}
-
 /// Convert LaminaError to CodegenError with consistent error type.
 pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
     match err {
@@ -1951,8 +1908,6 @@ mod export_linkage_tests {
     };
     use lamina_platform::TargetOperatingSystem;
 
-    use super::emit_print_format_section;
-
     const SOURCE: &str = r#"
 @export fn @answer() -> i64 {
 entry:
@@ -2220,36 +2175,5 @@ entry:
             let text = String::from_utf8(output).expect("utf8 assembly");
             assert_eq!(text.contains(note), expected, "{os:?}: {text}");
         }
-    }
-
-    #[test]
-    fn mach_o_targets_get_cstring_format_section() {
-        for os in [
-            TargetOperatingSystem::MacOS,
-            TargetOperatingSystem::IOS,
-            TargetOperatingSystem::TvOS,
-            TargetOperatingSystem::WatchOS,
-            TargetOperatingSystem::VisionOS,
-        ] {
-            let mut output = Vec::new();
-            emit_print_format_section(&mut output, os).expect("emit");
-            let text = String::from_utf8(output).expect("utf8 assembly");
-            assert_eq!(
-                text,
-                ".section __TEXT,__cstring,cstring_literals\n.L_mir_fmt_int: .asciz \"%lld\\n\"\n.L_mir_fmt_uint: .asciz \"%llu\\n\"\n.L_mir_fmt_float: .asciz \"%g\\n\"\n",
-                "{os:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn elf_targets_keep_rodata_format_section() {
-        let mut output = Vec::new();
-        emit_print_format_section(&mut output, TargetOperatingSystem::Linux).expect("emit");
-        let text = String::from_utf8(output).expect("utf8 assembly");
-        assert_eq!(
-            text,
-            ".section .rodata\n.L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_uint: .string \"%llu\\n\"\n.L_mir_fmt_float: .string \"%g\\n\"\n"
-        );
     }
 }

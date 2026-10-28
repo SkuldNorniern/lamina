@@ -92,10 +92,7 @@ fn string_global_keeps_its_bytes_and_layout() {
 
 use crate::mir::TransformPipeline;
 use crate::{
-    ir::{
-        FunctionParameter, IRBuilder,
-        builder::{i64 as ir_i64, string, var},
-    },
+    ir::{FunctionParameter, IRBuilder, builder::var},
     parser::parse_module,
 };
 
@@ -586,66 +583,6 @@ fn f64_phi_immediate_survives_lowering_as_copy() {
                 } if value.to_bits() == (-0.0f64).to_bits()
             ))
     );
-}
-
-#[test]
-fn test_print_numeric_succeeds() {
-    let mut builder = IRBuilder::new();
-    builder
-        .function("main", IRType::Primitive(IRPrim::I64))
-        .print(ir_i64(42))
-        .ret(IRType::Primitive(IRPrim::I64), ir_i64(0));
-
-    let ir_module = builder.build();
-    let result = from_ir(&ir_module, "test");
-    assert!(
-        result.is_ok(),
-        "print with numeric literal should succeed: {:?}",
-        result.err()
-    );
-}
-
-#[test]
-fn test_print_string_fails() {
-    let mut builder = IRBuilder::new();
-    builder
-        .function("main", IRType::Primitive(IRPrim::I64))
-        .print(string("hello"))
-        .ret(IRType::Primitive(IRPrim::I64), ir_i64(0));
-
-    let ir_module = builder.build();
-    let result = from_ir(&ir_module, "test");
-    assert!(
-        matches!(result, Err(FromIRError::PrintStringLiteralUnsupported)),
-        "print with string literal should fail with PrintStringLiteralUnsupported: {:?}",
-        result
-    );
-}
-
-#[test]
-fn test_print_string_rejected_text_ir() {
-    let ir_source = r#"
-fn @main() -> i64 {
-  entry:
-print "x"
-ret.i64 0
-}
-"#;
-    let ir_module = parse_module(ir_source).expect("parse should succeed");
-    let result = from_ir(&ir_module, "test");
-    assert!(
-        matches!(result, Err(FromIRError::PrintStringLiteralUnsupported)),
-        "print \"x\" in text IR should fail: {:?}",
-        result
-    );
-    if let Err(e) = &result {
-        let msg = format!("{}", e);
-        assert!(
-            msg.contains("writebyte"),
-            "error should mention writebyte: {}",
-            msg
-        );
-    }
 }
 
 #[test]
