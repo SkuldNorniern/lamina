@@ -1,15 +1,13 @@
-# factorial.nim
-import strformat
+const
+  N1 = 10
+  N2 = 12
+  N3 = 15
+  N4 = 18
+  SweepCount = 4000000
 
-# Configuration
-const N1 = 10
-const N2 = 12
-const N3 = 15
-const N4 = 18
-
-# Markers matching Lamina version
-const HEADER_MARKER: int64 = 123456789
-const FOOTER_MARKER: int64 = 987654321
+const
+  HEADER_MARKER: int64 = 123456789
+  FOOTER_MARKER: int64 = 987654321
 
 proc factorial_iterative(n: int): int64 =
   if n == 0 or n == 1:
@@ -21,17 +19,16 @@ proc factorial_iterative(n: int): int64 =
   return result
 
 when isMainModule:
-  # Print header marker
   echo HEADER_MARKER
-
-  # Compute and print factorial values
   echo factorial_iterative(N1)
   echo factorial_iterative(N2)
   echo factorial_iterative(N3)
   echo factorial_iterative(N4)
 
-  # Print footer marker
+  var acc: uint64 = 0
+  var s = 0
+  while s < SweepCount:
+    acc += uint64(factorial_iterative(s mod 20))
+    s += 1
+  echo acc
   echo FOOTER_MARKER
-
-
-

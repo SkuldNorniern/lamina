@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
 
-# Configuration
 N1 = 10
 N2 = 20
 N3 = 30
 N4 = 35
+SWEEP_COUNT = 200000
+MASK = (1 << 64) - 1
 
-# Markers matching Lamina version
 HEADER_MARKER = 123456789
 FOOTER_MARKER = 987654321
 
@@ -28,15 +28,15 @@ def fibonacci_iterative(n)
   return b
 end
 
-# Print header marker
 puts HEADER_MARKER
-
-# Compute and print fibonacci numbers
 puts fibonacci_iterative(N1)
 puts fibonacci_iterative(N2)
 puts fibonacci_iterative(N3)
 puts fibonacci_iterative(N4)
 
-# Print footer marker
+acc = 0
+SWEEP_COUNT.times do |s|
+  acc = (acc + fibonacci_iterative(s % 90)) & MASK
+end
+puts acc
 puts FOOTER_MARKER
-

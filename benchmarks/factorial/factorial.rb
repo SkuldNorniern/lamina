@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
 
-# Configuration
 N1 = 10
 N2 = 12
 N3 = 15
 N4 = 18
+SWEEP_COUNT = 4000000
+MASK = (1 << 64) - 1
 
-# Markers matching Lamina version
 HEADER_MARKER = 123456789
 FOOTER_MARKER = 987654321
 
@@ -22,17 +22,15 @@ def factorial_iterative(n)
   return result
 end
 
-# Print header marker
 puts HEADER_MARKER
-
-# Compute and print factorial values
 puts factorial_iterative(N1)
 puts factorial_iterative(N2)
 puts factorial_iterative(N3)
 puts factorial_iterative(N4)
 
-# Print footer marker
+acc = 0
+SWEEP_COUNT.times do |s|
+  acc = (acc + factorial_iterative(s % 20)) & MASK
+end
+puts acc
 puts FOOTER_MARKER
-
-
-

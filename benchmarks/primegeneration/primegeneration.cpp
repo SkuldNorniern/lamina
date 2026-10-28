@@ -1,47 +1,28 @@
-#include <iostream>
+#include <cstdint>
+#include <cstdio>
 
-// Configuration - limits for counting
-const int LIMIT1 = 100;
-const int LIMIT2 = 1000;
-const int LIMIT3 = 10000;
-const int LIMIT4 = 50000;
-
-// Markers matching Lamina version
-const long long HEADER_MARKER = 123456789LL;
-const long long FOOTER_MARKER = 987654321LL;
-
-bool is_prime(int n) {
-    if (n <= 1) return false;
-    if (n <= 3) return true;
-    if (n % 2 == 0) return false;
-
-    for (int i = 3; i * i <= n; i += 2) {
-        if (n % i == 0) return false;
-    }
-    return true;
+static int is_prime(int64_t n) {
+    if (n <= 1) return 0;
+    if (n == 2 || n == 3) return 1;
+    if (n % 2 == 0) return 0;
+    for (int64_t d = 3; d * d <= n; d += 2)
+        if (n % d == 0) return 0;
+    return 1;
 }
 
-long long count_primes(int limit) {
-    if (limit < 2) return 0;
-    long long count = 0;
-    for (int i = 2; i <= limit; i++) {
-        if (is_prime(i)) count++;
-    }
+static int64_t count_primes(int64_t limit) {
+    int64_t count = 0;
+    for (int64_t current = 2; current <= limit; current++)
+        count += is_prime(current);
     return count;
 }
 
 int main() {
-    // Print header marker
-    std::cout << HEADER_MARKER << std::endl;
-
-    // Count and print prime counts for different limits
-    std::cout << count_primes(LIMIT1) << std::endl;
-    std::cout << count_primes(LIMIT2) << std::endl;
-    std::cout << count_primes(LIMIT3) << std::endl;
-    std::cout << count_primes(LIMIT4) << std::endl;
-
-    // Print footer marker
-    std::cout << FOOTER_MARKER << std::endl;
-
+    printf("123456789\n");
+    printf("%lld\n", (long long)count_primes(100));
+    printf("%lld\n", (long long)count_primes(1000));
+    printf("%lld\n", (long long)count_primes(10000));
+    printf("%lld\n", (long long)count_primes(1000000));
+    printf("987654321\n");
     return 0;
 }
