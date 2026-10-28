@@ -329,8 +329,12 @@ struct ValueFacts<'t, 'a> {
 }
 
 /// Names of values whose IR type is an unsigned integer. `print` needs this because
-/// MIR keeps no signedness on a register.
-fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'a str> {
+/// MIR keeps no signedness on a register. Every definition of a name must agree, since the
+/// name is one register.
+fn unsigned_results<'a>(
+    f: &IRFunction<'a>,
+    module: &IRModule<'a>,
+) -> Result<HashSet<&'a str>, FromIRError> {
     fn unsigned_prim(p: IRPrim) -> bool {
         matches!(p, IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64)
     }
@@ -338,23 +342,28 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
         matches!(ty, IRType::Primitive(p) if unsigned_prim(*p))
     }
 
-    let mut names = HashSet::new();
-    for param in &f.signature.params {
-        if unsigned_type(&param.ty) {
-            names.insert(param.name);
+    let mut facts: HashMap<&'a str, bool> = HashMap::new();
+    let mut record = |name: &'a str, unsigned: bool| -> Result<(), FromIRError> {
+        let first = *facts.entry(name).or_insert(unsigned);
+        if first != unsigned {
+            return Err(conflicting_definitions(name));
         }
+        Ok(())
+    };
+    for param in &f.signature.params {
+        record(param.name, unsigned_type(&param.ty))?;
     }
     for block in f.basic_blocks.values() {
         for instr in &block.instructions {
-            let unsigned_result = match instr {
+            let fact = match instr {
                 IRInst::Binary { result, ty, .. } | IRInst::Unary { result, ty, .. } => {
-                    unsigned_prim(*ty).then_some(*result)
+                    Some((*result, unsigned_prim(*ty)))
                 }
                 IRInst::Load { result, ty, .. }
                 | IRInst::AtomicLoad { result, ty, .. }
                 | IRInst::AtomicBinary { result, ty, .. }
                 | IRInst::Phi { result, ty, .. }
-                | IRInst::Select { result, ty, .. } => unsigned_type(ty).then_some(*result),
+                | IRInst::Select { result, ty, .. } => Some((*result, unsigned_type(ty))),
                 IRInst::ZeroExtend {
                     result,
                     target_type,
@@ -379,7 +388,7 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
                     result,
                     target_type,
                     ..
-                } => unsigned_prim(*target_type).then_some(*result),
+                } => Some((*result, unsigned_prim(*target_type))),
                 IRInst::Call {
                     result: Some(result),
                     func_name,
@@ -387,16 +396,114 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
                 } => module
                     .functions
                     .get(func_name)
-                    .filter(|callee| unsigned_type(&callee.signature.return_type))
-                    .map(|_| *result),
+                    .map(|callee| (*result, unsigned_type(&callee.signature.return_type))),
                 _ => None,
             };
-            if let Some(name) = unsigned_result {
-                names.insert(name);
+            if let Some((name, unsigned)) = fact {
+                record(name, unsigned)?;
             }
         }
     }
-    names
+    Ok(facts
+        .into_iter()
+        .filter_map(|(name, unsigned)| unsigned.then_some(name))
+        .collect())
+}
+
+fn conflicting_definitions(name: &str) -> FromIRError {
+    FromIRError::ConflictingDefinitions(name.to_string())
+}
+
+/// Bits of the allocations a name may hold, for `heapfree`. Reassigning a name replaces
+/// its allocation kind, so the answer is the set of definitions reaching the instruction.
+const PROV_STACK: u8 = 1;
+const PROV_HEAP: u8 = 2;
+const PROV_OTHER: u8 = 4;
+
+fn provenance_after<'a>(instr: &IRInst<'a>, state: &mut HashMap<&'a str, u8>) {
+    let Some(name) = instr.defined_var() else {
+        return;
+    };
+    let bits = match instr {
+        IRInst::Alloc {
+            alloc_type: AllocType::Stack,
+            ..
+        } => PROV_STACK,
+        IRInst::Alloc {
+            alloc_type: AllocType::Heap,
+            ..
+        } => PROV_HEAP,
+        _ => PROV_OTHER,
+    };
+    state.insert(name, bits);
+}
+
+fn join_provenance<'a>(target: &mut HashMap<&'a str, u8>, source: &HashMap<&'a str, u8>) -> bool {
+    let mut changed = false;
+    for (name, bits) in source {
+        let slot = target.entry(name).or_insert(0);
+        if *slot | bits != *slot {
+            *slot |= bits;
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn successor_labels<'a>(instructions: &[IRInst<'a>]) -> Vec<&'a str> {
+    match instructions.last() {
+        Some(IRInst::Br {
+            true_label,
+            false_label,
+            ..
+        }) => vec![*true_label, *false_label],
+        Some(IRInst::Jmp { target_label }) => vec![*target_label],
+        Some(IRInst::Switch { default, cases, .. }) => {
+            let mut labels = vec![*default];
+            labels.extend(cases.iter().map(|(_, label)| *label));
+            labels
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Provenance of every name at the start of each reachable block.
+fn block_entry_provenance<'a>(f: &IRFunction<'a>) -> HashMap<&'a str, HashMap<&'a str, u8>> {
+    let mut entry: HashMap<&'a str, HashMap<&'a str, u8>> = HashMap::new();
+    entry.insert(
+        f.entry_block,
+        f.signature
+            .params
+            .iter()
+            .map(|p| (p.name, PROV_OTHER))
+            .collect(),
+    );
+    let mut worklist = VecDeque::from([f.entry_block]);
+    while let Some(label) = worklist.pop_front() {
+        let Some(block) = f.basic_blocks.get(label) else {
+            continue;
+        };
+        let mut state = entry.get(label).cloned().unwrap_or_default();
+        for instr in &block.instructions {
+            provenance_after(instr, &mut state);
+        }
+        for succ in successor_labels(&block.instructions) {
+            if !f.basic_blocks.contains_key(succ) {
+                continue;
+            }
+            let changed = match entry.get_mut(succ) {
+                Some(target) => join_provenance(target, &state),
+                None => {
+                    entry.insert(succ, state.clone());
+                    true
+                }
+            };
+            if changed {
+                worklist.push_back(succ);
+            }
+        }
+    }
+    entry
 }
 
 /// Where each element of a global's initializer list lands.
@@ -736,12 +843,12 @@ fn convert_function<'a>(
     }
 
     let mut var_to_reg = VarBindings {
-        classes: value_register_classes(f, module),
+        classes: value_register_classes(f, module)?,
         ..Default::default()
     };
     let mut register_types = HashMap::new();
-    let unsigned = unsigned_results(f, module);
-    let mut stack_allocs: HashSet<&'a str> = HashSet::new();
+    let unsigned = unsigned_results(f, module)?;
+    let entry_provenance = block_entry_provenance(f);
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
 
@@ -828,6 +935,7 @@ fn convert_function<'a>(
     while let Some(label) = worklist.pop_front() {
         let ir_block = &f.basic_blocks[label];
         let mut mir_block = Block::new(label);
+        let mut provenance = entry_provenance.get(label).cloned().unwrap_or_default();
 
         // Registers already defined in this block. A scan of the emitted instructions per
         // instruction made conversion quadratic in the size of a single-block function.
@@ -851,7 +959,7 @@ fn convert_function<'a>(
                 instr,
                 &mut vreg_alloc,
                 &mut var_to_reg,
-                &mut stack_allocs,
+                &provenance,
                 &mut reservations,
                 &ValueFacts {
                     types: &register_types,
@@ -869,6 +977,7 @@ fn convert_function<'a>(
                 },
                 other => other,
             })?;
+            provenance_after(instr, &mut provenance);
             if f.basic_blocks.len() == 1
                 && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
                 && !var_to_reg.wide.contains_key(result)
@@ -1327,7 +1436,7 @@ fn convert_instruction<'a>(
     instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut VarBindings<'a>,
-    stack_allocs: &mut HashSet<&'a str>,
+    provenance: &HashMap<&'a str, u8>,
     reservations: &mut HashMap<VirtualReg, usize>,
     facts: &ValueFacts<'_, 'a>,
     globals: &mut GlobalAddresses<'a>,
@@ -1441,19 +1550,8 @@ fn convert_instruction<'a>(
         }
         // SSA merge: create a binding for the phi result so subsequent uses resolve.
         // Semantics are not materialized here; a later SSA elimination pass should lower this.
-        IRInst::Phi {
-            result,
-            ty,
-            incoming: _,
-        } => {
-            // Choose register class based on type
-            let class = reg_class_for_type(ty);
-            let dst = match class {
-                RegisterClass::Fpr => Register::Virtual(vreg_alloc.allocate_fpr()),
-                RegisterClass::Vec => Register::Virtual(vreg_alloc.allocate_vec()),
-                _ => Register::Virtual(vreg_alloc.allocate_gpr()),
-            };
-            var_to_reg.insert(*result, dst);
+        IRInst::Phi { result, .. } => {
+            resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![])
         }
         IRInst::Unary {
@@ -1464,13 +1562,7 @@ fn convert_instruction<'a>(
         } => {
             let mir_ty = map_ir_prim(*ty)?;
             let float = mir_ty.is_float();
-            let dst = if float {
-                let dst = Register::Virtual(vreg_alloc.allocate_fpr());
-                var_to_reg.insert(result, dst.clone());
-                dst
-            } else {
-                resolve_or_alloc(result, vreg_alloc, var_to_reg)
-            };
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, mir_ty);
             let instruction = match (op, float) {
@@ -1903,14 +1995,7 @@ fn convert_instruction<'a>(
                 IRType::Void => None,
                 other => Some(map_ir_type(other)?),
             };
-            let ret = result.map(|name| match ret_ty {
-                Some(ty) if ty.is_float() => {
-                    let dst = Register::Virtual(vreg_alloc.allocate_fpr());
-                    var_to_reg.insert(name, dst.clone());
-                    dst
-                }
-                _ => resolve_or_alloc(name, vreg_alloc, var_to_reg),
-            });
+            let ret = result.map(|name| resolve_or_alloc(name, vreg_alloc, var_to_reg));
             instructions.push(Instruction::CallIndirect {
                 target,
                 arg_types,
@@ -2045,8 +2130,7 @@ fn convert_instruction<'a>(
                     "fpcast from {source_type} to {target_type} converts between the float types only"
                 )));
             }
-            let dst = Register::Virtual(vreg_alloc.allocate_fpr());
-            var_to_reg.insert(result, dst.clone());
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, from);
             Ok(vec![Instruction::FloatConvert { from, to, dst, src }])
@@ -2065,12 +2149,7 @@ fn convert_instruction<'a>(
             let to = map_ir_prim(*target_type)?;
             let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, from);
-            let dst =
-                Register::Virtual(match reg_class_for_type(&IRType::Primitive(*target_type)) {
-                    RegisterClass::Fpr => vreg_alloc.allocate_fpr(),
-                    _ => vreg_alloc.allocate_gpr(),
-                });
-            var_to_reg.insert(result, dst.clone());
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Bitcast { from, to, dst, src }])
         }
 
@@ -2398,7 +2477,6 @@ fn convert_instruction<'a>(
             let size = i64::try_from(size).map_err(|_| FromIRError::UnsupportedType)?;
             match alloc_type {
                 AllocType::Stack => {
-                    stack_allocs.insert(result);
                     let storage_vreg = vreg_alloc.allocate_gpr();
                     let slots_needed = usize::try_from((size as u64).div_ceil(8))
                         .map_err(|_| FromIRError::UnsupportedType)?;
@@ -2420,10 +2498,14 @@ fn convert_instruction<'a>(
         IRInst::Dealloc { ptr } => {
             // heapfree on a stack allocation is a no-op; passing a stack
             // address to free() aborts.
-            if let IRVal::Variable(name) = ptr
-                && stack_allocs.contains(name)
-            {
-                return Ok(Vec::new());
+            if let IRVal::Variable(name) = ptr {
+                match provenance.get(name).copied() {
+                    Some(PROV_STACK) => return Ok(Vec::new()),
+                    Some(bits) if bits & PROV_STACK != 0 => {
+                        return Err(FromIRError::UnsupportedInstruction);
+                    }
+                    _ => {}
+                }
             }
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::Call {
@@ -2705,14 +2787,14 @@ fn reg_class_for_prim(ty: IRPrim) -> RegisterClass {
 fn value_register_classes<'a>(
     f: &IRFunction<'a>,
     module: &IRModule<'a>,
-) -> HashMap<&'a str, RegisterClass> {
+) -> Result<HashMap<&'a str, RegisterClass>, FromIRError> {
     let mut classes: HashMap<&'a str, RegisterClass> = HashMap::new();
     let class_of_type = |ty: &IRType<'a>| {
         let resolved = resolve_type_names(ty, &module.type_declarations);
         reg_class_for_type(resolved.as_ref().unwrap_or(ty))
     };
     for param in &f.signature.params {
-        classes.insert(param.name, class_of_type(&param.ty));
+        insert_register_class(&mut classes, param.name, class_of_type(&param.ty))?;
     }
     for block in f.basic_blocks.values() {
         for instruction in &block.instructions {
@@ -2755,10 +2837,21 @@ fn value_register_classes<'a>(
                     None => continue,
                 },
             };
-            classes.insert(name, class);
+            insert_register_class(&mut classes, name, class)?;
         }
     }
-    classes
+    Ok(classes)
+}
+
+fn insert_register_class<'a>(
+    classes: &mut HashMap<&'a str, RegisterClass>,
+    name: &'a str,
+    class: RegisterClass,
+) -> Result<(), FromIRError> {
+    if *classes.entry(name).or_insert(class) != class {
+        return Err(conflicting_definitions(name));
+    }
+    Ok(())
 }
 
 fn reg_class_for_type(ty: &IRType<'_>) -> RegisterClass {

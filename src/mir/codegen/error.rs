@@ -39,6 +39,8 @@ pub enum FromIRError {
     InvalidConversion(String),
     /// A variadic argument form that lowering does not handle.
     VariadicArgument(String),
+    /// A value name is defined with two different register classes or signedness.
+    ConflictingDefinitions(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -86,6 +88,9 @@ impl fmt::Display for FromIRError {
             }
             FromIRError::VariadicArgument(reason) => {
                 write!(f, "variadic argument not supported: {reason}")
+            }
+            FromIRError::ConflictingDefinitions(name) => {
+                write!(f, "'%{name}' is defined with conflicting types")
             }
             FromIRError::InvalidMir(errors) => {
                 write!(f, "lowering produced invalid MIR: {}", errors.join("; "))
