@@ -1,0 +1,66 @@
+# Array of two-field records stored flat in one i64 array. Element k occupies
+# indices 2k and 2k+1, and every access computes its index at run time, so the
+# array is only reached through variable-index addressing.
+
+@export
+fn @main() -> i64 {
+  entry:
+    %arr = stackalloc.[128 x i64]
+    %i = add.i64 0, 0
+    jmp fill_head
+
+  fill_head:
+    %more = lt.i64 %i, 64
+    br %more, fill_body, fill_done
+
+  fill_body:
+    %j = mul.i64 %i, 2
+    %j1 = add.i64 %j, 1
+    %a = mul.i64 %i, 3
+    %a1 = add.i64 %a, 1
+    %b = mul.i64 %i, 5
+    %b1 = sub.i64 %b, 2
+    %pa = getelem.i64 %arr, %j
+    store.i64 %pa, %a1
+    %pb = getelem.i64 %arr, %j1
+    store.i64 %pb, %b1
+    %i = add.i64 %i, 1
+    jmp fill_head
+
+  fill_done:
+    %pass = add.i64 0, 0
+    %total = add.i64 0, 0
+    jmp pass_head
+
+  pass_head:
+    %pmore = lt.i64 %pass, 8
+    br %pmore, pass_body, pass_done
+
+  pass_body:
+    %k = add.i64 0, 0
+    jmp sum_head
+
+  sum_head:
+    %kmore = lt.i64 %k, 64
+    br %kmore, sum_body, sum_done
+
+  sum_body:
+    %kj = mul.i64 %k, 2
+    %kj1 = add.i64 %kj, 1
+    %qa = getelem.i64 %arr, %kj
+    %va = load.i64 %qa
+    %qb = getelem.i64 %arr, %kj1
+    %vb = load.i64 %qb
+    %prod = mul.i64 %va, %vb
+    %total = add.i64 %total, %prod
+    %k = add.i64 %k, 1
+    jmp sum_head
+
+  sum_done:
+    %pass = add.i64 %pass, 1
+    jmp pass_head
+
+  pass_done:
+    print %total
+    ret.i64 0
+}

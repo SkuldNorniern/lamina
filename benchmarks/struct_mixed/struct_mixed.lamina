@@ -1,0 +1,69 @@
+# Record with narrow, wide and boolean fields rewritten in a loop. The even and odd
+# iterations store different values, and each iteration sums every field back.
+
+@export
+fn @main() -> i64 {
+  entry:
+    %m = stackalloc.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 }
+    %ap = getfieldptr %m, 0
+    %bp = getfieldptr %m, 1
+    %cp = getfieldptr %m, 2
+    %dp = getfieldptr %m, 3
+    %fp = getfieldptr %m, 4
+    %gp = getfieldptr %m, 5
+    %i = add.i64 0, 0
+    %total = add.i64 0, 0
+    jmp loop_head
+
+  loop_head:
+    %more = lt.i64 %i, 100000
+    br %more, loop_body, loop_done
+
+  loop_body:
+    %parity = rem.i64 %i, 2
+    %is_even = eq.i64 %parity, 0
+    br %is_even, even_store, odd_store
+
+  even_store:
+    store.i8 %ap, 5
+    store.u16 %bp, 1000
+    store.i32 %cp, 70000
+    store.u64 %dp, 12345678901
+    store.bool %fp, 1
+    store.i8 %gp, 77
+    jmp accumulate
+
+  odd_store:
+    store.i8 %ap, 9
+    store.u16 %bp, 2
+    store.i32 %cp, 3
+    store.u64 %dp, 4
+    store.bool %fp, 0
+    store.i8 %gp, 12
+    jmp accumulate
+
+  accumulate:
+    %av = load.i8 %ap
+    %ai = sext.i8.i64 %av
+    %bv = load.u16 %bp
+    %bi = zext.u16.i64 %bv
+    %cv = load.i32 %cp
+    %ci = sext.i32.i64 %cv
+    %dv = load.u64 %dp
+    %fv = load.bool %fp
+    %fi = zext.bool.i64 %fv
+    %gv = load.i8 %gp
+    %gi = sext.i8.i64 %gv
+    %s1 = add.i64 %ai, %bi
+    %s2 = add.i64 %s1, %ci
+    %s3 = add.i64 %s2, %dv
+    %s4 = add.i64 %s3, %fi
+    %s5 = add.i64 %s4, %gi
+    %total = add.i64 %total, %s5
+    %i = add.i64 %i, 1
+    jmp loop_head
+
+  loop_done:
+    print %total
+    ret.i64 0
+}

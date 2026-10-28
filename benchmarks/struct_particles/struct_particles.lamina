@@ -1,0 +1,66 @@
+# Particle integration over a four-field struct kept on the stack.
+# Every field is reached through getfieldptr with a constant index, and the
+# loop reads and writes the fields through those pointers.
+
+@export
+fn @main() -> i64 {
+  entry:
+    %p = stackalloc.struct { x: i64, y: i64, vx: i64, vy: i64 }
+    %xp = getfieldptr %p, 0
+    %yp = getfieldptr %p, 1
+    %vxp = getfieldptr %p, 2
+    %vyp = getfieldptr %p, 3
+    store.i64 %xp, 0
+    store.i64 %yp, 0
+    store.i64 %vxp, 3
+    store.i64 %vyp, 5
+    %i = add.i64 0, 0
+    %flips = add.i64 0, 0
+    jmp step_head
+
+  step_head:
+    %more = lt.i64 %i, 300000
+    br %more, step_body, step_done
+
+  step_body:
+    %x = load.i64 %xp
+    %vx = load.i64 %vxp
+    %nx = add.i64 %x, %vx
+    store.i64 %xp, %nx
+    %y = load.i64 %yp
+    %vy = load.i64 %vyp
+    %ny = add.i64 %y, %vy
+    store.i64 %yp, %ny
+    %sx = mul.i64 %nx, %nx
+    %x_out = gt.i64 %sx, 1000000
+    br %x_out, bounce_x, check_y
+
+  bounce_x:
+    %rvx = sub.i64 0, %vx
+    store.i64 %vxp, %rvx
+    %flips = add.i64 %flips, 1
+    jmp check_y
+
+  check_y:
+    %sy = mul.i64 %ny, %ny
+    %y_out = gt.i64 %sy, 1000000
+    br %y_out, bounce_y, step_next
+
+  bounce_y:
+    %rvy = sub.i64 0, %vy
+    store.i64 %vyp, %rvy
+    %flips = add.i64 %flips, 1
+    jmp step_next
+
+  step_next:
+    %i = add.i64 %i, 1
+    jmp step_head
+
+  step_done:
+    %fx = load.i64 %xp
+    %fy = load.i64 %yp
+    print %fx
+    print %fy
+    print %flips
+    ret.i64 0
+}

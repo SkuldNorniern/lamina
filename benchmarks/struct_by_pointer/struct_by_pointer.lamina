@@ -1,0 +1,47 @@
+# A struct owned by main is handed to a helper by pointer. The helper reads and
+# writes the two fields through loads and stores inside a loop, and main reads
+# them back afterwards.
+
+fn @accumulate(ptr %count_p, ptr %total_p, i64 %n) -> i64 {
+  entry:
+    %i = add.i64 0, 0
+    jmp head
+
+  head:
+    %more = lt.i64 %i, %n
+    br %more, body, done
+
+  body:
+    %c = load.i64 %count_p
+    %c1 = add.i64 %c, 1
+    store.i64 %count_p, %c1
+    %t = load.i64 %total_p
+    %t1 = add.i64 %t, %i
+    store.i64 %total_p, %t1
+    %i = add.i64 %i, 1
+    jmp head
+
+  done:
+    ret.i64 0
+}
+
+@export
+fn @main() -> i64 {
+  entry:
+    %s = stackalloc.struct { count: i64, total: i64, scale: i64 }
+    %cp = getfieldptr %s, 0
+    %tp = getfieldptr %s, 1
+    %sc = getfieldptr %s, 2
+    store.i64 %cp, 0
+    store.i64 %tp, 0
+    store.i64 %sc, 7
+    %r1 = call @accumulate(%cp, %tp, 5000)
+    %r2 = call @accumulate(%cp, %tp, 3000)
+    %count = load.i64 %cp
+    %total = load.i64 %tp
+    %scale = load.i64 %sc
+    print %count
+    print %total
+    print %scale
+    ret.i64 0
+}
