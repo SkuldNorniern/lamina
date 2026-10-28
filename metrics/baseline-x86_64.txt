@@ -331,6 +331,34 @@ calls 8
 branches 0
 frame main 32
 
+[bit_intrinsics O0]
+insns 222
+spills 69
+calls 14
+branches 2
+frame main 304
+
+[bit_intrinsics O1]
+insns 222
+spills 69
+calls 14
+branches 2
+frame main 304
+
+[bit_intrinsics O2]
+insns 208
+spills 15
+calls 14
+branches 2
+frame main 64
+
+[bit_intrinsics O3]
+insns 202
+spills 14
+calls 14
+branches 2
+frame main 80
+
 [calling_convention_bug_test O0]
 insns 156
 spills 45
@@ -1382,6 +1410,46 @@ branches 0
 frame add_ten 0
 frame main 16
 frame multiply_by_two 0
+
+[function_placement_annotations O0]
+insns 62
+spills 11
+calls 9
+branches 0
+frame hot_fn 0
+frame main 32
+frame placed 16
+frame weak_add 32
+
+[function_placement_annotations O1]
+insns 62
+spills 11
+calls 9
+branches 0
+frame hot_fn 0
+frame main 32
+frame placed 16
+frame weak_add 32
+
+[function_placement_annotations O2]
+insns 52
+spills 4
+calls 7
+branches 0
+frame hot_fn 0
+frame main 16
+frame placed 0
+frame weak_add 0
+
+[function_placement_annotations O3]
+insns 52
+spills 4
+calls 7
+branches 0
+frame hot_fn 0
+frame main 16
+frame placed 0
+frame weak_add 0
 
 [function_pointers O0]
 insns 104
@@ -4298,6 +4366,42 @@ spills 9
 calls 14
 branches 0
 frame main 64
+
+[unreachable_terminator O0]
+insns 74
+spills 8
+calls 12
+branches 3
+frame abort_path 0
+frame classify 32
+frame main 48
+
+[unreachable_terminator O1]
+insns 74
+spills 8
+calls 12
+branches 3
+frame abort_path 0
+frame classify 32
+frame main 48
+
+[unreachable_terminator O2]
+insns 108
+spills 12
+calls 9
+branches 15
+frame abort_path 0
+frame classify 0
+frame main 32
+
+[unreachable_terminator O3]
+insns 108
+spills 12
+calls 9
+branches 15
+frame abort_path 0
+frame classify 0
+frame main 32
 
 [variables O0]
 insns 190
