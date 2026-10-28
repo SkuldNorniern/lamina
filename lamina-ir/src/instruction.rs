@@ -928,6 +928,32 @@ pub enum Instruction<'a> {
     Print {
         value: Value<'a>, // Value to print (currently assumes i64 for printf)
     },
+
+    // --- Variadic arguments ---
+    /// Initialize the `valist` at `ap` so it reads the arguments past the named
+    /// parameters of the enclosing variadic function.
+    ///
+    /// # Preconditions
+    /// - `ap` must have type `ptr` and point to a `valist`.
+    /// - The enclosing function must be variadic.
+    VaStart { ap: Value<'a> },
+    /// Read the next variadic argument as `ty` through the `valist` at `ap`, and
+    /// advance `ap` past it.
+    ///
+    /// # Preconditions
+    /// - `ap` must have type `ptr` and point to an initialized `valist`.
+    /// - `ty` must be an integer, pointer or float type. Aggregates are not supported.
+    VaArg {
+        result: Identifier<'a>,
+        ty: PrimitiveType,
+        ap: Value<'a>,
+    },
+    /// End the lifetime of the `valist` at `ap`. Platforms that allocate state for a
+    /// `valist` release it here; on x86_64 SysV this does nothing.
+    VaEnd { ap: Value<'a> },
+    /// Copy the `valist` at `src` into the `valist` at `dst`, so both advance
+    /// independently from the same point.
+    VaCopy { dst: Value<'a>, src: Value<'a> },
 }
 
 // --- Display Implementations ---
@@ -1018,6 +1044,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "atomic_or",
         "atomic_xor",
         "atomic_exchange",
+        // Variadic argument read (from Instruction::VaArg)
+        "va_arg",
     ];
 
     // Combine BinaryOp and CmpOp (generated from enums) with instruction-specific ops
@@ -1113,6 +1141,10 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "readbyte",
         // Debugging (from Instruction::Print)
         "print",
+        // Variadic arguments (from Instruction::VaStart, VaEnd, VaCopy)
+        "va_start",
+        "va_end",
+        "va_copy",
         // Atomic store and fence (from Instruction::AtomicStore, Instruction::Fence)
         "atomic_store",
         "fence",
@@ -1165,6 +1197,7 @@ impl<'a> Instruction<'a> {
             | Instruction::AtomicLoad { result, .. }
             | Instruction::AtomicBinary { result, .. }
             | Instruction::AtomicCompareExchange { result, .. }
+            | Instruction::VaArg { result, .. }
             | Instruction::Call {
                 result: Some(result),
                 ..
@@ -1203,6 +1236,15 @@ impl<'a> Instruction<'a> {
                 push_value(ptr, &mut vars)
             }
             Instruction::Alloc { .. } => {}
+            Instruction::VaStart { ap }
+            | Instruction::VaEnd { ap }
+            | Instruction::VaArg { ap, .. } => {
+                push_value(ap, &mut vars);
+            }
+            Instruction::VaCopy { dst, src } => {
+                push_value(dst, &mut vars);
+                push_value(src, &mut vars);
+            }
             Instruction::Br { condition, .. } => push_value(condition, &mut vars),
             Instruction::Ret { value: Some(v), .. } => push_value(v, &mut vars),
             Instruction::Ret { value: None, .. }
@@ -1612,6 +1654,12 @@ impl fmt::Display for Instruction<'_> {
             }
             Instruction::ReadByte { result } => write!(f, "%{result} = readbyte"),
             Instruction::Print { value } => write!(f, "print {value}"),
+            Instruction::VaStart { ap } => write!(f, "va_start {ap}"),
+            Instruction::VaArg { result, ty, ap } => {
+                write!(f, "%{result} = va_arg.{ty} {ap}")
+            }
+            Instruction::VaEnd { ap } => write!(f, "va_end {ap}"),
+            Instruction::VaCopy { dst, src } => write!(f, "va_copy {dst}, {src}"),
         }
     }
 }

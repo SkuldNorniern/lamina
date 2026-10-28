@@ -227,6 +227,15 @@ impl CopyPropagation {
             Instruction::Ret { value: Some(val) } => {
                 changed |= self.replace_operand(val, value_map);
             }
+            Instruction::VaStart { ap }
+            | Instruction::VaEnd { ap }
+            | Instruction::VaArg { ap, .. } => {
+                changed |= self.replace_operand(ap, value_map);
+            }
+            Instruction::VaCopy { dst, src } => {
+                changed |= self.replace_operand(dst, value_map);
+                changed |= self.replace_operand(src, value_map);
+            }
             _ => {}
         }
 

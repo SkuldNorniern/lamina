@@ -1936,6 +1936,16 @@ fn emit_block<W: Write>(
             MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {
                 // No-op in AOT path — only meaningful for JIT/GC runtimes.
             }
+            MirInst::VaStart { .. }
+            | MirInst::VaArg { .. }
+            | MirInst::VaEnd { .. }
+            | MirInst::VaCopy { .. } => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!(
+                        "variadic argument `{inst}` is not yet supported by the AArch64 backend"
+                    ),
+                )));
+            }
             MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra)?,
             MirInst::AtomicLoad { .. }
             | MirInst::AtomicStore { .. }

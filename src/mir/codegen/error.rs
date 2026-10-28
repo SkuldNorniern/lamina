@@ -37,6 +37,8 @@ pub enum FromIRError {
     UnsupportedAggregate(String),
     /// A width conversion names a source and destination it cannot relate.
     InvalidConversion(String),
+    /// A variadic argument form that lowering does not handle.
+    VariadicArgument(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -81,6 +83,9 @@ impl fmt::Display for FromIRError {
             }
             FromIRError::InvalidConversion(reason) => {
                 write!(f, "invalid conversion: {reason}")
+            }
+            FromIRError::VariadicArgument(reason) => {
+                write!(f, "variadic argument not supported: {reason}")
             }
             FromIRError::InvalidMir(errors) => {
                 write!(f, "lowering produced invalid MIR: {}", errors.join("; "))

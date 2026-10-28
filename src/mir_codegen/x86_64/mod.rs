@@ -12,6 +12,7 @@ mod selection;
 mod simd;
 #[cfg(test)]
 mod tests;
+mod variadic;
 
 use function::*;
 use instruction::*;

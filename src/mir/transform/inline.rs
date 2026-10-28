@@ -72,6 +72,7 @@ impl ModuleInlining {
                             && let Some(function) = module.functions.get(callee)
                             && function.sig.kernel.is_none()
                             && !function.sig.no_inline
+                            && !function.sig.variadic
                             && function.instruction_count() <= Self::callee_size_limit(function)
                             && function.sig.params.len() == args.len()
                             && function.sig.ret_aggregate.is_none()
@@ -390,6 +391,17 @@ impl ModuleInlining {
             }
             Instruction::Br { cond, .. } | Instruction::Switch { value: cond, .. } => {
                 *cond = map(cond)
+            }
+            Instruction::VaStart { ap } | Instruction::VaEnd { ap } => {
+                operand(ap, map);
+            }
+            Instruction::VaArg { dst, ap, .. } => {
+                *dst = map(dst);
+                operand(ap, map);
+            }
+            Instruction::VaCopy { dst, src } => {
+                operand(dst, map);
+                operand(src, map);
             }
             Instruction::Call { args, ret, .. } => {
                 for value in args {

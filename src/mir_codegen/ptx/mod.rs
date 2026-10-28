@@ -280,6 +280,14 @@ impl Kernel {
                     "atomic instruction `{instruction}` is not yet supported by the PTX backend"
                 )));
             }
+            Instruction::VaStart { .. }
+            | Instruction::VaArg { .. }
+            | Instruction::VaEnd { .. }
+            | Instruction::VaCopy { .. } => {
+                return Err(error(
+                    "variadic arguments are not yet supported by the PTX backend",
+                ));
+            }
             Instruction::IntUnary { .. } => {
                 return Err(error(
                     "integer bit intrinsics are not yet supported by the PTX backend",

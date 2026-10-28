@@ -1864,6 +1864,14 @@ fn emit_instruction_ppc64<W: Write>(
                 ),
             )));
         }
+        MirInst::VaStart { .. }
+        | MirInst::VaArg { .. }
+        | MirInst::VaEnd { .. }
+        | MirInst::VaCopy { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "PowerPC64 backend does not support variadic arguments yet".to_string(),
+            )));
+        }
         MirInst::IntUnary { .. } => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 "PowerPC64 backend does not support integer bit intrinsics yet".to_string(),

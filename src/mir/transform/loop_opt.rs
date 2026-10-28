@@ -501,6 +501,10 @@ impl LoopInvariantCodeMotion {
                     | Instruction::AtomicBinary { .. }
                     | Instruction::AtomicCompareExchange { .. }
                     | Instruction::Fence { .. }
+                    | Instruction::VaStart { .. }
+                    | Instruction::VaArg { .. }
+                    | Instruction::VaEnd { .. }
+                    | Instruction::VaCopy { .. }
                     | Instruction::Call { .. }
                     | Instruction::CallIndirect { .. }
                     | Instruction::TailCall { .. }

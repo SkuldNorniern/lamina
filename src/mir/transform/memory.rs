@@ -143,6 +143,10 @@ impl MemoryOptimization {
                     | Instruction::AtomicStore { .. }
                     | Instruction::AtomicBinary { .. }
                     | Instruction::AtomicCompareExchange { .. }
+                    | Instruction::VaStart { .. }
+                    | Instruction::VaArg { .. }
+                    | Instruction::VaEnd { .. }
+                    | Instruction::VaCopy { .. }
                     | Instruction::Fence { .. } => {
                         last_store.clear();
                         last_load.clear();

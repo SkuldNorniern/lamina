@@ -96,6 +96,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "read" => parse_read_assignment(state, result),
             "writebyte" => parse_writebyte_assignment(state, result),
             "readbyte" => parse_readbyte_assignment(state, result),
+            "va_arg" => parse_va_arg(state, result),
             "writeptr" => Err(removed_opcode_error(
                 state,
                 opcode_str,
@@ -156,6 +157,9 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "call" => parse_call(state, None),
             "callptr" => parse_call_indirect(state, None),
             "print" => parse_print(state),
+            "va_start" => parse_va_start(state),
+            "va_end" => parse_va_end(state),
+            "va_copy" => parse_va_copy(state),
             "write" => parse_write(state),
             "read" => parse_read(state),
             "writebyte" => parse_writebyte(state),
@@ -833,6 +837,32 @@ fn parse_heapfree<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, La
 fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let value = parse_value(state)?;
     Ok(Instruction::Print { value })
+}
+
+fn parse_va_start<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    let ap = parse_value(state)?;
+    Ok(Instruction::VaStart { ap })
+}
+
+fn parse_va_arg<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let ty = parse_primitive_type_suffix(state)?;
+    let ap = parse_value(state)?;
+    Ok(Instruction::VaArg { result, ty, ap })
+}
+
+fn parse_va_end<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    let ap = parse_value(state)?;
+    Ok(Instruction::VaEnd { ap })
+}
+
+fn parse_va_copy<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    let dst = parse_value(state)?;
+    state.expect_char(',')?;
+    let src = parse_value(state)?;
+    Ok(Instruction::VaCopy { dst, src })
 }
 
 fn parse_write_assignment<'a>(

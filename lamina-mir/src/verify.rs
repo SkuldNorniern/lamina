@@ -1051,6 +1051,39 @@ fn verify_instruction_types(
                         );
                     }
                 }
+                Instruction::VaStart { ap } | Instruction::VaEnd { ap } => {
+                    verify_operand(
+                        ap,
+                        MirType::ptr(),
+                        "va_list address",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
+                Instruction::VaArg { ty, dst, ap } => {
+                    verify_destination(dst, *ty, "VaArg", config, &mut instruction_errors);
+                    verify_operand(
+                        ap,
+                        MirType::ptr(),
+                        "va_list address",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
+                Instruction::VaCopy { dst, src } => {
+                    for (operand, what) in [(dst, "va_copy destination"), (src, "va_copy source")] {
+                        verify_operand(
+                            operand,
+                            MirType::ptr(),
+                            what,
+                            definitions,
+                            config,
+                            &mut instruction_errors,
+                        );
+                    }
+                }
                 Instruction::Ret { value: Some(value) } => {
                     if let Some(return_type) = function.sig.ret_ty {
                         verify_operand(

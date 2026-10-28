@@ -52,6 +52,10 @@ impl TailCallOptimization {
             }
         }
 
+        if func.sig.variadic {
+            return Ok(false);
+        }
+
         let mut changed = false;
         let func_sig = func.sig.clone();
         let (stack_addresses, escaped) = Self::stack_addresses(func);

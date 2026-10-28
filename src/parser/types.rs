@@ -126,6 +126,7 @@ fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaE
                 )),
                 "ptr" => Ok(Type::Primitive(PrimitiveType::Ptr)),
                 "void" => Ok(Type::Void),
+        "valist" => Ok(Type::VaList),
                 _ => {
                     let primitive_types = super::get_primitive_type_names();
                     // Include "void" as it's a valid type identifier but not a primitive type

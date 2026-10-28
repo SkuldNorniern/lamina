@@ -6,7 +6,7 @@
 use crate::{
     builder::IRBuilder,
     instruction::{AllocType, Instruction},
-    types::{Type, Value},
+    types::{PrimitiveType, Type, Value},
 };
 
 impl<'a> IRBuilder<'a> {
@@ -17,6 +17,26 @@ impl<'a> IRBuilder<'a> {
             alloc_type: AllocType::Stack,
             allocated_ty: ty,
         })
+    }
+
+    /// Starts a `valist` at `ap` over the variadic arguments of this function
+    pub fn va_start(&mut self, ap: Value<'a>) -> &mut Self {
+        self.inst(Instruction::VaStart { ap })
+    }
+
+    /// Reads the next variadic argument as `ty` through the `valist` at `ap`
+    pub fn va_arg(&mut self, result: &'a str, ty: PrimitiveType, ap: Value<'a>) -> &mut Self {
+        self.inst(Instruction::VaArg { result, ty, ap })
+    }
+
+    /// Ends the lifetime of the `valist` at `ap`
+    pub fn va_end(&mut self, ap: Value<'a>) -> &mut Self {
+        self.inst(Instruction::VaEnd { ap })
+    }
+
+    /// Copies the `valist` at `src` into the `valist` at `dst`
+    pub fn va_copy(&mut self, dst: Value<'a>, src: Value<'a>) -> &mut Self {
+        self.inst(Instruction::VaCopy { dst, src })
     }
 
     /// Allocates heap memory

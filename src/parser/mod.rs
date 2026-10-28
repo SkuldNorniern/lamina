@@ -1442,12 +1442,10 @@ ret.i64 0
     }
 
     #[test]
-    fn variadic_parameter_list_needs_declaration_without_body() {
-        let defined = parse_module("fn @f(i64 %a, ...) -> i64 {\nentry:\n  ret.i64 %a\n}\n");
-        assert!(
-            format!("{defined:?}").contains("which has a body"),
-            "{defined:?}"
-        );
+    fn variadic_parameter_list_may_be_defined_with_a_body() {
+        let defined = parse_module("fn @f(i64 %a, ...) -> i64 {\nentry:\n  ret.i64 %a\n}\n")
+            .expect("a variadic definition parses");
+        assert!(defined.functions["f"].signature.variadic);
 
         let misplaced = parse_module("@extern\nfn @f(..., i64 %a) -> i64\n");
         assert!(
@@ -2178,6 +2176,23 @@ mod surface_tests {
              %l = rotl.i64 %x, %n\n  \
              %r = rotr.u8 %b, 3\n  \
              ret.i64 %p\n\
+             }\n",
+        );
+    }
+
+    #[test]
+    fn variadic_instructions_round_trip() {
+        round_trip(
+            "fn @f(i64 %n, ...) -> i64 {\n\
+             entry:\n  \
+             %ap = stackalloc.valist\n  \
+             %bp = stackalloc.valist\n  \
+             va_start %ap\n  \
+             %x = va_arg.i64 %ap\n  \
+             %d = va_arg.f64 %ap\n  \
+             va_copy %bp, %ap\n  \
+             va_end %ap\n  \
+             ret.i64 %x\n\
              }\n",
         );
     }

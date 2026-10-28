@@ -635,6 +635,24 @@ fn convert_function<'a>(
     f: &IRFunction<'a>,
     module: &IRModule<'a>,
 ) -> Result<Function, FromIRError> {
+    if !f.signature.variadic
+        && f.basic_blocks
+            .values()
+            .flat_map(|block| &block.instructions)
+            .any(|instr| {
+                matches!(
+                    instr,
+                    IRInst::VaStart { .. }
+                        | IRInst::VaArg { .. }
+                        | IRInst::VaEnd { .. }
+                        | IRInst::VaCopy { .. }
+                )
+            })
+    {
+        return Err(FromIRError::VariadicArgument(format!(
+            "va_* instruction in @{name}, which is not variadic"
+        )));
+    }
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
     mir_sig.no_inline = f.annotations.contains(&FunctionAnnotation::NoInline);
@@ -895,7 +913,8 @@ fn convert_function<'a>(
                         | Instruction::Select { ty, .. }
                         | Instruction::Load { ty, .. }
                         | Instruction::AtomicLoad { ty, .. }
-                        | Instruction::AtomicBinary { ty, .. } => Some(*ty),
+                        | Instruction::AtomicBinary { ty, .. }
+                        | Instruction::VaArg { ty, .. } => Some(*ty),
                         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
                             Some(MirType::i1())
                         }
@@ -2253,6 +2272,27 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
+        IRInst::VaStart { ap } => Ok(vec![Instruction::VaStart {
+            ap: resolve_operand(ap, vreg_alloc, var_to_reg, globals)?,
+        }]),
+        IRInst::VaArg { result, ty, ap } => {
+            if matches!(ty, IRPrim::Bool | IRPrim::F32) {
+                return Err(FromIRError::VariadicArgument(format!(
+                    "va_arg.{ty} is not supported; C passes a bool or float as an int or double"
+                )));
+            }
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            let ty = map_ir_prim(*ty)?;
+            let ap = resolve_operand(ap, vreg_alloc, var_to_reg, globals)?;
+            Ok(vec![Instruction::VaArg { ty, dst, ap }])
+        }
+        IRInst::VaEnd { ap } => Ok(vec![Instruction::VaEnd {
+            ap: resolve_operand(ap, vreg_alloc, var_to_reg, globals)?,
+        }]),
+        IRInst::VaCopy { dst, src } => Ok(vec![Instruction::VaCopy {
+            dst: resolve_operand(dst, vreg_alloc, var_to_reg, globals)?,
+            src: resolve_operand(src, vreg_alloc, var_to_reg, globals)?,
+        }]),
         IRInst::Alloc {
             result,
             alloc_type,
@@ -2589,6 +2629,7 @@ fn value_register_classes<'a>(
                 | IRInst::AtomicLoad { result, ty, .. }
                 | IRInst::AtomicBinary { result, ty, .. }
                 | IRInst::Phi { result, ty, .. } => (*result, class_of_type(ty)),
+                IRInst::VaArg { result, ty, .. } => (*result, reg_class_for_prim(*ty)),
                 IRInst::Bitcast {
                     result,
                     target_type,

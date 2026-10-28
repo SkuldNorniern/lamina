@@ -226,6 +226,9 @@ pub enum Type<'a> {
     },
     Struct(Vec<StructField<'a>>),
     Void,
+    /// A `va_list` cursor over variadic arguments, written `valist`. It is laid out as
+    /// the x86_64 System V `va_list`: 24 bytes, 8-byte aligned.
+    VaList,
 }
 
 impl From<PrimitiveType> for Type<'_> {
@@ -330,6 +333,7 @@ impl fmt::Display for Type<'_> {
                 write!(f, " }}")
             }
             Type::Void => write!(f, "void"),
+            Type::VaList => write!(f, "valist"),
         }
     }
 }
@@ -446,6 +450,7 @@ fn type_layout(ty: &Type<'_>) -> Option<(u64, u64)> {
             Some((element_size.checked_mul(*size)?, alignment))
         }
         Type::Struct(fields) => aggregate_layout(fields.iter().map(|field| &field.ty)),
+        Type::VaList => Some((24, 8)),
         _ => None,
     }
 }

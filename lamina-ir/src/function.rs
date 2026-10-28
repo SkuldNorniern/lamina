@@ -855,9 +855,12 @@ impl fmt::Display for FunctionSignature<'_> {
         write!(f, "(")?;
         for (i, param) in self.params.iter().enumerate() {
             write!(f, "{param}")?;
-            if i < self.params.len() - 1 {
+            if i < self.params.len() - 1 || self.variadic {
                 write!(f, ", ")?;
             }
+        }
+        if self.variadic {
+            write!(f, "...")?;
         }
         write!(f, ") -> {}", self.return_type)
     }

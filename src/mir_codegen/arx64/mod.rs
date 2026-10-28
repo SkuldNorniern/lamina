@@ -441,6 +441,12 @@ fn emit_instruction<W: Write>(
         Instruction::IntRotate { .. } => {
             unsupported("ARX64 backend does not support integer rotates yet")
         }
+        Instruction::VaStart { .. }
+        | Instruction::VaArg { .. }
+        | Instruction::VaEnd { .. }
+        | Instruction::VaCopy { .. } => {
+            unsupported("ARX64 backend does not support variadic arguments yet")
+        }
         other => unsupported(format!("ARX64 backend does not support MIR op {other:?}")),
     }
 }

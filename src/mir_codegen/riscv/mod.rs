@@ -2096,6 +2096,14 @@ fn emit_instruction_riscv<W: Write>(
                 "RISC-V backend does not support integer rotates yet".to_string(),
             )));
         }
+        MirInst::VaStart { .. }
+        | MirInst::VaArg { .. }
+        | MirInst::VaEnd { .. }
+        | MirInst::VaCopy { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "RISC-V backend does not support variadic arguments yet".to_string(),
+            )));
+        }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!("RISC-V backend: instruction not yet supported: {other}"),

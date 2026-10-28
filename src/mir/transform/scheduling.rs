@@ -320,6 +320,10 @@ impl InstructionScheduling {
                 | Instruction::AtomicBinary { .. }
                 | Instruction::AtomicCompareExchange { .. }
                 | Instruction::Fence { .. }
+                | Instruction::VaStart { .. }
+                | Instruction::VaArg { .. }
+                | Instruction::VaEnd { .. }
+                | Instruction::VaCopy { .. }
         )
     }
 }

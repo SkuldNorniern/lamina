@@ -311,6 +311,14 @@ pub(crate) fn interpret_mir_function(
                         "Interpreter: Atomic instructions not supported".to_owned(),
                     ));
                 }
+                Instruction::VaStart { .. }
+                | Instruction::VaArg { .. }
+                | Instruction::VaEnd { .. }
+                | Instruction::VaCopy { .. } => {
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: variadic arguments not supported".to_owned(),
+                    ));
+                }
                 #[cfg(feature = "nightly")]
                 Instruction::SimdBinary { .. }
                 | Instruction::SimdUnary { .. }

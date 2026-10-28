@@ -1,13 +1,20 @@
+use super::variadic::SAVE_AREA_SLOTS;
 use super::*;
 use crate::mir_codegen::common::{align_up, print_format_label};
 use lamina_codegen::abi::{BuiltinLibrary, RuntimeSymbol};
 
-pub(super) fn restore_saved_registers<W: Write>(
+/// Frame slots are laid out as the stack slots, then the callee-saved registers, then
+/// the hidden sret pointer, then the variadic register save area, so the saved registers
+/// sit just above the stack slots whatever follows them.
+fn restore_saved_registers<W: Write>(
     writer: &mut W,
     stack_size: usize,
     saved_regs: &[&str],
+    sret: bool,
+    variadic: bool,
 ) -> Result<(), Error> {
-    let first_slot = stack_size / 8 - saved_regs.len();
+    let trailing = usize::from(sret) + if variadic { SAVE_AREA_SLOTS } else { 0 };
+    let first_slot = stack_size / 8 - saved_regs.len() - trailing;
     for (index, reg) in saved_regs.iter().enumerate() {
         let offset = X86Frame::calculate_stack_offset(first_slot + index);
         writeln!(writer, "    movq {offset}(%rbp), %{reg}")?;
@@ -133,7 +140,7 @@ fn load_aggregate_word<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static s
 
 /// Rewrite `register` to the canonical in-register form of `ty`, the form every narrow
 /// value is held in between instructions.
-fn canonicalize_integer(
+pub(super) fn canonicalize_integer(
     writer: &mut impl Write,
     register: &str,
     ty: &MirType,
@@ -443,6 +450,7 @@ pub(super) fn emit_instruction_x86_64(
     param_extensions: &[Option<(usize, bool)>],
     entry_label: &str,
     sret_slot: Option<i32>,
+    va_area: Option<&super::variadic::VaArea>,
 ) -> Result<(), LaminaError> {
     let unwind = os_uses_elf(target_os);
     if settings.emit_asm_debug_lines {
@@ -1369,6 +1377,20 @@ pub(super) fn emit_instruction_x86_64(
         | MirInst::Fence { .. } => {
             super::atomic::emit(inst, writer, reg_alloc, stack_slots)?;
         }
+        MirInst::VaStart { .. }
+        | MirInst::VaArg { .. }
+        | MirInst::VaEnd { .. }
+        | MirInst::VaCopy { .. } => {
+            super::variadic::emit(
+                inst,
+                writer,
+                reg_alloc,
+                stack_slots,
+                va_area,
+                target_os,
+                func_name,
+            )?;
+        }
         MirInst::TailCall { name, args } if name == func_name => {
             // Self tail call: move the arguments straight into the parameter homes as a
             // parallel copy and jump to the entry block, skipping the ABI registers, the
@@ -1469,8 +1491,15 @@ pub(super) fn emit_instruction_x86_64(
                     param_extensions,
                     entry_label,
                     sret_slot,
+                    va_area,
                 )?;
-                restore_saved_registers(writer, stack_size, saved_regs)?;
+                restore_saved_registers(
+                    writer,
+                    stack_size,
+                    saved_regs,
+                    sret_slot.is_some(),
+                    va_area.is_some(),
+                )?;
                 if has_frame {
                     X86Frame::generate_epilogue(writer, stack_size, unwind)?;
                 } else {
@@ -1512,7 +1541,13 @@ pub(super) fn emit_instruction_x86_64(
                 }
             }
 
-            restore_saved_registers(writer, stack_size, saved_regs)?;
+            restore_saved_registers(
+                writer,
+                stack_size,
+                saved_regs,
+                sret_slot.is_some(),
+                va_area.is_some(),
+            )?;
             if unwind {
                 writeln!(writer, "    .cfi_remember_state")?;
             }
@@ -1904,7 +1939,13 @@ pub(super) fn emit_instruction_x86_64(
                 }
             }
             // Epilogue
-            restore_saved_registers(writer, stack_size, saved_regs)?;
+            restore_saved_registers(
+                writer,
+                stack_size,
+                saved_regs,
+                sret_slot.is_some(),
+                va_area.is_some(),
+            )?;
             if has_frame {
                 X86Frame::generate_epilogue(writer, stack_size, unwind)?;
             } else {

@@ -1,3 +1,4 @@
+use super::variadic::{SAVE_AREA_SLOTS, VaArea, spill_register_save_area};
 use super::*;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::FunctionEmissionPlan;
@@ -53,6 +54,9 @@ pub(super) fn instruction_clobbers(
         | MirInst::Store { .. }
         | MirInst::Lea { .. }
         | MirInst::Select { .. } => scratch,
+        MirInst::VaStart { .. } | MirInst::VaArg { .. } | MirInst::VaCopy { .. } => {
+            vec!["rcx", "rdx"]
+        }
         _ => Vec::new(),
     }
 }
@@ -195,11 +199,34 @@ pub(super) fn compile_single_function_x86_64(
         .ret_aggregate
         .filter(|aggregate| returns_through_pointer(*aggregate, target_os));
     let sret_slot = sret.map(|_| X86Frame::calculate_stack_offset(total_slots + saved_regs.len()));
-    let stack_size = (total_slots + saved_regs.len() + usize::from(sret.is_some())) * 8;
+    let va_base = total_slots + saved_regs.len() + usize::from(sret.is_some());
+    let va_area = if func.sig.variadic && target_os != TargetOperatingSystem::Windows {
+        let descs: Vec<ArgDesc> = func
+            .sig
+            .params
+            .iter()
+            .map(|p| ArgDesc {
+                ty: p.ty,
+                aggregate: p.aggregate,
+            })
+            .collect();
+        let locations = classify_argument_descs_with_sret(&descs, target_os, sret.is_some());
+        let save = X86Frame::calculate_stack_offset(va_base + SAVE_AREA_SLOTS - 1);
+        Some(VaArea::new(save, &locations))
+    } else {
+        None
+    };
+    let va_slots = if va_area.is_some() {
+        SAVE_AREA_SLOTS
+    } else {
+        0
+    };
+    let stack_size = (va_base + va_slots) * 8;
     let has_frame = settings.regalloc == RegallocStrategy::Incremental
         || !is_leaf
         || stack_size != 0
-        || func.sig.params.len() > abi.arg_registers().len();
+        || func.sig.params.len() > abi.arg_registers().len()
+        || va_area.is_some();
     if has_frame {
         X86Frame::generate_prologue(&mut output, stack_size, unwind)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -215,6 +242,10 @@ pub(super) fn compile_single_function_x86_64(
             writeln!(output, "    .cfi_offset %{reg}, {}", offset - 16)
                 .map_err(io_codegen_error)?;
         }
+    }
+
+    if let Some(area) = &va_area {
+        spill_register_save_area(&mut output, area, func_name).map_err(io_codegen_error)?;
     }
 
     // A self tail call re-enters here with its arguments already in the ABI argument
@@ -492,6 +523,7 @@ pub(super) fn compile_single_function_x86_64(
                 &param_extensions,
                 &func.entry,
                 sret_slot,
+                va_area.as_ref(),
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }

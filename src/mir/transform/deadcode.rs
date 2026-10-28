@@ -280,6 +280,12 @@ impl DeadCodeElimination {
             | Instruction::AtomicCompareExchange { .. }
             | Instruction::Fence { .. } => false,
 
+            // Variadic argument access writes through its va_list
+            Instruction::VaStart { .. }
+            | Instruction::VaArg { .. }
+            | Instruction::VaEnd { .. }
+            | Instruction::VaCopy { .. } => false,
+
             // SIMD memory operations have side effects (nightly only)
             #[cfg(feature = "nightly")]
             Instruction::SimdLoad { .. } | Instruction::SimdStore { .. } => false,

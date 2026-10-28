@@ -962,6 +962,31 @@ pub enum Instruction {
         ordering: MemoryOrdering,
     },
 
+    /// Initialize the `va_list` at the address `ap` from the enclosing variadic
+    /// function's register save area and stack arguments.
+    VaStart {
+        ap: Operand,
+    },
+
+    /// Read the next variadic argument of type `ty` through the `va_list` at `ap`
+    /// into `dst`, advancing `ap` past it.
+    VaArg {
+        ty: MirType,
+        dst: Register,
+        ap: Operand,
+    },
+
+    /// End the lifetime of the `va_list` at `ap`.
+    VaEnd {
+        ap: Operand,
+    },
+
+    /// Copy the `va_list` at `src` into the `va_list` at `dst`.
+    VaCopy {
+        dst: Operand,
+        src: Operand,
+    },
+
     // Pseudo-instruction for comments/debugging
     Comment {
         text: String,
@@ -1039,7 +1064,8 @@ impl Instruction {
             | Instruction::Bitcast { dst, .. }
             | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
-            | Instruction::VectorOp { dst, .. } => Some(dst),
+            | Instruction::VectorOp { dst, .. }
+            | Instruction::VaArg { dst, .. } => Some(dst),
             Instruction::AtomicLoad { dst, .. }
             | Instruction::AtomicBinary { dst, .. }
             | Instruction::AtomicCompareExchange { dst, .. } => Some(dst),
@@ -1144,6 +1170,21 @@ impl Instruction {
                         regs.push(base);
                         regs.push(index);
                     }
+                }
+            }
+            Instruction::VaStart { ap }
+            | Instruction::VaArg { ap, .. }
+            | Instruction::VaEnd { ap } => {
+                if let Operand::Register(r) = ap {
+                    regs.push(r);
+                }
+            }
+            Instruction::VaCopy { dst, src } => {
+                if let Operand::Register(r) = dst {
+                    regs.push(r);
+                }
+                if let Operand::Register(r) = src {
+                    regs.push(r);
                 }
             }
             #[cfg(feature = "nightly")]
@@ -1616,6 +1657,10 @@ impl fmt::Display for Instruction {
                 "{dst} = atomic_cmpxchg.{ty} [{addr}] {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
             Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
+            Instruction::VaStart { ap } => write!(f, "va_start {ap}"),
+            Instruction::VaArg { ty, dst, ap } => write!(f, "{dst} = va_arg.{ty} {ap}"),
+            Instruction::VaEnd { ap } => write!(f, "va_end {ap}"),
+            Instruction::VaCopy { dst, src } => write!(f, "va_copy {dst}, {src}"),
             Instruction::Comment { text } => write!(f, "; {text}"),
         }
     }

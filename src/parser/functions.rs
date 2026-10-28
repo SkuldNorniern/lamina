@@ -157,12 +157,6 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     state.skip_whitespace_and_comments();
     let declaration_only =
         annotations.contains(&FunctionAnnotation::Extern) && state.current_char() != Some('{');
-    if signature.variadic && !declaration_only {
-        return Err(state.error(format!(
-            "Variadic parameter list on @{name}, which has a body\n  Hint: Lamina cannot define a variadic function; only an @extern declaration may end in ..."
-        )));
-    }
-
     if declaration_only {
         return Ok(Function {
             name,

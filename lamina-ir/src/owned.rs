@@ -20,6 +20,7 @@ use crate::{
 pub enum OwnedType {
     Primitive(PrimitiveType),
     Void,
+    VaList,
     Named(String),
     Array {
         element_type: Box<OwnedType>,
@@ -48,6 +49,7 @@ impl fmt::Display for OwnedType {
         match self {
             OwnedType::Primitive(p) => write!(f, "{}", p.as_str()),
             OwnedType::Void => write!(f, "void"),
+            OwnedType::VaList => write!(f, "valist"),
             OwnedType::Named(n) => write!(f, "!{n}"),
             OwnedType::Array { element_type, size } => {
                 write!(f, "[{size} x {element_type}]")
@@ -618,6 +620,39 @@ impl OwnedIRBuilder {
     /// Appends a store instruction.
     pub fn store(&mut self, ty: &OwnedType, ptr: &OwnedValue, val: &OwnedValue) -> &mut Self {
         let t = format!("store.{ty} {ptr}, {val}");
+        self.push(t);
+        self
+    }
+
+    /// Appends a `va_start` for the `valist` at `ap`.
+    pub fn va_start(&mut self, ap: &OwnedValue) -> &mut Self {
+        let t = format!("va_start {ap}");
+        self.push(t);
+        self
+    }
+
+    /// Appends a `va_arg` reading the next argument of primitive type `ty` through `ap`.
+    pub fn va_arg(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        ap: &OwnedValue,
+    ) -> &mut Self {
+        let t = format!("%{} = va_arg.{} {ap}", result.as_ref(), ty.as_str());
+        self.push(t);
+        self
+    }
+
+    /// Appends a `va_end` for the `valist` at `ap`.
+    pub fn va_end(&mut self, ap: &OwnedValue) -> &mut Self {
+        let t = format!("va_end {ap}");
+        self.push(t);
+        self
+    }
+
+    /// Appends a `va_copy` from the `valist` at `src` into the one at `dst`.
+    pub fn va_copy(&mut self, dst: &OwnedValue, src: &OwnedValue) -> &mut Self {
+        let t = format!("va_copy {dst}, {src}");
         self.push(t);
         self
     }
