@@ -1165,6 +1165,37 @@ impl<'a> Instruction<'a> {
         )
     }
 
+    /// The type of the value this instruction defines, when the instruction states it.
+    ///
+    /// `None` for instructions whose result type depends on context outside the
+    /// instruction (calls, SIMD, aggregates) and for instructions that define nothing.
+    pub fn result_type(&self) -> Option<Type<'a>> {
+        let prim = |p: &PrimitiveType| Some(Type::Primitive(*p));
+        match self {
+            Instruction::Binary { ty, .. } | Instruction::Unary { ty, .. } => prim(ty),
+            Instruction::Cmp { .. } => prim(&PrimitiveType::Bool),
+            Instruction::ZeroExtend { target_type, .. }
+            | Instruction::SignExtend { target_type, .. }
+            | Instruction::Trunc { target_type, .. }
+            | Instruction::Bitcast { target_type, .. }
+            | Instruction::IntToFloat { target_type, .. }
+            | Instruction::FloatToInt { target_type, .. }
+            | Instruction::FloatConvert { target_type, .. }
+            | Instruction::PtrToInt { target_type, .. }
+            | Instruction::IntToPtr { target_type, .. } => prim(target_type),
+            Instruction::Alloc { .. }
+            | Instruction::GetElemPtr { .. }
+            | Instruction::GetFieldPtr { .. } => prim(&PrimitiveType::Ptr),
+            Instruction::Select { ty, .. }
+            | Instruction::Load { ty, .. }
+            | Instruction::Phi { ty, .. }
+            | Instruction::AtomicLoad { ty, .. }
+            | Instruction::AtomicBinary { ty, .. } => Some(ty.clone()),
+            Instruction::VaArg { ty, .. } => prim(ty),
+            _ => None,
+        }
+    }
+
     /// Returns the name of the SSA variable defined by this instruction, if any.
     ///
     /// Only assignment-style instructions (`Binary`, `Cmp`, `Alloc`, `Load`, `Call` with

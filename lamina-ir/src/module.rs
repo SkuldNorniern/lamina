@@ -377,6 +377,11 @@ impl<'a> Module<'a> {
             if let Err(errs) = func.validate() {
                 all_errors.extend(errs);
             }
+            all_errors.extend(func.duplicate_definition_errors(&|name| {
+                self.functions
+                    .get(name)
+                    .map(|callee| callee.signature.return_type.clone())
+            }));
         }
         self.validate_named_types(&mut all_errors);
         if all_errors.is_empty() {

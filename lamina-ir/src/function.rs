@@ -775,6 +775,64 @@ impl<'a> Function<'a> {
             Err(errors)
         }
     }
+
+    /// Reports every redefinition whose type differs from the variable's first definition.
+    ///
+    /// A name may be reassigned with the same type. Lowering keys type facts by name, so a
+    /// reassignment with another type would give later uses the wrong type. `callee_return`
+    /// gives the return type of a called function, for call results.
+    pub fn duplicate_definition_errors(
+        &self,
+        callee_return: &dyn Fn(&str) -> Option<Type<'a>>,
+    ) -> Vec<String> {
+        let mut errors: Vec<String> = Vec::new();
+        let mut first_defs: HashMap<&str, (Option<Type<'a>>, String)> = self
+            .signature
+            .params
+            .iter()
+            .map(|p| {
+                (
+                    p.name,
+                    (
+                        Some(p.ty.clone()),
+                        format!("the parameters of '@{}'", self.name),
+                    ),
+                )
+            })
+            .collect();
+        let mut ordered_blocks: Vec<(&Label<'a>, &BasicBlock<'a>)> =
+            self.basic_blocks.iter().collect();
+        ordered_blocks.sort_by_key(|(label, _)| **label);
+        for (label, block) in &ordered_blocks {
+            for (index, instr) in block.instructions.iter().enumerate() {
+                let Some(def) = instr.defined_var() else {
+                    continue;
+                };
+                let ty = match instr {
+                    Instruction::Call { func_name, .. } => callee_return(func_name),
+                    other => other.result_type(),
+                };
+                match first_defs.get(def) {
+                    Some((first_ty, first_site)) => {
+                        if let (Some(first_ty), Some(ty)) = (first_ty, &ty)
+                            && first_ty != ty
+                        {
+                            errors.push(format!(
+                                "duplicate definition of '%{}' in '@{}': first defined as {} in {}, redefined as {} in block '{}' instruction {} (a value may be reassigned, but not with a different type)",
+                                def, self.name, first_ty, first_site, ty, label, index + 1
+                            ));
+                        }
+                    }
+                    None => {
+                        let site = format!("block '{}' instruction {}", label, index + 1);
+                        first_defs.insert(def, (ty, site));
+                    }
+                }
+            }
+        }
+
+        errors
+    }
 }
 
 // --- Display Implementations ---
@@ -1185,6 +1243,115 @@ mod tests {
             basic_blocks: blocks,
             entry_block: entry,
         }
+    }
+
+    fn binary_def<'a>(result: &'a str, ty: PrimitiveType) -> Instruction<'a> {
+        Instruction::Binary {
+            op: BinaryOp::Add,
+            result,
+            ty,
+            lhs: Value::Constant(Literal::I64(1)),
+            rhs: Value::Constant(Literal::I64(2)),
+        }
+    }
+
+    fn ret_void<'a>() -> Instruction<'a> {
+        Instruction::Ret {
+            ty: Type::Void,
+            value: None,
+        }
+    }
+
+    #[test]
+    fn test_same_type_reassignment_is_accepted() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    binary_def("x", PrimitiveType::I32),
+                    binary_def("x", PrimitiveType::I32),
+                    ret_void(),
+                ],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        assert!(f.duplicate_definition_errors(&|_| None).is_empty());
+    }
+
+    #[test]
+    fn test_redefinition_with_different_type_is_rejected() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    binary_def("x", PrimitiveType::I128),
+                    binary_def("x", PrimitiveType::I64),
+                    ret_void(),
+                ],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        let errs = f.duplicate_definition_errors(&|_| None);
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].contains("'%x'"));
+        assert!(errs[0].contains("first defined as i128 in block 'entry' instruction 1"));
+        assert!(errs[0].contains("redefined as i64 in block 'entry' instruction 2"));
+    }
+
+    #[test]
+    fn test_redefinition_of_parameter_with_different_type_is_rejected() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![binary_def("a", PrimitiveType::U64), ret_void()],
+            },
+        );
+        let params = vec![FunctionParameter {
+            name: "a",
+            ty: Type::Primitive(PrimitiveType::I64),
+            annotations: vec![],
+        }];
+        let f = simple_func(params, Type::Void, blocks, "entry");
+        let errs = f.duplicate_definition_errors(&|_| None);
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].contains("'%a'"));
+        assert!(errs[0].contains("first defined as i64 in the parameters of '@test'"));
+    }
+
+    #[test]
+    fn test_call_result_redefinition_uses_callee_return_type() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Call {
+                        result: Some("v"),
+                        func_name: "neg",
+                        args: vec![],
+                    },
+                    Instruction::Call {
+                        result: Some("v"),
+                        func_name: "big",
+                        args: vec![],
+                    },
+                    ret_void(),
+                ],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        let returns = |name: &str| match name {
+            "neg" => Some(Type::Primitive(PrimitiveType::I64)),
+            "big" => Some(Type::Primitive(PrimitiveType::U64)),
+            _ => None,
+        };
+        let errs = f.duplicate_definition_errors(&returns);
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].contains("first defined as i64"));
+        assert!(errs[0].contains("redefined as u64"));
     }
 
     #[test]

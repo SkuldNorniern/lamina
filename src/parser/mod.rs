@@ -1536,7 +1536,7 @@ ret.i64 0
             }
         ));
 
-        let input = entry_body("%p = inttoptr.i64 %addr");
+        let input = entry_body("%ip = inttoptr.i64 %addr");
         assert!(matches!(
             entry_instructions(&input)[0],
             Instruction::IntToPtr {
@@ -2562,5 +2562,53 @@ mod bit_builder_tests {
                 .popcount("p", PrimitiveType::F64, var("x"));
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn redefinition_with_different_type_is_rejected_at_parse() {
+        let print_reuse = r#"
+fn @neg() -> i64 { entry: %x = add.i64 0, -5  ret.i64 %x }
+fn @big() -> u64 { entry: %y = add.u64 0, 3   ret.u64 %y }
+fn @main() -> i64 {
+  entry:
+    %v = call @neg()
+    print %v
+    %v = call @big()
+    print %v
+    ret.i64 0
+}
+"#;
+        let err = parse_module(print_reuse).expect_err("type-changing redefinition");
+        let message = err.to_string();
+        assert!(message.contains("'%v'"), "{message}");
+        assert!(message.contains("first defined as i64"), "{message}");
+        assert!(message.contains("redefined as u64"), "{message}");
+
+        let wrong_answer = r#"
+fn @main() -> i64 {
+  entry:
+    %v = add.i128 0, 5
+    %v = add.i64 0, 7
+    %w = add.i128 %v, 1
+    %lo = trunc.i128.i64 %w
+    ret.i64 %lo
+}
+"#;
+        let err = parse_module(wrong_answer).expect_err("i128 then i64");
+        assert!(err.to_string().contains("'%v'"));
+    }
+
+    #[test]
+    fn same_type_reassignment_still_parses() {
+        let source = r#"
+fn @main() -> i64 {
+  entry:
+    %v = add.i64 0, 5
+    %v = add.i64 %v, 7
+    print %v
+    ret.i64 %v
+}
+"#;
+        assert!(parse_module(source).is_ok());
     }
 }
