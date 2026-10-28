@@ -20,6 +20,7 @@ mod peephole;
 mod reduction_exit;
 pub mod sanity;
 mod scheduling;
+mod sroa;
 mod strength_reduction;
 mod tail_call;
 mod unroll;
@@ -42,6 +43,7 @@ pub use memory::MemoryOptimization;
 pub use peephole::Peephole;
 pub use reduction_exit::ReductionExit;
 pub use scheduling::InstructionScheduling;
+pub use sroa::ScalarReplacement;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 pub use unroll::LoopUnrolling;
@@ -302,7 +304,7 @@ impl TransformPipeline {
     /// |-------|-----------------|
     /// | O0    | (none) |
     /// | O1    | CFG simplify, jump threading, branch opt, DCE |
-    /// | O2    | + promotion of stack slots to registers (mem2reg), constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining, bounded unrolling |
+    /// | O2    | + splitting of field-accessed stack slots (sroa), promotion of stack slots to registers (mem2reg), constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining, bounded unrolling |
     /// | O3    | + LICM, strength reduction, CSE, instruction scheduling |
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
@@ -320,6 +322,7 @@ impl TransformPipeline {
         }
 
         if opt_level >= 2 {
+            pipeline = pipeline.add_transform(ScalarReplacement);
             pipeline = pipeline.add_transform(Mem2Reg);
             pipeline = pipeline.add_transform(ConstantFolding);
             pipeline = pipeline.add_transform(CopyPropagation);
