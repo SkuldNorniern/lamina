@@ -1,44 +1,32 @@
 const std = @import("std");
 
-// Configuration
-const N1 = 10;
-const N2 = 12;
-const N3 = 15;
-const N4 = 18;
-
-// Markers matching Lamina version
-const HEADER_MARKER = 123456789;
-const FOOTER_MARKER = 987654321;
-
-/// Computes factorial iteratively: n! = n * (n-1) * ... * 2 * 1
-fn factorial_iterative(n: u32) u64 {
-    if (n == 0 or n == 1) {
-        return 1;
-    }
-
+fn factorial_iterative(n: u64) u64 {
+    if (n == 0 or n == 1) return 1;
     var result: u64 = 1;
-    var i: u32 = 2;
+    var i: u64 = 2;
     while (i <= n) : (i += 1) {
         result *= i;
     }
     return result;
 }
 
-pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+pub fn main(init: std.process.Init) !void {
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
-    // Print header marker
-    try stdout.print("{}\n", .{HEADER_MARKER});
+    try stdout.print("123456789\n", .{});
+    try stdout.print("{d}\n", .{factorial_iterative(10)});
+    try stdout.print("{d}\n", .{factorial_iterative(12)});
+    try stdout.print("{d}\n", .{factorial_iterative(15)});
+    try stdout.print("{d}\n", .{factorial_iterative(18)});
 
-    // Compute and print factorial values
-    try stdout.print("{}\n", .{factorial_iterative(N1)});
-    try stdout.print("{}\n", .{factorial_iterative(N2)});
-    try stdout.print("{}\n", .{factorial_iterative(N3)});
-    try stdout.print("{}\n", .{factorial_iterative(N4)});
-
-    // Print footer marker
-    try stdout.print("{}\n", .{FOOTER_MARKER});
+    var acc: u64 = 0;
+    var s: u64 = 0;
+    while (s < 4000000) : (s += 1) {
+        acc +%= factorial_iterative(s % 20);
+    }
+    try stdout.print("{d}\n", .{acc});
+    try stdout.print("987654321\n", .{});
+    try stdout.flush();
 }
-
-
-

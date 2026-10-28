@@ -1,12 +1,13 @@
 use std::env;
 
-fn arg(i: usize) -> u64 {
-    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+#[inline(never)]
+fn arg(i: usize, fallback: u64) -> u64 {
+    env::args().nth(i).map_or(fallback, |s| s.parse().expect("bad integer"))
 }
 
 fn main() {
-    let iters = arg(1);
-    let mut x = arg(2);
+    let iters = arg(1, 10000000);
+    let mut x = arg(2, 12345);
     let mut y: u64 = 0;
     let mut z: u64 = 0;
     for _ in 0..iters {

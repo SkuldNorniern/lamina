@@ -6,7 +6,11 @@ import (
 	"strconv"
 )
 
-func arg(i int) int64 {
+//go:noinline
+func arg(i int, fallback int64) int64 {
+	if i >= len(os.Args) {
+		return fallback
+	}
 	v, err := strconv.ParseInt(os.Args[i], 10, 64)
 	if err != nil {
 		panic(err)
@@ -19,8 +23,8 @@ type particle struct {
 }
 
 func main() {
-	steps := arg(1)
-	p := particle{0, 0, arg(2), arg(3)}
+	steps := arg(1, 20000000)
+	p := particle{0, 0, arg(2, 3), arg(3, 5)}
 	var flips int64
 	for i := int64(0); i < steps; i++ {
 		p.x += p.vx

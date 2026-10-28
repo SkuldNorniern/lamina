@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int64_t arg(int argc, char **argv, int i) {
-    if (i >= argc) { fprintf(stderr, "missing argument %d\n", i); exit(2); }
+static __attribute__((noinline)) int64_t arg(int argc, char **argv, int i, int64_t fallback) {
+    if (i >= argc) return fallback;
     return strtoll(argv[i], NULL, 10);
 }
 
@@ -20,9 +20,9 @@ static uint64_t fibonacci_iterative(uint64_t n) {
 }
 
 int main(int argc, char **argv) {
-    uint64_t n1 = arg(argc, argv, 1), n2 = arg(argc, argv, 2);
-    uint64_t n3 = arg(argc, argv, 3), n4 = arg(argc, argv, 4);
-    int64_t sweep_count = arg(argc, argv, 5);
+    uint64_t n1 = arg(argc, argv, 1, 10), n2 = arg(argc, argv, 2, 20);
+    uint64_t n3 = arg(argc, argv, 3, 30), n4 = arg(argc, argv, 4, 35);
+    int64_t sweep_count = arg(argc, argv, 5, 200000);
 
     printf("123456789\n");
     printf("%llu\n", (unsigned long long)fibonacci_iterative(n1));

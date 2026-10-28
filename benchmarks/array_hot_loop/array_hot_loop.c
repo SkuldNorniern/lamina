@@ -2,14 +2,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int64_t arg(int argc, char **argv, int i) {
-    if (i >= argc) { fprintf(stderr, "missing argument %d\n", i); exit(2); }
+static __attribute__((noinline)) int64_t arg(int argc, char **argv, int i, int64_t fallback) {
+    if (i >= argc) return fallback;
     return strtoll(argv[i], NULL, 10);
 }
 
 int main(int argc, char **argv) {
-    int64_t n = arg(argc, argv, 1);
-    int64_t passes = arg(argc, argv, 2);
+    int64_t n = arg(argc, argv, 1, 256);
+    int64_t passes = arg(argc, argv, 2, 60000);
     uint64_t *arr = malloc((size_t)n * sizeof *arr);
     if (!arr) return 1;
 

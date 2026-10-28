@@ -1,7 +1,8 @@
 use std::env;
 
-fn arg(i: usize) -> u64 {
-    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+#[inline(never)]
+fn arg(i: usize, fallback: u64) -> u64 {
+    env::args().nth(i).map_or(fallback, |s| s.parse().expect("bad integer"))
 }
 
 fn fibonacci_iterative(n: u64) -> u64 {
@@ -21,8 +22,8 @@ fn fibonacci_iterative(n: u64) -> u64 {
 }
 
 fn main() {
-    let (n1, n2, n3, n4) = (arg(1), arg(2), arg(3), arg(4));
-    let sweep_count = arg(5);
+    let (n1, n2, n3, n4) = (arg(1, 10), arg(2, 20), arg(3, 30), arg(4, 35));
+    let sweep_count = arg(5, 200000);
 
     println!("123456789");
     println!("{}", fibonacci_iterative(n1));

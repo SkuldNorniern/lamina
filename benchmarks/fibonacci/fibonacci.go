@@ -6,7 +6,11 @@ import (
 	"strconv"
 )
 
-func arg(i int) int64 {
+//go:noinline
+func arg(i int, fallback int64) int64 {
+	if i >= len(os.Args) {
+		return fallback
+	}
 	v, err := strconv.ParseInt(os.Args[i], 10, 64)
 	if err != nil {
 		panic(err)
@@ -29,8 +33,8 @@ func fibonacciIterative(n uint64) uint64 {
 }
 
 func main() {
-	n1, n2, n3, n4 := uint64(arg(1)), uint64(arg(2)), uint64(arg(3)), uint64(arg(4))
-	sweepCount := arg(5)
+	n1, n2, n3, n4 := uint64(arg(1, 10)), uint64(arg(2, 20)), uint64(arg(3, 30)), uint64(arg(4, 35))
+	sweepCount := arg(5, 200000)
 
 	fmt.Println(123456789)
 	fmt.Println(fibonacciIterative(n1))

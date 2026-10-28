@@ -1,7 +1,8 @@
 use std::env;
 
-fn arg(i: usize) -> i64 {
-    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+#[inline(never)]
+fn arg(i: usize, fallback: i64) -> i64 {
+    env::args().nth(i).map_or(fallback, |s| s.parse().expect("bad integer"))
 }
 
 struct Particle {
@@ -12,8 +13,8 @@ struct Particle {
 }
 
 fn main() {
-    let steps = arg(1);
-    let mut p = Particle { x: 0, y: 0, vx: arg(2), vy: arg(3) };
+    let steps = arg(1, 20000000);
+    let mut p = Particle { x: 0, y: 0, vx: arg(2, 3), vy: arg(3, 5) };
     let mut flips: i64 = 0;
     for _ in 0..steps {
         p.x = p.x.wrapping_add(p.vx);

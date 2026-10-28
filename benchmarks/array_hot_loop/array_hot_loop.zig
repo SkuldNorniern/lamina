@@ -1,13 +1,14 @@
 const std = @import("std");
 
-fn arg(comptime T: type, args: []const [:0]const u8, i: usize) T {
+noinline fn arg(comptime T: type, args: []const [:0]const u8, i: usize, fallback: T) T {
+    if (i >= args.len) return fallback;
     return std.fmt.parseInt(T, args[i], 10) catch @panic("bad integer");
 }
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const n = arg(usize, args, 1);
-    const passes = arg(u64, args, 2);
+    const n = arg(usize, args, 1, 256);
+    const passes = arg(u64, args, 2, 60000);
 
     const arr = try init.gpa.alloc(u64, n);
     defer init.gpa.free(arr);

@@ -6,7 +6,11 @@ import (
 	"strconv"
 )
 
-func arg(i int) int64 {
+//go:noinline
+func arg(i int, fallback int64) int64 {
+	if i >= len(os.Args) {
+		return fallback
+	}
 	v, err := strconv.ParseInt(os.Args[i], 10, 64)
 	if err != nil {
 		panic(err)
@@ -15,8 +19,8 @@ func arg(i int) int64 {
 }
 
 func main() {
-	n := arg(1)
-	passes := arg(2)
+	n := arg(1, 256)
+	passes := arg(2, 60000)
 	arr := make([]uint64, n)
 	for i := range arr {
 		arr[i] = uint64(i)*7 + 3

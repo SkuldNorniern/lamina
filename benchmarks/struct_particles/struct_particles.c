@@ -2,16 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int64_t arg(int argc, char **argv, int i) {
-    if (i >= argc) { fprintf(stderr, "missing argument %d\n", i); exit(2); }
+static __attribute__((noinline)) int64_t arg(int argc, char **argv, int i, int64_t fallback) {
+    if (i >= argc) return fallback;
     return strtoll(argv[i], NULL, 10);
 }
 
 typedef struct { int64_t x, y, vx, vy; } Particle;
 
 int main(int argc, char **argv) {
-    int64_t steps = arg(argc, argv, 1);
-    Particle p = { 0, 0, arg(argc, argv, 2), arg(argc, argv, 3) };
+    int64_t steps = arg(argc, argv, 1, 20000000);
+    Particle p = { 0, 0, arg(argc, argv, 2, 3), arg(argc, argv, 3, 5) };
     int64_t flips = 0;
     for (int64_t i = 0; i < steps; i++) {
         p.x += p.vx;

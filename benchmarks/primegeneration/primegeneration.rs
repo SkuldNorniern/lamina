@@ -1,7 +1,8 @@
 use std::env;
 
-fn arg(i: usize) -> i64 {
-    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+#[inline(never)]
+fn arg(i: usize, fallback: i64) -> i64 {
+    env::args().nth(i).map_or(fallback, |s| s.parse().expect("bad integer"))
 }
 
 fn is_prime(n: i64) -> bool {
@@ -29,9 +30,10 @@ fn count_primes(limit: i64) -> i64 {
 }
 
 fn main() {
+    let defaults = [100, 1000, 10000, 1000000];
     println!("123456789");
     for i in 1..=4 {
-        println!("{}", count_primes(arg(i)));
+        println!("{}", count_primes(arg(i, defaults[i - 1])));
     }
     println!("987654321");
 }

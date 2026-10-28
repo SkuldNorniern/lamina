@@ -1,6 +1,7 @@
 const std = @import("std");
 
-fn arg(comptime T: type, args: []const [:0]const u8, i: usize) T {
+noinline fn arg(comptime T: type, args: []const [:0]const u8, i: usize, fallback: T) T {
+    if (i >= args.len) return fallback;
     return std.fmt.parseInt(T, args[i], 10) catch @panic("bad integer");
 }
 
@@ -26,6 +27,7 @@ fn countPrimes(limit: i64) i64 {
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
+    const defaults = [4]i64{ 100, 1000, 10000, 1000000 };
 
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
@@ -34,7 +36,7 @@ pub fn main(init: std.process.Init) !void {
     try stdout.print("123456789\n", .{});
     var i: usize = 1;
     while (i <= 4) : (i += 1) {
-        try stdout.print("{d}\n", .{countPrimes(arg(i64, args, i))});
+        try stdout.print("{d}\n", .{countPrimes(arg(i64, args, i, defaults[i - 1]))});
     }
     try stdout.print("987654321\n", .{});
     try stdout.flush();

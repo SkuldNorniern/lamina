@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int64_t arg(int argc, char **argv, int i) {
-    if (i >= argc) { fprintf(stderr, "missing argument %d\n", i); exit(2); }
+static __attribute__((noinline)) int64_t arg(int argc, char **argv, int i, int64_t fallback) {
+    if (i >= argc) return fallback;
     return strtoll(argv[i], NULL, 10);
 }
 
@@ -24,9 +24,10 @@ static int64_t count_primes(int64_t limit) {
 }
 
 int main(int argc, char **argv) {
+    static const int64_t defaults[4] = {100, 1000, 10000, 1000000};
     printf("123456789\n");
     for (int i = 1; i <= 4; i++)
-        printf("%lld\n", (long long)count_primes(arg(argc, argv, i)));
+        printf("%lld\n", (long long)count_primes(arg(argc, argv, i, defaults[i - 1])));
     printf("987654321\n");
     return 0;
 }

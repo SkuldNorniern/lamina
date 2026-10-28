@@ -1,12 +1,13 @@
 use std::env;
 
-fn arg(i: usize) -> usize {
-    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+#[inline(never)]
+fn arg(i: usize, fallback: usize) -> usize {
+    env::args().nth(i).map_or(fallback, |s| s.parse().expect("bad integer"))
 }
 
 fn main() {
-    let n = arg(1);
-    let passes = arg(2);
+    let n = arg(1, 256);
+    let passes = arg(2, 60000);
     let arr: Vec<u64> = (0..n).map(|i| (i as u64) * 7 + 3).collect();
 
     let mut total: u64 = 0;

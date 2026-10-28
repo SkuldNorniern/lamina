@@ -1,6 +1,7 @@
 const std = @import("std");
 
-fn arg(comptime T: type, args: []const [:0]const u8, i: usize) T {
+noinline fn arg(comptime T: type, args: []const [:0]const u8, i: usize, fallback: T) T {
+    if (i >= args.len) return fallback;
     return std.fmt.parseInt(T, args[i], 10) catch @panic("bad integer");
 }
 
@@ -20,11 +21,11 @@ fn fibonacciIterative(n: u64) u64 {
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const n1 = arg(u64, args, 1);
-    const n2 = arg(u64, args, 2);
-    const n3 = arg(u64, args, 3);
-    const n4 = arg(u64, args, 4);
-    const sweep_count = arg(u64, args, 5);
+    const n1 = arg(u64, args, 1, 10);
+    const n2 = arg(u64, args, 2, 20);
+    const n3 = arg(u64, args, 3, 30);
+    const n4 = arg(u64, args, 4, 35);
+    const sweep_count = arg(u64, args, 5, 200000);
 
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);

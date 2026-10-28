@@ -1,6 +1,7 @@
 const std = @import("std");
 
-fn arg(comptime T: type, args: []const [:0]const u8, i: usize) T {
+noinline fn arg(comptime T: type, args: []const [:0]const u8, i: usize, fallback: T) T {
+    if (i >= args.len) return fallback;
     return std.fmt.parseInt(T, args[i], 10) catch @panic("bad integer");
 }
 
@@ -13,8 +14,8 @@ const Particle = struct {
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const steps = arg(i64, args, 1);
-    var p = Particle{ .x = 0, .y = 0, .vx = arg(i64, args, 2), .vy = arg(i64, args, 3) };
+    const steps = arg(i64, args, 1, 20000000);
+    var p = Particle{ .x = 0, .y = 0, .vx = arg(i64, args, 2, 3), .vy = arg(i64, args, 3, 5) };
     var flips: i64 = 0;
 
     var i: i64 = 0;

@@ -6,7 +6,11 @@ import (
 	"strconv"
 )
 
-func arg(i int) int64 {
+//go:noinline
+func arg(i int, fallback int64) int64 {
+	if i >= len(os.Args) {
+		return fallback
+	}
 	v, err := strconv.ParseInt(os.Args[i], 10, 64)
 	if err != nil {
 		panic(err)
@@ -15,8 +19,8 @@ func arg(i int) int64 {
 }
 
 func main() {
-	iters := arg(1)
-	x := uint64(arg(2))
+	iters := arg(1, 10000000)
+	x := uint64(arg(2, 12345))
 	var y, z uint64
 	for i := int64(0); i < iters; i++ {
 		m := x*1103515245 + 12345
