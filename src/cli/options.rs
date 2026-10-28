@@ -19,7 +19,6 @@ pub struct CompileOptions {
     pub linker_flags: Vec<String>,
     pub emit_asm_only: bool,
     pub emit_mir: bool,
-    pub emit_mir_asm: Option<String>,
     pub target_arch: Option<String>,
     pub opt_level: u8,
     pub jit: bool,
@@ -101,9 +100,6 @@ pub fn print_usage() {
     eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
     eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
     eprintln!(
-        "  --emit-mir-asm          EXPERIMENTAL: emit assembly from MIR (uses --target for OS, architecture)"
-    );
-    eprintln!(
         "  --opt-level <n>         EXPERIMENTAL(mir only): Set optimization level (0-3, default: 1)"
     );
     eprintln!("  --jit                   Compile and execute using runtime compilation (JIT)");
@@ -143,7 +139,6 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
         linker_flags: Vec::new(),
         emit_asm_only: false,
         emit_mir: false,
-        emit_mir_asm: None,
         target_arch: None,
         opt_level: 1,
         jit: false,
@@ -190,7 +185,10 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                 i += 1;
             }
             "--emit-mir-asm" => {
-                options.emit_mir_asm = Some("default".to_string());
+                eprintln!(
+                    "Warning: --emit-mir-asm is deprecated and will be removed; use --emit-asm"
+                );
+                options.emit_asm_only = true;
                 i += 1;
             }
             "--mcpu" => {

@@ -104,7 +104,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         process::exit(1);
     }
 
-    if options.emit_mir || options.emit_mir_asm.is_some() {
+    if options.emit_mir {
         let ir_mod = parse_module(&ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
         let mut mir_mod = from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
             .map_err(|e| format!("MIR lowering failed: {e}"))?;
@@ -136,58 +136,6 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
             println!("[INFO] MIR written to {}", mir_path.display());
         }
 
-        if options.emit_mir_asm.is_some() {
-            let default_target = Target::detect_host();
-            let default_target_str = default_target.to_str();
-            let target_str = options
-                .target_arch
-                .as_deref()
-                .unwrap_or(&default_target_str);
-            let target = Target::from_str(target_str).unwrap_or_else(|_| Target::detect_host());
-
-            let asm_extension =
-                get_intermediate_extension(target.architecture, target.operating_system);
-            let mut mir_asm_path = output_stem;
-            mir_asm_path.set_extension(asm_extension);
-
-            let mut out = Vec::<u8>::new();
-            let target_os = target.operating_system;
-
-            generate_mir_to_target_with_settings(
-                &mir_mod,
-                &mut out,
-                target.architecture,
-                target_os,
-                codegen_units,
-                &options.mir_codegen_settings,
-            )
-            .map_err(|e| format!("MIR→{} emission failed: {}", target.architecture, e))?;
-
-            let arch_name = match target.architecture {
-                TargetArchitecture::Nvptx64 => "PTX",
-                TargetArchitecture::Amdgcn => "AMDGPU",
-                TargetArchitecture::X86_64 => "x86_64",
-                TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "WASM",
-                TargetArchitecture::Aarch64 => "AArch64",
-                TargetArchitecture::Arx64 => "ARX64",
-                TargetArchitecture::Riscv32 => "RISC-V32",
-                TargetArchitecture::Riscv64 => "RISC-V64",
-                #[cfg(feature = "nightly")]
-                TargetArchitecture::Riscv128 => "RISC-V128",
-                _ => "unknown",
-            };
-
-            println!(
-                "[INFO] MIR {} asm (experimental) written to {}",
-                arch_name,
-                mir_asm_path.display()
-            );
-
-            File::create(&mir_asm_path)
-                .and_then(|mut f| f.write_all(&out))
-                .map_err(|e| format!("Failed to write MIR output: {e}"))?;
-        }
-
         return Ok(());
     }
 
@@ -195,183 +143,179 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         return Ok(handle_jit_compilation(&ir_source, input_path, &options)?);
     }
 
-    if !options.emit_mir {
-        let target = if let Some(target_str) = &options.target_arch {
-            if options.verbose {
-                println!("[VERBOSE] Using explicit target: {target_str}");
-            }
-            Target::from_str(target_str).unwrap_or_else(|e| {
-                eprintln!("Warning: Invalid target '{target_str}': {e}. Using host target.");
-                Target::detect_host()
-            })
-        } else {
-            let default_target = Target::detect_host();
-            if options.verbose {
-                println!("[VERBOSE] Using host target: {default_target}");
-            }
-            default_target
-        };
-
-        let ir_mod = parse_module(&ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
-        let mut mir_mod = from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-            .map_err(|e| format!("MIR lowering failed: {e}"))?;
-
-        if options.opt_level > 0 {
-            let pipeline = TransformPipeline::default_for_opt_level(options.opt_level);
-            let transform_stats = pipeline
-                .apply_to_module(&mut mir_mod)
-                .map_err(|e| format!("MIR optimization failed: {e}"))?;
-
-            if options.verbose {
-                println!(
-                    "[VERBOSE] MIR optimizations: {} transforms run, {} made changes, {} functions inlined",
-                    transform_stats.transforms_run,
-                    transform_stats.transforms_changed,
-                    transform_stats.functions_inlined
-                );
-            }
+    let target = if let Some(target_str) = &options.target_arch {
+        if options.verbose {
+            println!("[VERBOSE] Using explicit target: {target_str}");
         }
-
-        let mut intermediate_buffer = Vec::<u8>::new();
-        generate_mir_to_target_with_settings(
-            &mir_mod,
-            &mut intermediate_buffer,
-            target.architecture,
-            target.operating_system,
-            codegen_units,
-            &options.mir_codegen_settings,
-        )
-        .map_err(|e| format!("Code generation failed: {e}"))?;
-
-        let intermediate_ext =
-            get_intermediate_extension(target.architecture, target.operating_system);
-        let mut intermediate_path = output_stem.clone();
-        intermediate_path.set_extension(intermediate_ext);
-
-        let final_ext = get_output_extension(target.architecture, target.operating_system);
-        let mut final_output_display = output_stem.clone();
-        if !final_ext.is_empty() {
-            final_output_display.set_extension(final_ext);
+        Target::from_str(target_str).unwrap_or_else(|e| {
+            eprintln!("Warning: Invalid target '{target_str}': {e}. Using host target.");
+            Target::detect_host()
+        })
+    } else {
+        let default_target = Target::detect_host();
+        if options.verbose {
+            println!("[VERBOSE] Using host target: {default_target}");
         }
+        default_target
+    };
 
-        let intermediate_name = if matches!(
+    let ir_mod = parse_module(&ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
+    let mut mir_mod = from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+        .map_err(|e| format!("MIR lowering failed: {e}"))?;
+
+    if options.opt_level > 0 {
+        let pipeline = TransformPipeline::default_for_opt_level(options.opt_level);
+        let transform_stats = pipeline
+            .apply_to_module(&mut mir_mod)
+            .map_err(|e| format!("MIR optimization failed: {e}"))?;
+
+        if options.verbose {
+            println!(
+                "[VERBOSE] MIR optimizations: {} transforms run, {} made changes, {} functions inlined",
+                transform_stats.transforms_run,
+                transform_stats.transforms_changed,
+                transform_stats.functions_inlined
+            );
+        }
+    }
+
+    let mut intermediate_buffer = Vec::<u8>::new();
+    generate_mir_to_target_with_settings(
+        &mir_mod,
+        &mut intermediate_buffer,
+        target.architecture,
+        target.operating_system,
+        codegen_units,
+        &options.mir_codegen_settings,
+    )
+    .map_err(|e| format!("Code generation failed: {e}"))?;
+
+    let intermediate_ext = get_intermediate_extension(target.architecture, target.operating_system);
+    let mut intermediate_path = output_stem.clone();
+    intermediate_path.set_extension(intermediate_ext);
+
+    let final_ext = get_output_extension(target.architecture, target.operating_system);
+    let mut final_output_display = output_stem.clone();
+    if !final_ext.is_empty() {
+        final_output_display.set_extension(final_ext);
+    }
+
+    let intermediate_name = if matches!(
+        target.architecture,
+        TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
+    ) {
+        println!(
+            "[INFO] Compiling {} -> {}",
+            input_path.display(),
+            final_output_display.display()
+        );
+        "WAT"
+    } else {
+        println!(
+            "[INFO] Compiling {} -> {} -> {}",
+            input_path.display(),
+            intermediate_path.display(),
+            final_output_display.display()
+        );
+        "Assembly"
+    };
+
+    File::create(&intermediate_path)
+        .and_then(|mut f| f.write_all(&intermediate_buffer))
+        .map_err(|e| format!("Failed to write intermediate file: {e}"))?;
+
+    println!(
+        "[INFO] {} generated successfully ({} bytes).",
+        intermediate_name,
+        intermediate_buffer.len()
+    );
+    println!(
+        "[INFO] {} written to {}",
+        intermediate_name,
+        intermediate_path.display()
+    );
+
+    if options.emit_asm_only {
+        println!("[INFO] Skipping assembly and linking as requested (--emit-asm flag)");
+        return Ok(());
+    }
+
+    let assembly_output_ext = get_assembly_output_extension(target.architecture);
+    let mut assembly_output_path = output_stem.clone();
+    assembly_output_path.set_extension(assembly_output_ext);
+
+    let (assembler_backend, linker_backend) =
+        toolchain_backends(&options.forced_compiler, &options.assembler);
+    let assemble_result = assemble_with_ras_object_options(
+        &intermediate_path,
+        &assembly_output_path,
+        target.architecture,
+        target.operating_system,
+        assembler_backend,
+        &options.assembler_flags,
+        options.verbose,
+        options.ras_object_write_options(target.operating_system),
+    )
+    .map_err(|e| format!("Assembly failed: {e}"))?;
+
+    if matches!(
+        target.architecture,
+        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn
+    ) {
+        println!(
+            "[INFO] GPU text artifact written to {}",
+            assemble_result.output_path.display()
+        );
+        return Ok(());
+    }
+
+    println!(
+        "[INFO] {} assembled successfully.",
+        if matches!(
             target.architecture,
             TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
         ) {
-            println!(
-                "[INFO] Compiling {} -> {}",
-                input_path.display(),
-                final_output_display.display()
-            );
-            "WAT"
+            "WASM binary"
         } else {
-            println!(
-                "[INFO] Compiling {} -> {} -> {}",
-                input_path.display(),
-                intermediate_path.display(),
-                final_output_display.display()
-            );
-            "Assembly"
-        };
+            "Object file"
+        }
+    );
 
-        File::create(&intermediate_path)
-            .and_then(|mut f| f.write_all(&intermediate_buffer))
-            .map_err(|e| format!("Failed to write intermediate file: {e}"))?;
-
-        println!(
-            "[INFO] {} generated successfully ({} bytes).",
-            intermediate_name,
-            intermediate_buffer.len()
-        );
-        println!(
-            "[INFO] {} written to {}",
-            intermediate_name,
-            intermediate_path.display()
-        );
-
-        if options.emit_asm_only {
-            println!("[INFO] Skipping assembly and linking as requested (--emit-asm flag)");
-            return Ok(());
+    if assemble_result.needs_linking {
+        let final_output_ext = get_output_extension(target.architecture, target.operating_system);
+        let mut final_output_path = output_stem;
+        if !final_output_ext.is_empty() {
+            final_output_path.set_extension(final_output_ext);
         }
 
-        let assembly_output_ext = get_assembly_output_extension(target.architecture);
-        let mut assembly_output_path = output_stem.clone();
-        assembly_output_path.set_extension(assembly_output_ext);
-
-        let (assembler_backend, linker_backend) =
-            toolchain_backends(&options.forced_compiler, &options.assembler);
-        let assemble_result = assemble_with_ras_object_options(
-            &intermediate_path,
-            &assembly_output_path,
+        link(
+            &assemble_result.output_path,
+            &final_output_path,
             target.architecture,
             target.operating_system,
-            assembler_backend,
-            &options.assembler_flags,
+            linker_backend,
+            &options.linker_flags,
             options.verbose,
-            options.ras_object_write_options(target.operating_system),
         )
-        .map_err(|e| format!("Assembly failed: {e}"))?;
-
-        if matches!(
-            target.architecture,
-            TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn
-        ) {
-            println!(
-                "[INFO] GPU text artifact written to {}",
-                assemble_result.output_path.display()
-            );
-            return Ok(());
-        }
+        .map_err(|e| format!("Linking failed: {e}"))?;
 
         println!(
-            "[INFO] {} assembled successfully.",
+            "[INFO] Executable '{}' created successfully.",
+            final_output_path.display()
+        );
+    } else {
+        println!(
+            "[INFO] {} '{}' created successfully.",
             if matches!(
                 target.architecture,
                 TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
             ) {
                 "WASM binary"
             } else {
-                "Object file"
-            }
+                "Binary"
+            },
+            assembly_output_path.display()
         );
-
-        if assemble_result.needs_linking {
-            let final_output_ext =
-                get_output_extension(target.architecture, target.operating_system);
-            let mut final_output_path = output_stem;
-            if !final_output_ext.is_empty() {
-                final_output_path.set_extension(final_output_ext);
-            }
-
-            link(
-                &assemble_result.output_path,
-                &final_output_path,
-                target.architecture,
-                target.operating_system,
-                linker_backend,
-                &options.linker_flags,
-                options.verbose,
-            )
-            .map_err(|e| format!("Linking failed: {e}"))?;
-
-            println!(
-                "[INFO] Executable '{}' created successfully.",
-                final_output_path.display()
-            );
-        } else {
-            println!(
-                "[INFO] {} '{}' created successfully.",
-                if matches!(
-                    target.architecture,
-                    TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
-                ) {
-                    "WASM binary"
-                } else {
-                    "Binary"
-                },
-                assembly_output_path.display()
-            );
-        }
     }
 
     Ok(())

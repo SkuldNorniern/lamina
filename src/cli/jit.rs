@@ -303,7 +303,6 @@ mod tests {
             linker_flags: Vec::new(),
             emit_asm_only: false,
             emit_mir: false,
-            emit_mir_asm: None,
             target_arch: None,
             opt_level: 0,
             jit: true,
