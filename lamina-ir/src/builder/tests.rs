@@ -214,23 +214,11 @@ mod tests {
 
         builder
             .annotate_module(ModuleAnnotation::PositionIndependentCode)
-            .annotate_module(ModuleAnnotation::OptimizeForSpeed)
-            .annotate_module(ModuleAnnotation::IncludeDebugInfo)
-            .annotate_module(ModuleAnnotation::TargetTriple(
-                "x86_64-unknown-linux-gnu".to_string(),
-            ));
-
-        builder
-            .pic()
-            .pie()
-            .optimize_for_size()
-            .strip_symbols()
-            .target_triple("aarch64-apple-darwin");
+            .pie();
 
         let module = builder.build();
 
-        assert_eq!(module.annotations.len(), 9);
-
+        assert_eq!(module.annotations.len(), 2);
         assert!(
             module
                 .annotations
@@ -241,28 +229,6 @@ mod tests {
                 .annotations
                 .contains(&ModuleAnnotation::PositionIndependentExecutable)
         );
-        assert!(
-            module
-                .annotations
-                .contains(&ModuleAnnotation::OptimizeForSpeed)
-        );
-        assert!(
-            module
-                .annotations
-                .contains(&ModuleAnnotation::OptimizeForSize)
-        );
-        assert!(
-            module
-                .annotations
-                .contains(&ModuleAnnotation::IncludeDebugInfo)
-        );
-        assert!(module.annotations.contains(&ModuleAnnotation::StripSymbols));
-        assert!(module.annotations.contains(&ModuleAnnotation::TargetTriple(
-            "x86_64-unknown-linux-gnu".to_string()
-        )));
-        assert!(module.annotations.contains(&ModuleAnnotation::TargetTriple(
-            "aarch64-apple-darwin".to_string()
-        )));
     }
 
     #[test]

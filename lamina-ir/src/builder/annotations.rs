@@ -151,34 +151,4 @@ impl<'a> IRBuilder<'a> {
     pub fn pie(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::PositionIndependentExecutable)
     }
-
-    /// Optimizes this module for execution speed.
-    #[cfg(feature = "nightly")]
-    pub fn optimize_for_speed(&mut self) -> &mut Self {
-        self.annotate_module(ModuleAnnotation::OptimizeForSpeed)
-    }
-
-    /// Optimizes this module for code size.
-    #[cfg(feature = "nightly")]
-    pub fn optimize_for_size(&mut self) -> &mut Self {
-        self.annotate_module(ModuleAnnotation::OptimizeForSize)
-    }
-
-    /// Includes debug information in the compiled output.
-    #[cfg(feature = "nightly")]
-    pub fn include_debug_info(&mut self) -> &mut Self {
-        self.annotate_module(ModuleAnnotation::IncludeDebugInfo)
-    }
-
-    /// Strips debug information and symbols from the compiled output.
-    #[cfg(feature = "nightly")]
-    pub fn strip_symbols(&mut self) -> &mut Self {
-        self.annotate_module(ModuleAnnotation::StripSymbols)
-    }
-
-    /// Specifies the target triple for this module.
-    #[cfg(feature = "nightly")]
-    pub fn target_triple(&mut self, triple: &str) -> &mut Self {
-        self.annotate_module(ModuleAnnotation::TargetTriple(triple.to_string()))
-    }
 }

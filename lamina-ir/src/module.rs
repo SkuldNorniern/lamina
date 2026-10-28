@@ -255,16 +255,11 @@ pub struct GlobalDeclaration<'a> {
 /// ## Module Annotations
 ///
 /// Modules can have attributes that affect how the entire compilation unit is treated.
-/// These annotations provide global control over optimization, linking, and code generation.
+/// These annotations provide global control over linking and code generation.
 ///
 /// ### Available Module Annotations
 /// - **`@pic`**: Generate position-independent code
 /// - **`@pie`**: Generate position-independent executable
-/// - **`@optimize_speed`**: Optimize for execution speed
-/// - **`@optimize_size`**: Optimize for code size
-/// - **`@debug`**: Include debug information
-/// - **`@strip`**: Strip debug information and symbols
-/// - **`@target_triple`**: Specify target triple (e.g., "x86_64-linux-gnu")
 #[cfg(feature = "nightly")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleAnnotation {
@@ -279,34 +274,6 @@ pub enum ModuleAnnotation {
     /// PIE creates executables that can be loaded at random addresses,
     /// providing additional security benefits.
     PositionIndependentExecutable,
-
-    /// Optimize this module for execution speed.
-    ///
-    /// This may increase code size but should improve runtime performance.
-    OptimizeForSpeed,
-
-    /// Optimize this module for code size.
-    ///
-    /// This may reduce performance but will create smaller binaries.
-    OptimizeForSize,
-
-    /// Include debug information in the compiled output.
-    ///
-    /// Debug information improves debugging and profiling.
-    /// but increases the size of the final binary.
-    IncludeDebugInfo,
-
-    /// Strip debug information and symbols from the compiled output.
-    ///
-    /// This reduces binary size and removes potentially sensitive information
-    /// but makes debugging impossible.
-    StripSymbols,
-
-    /// Specify the target triple for this module.
-    ///
-    /// The target triple identifies the architecture, vendor, OS, and ABI
-    /// for which the code should be compiled (e.g., "x86_64-unknown-linux-gnu").
-    TargetTriple(String),
 }
 
 #[cfg(feature = "nightly")]
@@ -315,11 +282,6 @@ impl fmt::Display for ModuleAnnotation {
         match self {
             ModuleAnnotation::PositionIndependentCode => write!(f, "@pic"),
             ModuleAnnotation::PositionIndependentExecutable => write!(f, "@pie"),
-            ModuleAnnotation::OptimizeForSpeed => write!(f, "@optimize_speed"),
-            ModuleAnnotation::OptimizeForSize => write!(f, "@optimize_size"),
-            ModuleAnnotation::IncludeDebugInfo => write!(f, "@debug"),
-            ModuleAnnotation::StripSymbols => write!(f, "@strip"),
-            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple(\"{triple}\")"),
         }
     }
 }

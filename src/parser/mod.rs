@@ -189,14 +189,14 @@ pub fn get_non_assignment_opcode_names() -> &'static [&'static str] {
     non_assignment_opcode_names()
 }
 
-const MODULE_ANNOTATION_NAMES: &[&str] = &[
-    "pic",
-    "pie",
-    "optimize_speed",
-    "optimize_size",
-    "debug",
-    "strip",
-    "target_triple",
+const MODULE_ANNOTATION_NAMES: &[&str] = &["pic", "pie"];
+
+const REMOVED_MODULE_ANNOTATIONS: &[(&str, &str)] = &[
+    ("optimize_speed", "use --opt-level (0-3)"),
+    ("optimize_size", "use --opt-level (0-3)"),
+    ("debug", "use -g"),
+    ("strip", "use the strip tool on the output"),
+    ("target_triple", "use --target"),
 ];
 
 /// The name after a leading `@`, when the upcoming token is an `@` followed by an identifier.
@@ -213,11 +213,28 @@ fn upcoming_annotation_name<'s>(state: &'s ParserState<'_>) -> &'s str {
     from_utf8(&rest[..len]).unwrap_or("")
 }
 
+fn reject_removed_module_annotation(state: &ParserState<'_>) -> Result<(), LaminaError> {
+    if state.current_char() != Some('@') {
+        return Ok(());
+    }
+    let name = upcoming_annotation_name(state);
+    match REMOVED_MODULE_ANNOTATIONS
+        .iter()
+        .find(|(removed, _)| *removed == name)
+    {
+        Some((removed, replacement)) => {
+            Err(state.error(format!("@{removed} was removed; {replacement}")))
+        }
+        None => Ok(()),
+    }
+}
+
 #[cfg(feature = "nightly")]
 fn parse_module_annotation_if_present(
     state: &mut ParserState<'_>,
     module: &mut Module<'_>,
 ) -> Result<bool, LaminaError> {
+    reject_removed_module_annotation(state)?;
     if state.current_char() != Some('@') {
         return Ok(false);
     }
@@ -253,6 +270,7 @@ fn parse_module_annotation_if_present(
     state: &mut ParserState<'_>,
     _module: &mut Module<'_>,
 ) -> Result<bool, LaminaError> {
+    reject_removed_module_annotation(state)?;
     if state.current_char() != Some('@') {
         return Ok(false);
     }
@@ -270,33 +288,20 @@ fn parse_module_annotation_body(
     state: &mut ParserState<'_>,
     name: &str,
 ) -> Result<ModuleAnnotation, LaminaError> {
-    Ok(match name {
-        "pic" => ModuleAnnotation::PositionIndependentCode,
-        "pie" => ModuleAnnotation::PositionIndependentExecutable,
-        "optimize_speed" => ModuleAnnotation::OptimizeForSpeed,
-        "optimize_size" => ModuleAnnotation::OptimizeForSize,
-        "debug" => ModuleAnnotation::IncludeDebugInfo,
-        "strip" => ModuleAnnotation::StripSymbols,
-        _ => {
-            state.expect_char('(')?;
-            let triple = state.parse_string_literal()?;
-            state.expect_char(')')?;
-            ModuleAnnotation::TargetTriple(triple.to_string())
-        }
-    })
+    match name {
+        "pic" => Ok(ModuleAnnotation::PositionIndependentCode),
+        "pie" => Ok(ModuleAnnotation::PositionIndependentExecutable),
+        _ => Err(state.error(format!("Unknown module annotation @{name}"))),
+    }
 }
 
 #[cfg(feature = "nightly")]
 fn module_annotations_conflict(a: &ModuleAnnotation, b: &ModuleAnnotation) -> bool {
-    use ModuleAnnotation::{
-        OptimizeForSize, OptimizeForSpeed, PositionIndependentCode, PositionIndependentExecutable,
-    };
+    use ModuleAnnotation::{PositionIndependentCode, PositionIndependentExecutable};
     matches!(
         (a, b),
         (PositionIndependentCode, PositionIndependentExecutable)
             | (PositionIndependentExecutable, PositionIndependentCode)
-            | (OptimizeForSpeed, OptimizeForSize)
-            | (OptimizeForSize, OptimizeForSpeed)
     )
 }
 
@@ -2448,10 +2453,8 @@ mod surface_tests {
     #[cfg(feature = "nightly")]
     #[test]
     fn module_annotations_round_trip() {
-        round_trip(
-            "@pic\n@optimize_speed\n@debug\n@target_triple(\"x86_64-unknown-linux-gnu\")\n\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
-        );
-        round_trip("@pie\n@optimize_size\n@strip\n\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n");
+        round_trip("@pic\n\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n");
+        round_trip("@pie\n\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n");
     }
 
     #[cfg(feature = "nightly")]
@@ -2462,9 +2465,30 @@ mod surface_tests {
             "Conflicting module annotations",
         );
         rejects(
-            "@debug\n@debug\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
+            "@pic\n@pic\nfn @f() -> i64 {\nentry:\n  ret.i64 1\n}\n",
             "Duplicate module annotation",
         );
+    }
+
+    #[test]
+    fn removed_module_annotations_are_rejected() {
+        let cases = [
+            ("optimize_speed", "use --opt-level (0-3)"),
+            ("optimize_size", "use --opt-level (0-3)"),
+            ("debug", "use -g"),
+            ("strip", "use the strip tool on the output"),
+            ("target_triple", "use --target"),
+        ];
+        for (name, replacement) in cases {
+            let source = if name == "target_triple" {
+                format!(
+                    "@{name}(\"x86_64-unknown-linux-gnu\")\nfn @f() -> i64 {{\nentry:\n  ret.i64 1\n}}\n"
+                )
+            } else {
+                format!("@{name}\nfn @f() -> i64 {{\nentry:\n  ret.i64 1\n}}\n")
+            };
+            rejects(&source, &format!("@{name} was removed; {replacement}"));
+        }
     }
 
     #[cfg(not(feature = "nightly"))]
