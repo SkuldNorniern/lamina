@@ -1412,30 +1412,31 @@ fn emit_instruction_riscv<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name(libc));
                 writeln!(writer, "    call {callee}")?;
             } else if name == "lamina.writebyte" && args.len() == 1 {
-                // putchar reports the character written, or -1; writebyte reports the
-                // byte count, so turn the result into 1 or -1.
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a0")?;
-                writeln!(writer, "    andi a0, a0, 255")?;
-                let putchar = abi
-                    .call_stub("putchar")
-                    .unwrap_or_else(|| abi.mangle_function_name("putchar"));
-                writeln!(writer, "    call {putchar}")?;
-                writeln!(writer, "    li t1, -1")?;
-                writeln!(writer, "    xor t2, a0, t1")?;
-                writeln!(writer, "    seqz t2, t2")?;
-                writeln!(writer, "    neg t2, t2")?;
+                writeln!(writer, "    addi sp, sp, -16")?;
+                writeln!(writer, "    sb a0, 0(sp)")?;
                 writeln!(writer, "    li a0, 1")?;
-                writeln!(writer, "    or a0, a0, t2")?;
+                writeln!(writer, "    mv a1, sp")?;
+                writeln!(writer, "    li a2, 1")?;
+                let write = abi
+                    .call_stub("write")
+                    .unwrap_or_else(|| abi.mangle_function_name("write"));
+                writeln!(writer, "    call {write}")?;
+                writeln!(writer, "    addi sp, sp, 16")?;
             } else if name == "lamina.readbyte" && args.is_empty() {
-                // getchar reports the byte or -1 at end of input, where readbyte
-                // reports zero.
-                let getchar = abi
-                    .call_stub("getchar")
-                    .unwrap_or_else(|| abi.mangle_function_name("getchar"));
-                writeln!(writer, "    call {getchar}")?;
-                writeln!(writer, "    slti t1, a0, 0")?;
-                writeln!(writer, "    addi t1, t1, -1")?;
-                writeln!(writer, "    and a0, a0, t1")?;
+                writeln!(writer, "    addi sp, sp, -16")?;
+                writeln!(writer, "    li a0, 0")?;
+                writeln!(writer, "    mv a1, sp")?;
+                writeln!(writer, "    li a2, 1")?;
+                let read = abi
+                    .call_stub("read")
+                    .unwrap_or_else(|| abi.mangle_function_name("read"));
+                writeln!(writer, "    call {read}")?;
+                writeln!(writer, "    li t1, 1")?;
+                writeln!(writer, "    bne a0, t1, 1f")?;
+                writeln!(writer, "    lbu a0, 0(sp)")?;
+                writeln!(writer, "1:")?;
+                writeln!(writer, "    addi sp, sp, 16")?;
             } else if name == "lamina.printf32" || name == "lamina.printf64" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;

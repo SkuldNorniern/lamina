@@ -1302,30 +1302,32 @@ fn emit_instruction_ppc64<W: Write>(
                 writeln!(writer, "    bl {callee}")?;
                 writeln!(writer, "    nop")?;
             } else if name == "lamina.writebyte" && args.len() == 1 {
-                // putchar reports the character written, or -1; writebyte reports the
-                // byte count, so turn the result into 1 or -1.
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "3")?;
-                writeln!(writer, "    clrldi 3, 3, 56")?;
-                let putchar = abi
-                    .call_stub("putchar")
-                    .unwrap_or_else(|| abi.mangle_function_name("putchar"));
-                writeln!(writer, "    bl {putchar}")?;
-                writeln!(writer, "    nop")?;
-                writeln!(writer, "    li 4, -1")?;
-                writeln!(writer, "    cmpd 0, 3, 4")?;
+                writeln!(writer, "    addi 1, 1, -16")?;
+                writeln!(writer, "    stb 3, 0(1)")?;
                 writeln!(writer, "    li 3, 1")?;
-                writeln!(writer, "    isel 3, 4, 3, 2")?;
-            } else if name == "lamina.readbyte" && args.is_empty() {
-                // getchar reports the byte or -1 at end of input, where readbyte
-                // reports zero.
-                let getchar = abi
-                    .call_stub("getchar")
-                    .unwrap_or_else(|| abi.mangle_function_name("getchar"));
-                writeln!(writer, "    bl {getchar}")?;
+                writeln!(writer, "    mr 4, 1")?;
+                writeln!(writer, "    li 5, 1")?;
+                let write = abi
+                    .call_stub("write")
+                    .unwrap_or_else(|| abi.mangle_function_name("write"));
+                writeln!(writer, "    bl {write}")?;
                 writeln!(writer, "    nop")?;
-                writeln!(writer, "    li 4, 0")?;
-                writeln!(writer, "    cmpdi 3, 0")?;
-                writeln!(writer, "    isel 3, 4, 3, 0")?;
+                writeln!(writer, "    addi 1, 1, 16")?;
+            } else if name == "lamina.readbyte" && args.is_empty() {
+                writeln!(writer, "    addi 1, 1, -16")?;
+                writeln!(writer, "    li 3, 0")?;
+                writeln!(writer, "    mr 4, 1")?;
+                writeln!(writer, "    li 5, 1")?;
+                let read = abi
+                    .call_stub("read")
+                    .unwrap_or_else(|| abi.mangle_function_name("read"));
+                writeln!(writer, "    bl {read}")?;
+                writeln!(writer, "    nop")?;
+                writeln!(writer, "    cmpdi 0, 3, 1")?;
+                writeln!(writer, "    lbz 4, 0(1)")?;
+                writeln!(writer, "    addi 1, 1, 16")?;
+                writeln!(writer, "    isel 3, 4, 3, 2")?;
             } else if name == "lamina.printf32" || name == "lamina.printf64" {
                 let runtime = abi.builtin_library();
                 let (printf, fflush) = (
