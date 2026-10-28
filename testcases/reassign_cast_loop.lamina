@@ -1,0 +1,21 @@
+# A cast result reassigned inside a loop and read at the top of the next iteration. The
+# carried value must come from the latest definition: the sum is 100 + 1 + 2 = 103.
+fn @main() -> i64 {
+  entry:
+    %z = add.i64 0, 100
+    %x = bitcast.i64.f64 %z
+    %acc = add.i64 0, 0
+    %i = add.i64 0, 0
+    jmp loop
+  loop:
+    %v = bitcast.f64.i64 %x
+    %acc = add.i64 %acc, %v
+    %i2 = add.i64 %i, 1
+    %x = bitcast.i64.f64 %i2
+    %i = add.i64 %i2, 0
+    %c = lt.i64 %i, 3
+    br %c, loop, done
+  done:
+    print %acc
+    ret.i64 0
+}

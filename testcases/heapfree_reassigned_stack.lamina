@@ -1,0 +1,12 @@
+# A name first bound to a heap block and then reassigned to a stack slot. The heapfree
+# must be a no-op; calling free on the stack address would abort.
+fn @main() -> i64 {
+  entry:
+    %p = heapalloc.i64
+    %p = stackalloc.i64
+    store.i64 %p, 9
+    %v = load.i64 %p
+    heapfree %p
+    print %v
+    ret.i64 0
+}

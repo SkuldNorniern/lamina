@@ -1,0 +1,11 @@
+# A float unary whose result name is its own operand. The operand is the previous
+# definition; negating bits 5 sets the sign bit, giving 2^63 + 5, which is -9223372036854775803 as i64.
+fn @main() -> i64 {
+  entry:
+    %z = add.i64 0, 5
+    %x = bitcast.i64.f64 %z
+    %x = neg.f64 %x
+    %y = bitcast.f64.i64 %x
+    print %y
+    ret.i64 0
+}
