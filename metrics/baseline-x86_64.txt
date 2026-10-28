@@ -376,7 +376,7 @@ frame print_u64 16
 frame put_u64 32
 
 [binary_op_rhs_in_destination O0]
-insns 171
+insns 176
 spills 58
 calls 7
 branches 3
@@ -386,7 +386,7 @@ frame print_u64 16
 frame put_u64 48
 
 [binary_op_rhs_in_destination O1]
-insns 163
+insns 168
 spills 25
 calls 7
 branches 3
@@ -396,7 +396,7 @@ frame print_u64 16
 frame put_u64 32
 
 [binary_op_rhs_in_destination O2]
-insns 310
+insns 315
 spills 39
 calls 7
 branches 11
@@ -406,7 +406,7 @@ frame print_u64 16
 frame put_u64 32
 
 [binary_op_rhs_in_destination O3]
-insns 310
+insns 315
 spills 39
 calls 7
 branches 11
@@ -8996,7 +8996,7 @@ branches 0
 frame main 16
 
 [io_buffer O0]
-insns 220
+insns 235
 spills 54
 calls 6
 branches 3
@@ -9006,7 +9006,7 @@ frame print_u64 16
 frame put_u64 48
 
 [io_buffer O1]
-insns 233
+insns 248
 spills 34
 calls 6
 branches 3
@@ -9016,7 +9016,7 @@ frame print_u64 16
 frame put_u64 32
 
 [io_buffer O2]
-insns 346
+insns 361
 spills 48
 calls 6
 branches 9
@@ -9026,7 +9026,7 @@ frame print_u64 16
 frame put_u64 32
 
 [io_buffer O3]
-insns 346
+insns 361
 spills 48
 calls 6
 branches 9
@@ -9076,7 +9076,7 @@ frame print_u64 16
 frame put_u64 32
 
 [io_error_handling O0]
-insns 148
+insns 153
 spills 40
 calls 6
 branches 3
@@ -9086,7 +9086,7 @@ frame print_u64 16
 frame put_u64 48
 
 [io_error_handling O1]
-insns 157
+insns 162
 spills 23
 calls 6
 branches 3
@@ -9096,7 +9096,7 @@ frame print_u64 16
 frame put_u64 32
 
 [io_error_handling O2]
-insns 273
+insns 278
 spills 37
 calls 6
 branches 9
@@ -9106,7 +9106,7 @@ frame print_u64 16
 frame put_u64 32
 
 [io_error_handling O3]
-insns 273
+insns 278
 spills 37
 calls 6
 branches 9
@@ -10715,6 +10715,42 @@ frame print_u64 16
 frame put_u64 32
 frame scale 0
 
+[readbyte_nul O0]
+insns 164
+spills 39
+calls 6
+branches 3
+frame main 32
+frame print_i64 64
+frame put_u64 48
+
+[readbyte_nul O1]
+insns 177
+spills 27
+calls 6
+branches 3
+frame main 32
+frame print_i64 32
+frame put_u64 32
+
+[readbyte_nul O2]
+insns 323
+spills 43
+calls 6
+branches 11
+frame main 80
+frame print_i64 32
+frame put_u64 32
+
+[readbyte_nul O3]
+insns 323
+spills 43
+calls 6
+branches 11
+frame main 80
+frame print_i64 32
+frame put_u64 32
+
 [reassign_cast_loop O0]
 insns 145
 spills 48
@@ -11251,6 +11287,50 @@ frame set_word 0
 frame split_fields 32
 frame volatile_field 48
 
+[stack_align O0]
+insns 174
+spills 74
+calls 13
+branches 1
+frame aligned_low_bits 48
+frame arena 0
+frame main 256
+frame print_u64 16
+frame put_u64 48
+
+[stack_align O1]
+insns 151
+spills 28
+calls 13
+branches 1
+frame aligned_low_bits 16
+frame arena 0
+frame main 160
+frame print_u64 16
+frame put_u64 32
+
+[stack_align O2]
+insns 252
+spills 38
+calls 12
+branches 1
+frame aligned_low_bits 16
+frame arena 0
+frame main 160
+frame print_u64 16
+frame put_u64 32
+
+[stack_align O3]
+insns 251
+spills 38
+calls 12
+branches 1
+frame aligned_low_bits 16
+frame arena 0
+frame main 176
+frame print_u64 16
+frame put_u64 32
+
 [stack_allocation O0]
 insns 194
 spills 64
@@ -11448,7 +11528,7 @@ frame print_number 32
 frame shallow_recursion 0
 
 [stdin O0]
-insns 150
+insns 165
 spills 41
 calls 6
 branches 3
@@ -11458,7 +11538,7 @@ frame print_u64 16
 frame put_u64 48
 
 [stdin O1]
-insns 161
+insns 176
 spills 25
 calls 6
 branches 3
@@ -11468,7 +11548,7 @@ frame print_u64 16
 frame put_u64 32
 
 [stdin O2]
-insns 276
+insns 291
 spills 38
 calls 6
 branches 9
@@ -11478,7 +11558,7 @@ frame print_u64 16
 frame put_u64 32
 
 [stdin O3]
-insns 276
+insns 291
 spills 38
 calls 6
 branches 9
@@ -11692,7 +11772,7 @@ frame print_u64 16
 frame put_u64 32
 
 [tail_stack_address O0]
-insns 181
+insns 191
 spills 52
 calls 7
 branches 4
@@ -11704,7 +11784,7 @@ frame print_u64 16
 frame put_u64 48
 
 [tail_stack_address O1]
-insns 193
+insns 203
 spills 35
 calls 7
 branches 4
@@ -11716,7 +11796,7 @@ frame print_u64 16
 frame put_u64 32
 
 [tail_stack_address O2]
-insns 236
+insns 251
 spills 39
 calls 6
 branches 7
@@ -11728,7 +11808,7 @@ frame print_u64 16
 frame put_u64 32
 
 [tail_stack_address O3]
-insns 236
+insns 251
 spills 39
 calls 6
 branches 7
