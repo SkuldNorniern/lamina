@@ -160,6 +160,7 @@ def compile_and_run_test(test_path, use_mir=False):
     stdin_inputs = {
         'stdin.lamina': 'A\nBUFFER_TEST\nB',
         'io_buffer.lamina': 'Buf',
+        'readbyte_nul.lamina': 'a\x00b',
     }
 
     # Compile the test
