@@ -1,40 +1,47 @@
 const std = @import("std");
 
-// Configuration
-const N1 = 10;
-const N2 = 20;
-const N3 = 30;
-const N4 = 35;
+fn arg(comptime T: type, args: []const [:0]const u8, i: usize) T {
+    return std.fmt.parseInt(T, args[i], 10) catch @panic("bad integer");
+}
 
-// Markers matching Lamina version
-const HEADER_MARKER: i64 = 123456789;
-const FOOTER_MARKER: i64 = 987654321;
-
-fn fibonacciIterative(n: u32) i64 {
+fn fibonacciIterative(n: u64) u64 {
     if (n == 0) return 0;
     if (n == 1) return 1;
-
-    var a: i64 = 0;
-    var b: i64 = 1;
-    var i: u32 = 2;
+    var a: u64 = 0;
+    var b: u64 = 1;
+    var i: u64 = 2;
     while (i <= n) : (i += 1) {
-        const temp = a + b;
+        const temp = a +% b;
         a = b;
         b = temp;
     }
     return b;
 }
 
-pub fn main() void {
-    // Print header marker
-    std.debug.print("{d}\n", .{HEADER_MARKER});
+pub fn main(init: std.process.Init) !void {
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
+    const n1 = arg(u64, args, 1);
+    const n2 = arg(u64, args, 2);
+    const n3 = arg(u64, args, 3);
+    const n4 = arg(u64, args, 4);
+    const sweep_count = arg(u64, args, 5);
 
-    // Compute and print fibonacci numbers
-    std.debug.print("{d}\n", .{fibonacciIterative(N1)});
-    std.debug.print("{d}\n", .{fibonacciIterative(N2)});
-    std.debug.print("{d}\n", .{fibonacciIterative(N3)});
-    std.debug.print("{d}\n", .{fibonacciIterative(N4)});
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
-    // Print footer marker
-    std.debug.print("{d}\n", .{FOOTER_MARKER});
+    try stdout.print("123456789\n", .{});
+    try stdout.print("{d}\n", .{fibonacciIterative(n1)});
+    try stdout.print("{d}\n", .{fibonacciIterative(n2)});
+    try stdout.print("{d}\n", .{fibonacciIterative(n3)});
+    try stdout.print("{d}\n", .{fibonacciIterative(n4)});
+
+    var acc: u64 = 0;
+    var s: u64 = 0;
+    while (s < sweep_count) : (s += 1) {
+        acc +%= fibonacciIterative(s % 90);
+    }
+    try stdout.print("{d}\n", .{acc});
+    try stdout.print("987654321\n", .{});
+    try stdout.flush();
 }

@@ -75,6 +75,16 @@ NATIVE_TOOLS = {
         "ext": ".rs", "levels": (3,), "version": ["rustc", "--version"],
         "cmd": lambda src, exe, lv: ["rustc", "-C", f"opt-level={lv}", str(src), "-o", str(exe)],
     },
+    # go has no -O levels; its single column is None, keyed "go". Pure Go (CGO_ENABLED=0).
+    "go": {
+        "ext": ".go", "levels": (None,), "version": ["go", "version"],
+        "cmd": lambda src, exe, lv: ["env", "CGO_ENABLED=0", "go", "build", "-o", str(exe), str(src)],
+    },
+    # zig's -O3 analogue is ReleaseFast; ReleaseSafe keeps bounds and overflow checks.
+    "zig": {
+        "ext": ".zig", "levels": (3,), "version": ["zig", "version"],
+        "cmd": lambda src, exe, lv: ["zig", "build-exe", "-OReleaseFast", str(src), f"-femit-bin={exe}"],
+    },
 }
 
 
@@ -101,7 +111,7 @@ def native_variants(tools):
 
 
 def native_key(tool, lv):
-    return f"{tool}-O{lv}"
+    return tool if lv is None else f"{tool}-O{lv}"
 
 
 def native_source(name, tool):
@@ -271,8 +281,13 @@ def print_header(compiler, runs, warmup, vs_tools):
     print(f"  - a difference is shown only when the two min-max ranges are disjoint AND the medians differ by >= {MIN_EFFECT:.0%};")
     print(f"    anything else is 'noise', not a speedup or a slowdown")
     print(f"  - stdout is checked against expected_output.txt on every run; a mismatch voids the row")
+    if "go" in vs_tools:
+        print("  - go has no -O levels: go build optimizes by default, so its column is 'go', not an O3")
+        print("    its binary links the Go runtime and GC, so it is far larger than the C/Rust/Zig binaries")
+    if "zig" in vs_tools:
+        print("  - zig-O3 is zig build-exe -OReleaseFast (ReleaseSafe keeps bounds and overflow checks)")
     if vs_tools:
-        print(f"  - native ports (C/Rust) read their problem sizes from argv: {NATIVE_ARGS}")
+        print(f"  - native ports (C/Rust/Go/Zig) read their problem sizes from argv: {NATIVE_ARGS}")
         print(f"    Lamina has no argv, so its sizes are literals in the .lamina source")
         print(f"  - ratio = Lamina O3 median / fastest native median; above 1.00 means Lamina is slower")
         print(f"    '~' marks a ratio whose min-max ranges overlap, so the gap is not clearly separated")
@@ -332,6 +347,8 @@ def print_native_table(results, vs_tools):
     for note in excluded_notes:
         print(note)
     print()
+    if "go" in vs_tools:
+        print("go: not an O3 level; its binary includes the Go runtime and GC, so its size is not comparable")
     print("binary size (bytes, as linked, not stripped)")
     size_header = f"{'benchmark':<20}" + "".join(f"{c:<{width}}" for c in ["L-O2", "L-O3"] + keys)
     print(size_header)
@@ -368,7 +385,7 @@ def main():
     parser.add_argument("--runs", type=int, default=DEFAULT_RUNS, help=f"timed runs per binary (default {DEFAULT_RUNS})")
     parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP, help=f"discarded warmup runs (default {DEFAULT_WARMUP})")
     parser.add_argument("--compiler", type=Path, default=COMPILER, help="lamina binary to time")
-    parser.add_argument("--vs", metavar="TOOLS", help="also build and time native ports: gcc,clang,rustc")
+    parser.add_argument("--vs", metavar="TOOLS", help="also build and time native ports: gcc,clang,rustc,go,zig")
     parser.add_argument("--save", type=Path, metavar="FILE", help="write the run as JSON")
     parser.add_argument("--compare", type=Path, metavar="BASELINE", help="print deltas against a saved run")
     args = parser.parse_args()

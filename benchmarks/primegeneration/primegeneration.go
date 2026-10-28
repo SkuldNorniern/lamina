@@ -1,44 +1,41 @@
-// primegeneration.go
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"strconv"
+)
 
-// Configuration - limits for counting
-const LIMIT1 = 100
-const LIMIT2 = 1000
-const LIMIT3 = 10000
-const LIMIT4 = 50000
+func arg(i int) int64 {
+	v, err := strconv.ParseInt(os.Args[i], 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
 
-// Markers matching Lamina version
-const HEADER_MARKER = 123456789
-const FOOTER_MARKER = 987654321
-
-func isPrime(n int) bool {
+func isPrime(n int64) bool {
 	if n <= 1 {
 		return false
 	}
-	if n <= 3 {
+	if n == 2 || n == 3 {
 		return true
 	}
 	if n%2 == 0 {
 		return false
 	}
-
-	for i := 3; i*i <= n; i += 2 {
-		if n%i == 0 {
+	for d := int64(3); d*d <= n; d += 2 {
+		if n%d == 0 {
 			return false
 		}
 	}
 	return true
 }
 
-func countPrimes(limit int) int64 {
-	if limit < 2 {
-		return 0
-	}
-	var count int64 = 0
-	for i := 2; i <= limit; i++ {
-		if isPrime(i) {
+func countPrimes(limit int64) int64 {
+	var count int64
+	for c := int64(2); c <= limit; c++ {
+		if isPrime(c) {
 			count++
 		}
 	}
@@ -46,15 +43,9 @@ func countPrimes(limit int) int64 {
 }
 
 func main() {
-	// Print header marker
-	fmt.Println(HEADER_MARKER)
-
-	// Count and print prime counts for different limits
-	fmt.Println(countPrimes(LIMIT1))
-	fmt.Println(countPrimes(LIMIT2))
-	fmt.Println(countPrimes(LIMIT3))
-	fmt.Println(countPrimes(LIMIT4))
-
-	// Print footer marker
-	fmt.Println(FOOTER_MARKER)
+	fmt.Println(123456789)
+	for i := 1; i <= 4; i++ {
+		fmt.Println(countPrimes(arg(i)))
+	}
+	fmt.Println(987654321)
 }

@@ -1,47 +1,47 @@
-// fibonacci_benchmark.go
-// Go implementation of Fibonacci sequence benchmark
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"strconv"
+)
 
-// Configuration
-const N1 = 10
-const N2 = 20
-const N3 = 30
-const N4 = 35
+func arg(i int) int64 {
+	v, err := strconv.ParseInt(os.Args[i], 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
 
-// Markers matching Lamina version
-const HEADER_MARKER = 123456789
-const FOOTER_MARKER = 987654321
-
-func fibonacci_iterative(n int) int64 {
+func fibonacciIterative(n uint64) uint64 {
 	if n == 0 {
 		return 0
 	}
 	if n == 1 {
 		return 1
 	}
-
-	var a int64 = 0
-	var b int64 = 1
-	for i := 2; i <= n; i++ {
-		temp := a + b
-		a = b
-		b = temp
+	a, b := uint64(0), uint64(1)
+	for i := uint64(2); i <= n; i++ {
+		a, b = b, a+b
 	}
 	return b
 }
 
 func main() {
-	// Print header marker
-	fmt.Println(HEADER_MARKER)
+	n1, n2, n3, n4 := uint64(arg(1)), uint64(arg(2)), uint64(arg(3)), uint64(arg(4))
+	sweepCount := arg(5)
 
-	// Compute and print fibonacci numbers
-	fmt.Println(fibonacci_iterative(N1))
-	fmt.Println(fibonacci_iterative(N2))
-	fmt.Println(fibonacci_iterative(N3))
-	fmt.Println(fibonacci_iterative(N4))
+	fmt.Println(123456789)
+	fmt.Println(fibonacciIterative(n1))
+	fmt.Println(fibonacciIterative(n2))
+	fmt.Println(fibonacciIterative(n3))
+	fmt.Println(fibonacciIterative(n4))
 
-	// Print footer marker
-	fmt.Println(FOOTER_MARKER)
+	var acc uint64
+	for s := int64(0); s < sweepCount; s++ {
+		acc += fibonacciIterative(uint64(s) % 90)
+	}
+	fmt.Println(acc)
+	fmt.Println(987654321)
 }
