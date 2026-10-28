@@ -258,11 +258,24 @@ fn global_leaf_omits_empty_frame_but_keeps_stack_argument_base() {
             )
             .expect("emit frame case");
             let assembly = String::from_utf8(assembly).expect("assembly text");
-            assert_eq!(assembly.contains("pushq %rbp"), frame, "{assembly}");
-            assert_eq!(assembly.contains("popq %rbp"), frame, "{assembly}");
-            if !frame {
+            let code: String = assembly
+                .lines()
+                .filter(|line| !line.trim_start().starts_with(".cfi_"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert_eq!(code.contains("pushq %rbp"), frame, "{assembly}");
+            assert_eq!(code.contains("popq %rbp"), frame, "{assembly}");
+            assert!(assembly.contains(".cfi_startproc"), "{assembly}");
+            assert!(assembly.contains(".cfi_endproc"), "{assembly}");
+            if frame {
                 assert!(
-                    !assembly.contains("%rsp") && !assembly.contains("%rbp"),
+                    assembly.contains(".cfi_def_cfa_register %rbp"),
+                    "{assembly}"
+                );
+            } else {
+                assert!(assembly.contains(".cfi_def_cfa %rsp, 8"), "{assembly}");
+                assert!(
+                    !code.contains("%rsp") && !code.contains("%rbp"),
                     "{assembly}"
                 );
             }

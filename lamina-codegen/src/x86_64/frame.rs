@@ -7,9 +7,20 @@ pub struct X86Frame;
 
 impl X86Frame {
     /// Generates the function prologue: saves frame pointer and allocates stack space.
-    pub fn generate_prologue<W: Write>(writer: &mut W, stack_size: usize) -> Result<(), Error> {
+    pub fn generate_prologue<W: Write>(
+        writer: &mut W,
+        stack_size: usize,
+        unwind: bool,
+    ) -> Result<(), Error> {
         writeln!(writer, "    pushq %rbp")?;
+        if unwind {
+            writeln!(writer, "    .cfi_def_cfa_offset 16")?;
+            writeln!(writer, "    .cfi_offset %rbp, -16")?;
+        }
         writeln!(writer, "    movq %rsp, %rbp")?;
+        if unwind {
+            writeln!(writer, "    .cfi_def_cfa_register %rbp")?;
+        }
         let stack_size = Self::aligned_frame_size(stack_size);
         if stack_size > 0 {
             writeln!(writer, "    subq ${stack_size}, %rsp")?;
@@ -24,13 +35,27 @@ impl X86Frame {
     }
 
     /// Generates the function epilogue: restores stack and frame pointer, then returns.
-    pub fn generate_epilogue<W: Write>(writer: &mut W, stack_size: usize) -> Result<(), Error> {
+    /// The unwind state is restored after the `ret`, so later code keeps the frame's description.
+    pub fn generate_epilogue<W: Write>(
+        writer: &mut W,
+        stack_size: usize,
+        unwind: bool,
+    ) -> Result<(), Error> {
         let stack_size = Self::aligned_frame_size(stack_size);
+        if unwind {
+            writeln!(writer, "    .cfi_remember_state")?;
+        }
         if stack_size > 0 {
             writeln!(writer, "    addq ${stack_size}, %rsp")?;
         }
         writeln!(writer, "    popq %rbp")?;
+        if unwind {
+            writeln!(writer, "    .cfi_def_cfa %rsp, 8")?;
+        }
         writeln!(writer, "    ret")?;
+        if unwind {
+            writeln!(writer, "    .cfi_restore_state")?;
+        }
         Ok(())
     }
 

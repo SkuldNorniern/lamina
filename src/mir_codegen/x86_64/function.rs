@@ -102,6 +102,10 @@ pub(super) fn compile_single_function_x86_64(
 
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{label}:").map_err(io_codegen_error)?;
+    let unwind = os_uses_elf(target_os);
+    if unwind {
+        writeln!(output, "    .cfi_startproc").map_err(io_codegen_error)?;
+    }
 
     // A self tail call lowers to a jump back past the prologue, so it neither needs a
     // frame nor clobbers anything a real call would.
@@ -197,14 +201,20 @@ pub(super) fn compile_single_function_x86_64(
         || stack_size != 0
         || func.sig.params.len() > abi.arg_registers().len();
     if has_frame {
-        X86Frame::generate_prologue(&mut output, stack_size)
+        X86Frame::generate_prologue(&mut output, stack_size, unwind)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    } else if unwind {
+        writeln!(output, "    .cfi_def_cfa %rsp, 8").map_err(io_codegen_error)?;
     }
 
     for (index, reg) in saved_regs.iter().enumerate() {
         let offset = X86Frame::calculate_stack_offset(total_slots + index);
         writeln!(output, "    movq %{reg}, {offset}(%rbp)")
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        if unwind {
+            writeln!(output, "    .cfi_offset %{reg}, {}", offset - 16)
+                .map_err(io_codegen_error)?;
+        }
     }
 
     // A self tail call re-enters here with its arguments already in the ABI argument
@@ -488,6 +498,9 @@ pub(super) fn compile_single_function_x86_64(
         output.rax_value = None;
     }
 
+    if unwind {
+        writeln!(output, "    .cfi_endproc").map_err(io_codegen_error)?;
+    }
     Ok(strip_self_moves(output.inner))
 }
 

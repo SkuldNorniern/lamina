@@ -444,6 +444,7 @@ pub(super) fn emit_instruction_x86_64(
     entry_label: &str,
     sret_slot: Option<i32>,
 ) -> Result<(), LaminaError> {
+    let unwind = os_uses_elf(target_os);
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
@@ -1471,7 +1472,7 @@ pub(super) fn emit_instruction_x86_64(
                 )?;
                 restore_saved_registers(writer, stack_size, saved_regs)?;
                 if has_frame {
-                    X86Frame::generate_epilogue(writer, stack_size)?;
+                    X86Frame::generate_epilogue(writer, stack_size, unwind)?;
                 } else {
                     writeln!(writer, "    ret")?;
                 }
@@ -1512,10 +1513,19 @@ pub(super) fn emit_instruction_x86_64(
             }
 
             restore_saved_registers(writer, stack_size, saved_regs)?;
+            if unwind {
+                writeln!(writer, "    .cfi_remember_state")?;
+            }
             writeln!(writer, "    movq %rbp, %rsp")?;
             writeln!(writer, "    popq %rbp")?;
+            if unwind {
+                writeln!(writer, "    .cfi_def_cfa %rsp, 8")?;
+            }
             let mangled_name = abi.mangle_function_name(name);
             writeln!(writer, "    jmp {mangled_name}")?;
+            if unwind {
+                writeln!(writer, "    .cfi_restore_state")?;
+            }
         }
         MirInst::SymbolAddress { dst, symbol } => {
             let label = X86ABI::new(target_os).mangle_function_name(symbol);
@@ -1896,7 +1906,7 @@ pub(super) fn emit_instruction_x86_64(
             // Epilogue
             restore_saved_registers(writer, stack_size, saved_regs)?;
             if has_frame {
-                X86Frame::generate_epilogue(writer, stack_size)?;
+                X86Frame::generate_epilogue(writer, stack_size, unwind)?;
             } else {
                 writeln!(writer, "    ret")?;
             }
