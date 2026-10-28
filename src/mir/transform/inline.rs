@@ -213,7 +213,9 @@ impl ModuleInlining {
             copy.normalize_integer_immediates(None);
             copies.push(copy);
         }
-        for (slot, size) in &callee.stack_reservations {
+        let mut reservations: Vec<_> = callee.stack_reservations.iter().collect();
+        reservations.sort_unstable_by_key(|(slot, _)| **slot);
+        for (slot, size) in reservations {
             if let Register::Virtual(fresh) = rename(&Register::Virtual(*slot)) {
                 caller.stack_reservations.insert(fresh, *size);
             }
