@@ -90,6 +90,7 @@ fn @main() -> i64 {
     print %header
 
     %result = call @matmul_2d(%n_rows, %k_dim, %n_cols)
+    print %result
 
     %status = add.i64 987654323, 0
     print %status

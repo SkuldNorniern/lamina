@@ -33,7 +33,7 @@ fn @main() -> i64 {
     jmp pass_head
 
   pass_head:
-    %pmore = lt.i64 %pass, 8
+    %pmore = lt.i64 %pass, 200000
     br %pmore, pass_body, pass_done
 
   pass_body:

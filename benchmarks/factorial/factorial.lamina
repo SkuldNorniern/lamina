@@ -61,6 +61,24 @@ fn @main() -> i64 {
     %fact18 = call @factorial_iterative(18)
     print %fact18
 
+    %acc = add.i64 0, 0
+    %sweep = add.i64 0, 0
+    jmp sweep_head
+
+  sweep_head:
+    %sweep_more = lt.i64 %sweep, 4000000
+    br %sweep_more, sweep_body, sweep_done
+
+  sweep_body:
+    %arg = rem.i64 %sweep, 20
+    %value = call @factorial_iterative(%arg)
+    %acc = add.i64 %acc, %value
+    %sweep = add.i64 %sweep, 1
+    jmp sweep_head
+
+  sweep_done:
+    print %acc
+
     # Print footer marker
     %footer = add.i64 987654321, 0
     print %footer
