@@ -28,6 +28,7 @@ pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {
         IRPrim::F64 => ScalarType::F64,
         IRPrim::Bool => ScalarType::I1,
         IRPrim::Ptr => ScalarType::Ptr,
+        IRPrim::I128 | IRPrim::U128 => return Err(FromIRError::UnsupportedType),
     };
     Ok(MirType::Scalar(scalar))
 }
@@ -73,11 +74,24 @@ pub fn classify_aggregate(ty: &IRType<'_>, what: &str) -> Result<Option<Aggregat
     classify_aggregate_within(ty, what, None)
 }
 
+/// The ABI of a 128-bit integer crossing a boundary: 16 bytes, 16-byte aligned, two
+/// INTEGER words, as System V classifies `__int128`.
+pub fn wide_aggregate() -> Aggregate {
+    Aggregate {
+        size: 16,
+        align: 16,
+        class: AggregateClass::Integer,
+    }
+}
+
 fn classify_aggregate_within(
     ty: &IRType<'_>,
     what: &str,
     max: Option<u64>,
 ) -> Result<Option<Aggregate>, FromIRError> {
+    if matches!(ty, IRType::Primitive(IRPrim::I128 | IRPrim::U128)) {
+        return Ok(Some(wide_aggregate()));
+    }
     if !is_aggregate(ty) {
         return Ok(None);
     }

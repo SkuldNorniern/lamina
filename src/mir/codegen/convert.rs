@@ -11,6 +11,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    mem,
     ops::{Deref, DerefMut},
 };
 
@@ -47,6 +48,8 @@ use crate::ir::instruction::{AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRM
 use crate::mir::SimdOp;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
 use lamina_codegen::abi::RuntimeSymbol;
+
+mod wide;
 
 fn ir_ordering_to_mir(ordering: &IRMemOrd) -> MemoryOrdering {
     match ordering {
@@ -144,6 +147,10 @@ fn is_integer_prim(ty: IRPrim) -> bool {
 struct VarBindings<'a> {
     regs: HashMap<&'a str, Register>,
     classes: HashMap<&'a str, RegisterClass>,
+    /// The two 64-bit words of each 128-bit value, low word first.
+    wide: HashMap<&'a str, [Register; 2]>,
+    /// Compiler-rt routines this function calls, to be declared in the module.
+    libcalls: BTreeMap<String, wide::LibCall>,
 }
 
 impl<'a> Deref for VarBindings<'a> {
@@ -189,6 +196,9 @@ fn resolve_operand<'a>(
 ) -> Result<Operand, FromIRError> {
     match v {
         IRVal::Variable(id) => {
+            if var_to_reg.wide.contains_key(id) {
+                return Err(FromIRError::UnsupportedInstruction);
+            }
             if let Some(r) = var_to_reg.get(id) {
                 Ok(Operand::Register(r.clone()))
             } else {
@@ -225,6 +235,7 @@ fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
         IRPrim::I16 | IRPrim::U16 => 16,
         IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 32,
         IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 64,
+        IRPrim::I128 | IRPrim::U128 => 128,
     }
 }
 
@@ -261,6 +272,11 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
             }
             global
         } else {
+            if wide::is_wide_type(&resolved) {
+                return Err(FromIRError::UnsupportedGlobal(format!(
+                    "@{global_name} is a 128-bit integer; globals of i128 and u128 are not lowered yet"
+                )));
+            }
             let ty = map_ir_type(&resolved)?;
             let initializer = global_initializer(global_name, ty, decl.initializer.as_ref())?;
             let mut global = Global::new(*global_name, ty);
@@ -275,6 +291,7 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
         mir_module.globals.insert(global_name.to_string(), global);
     }
 
+    let mut libcalls = BTreeMap::new();
     for (func_name, ir_func) in &ir.functions {
         // Check if function is external before converting
         if ir_func.annotations.contains(&FunctionAnnotation::Extern) {
@@ -284,8 +301,14 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
             mir_module.mark_exported(*func_name);
         }
 
-        let mir_func = convert_function(func_name, ir_func, ir)?;
+        let mir_func = convert_function(func_name, ir_func, ir, &mut libcalls)?;
         mir_module.add_function(mir_func);
+    }
+    for (name, libcall) in libcalls {
+        if !mir_module.functions.contains_key(&name) {
+            mir_module.mark_external(name.clone());
+            mir_module.add_function(libcall.declaration());
+        }
     }
 
     mir_module
@@ -302,6 +325,7 @@ struct ValueFacts<'t, 'a> {
     /// Named parameter count of each variadic callee, which says where its default
     /// argument promotions begin.
     variadic_fixed: &'t HashMap<&'a str, usize>,
+    module: &'t IRModule<'a>,
 }
 
 /// Names of values whose IR type is an unsigned integer. `print` needs this because
@@ -577,6 +601,8 @@ fn literal_bytes(name: &str, literal: &IRLit<'_>) -> Result<Vec<u8>, FromIRError
         IRLit::U16(v) => v.to_le_bytes().to_vec(),
         IRLit::U32(v) => v.to_le_bytes().to_vec(),
         IRLit::U64(v) => v.to_le_bytes().to_vec(),
+        IRLit::I128(v) => v.to_le_bytes().to_vec(),
+        IRLit::U128(v) => v.to_le_bytes().to_vec(),
         IRLit::F32(v) => v.to_le_bytes().to_vec(),
         IRLit::F64(v) => v.to_le_bytes().to_vec(),
         IRLit::Bool(b) => vec![u8::from(*b)],
@@ -634,6 +660,7 @@ fn convert_function<'a>(
     name: &'a str,
     f: &IRFunction<'a>,
     module: &IRModule<'a>,
+    libcalls: &mut BTreeMap<String, wide::LibCall>,
 ) -> Result<Function, FromIRError> {
     if !f.signature.variadic
         && f.basic_blocks
@@ -739,7 +766,12 @@ fn convert_function<'a>(
                 dst: addr.clone(),
                 slot,
             });
-            var_to_reg.insert(param.name, addr);
+            if wide::is_wide_type(&resolved) {
+                let pair = wide::load_wide_parameter(addr, &mut vreg_alloc, &mut aggregate_prelude);
+                var_to_reg.wide.insert(param.name, pair);
+            } else {
+                var_to_reg.insert(param.name, addr);
+            }
             continue;
         }
         let class = reg_class_for_type(&param.ty);
@@ -825,6 +857,7 @@ fn convert_function<'a>(
                     types: &register_types,
                     unsigned: &unsigned,
                     variadic_fixed: &variadic_fixed,
+                    module,
                 },
                 &mut globals,
             )
@@ -838,6 +871,7 @@ fn convert_function<'a>(
             })?;
             if f.basic_blocks.len() == 1
                 && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
+                && !var_to_reg.wide.contains_key(result)
                 && let Some(last) = mir_instrs.last_mut()
                 && let Some(old_dst) = last.def_reg().cloned()
                 && defined_in_block.contains(&old_dst)
@@ -887,8 +921,9 @@ fn convert_function<'a>(
                 {
                     for (argument, parameter) in args.iter_mut().zip(&callee.signature.params) {
                         if is_aggregate(&parameter.ty)
+                            || wide::is_wide_type(&parameter.ty)
                             || resolve_type_names(&parameter.ty, &module.type_declarations)
-                                .is_some_and(|ty| is_aggregate(&ty))
+                                .is_some_and(|ty| is_aggregate(&ty) || wide::is_wide_type(&ty))
                         {
                             continue;
                         }
@@ -995,6 +1030,50 @@ fn convert_function<'a>(
 
         for (succ_label, ir_block) in &f.basic_blocks {
             for instr in &ir_block.instructions {
+                if let IRInst::Phi {
+                    result,
+                    ty,
+                    incoming,
+                } = instr
+                    && wide::is_wide_type(ty)
+                    && let Some(pair) = var_to_reg.wide.get(result).cloned()
+                {
+                    let mut halves: Vec<PhiVerification> = pair
+                        .iter()
+                        .map(|dst| PhiVerification {
+                            block: (*succ_label).to_string(),
+                            dst: dst.clone(),
+                            ty: MirType::i64(),
+                            incoming: Vec::new(),
+                        })
+                        .collect();
+                    for (value, pred_label) in incoming {
+                        if !visited.contains(pred_label) {
+                            continue;
+                        }
+                        let (lo, hi) = wide::phi_words(
+                            value,
+                            &mut vreg_alloc,
+                            &mut var_to_reg,
+                            &mut globals,
+                            &mut reservations,
+                            module,
+                        )?;
+                        for ((half, dst), src) in halves.iter_mut().zip(&pair).zip([lo, hi]) {
+                            half.incoming.push(((*pred_label).to_string(), src.clone()));
+                            edge_moves
+                                .entry(((*pred_label).to_string(), (*succ_label).to_string()))
+                                .or_default()
+                                .push(Instruction::Copy {
+                                    ty: MirType::i64(),
+                                    dst: dst.clone(),
+                                    src,
+                                });
+                        }
+                    }
+                    phis.extend(halves);
+                    continue;
+                }
                 if let IRInst::Phi {
                     result,
                     ty,
@@ -1183,6 +1262,7 @@ fn convert_function<'a>(
     }
 
     mir_func.stack_reservations = reservations;
+    libcalls.extend(mem::take(&mut var_to_reg.libcalls));
 
     Ok(mir_func)
 }
@@ -1252,6 +1332,17 @@ fn convert_instruction<'a>(
     facts: &ValueFacts<'_, 'a>,
     globals: &mut GlobalAddresses<'a>,
 ) -> Result<Vec<Instruction>, FromIRError> {
+    let mut wide_cx = wide::Cx {
+        vregs: &mut *vreg_alloc,
+        vars: &mut *var_to_reg,
+        reservations: &mut *reservations,
+        globals: &mut *globals,
+        module: facts.module,
+        out: Vec::new(),
+    };
+    if wide::lower_instruction(instr, &mut wide_cx)? {
+        return Ok(wide_cx.out);
+    }
     let register_types = facts.types;
     let unsigned = facts.unsigned;
     fn ir_address_mode_to_mir<'b>(
@@ -1630,6 +1721,9 @@ fn convert_instruction<'a>(
                     IRLit::U16(v) => *v as i64,
                     IRLit::U32(v) => *v as i64,
                     IRLit::U64(v) => *v as i64,
+                    IRLit::I128(_) | IRLit::U128(_) => {
+                        return Err(FromIRError::UnsupportedType);
+                    }
                     IRLit::Bool(b) => {
                         if *b {
                             1
@@ -2505,7 +2599,9 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
         IRLit::F32(v) => Immediate::F32(*v),
         IRLit::F64(v) => Immediate::F64(*v),
         IRLit::Bool(b) => Immediate::I8(if *b { 1 } else { 0 }),
-        IRLit::String(_) => return Err(FromIRError::UnsupportedInstruction),
+        IRLit::I128(_) | IRLit::U128(_) | IRLit::String(_) => {
+            return Err(FromIRError::UnsupportedInstruction);
+        }
     };
     Ok(imm)
 }
