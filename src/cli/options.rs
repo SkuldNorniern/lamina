@@ -115,7 +115,7 @@ pub fn print_usage() {
         "  -g                      Emit assembler .file/.loc and minimal ELF DWARF when using ras"
     );
     eprintln!(
-        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O2+ on x86_64, incremental otherwise)"
+        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O1+ on x86_64, incremental otherwise)"
     );
     eprintln!("  -h, --help              Display this help message");
 }

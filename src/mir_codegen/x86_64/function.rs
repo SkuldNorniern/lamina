@@ -1165,7 +1165,7 @@ entry:
         let directory = env::temp_dir().join(format!("lamina-regalloc-defaults-{}", process::id()));
         fs::create_dir_all(&directory).expect("create assembly directory");
         for level in ["0", "1", "2", "3"] {
-            let default = if matches!(level, "2" | "3") {
+            let default = if matches!(level, "1" | "2" | "3") {
                 "linear"
             } else {
                 "incremental"

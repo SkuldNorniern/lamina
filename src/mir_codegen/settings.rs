@@ -17,7 +17,7 @@ pub enum RegallocStrategy {
 
 impl RegallocStrategy {
     pub fn for_opt_level(opt_level: u8) -> Self {
-        if opt_level >= 2 {
+        if opt_level >= 1 {
             Self::LinearScanGlobal
         } else {
             Self::Incremental
