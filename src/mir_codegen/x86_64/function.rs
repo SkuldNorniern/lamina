@@ -32,6 +32,9 @@ pub(super) fn instruction_clobbers(
             if target_os != TargetOperatingSystem::Windows {
                 regs.extend(["rsi", "rdi"]);
             }
+            regs.extend(X64RegAlloc::xmm_pool_for_global_allocation(
+                TargetOperatingSystem::Linux,
+            ));
             regs
         }
         MirInst::IntBinary { op, rhs, .. } => match op {
@@ -65,7 +68,15 @@ pub(super) fn layout_global_stack_slots(
     func: &Function,
     plan: &HashMap<VirtualReg, MirAllocation<&'static str>>,
 ) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
-    let mut address_taken: BTreeSet<_> = func.stack_reservations.keys().copied().collect();
+    let mut address_taken: BTreeSet<_> = func
+        .stack_reservations
+        .keys()
+        .copied()
+        .filter(|reg| {
+            reg.class != RegisterClass::Vec
+                || !matches!(plan.get(reg), Some(MirAllocation::Register(_)))
+        })
+        .collect();
     for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
         if let MirInst::StackAddr { slot, .. } = inst {
             address_taken.insert(*slot);
@@ -84,6 +95,23 @@ pub(super) fn layout_global_stack_slots(
         }
     }
     (slots, defs, total)
+}
+
+fn allocate_global(
+    strategy: RegallocStrategy,
+    intervals: &[LiveInterval],
+    pool: &[&'static str],
+    allowed: impl Fn(&LiveInterval, &'static str) -> bool,
+) -> HashMap<VirtualReg, MirAllocation<&'static str>> {
+    match strategy {
+        RegallocStrategy::LinearScanGlobal => {
+            LinearScanAllocator::allocate_with_constraints(intervals, pool, allowed)
+        }
+        RegallocStrategy::GraphColorGlobal => {
+            GraphColorAllocator::allocate_with_constraints(intervals, pool, allowed)
+        }
+        RegallocStrategy::Incremental => unreachable!(),
+    }
 }
 
 pub(super) fn compile_single_function_x86_64(
@@ -155,19 +183,25 @@ pub(super) fn compile_single_function_x86_64(
             })
             .collect();
         address_taken.extend(func.stack_reservations.keys());
-        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
-            .into_iter()
+        let all_intervals = LinearScanAllocator::compute_intervals(func);
+        let intervals: Vec<_> = all_intervals
+            .iter()
             .filter(|i| i.vreg.class == RegisterClass::Gpr && !address_taken.contains(&i.vreg))
+            .cloned()
             .collect();
-        let mut plan = match settings.regalloc {
-            RegallocStrategy::LinearScanGlobal => {
-                LinearScanAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
-            }
-            RegallocStrategy::GraphColorGlobal => {
-                GraphColorAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
-            }
-            RegallocStrategy::Incremental => unreachable!(),
-        };
+        let eligible_vectors = simd::register_eligible_vectors(func);
+        let vector_intervals: Vec<_> = all_intervals
+            .into_iter()
+            .filter(|i| eligible_vectors.contains(&i.vreg))
+            .collect();
+        let xmm_pool = X64RegAlloc::xmm_pool_for_global_allocation(target_os);
+        let mut plan = allocate_global(settings.regalloc, &intervals, pool.as_slice(), allowed);
+        plan.extend(allocate_global(
+            settings.regalloc,
+            &vector_intervals,
+            xmm_pool.as_slice(),
+            allowed,
+        ));
         plan = coalesce_dying_inputs(func, &intervals, &plan, allowed);
         (stack_slots, _, total_slots) = layout_global_stack_slots(func, &plan);
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);

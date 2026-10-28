@@ -1,4 +1,4 @@
-use crate::mir::{Instruction, MirType, Operand, Register, VectorOp};
+use crate::mir::{AddressMode, Instruction, MirType, Operand, Register, VectorOp};
 
 pub(super) use crate::mir_codegen::simd::reserve_vector_slots;
 
@@ -8,11 +8,21 @@ use super::{
 };
 use crate::{
     error::LaminaError,
-    mir::{AddressMode, VectorLane, VectorType, VirtualReg},
+    mir::{Function, RegisterClass, VectorLane, VectorType, VirtualReg},
     mir_codegen::CodegenError,
 };
 use lamina_codegen::x86_64::X64RegAlloc;
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
+
+/// Emitter scratch vectors. Global allocation never hands these out, so any vector
+/// operation may clobber them freely.
+const SCRATCH_A: &str = "xmm0";
+const SCRATCH_B: &str = "xmm1";
+const SCRATCH_SRC0: &str = "xmm2";
+const SCRATCH_SRC1: &str = "xmm3";
 
 fn unsupported(message: impl Into<String>) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(message.into()))
@@ -37,18 +47,124 @@ fn slot(reg: &Register, slots: &HashMap<VirtualReg, i32>) -> Result<i32, LaminaE
     ))
 }
 
-fn load_vector<W: Write>(
+fn xmm_of(reg: &Register, ra: &X64RegAlloc) -> Option<&'static str> {
+    match reg {
+        Register::Virtual(v) => ra.xmm_for(v),
+        Register::Physical(_) => None,
+    }
+}
+
+/// Returns the vector register holding `operand`, loading it into `scratch` first when
+/// it lives in a stack slot.
+fn source<W: Write>(
     operand: &Operand,
-    xmm: &str,
+    scratch: &'static str,
     writer: &mut RaxTrackingWriter<W>,
+    ra: &X64RegAlloc,
     slots: &HashMap<VirtualReg, i32>,
-) -> Result<(), LaminaError> {
+) -> Result<&'static str, LaminaError> {
     let Operand::Register(reg) = operand else {
         return Err(unsupported("vector operand requires register"));
     };
+    if let Some(xmm) = xmm_of(reg, ra) {
+        return Ok(xmm);
+    }
     let offset = slot(reg, slots)?;
-    writeln!(writer, "    movdqu {offset}(%rbp), %{xmm}")?;
+    writeln!(writer, "    movdqu {offset}(%rbp), %{scratch}")?;
+    Ok(scratch)
+}
+
+/// Writes the vector held in `from` to the destination register.
+fn sink<W: Write>(
+    dst: &Register,
+    from: &'static str,
+    writer: &mut RaxTrackingWriter<W>,
+    ra: &X64RegAlloc,
+    slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    if let Some(xmm) = xmm_of(dst, ra) {
+        if xmm != from {
+            writeln!(writer, "    movdqa %{from}, %{xmm}")?;
+        }
+    } else {
+        let offset = slot(dst, slots)?;
+        writeln!(writer, "    movdqu %{from}, {offset}(%rbp)")?;
+    }
     Ok(())
+}
+
+pub(super) fn register_eligible_vectors(func: &Function) -> HashSet<VirtualReg> {
+    let mut eligible = HashSet::new();
+    let mut rejected: HashSet<VirtualReg> = func
+        .sig
+        .params
+        .iter()
+        .filter_map(|p| match p.reg {
+            Register::Virtual(v) => Some(v),
+            _ => None,
+        })
+        .collect();
+    for inst in func.blocks.iter().flat_map(|b| &b.instructions) {
+        let mut values: Vec<&Register> = Vec::new();
+        match inst {
+            Instruction::Load { ty, dst, .. } if ty.is_vector() => values.push(dst),
+            Instruction::Store {
+                ty,
+                src: Operand::Register(src),
+                ..
+            } if ty.is_vector() => values.push(src),
+            Instruction::VectorOp {
+                op,
+                ty,
+                dst,
+                operands,
+                ..
+            } if ty.is_vector() => match op {
+                VectorOp::VExtractLane => {
+                    values.extend(operands.first().and_then(|o| match o {
+                        Operand::Register(r) => Some(r),
+                        _ => None,
+                    }));
+                }
+                VectorOp::VSplat => values.push(dst),
+                VectorOp::VInsertLane => {
+                    values.push(dst);
+                    values.extend(operands.first().and_then(|o| match o {
+                        Operand::Register(r) => Some(r),
+                        _ => None,
+                    }));
+                }
+                _ => {
+                    values.push(dst);
+                    values.extend(operands.iter().take(2).filter_map(|o| match o {
+                        Operand::Register(r) => Some(r),
+                        _ => None,
+                    }));
+                }
+            },
+            _ => {}
+        }
+        let value_regs: HashSet<VirtualReg> = values
+            .iter()
+            .filter_map(|r| match r {
+                Register::Virtual(v) => Some(*v),
+                _ => None,
+            })
+            .collect();
+        for reg in inst.use_regs().into_iter().chain(inst.def_reg()) {
+            if let Register::Virtual(v) = reg
+                && v.class == RegisterClass::Vec
+            {
+                if value_regs.contains(v) {
+                    eligible.insert(*v);
+                } else {
+                    rejected.insert(*v);
+                }
+            }
+        }
+    }
+    eligible.retain(|v| !rejected.contains(v));
+    eligible
 }
 
 pub(super) fn memory<W: Write>(
@@ -68,13 +184,16 @@ pub(super) fn memory<W: Write>(
     load_operand_to_rax(&Operand::Register(base.clone()), writer, ra, slots)?;
     match inst {
         Instruction::Load { dst, .. } => {
-            let dst = slot(dst, slots)?;
-            writeln!(writer, "    movdqu {offset}(%rax), %xmm0")?;
-            writeln!(writer, "    movdqu %xmm0, {dst}(%rbp)")?;
+            if let Some(xmm) = xmm_of(dst, ra) {
+                writeln!(writer, "    movdqu {offset}(%rax), %{xmm}")?;
+            } else {
+                writeln!(writer, "    movdqu {offset}(%rax), %{SCRATCH_A}")?;
+                sink(dst, SCRATCH_A, writer, ra, slots)?;
+            }
         }
         Instruction::Store { src, .. } => {
-            load_vector(src, "xmm0", writer, slots)?;
-            writeln!(writer, "    movdqu %xmm0, {offset}(%rax)")?;
+            let value = source(src, SCRATCH_SRC0, writer, ra, slots)?;
+            writeln!(writer, "    movdqu %{value}, {offset}(%rax)")?;
         }
         _ => unreachable!(),
     }
@@ -127,6 +246,27 @@ fn binary_mnemonic(op: VectorOp, lane: VectorLane) -> Result<&'static str, Lamin
     Ok(mnemonic)
 }
 
+/// 64-bit lane multiply from 32-bit products, since SSE2 has no packed qword multiply:
+/// `a*b = aL*bL + ((aH*bL + aL*bH) << 32)` modulo 2^64. Leaves the result in `xmm1`.
+fn emit_mul_i64<W: Write>(
+    a: &str,
+    b: &str,
+    writer: &mut RaxTrackingWriter<W>,
+) -> Result<(), LaminaError> {
+    writeln!(writer, "    movdqa %{a}, %xmm0")?;
+    writeln!(writer, "    psrlq $32, %xmm0")?;
+    writeln!(writer, "    pmuludq %{b}, %xmm0")?;
+    writeln!(writer, "    movdqa %{b}, %xmm1")?;
+    writeln!(writer, "    psrlq $32, %xmm1")?;
+    writeln!(writer, "    pmuludq %{a}, %xmm1")?;
+    writeln!(writer, "    paddq %xmm1, %xmm0")?;
+    writeln!(writer, "    psllq $32, %xmm0")?;
+    writeln!(writer, "    movdqa %{a}, %xmm1")?;
+    writeln!(writer, "    pmuludq %{b}, %xmm1")?;
+    writeln!(writer, "    paddq %xmm0, %xmm1")?;
+    Ok(())
+}
+
 pub(super) fn operation<W: Write>(
     op: VectorOp,
     ty: MirType,
@@ -171,18 +311,27 @@ pub(super) fn operation<W: Write>(
                 writeln!(writer, "    {shuffle}, %xmm0")?;
             }
         }
-    } else {
-        if operands.len() != 2 {
-            return Err(unsupported(format!("{op:?} requires two operands")));
-        }
-        let mnemonic = binary_mnemonic(op, lane)?;
-        load_vector(&operands[0], "xmm0", writer, slots)?;
-        load_vector(&operands[1], "xmm1", writer, slots)?;
-        writeln!(writer, "    {mnemonic} %xmm1, %xmm0")?;
+        return sink(dst, SCRATCH_A, writer, ra, slots);
     }
-    let offset = slot(dst, slots)?;
-    writeln!(writer, "    movdqu %xmm0, {offset}(%rbp)")?;
-    Ok(())
+    if operands.len() != 2 {
+        return Err(unsupported(format!("{op:?} requires two operands")));
+    }
+    let a = source(&operands[0], SCRATCH_SRC0, writer, ra, slots)?;
+    let b = source(&operands[1], SCRATCH_SRC1, writer, ra, slots)?;
+    if op == VectorOp::VMul && lane == VectorLane::I64 {
+        emit_mul_i64(a, b, writer)?;
+        return sink(dst, SCRATCH_B, writer, ra, slots);
+    }
+    let mnemonic = binary_mnemonic(op, lane)?;
+    let work = match xmm_of(dst, ra) {
+        Some(xmm) if xmm != b => xmm,
+        _ => SCRATCH_A,
+    };
+    if a != work {
+        writeln!(writer, "    movdqa %{a}, %{work}")?;
+    }
+    writeln!(writer, "    {mnemonic} %{b}, %{work}")?;
+    sink(dst, work, writer, ra, slots)
 }
 
 fn load_scalar<W: Write>(
@@ -242,18 +391,21 @@ fn lane_access<W: Write>(
             "{op:?} {lane:?} lane index {index} out of range"
         )));
     }
-    load_vector(&operands[0], "xmm0", writer, slots)?;
     if extract {
-        writeln!(writer, "    pextr{suffix} ${index}, %xmm0, %{gpr}")?;
+        let src = source(&operands[0], SCRATCH_SRC0, writer, ra, slots)?;
+        writeln!(writer, "    pextr{suffix} ${index}, %{src}, %{gpr}")?;
         match dst {
             Register::Virtual(v) => store_rax_to_register(v, writer, ra, slots)?,
             Register::Physical(p) => writeln!(writer, "    movq %rax, %{}", p.name)?,
         }
     } else {
+        let src = source(&operands[0], SCRATCH_A, writer, ra, slots)?;
+        if src != SCRATCH_A {
+            writeln!(writer, "    movdqa %{src}, %{SCRATCH_A}")?;
+        }
         load_scalar(&operands[1], writer, ra, slots)?;
-        writeln!(writer, "    pinsr{suffix} ${index}, %{gpr}, %xmm0")?;
-        let offset = slot(dst, slots)?;
-        writeln!(writer, "    movdqu %xmm0, {offset}(%rbp)")?;
+        writeln!(writer, "    pinsr{suffix} ${index}, %{gpr}, %{SCRATCH_A}")?;
+        sink(dst, SCRATCH_A, writer, ra, slots)?;
     }
     Ok(())
 }
@@ -310,7 +462,7 @@ mod tests {
         use VectorLane::*;
         use VectorOp::*;
         match op {
-            VMul => !matches!(lane, I8 | I64),
+            VMul => !matches!(lane, I8),
             VShl | VLShr => matches!(lane, I16 | I32 | I64),
             VAShr => matches!(lane, I16 | I32),
             _ => true,
@@ -724,6 +876,25 @@ mod tests {
             }
         }
         fs::remove_dir_all(dir).expect("remove temp directory");
+    }
+
+    #[test]
+    fn vector_values_stay_in_registers_under_global_allocation() {
+        let ty = MirType::Vector(VectorType::V128(VectorLane::I64));
+        let mut m = Module::new("resident");
+        m.add_function(function("resident", ty, VectorOp::VAdd, 0));
+        let slot_moves = |asm: &[u8]| {
+            String::from_utf8_lossy(asm)
+                .lines()
+                .filter(|line| line.contains("movdqu") && line.contains("(%rbp)"))
+                .count()
+        };
+        let linear = emit(&m, RegallocStrategy::LinearScanGlobal).expect("linear");
+        let graph = emit(&m, RegallocStrategy::GraphColorGlobal).expect("graph");
+        let incremental = emit(&m, RegallocStrategy::Incremental).expect("incremental");
+        assert_eq!(slot_moves(&linear), 0);
+        assert_eq!(slot_moves(&graph), 0);
+        assert!(slot_moves(&incremental) > 0);
     }
 
     #[test]

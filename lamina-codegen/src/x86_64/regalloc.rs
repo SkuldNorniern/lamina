@@ -15,6 +15,7 @@ pub struct X64RegAlloc {
     free_gprs: VecDeque<&'static str>,
     used_gprs: HashSet<&'static str>,
     vreg_to_preg: HashMap<VirtualReg, &'static str>,
+    vreg_to_xmm: HashMap<VirtualReg, &'static str>,
     scratch_free: VecDeque<&'static str>,
     scratch_used: HashSet<&'static str>,
     global_plan: bool,
@@ -31,6 +32,15 @@ const WIN64_LEAF_MAP_GPRS: &[&str] = &[
 ];
 const WIN64_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
 const WIN64_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"];
+
+/// Vector registers available to global allocation. xmm0-xmm3 stay free as emitter scratch.
+pub const XMM_ALLOCATABLE: &[&str] = &[
+    "xmm4", "xmm5", "xmm6", "xmm7", "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14",
+    "xmm15",
+];
+/// Win64 treats xmm6-xmm15 as callee-saved, which the prologue does not preserve, so only the
+/// volatile registers are allocatable there.
+const WIN64_XMM_ALLOCATABLE: &[&str] = &["xmm4", "xmm5"];
 
 impl Default for X64RegAlloc {
     fn default() -> Self {
@@ -70,6 +80,7 @@ impl X64RegAlloc {
             free_gprs,
             used_gprs: HashSet::new(),
             vreg_to_preg: HashMap::new(),
+            vreg_to_xmm: HashMap::new(),
             scratch_free,
             scratch_used: HashSet::new(),
             global_plan: false,
@@ -96,6 +107,7 @@ impl X64RegAlloc {
             free_gprs,
             used_gprs: HashSet::new(),
             vreg_to_preg: HashMap::new(),
+            vreg_to_xmm: HashMap::new(),
             scratch_free,
             scratch_used: HashSet::new(),
             global_plan: false,
@@ -112,7 +124,15 @@ impl X64RegAlloc {
         ]
     }
 
-    /// Rebuild allocator state from a precomputed GPR plan (global linear scan or graph coloring).
+    /// Vector register candidates for global allocation of `RegisterClass::Vec` values.
+    pub fn xmm_pool_for_global_allocation(target_os: TargetOperatingSystem) -> Vec<&'static str> {
+        match target_os {
+            TargetOperatingSystem::Windows => WIN64_XMM_ALLOCATABLE.to_vec(),
+            _ => XMM_ALLOCATABLE.to_vec(),
+        }
+    }
+
+    /// Rebuild allocator state from a precomputed plan (global linear scan or graph coloring).
     pub fn from_global_plan(
         target_os: TargetOperatingSystem,
         leaf: bool,
@@ -126,6 +146,12 @@ impl X64RegAlloc {
         s.free_gprs.clear();
         s.global_plan = true;
         for (&vreg, alloc) in plan {
+            if vreg.class == RegisterClass::Vec {
+                if let Allocation::Register(phys) = alloc {
+                    s.vreg_to_xmm.insert(vreg, *phys);
+                }
+                continue;
+            }
             if vreg.class != RegisterClass::Gpr {
                 continue;
             }
@@ -205,6 +231,11 @@ impl X64RegAlloc {
     #[inline]
     pub fn ensure_mapping_for_gpr(&mut self, v: VirtualReg) -> Option<&'static str> {
         MirRegisterAllocator::ensure_mapping(self, v)
+    }
+
+    /// The vector register a globally allocated `RegisterClass::Vec` value lives in.
+    pub fn xmm_for(&self, v: &VirtualReg) -> Option<&'static str> {
+        self.vreg_to_xmm.get(v).copied()
     }
 
     #[inline]
@@ -389,5 +420,22 @@ mod tests {
             class: RegisterClass::Fpr,
         };
         assert!(ra.ensure_mapping(fp_vreg).is_none());
+    }
+
+    #[test]
+    fn global_plan_maps_vector_registers() {
+        let vector = VirtualReg::vec(0);
+        let spilled = VirtualReg::vec(1);
+        let plan = HashMap::from([
+            (vector, Allocation::Register("xmm4")),
+            (spilled, Allocation::Spill(-8)),
+        ]);
+        let ra = X64RegAlloc::from_global_plan(TargetOperatingSystem::Linux, true, &plan);
+        assert_eq!(ra.xmm_for(&vector), Some("xmm4"));
+        assert_eq!(ra.xmm_for(&spilled), None);
+        assert_eq!(
+            X64RegAlloc::xmm_pool_for_global_allocation(TargetOperatingSystem::Windows),
+            ["xmm4", "xmm5"]
+        );
     }
 }
