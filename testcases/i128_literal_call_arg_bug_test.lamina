@@ -1,0 +1,14 @@
+# A literal passed to an i128 parameter is typed as a pointer, so the callee
+# receives a bogus address and the program segfaults. Variable arguments work.
+fn @low64(i128 %a) -> i64 {
+  entry:
+    %t = trunc.i128.i64 %a
+    ret.i64 %t
+}
+
+fn @main() -> i64 {
+  entry:
+    %v = call @low64(5718798622190258910)
+    print %v
+    ret.i64 0
+}

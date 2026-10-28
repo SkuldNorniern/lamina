@@ -1,0 +1,496 @@
+# 128-bit bit intrinsics against the two-word lowering: zero, all ones, lone set bits in each word, MIN, MAX, and rotate counts at word and width boundaries.
+fn @mk_u128(i64 %h, i64 %l) -> u128 {
+entry:
+  %hz = zext.i64.u128 %h
+  %hs = shl.u128 %hz, 64
+  %lz = zext.i64.u128 %l
+  %v = or.u128 %hs, %lz
+  ret.u128 %v
+}
+
+fn @mk_i128(i64 %h, i64 %l) -> i128 {
+entry:
+  %hz = zext.i64.i128 %h
+  %hs = shl.i128 %hz, 64
+  %lz = zext.i64.i128 %l
+  %v = or.i128 %hs, %lz
+  ret.i128 %v
+}
+
+fn @show_u(u128 %r) -> i64 {
+entry:
+  %lo = trunc.u128.u64 %r
+  print %lo
+  %s = shr.u128 %r, 64
+  %hi = trunc.u128.u64 %s
+  print %hi
+  ret.i64 0
+}
+
+fn @show_i(i128 %r) -> i64 {
+entry:
+  %lo = trunc.i128.i64 %r
+  print %lo
+  %s = shr.i128 %r, 64
+  %hi = trunc.i128.i64 %s
+  print %hi
+  ret.i64 0
+}
+
+fn @main() -> i64 {
+entry:
+    %x1 = call @mk_u128(0, 0)
+    %r2 = popcount.u128 %x1
+    call @show_u(%r2)
+    %r3 = ctlz.u128 %x1
+    call @show_u(%r3)
+    %r4 = cttz.u128 %x1
+    call @show_u(%r4)
+    %r5 = bswap.u128 %x1
+    call @show_u(%r5)
+    %x6 = call @mk_u128(-1, -1)
+    %r7 = popcount.u128 %x6
+    call @show_u(%r7)
+    %r8 = ctlz.u128 %x6
+    call @show_u(%r8)
+    %r9 = cttz.u128 %x6
+    call @show_u(%r9)
+    %r10 = bswap.u128 %x6
+    call @show_u(%r10)
+    %x11 = call @mk_u128(1, 0)
+    %r12 = popcount.u128 %x11
+    call @show_u(%r12)
+    %r13 = ctlz.u128 %x11
+    call @show_u(%r13)
+    %r14 = cttz.u128 %x11
+    call @show_u(%r14)
+    %r15 = bswap.u128 %x11
+    call @show_u(%r15)
+    %x16 = call @mk_u128(0, 1)
+    %r17 = popcount.u128 %x16
+    call @show_u(%r17)
+    %r18 = ctlz.u128 %x16
+    call @show_u(%r18)
+    %r19 = cttz.u128 %x16
+    call @show_u(%r19)
+    %r20 = bswap.u128 %x16
+    call @show_u(%r20)
+    %x21 = call @mk_u128(-9223372036854775808, 0)
+    %r22 = popcount.u128 %x21
+    call @show_u(%r22)
+    %r23 = ctlz.u128 %x21
+    call @show_u(%r23)
+    %r24 = cttz.u128 %x21
+    call @show_u(%r24)
+    %r25 = bswap.u128 %x21
+    call @show_u(%r25)
+    %x26 = call @mk_u128(9223372036854775807, -1)
+    %r27 = popcount.u128 %x26
+    call @show_u(%r27)
+    %r28 = ctlz.u128 %x26
+    call @show_u(%r28)
+    %r29 = cttz.u128 %x26
+    call @show_u(%r29)
+    %r30 = bswap.u128 %x26
+    call @show_u(%r30)
+    %x31 = call @mk_u128(81985529216486895, -81985529216486896)
+    %r32 = popcount.u128 %x31
+    call @show_u(%r32)
+    %r33 = ctlz.u128 %x31
+    call @show_u(%r33)
+    %r34 = cttz.u128 %x31
+    call @show_u(%r34)
+    %r35 = bswap.u128 %x31
+    call @show_u(%r35)
+    %x36 = call @mk_u128(0, 0)
+    %x37 = call @mk_u128(0, 0)
+    %r38 = rotl.u128 %x36, %x37
+    call @show_u(%r38)
+    %r39 = rotr.u128 %x36, %x37
+    call @show_u(%r39)
+    %x40 = call @mk_u128(0, 0)
+    %x41 = call @mk_u128(0, 1)
+    %r42 = rotl.u128 %x40, %x41
+    call @show_u(%r42)
+    %r43 = rotr.u128 %x40, %x41
+    call @show_u(%r43)
+    %x44 = call @mk_u128(0, 0)
+    %x45 = call @mk_u128(0, 63)
+    %r46 = rotl.u128 %x44, %x45
+    call @show_u(%r46)
+    %r47 = rotr.u128 %x44, %x45
+    call @show_u(%r47)
+    %x48 = call @mk_u128(0, 0)
+    %x49 = call @mk_u128(0, 64)
+    %r50 = rotl.u128 %x48, %x49
+    call @show_u(%r50)
+    %r51 = rotr.u128 %x48, %x49
+    call @show_u(%r51)
+    %x52 = call @mk_u128(0, 0)
+    %x53 = call @mk_u128(0, 65)
+    %r54 = rotl.u128 %x52, %x53
+    call @show_u(%r54)
+    %r55 = rotr.u128 %x52, %x53
+    call @show_u(%r55)
+    %x56 = call @mk_u128(0, 0)
+    %x57 = call @mk_u128(0, 127)
+    %r58 = rotl.u128 %x56, %x57
+    call @show_u(%r58)
+    %r59 = rotr.u128 %x56, %x57
+    call @show_u(%r59)
+    %x60 = call @mk_u128(0, 0)
+    %x61 = call @mk_u128(0, 128)
+    %r62 = rotl.u128 %x60, %x61
+    call @show_u(%r62)
+    %r63 = rotr.u128 %x60, %x61
+    call @show_u(%r63)
+    %x64 = call @mk_u128(-1, -1)
+    %x65 = call @mk_u128(0, 0)
+    %r66 = rotl.u128 %x64, %x65
+    call @show_u(%r66)
+    %r67 = rotr.u128 %x64, %x65
+    call @show_u(%r67)
+    %x68 = call @mk_u128(-1, -1)
+    %x69 = call @mk_u128(0, 1)
+    %r70 = rotl.u128 %x68, %x69
+    call @show_u(%r70)
+    %r71 = rotr.u128 %x68, %x69
+    call @show_u(%r71)
+    %x72 = call @mk_u128(-1, -1)
+    %x73 = call @mk_u128(0, 63)
+    %r74 = rotl.u128 %x72, %x73
+    call @show_u(%r74)
+    %r75 = rotr.u128 %x72, %x73
+    call @show_u(%r75)
+    %x76 = call @mk_u128(-1, -1)
+    %x77 = call @mk_u128(0, 64)
+    %r78 = rotl.u128 %x76, %x77
+    call @show_u(%r78)
+    %r79 = rotr.u128 %x76, %x77
+    call @show_u(%r79)
+    %x80 = call @mk_u128(-1, -1)
+    %x81 = call @mk_u128(0, 65)
+    %r82 = rotl.u128 %x80, %x81
+    call @show_u(%r82)
+    %r83 = rotr.u128 %x80, %x81
+    call @show_u(%r83)
+    %x84 = call @mk_u128(-1, -1)
+    %x85 = call @mk_u128(0, 127)
+    %r86 = rotl.u128 %x84, %x85
+    call @show_u(%r86)
+    %r87 = rotr.u128 %x84, %x85
+    call @show_u(%r87)
+    %x88 = call @mk_u128(-1, -1)
+    %x89 = call @mk_u128(0, 128)
+    %r90 = rotl.u128 %x88, %x89
+    call @show_u(%r90)
+    %r91 = rotr.u128 %x88, %x89
+    call @show_u(%r91)
+    %x92 = call @mk_u128(1, 0)
+    %x93 = call @mk_u128(0, 0)
+    %r94 = rotl.u128 %x92, %x93
+    call @show_u(%r94)
+    %r95 = rotr.u128 %x92, %x93
+    call @show_u(%r95)
+    %x96 = call @mk_u128(1, 0)
+    %x97 = call @mk_u128(0, 1)
+    %r98 = rotl.u128 %x96, %x97
+    call @show_u(%r98)
+    %r99 = rotr.u128 %x96, %x97
+    call @show_u(%r99)
+    %x100 = call @mk_u128(1, 0)
+    %x101 = call @mk_u128(0, 63)
+    %r102 = rotl.u128 %x100, %x101
+    call @show_u(%r102)
+    %r103 = rotr.u128 %x100, %x101
+    call @show_u(%r103)
+    %x104 = call @mk_u128(1, 0)
+    %x105 = call @mk_u128(0, 64)
+    %r106 = rotl.u128 %x104, %x105
+    call @show_u(%r106)
+    %r107 = rotr.u128 %x104, %x105
+    call @show_u(%r107)
+    %x108 = call @mk_u128(1, 0)
+    %x109 = call @mk_u128(0, 65)
+    %r110 = rotl.u128 %x108, %x109
+    call @show_u(%r110)
+    %r111 = rotr.u128 %x108, %x109
+    call @show_u(%r111)
+    %x112 = call @mk_u128(1, 0)
+    %x113 = call @mk_u128(0, 127)
+    %r114 = rotl.u128 %x112, %x113
+    call @show_u(%r114)
+    %r115 = rotr.u128 %x112, %x113
+    call @show_u(%r115)
+    %x116 = call @mk_u128(1, 0)
+    %x117 = call @mk_u128(0, 128)
+    %r118 = rotl.u128 %x116, %x117
+    call @show_u(%r118)
+    %r119 = rotr.u128 %x116, %x117
+    call @show_u(%r119)
+    %x120 = call @mk_u128(0, 1)
+    %x121 = call @mk_u128(0, 0)
+    %r122 = rotl.u128 %x120, %x121
+    call @show_u(%r122)
+    %r123 = rotr.u128 %x120, %x121
+    call @show_u(%r123)
+    %x124 = call @mk_u128(0, 1)
+    %x125 = call @mk_u128(0, 1)
+    %r126 = rotl.u128 %x124, %x125
+    call @show_u(%r126)
+    %r127 = rotr.u128 %x124, %x125
+    call @show_u(%r127)
+    %x128 = call @mk_u128(0, 1)
+    %x129 = call @mk_u128(0, 63)
+    %r130 = rotl.u128 %x128, %x129
+    call @show_u(%r130)
+    %r131 = rotr.u128 %x128, %x129
+    call @show_u(%r131)
+    %x132 = call @mk_u128(0, 1)
+    %x133 = call @mk_u128(0, 64)
+    %r134 = rotl.u128 %x132, %x133
+    call @show_u(%r134)
+    %r135 = rotr.u128 %x132, %x133
+    call @show_u(%r135)
+    %x136 = call @mk_u128(0, 1)
+    %x137 = call @mk_u128(0, 65)
+    %r138 = rotl.u128 %x136, %x137
+    call @show_u(%r138)
+    %r139 = rotr.u128 %x136, %x137
+    call @show_u(%r139)
+    %x140 = call @mk_u128(0, 1)
+    %x141 = call @mk_u128(0, 127)
+    %r142 = rotl.u128 %x140, %x141
+    call @show_u(%r142)
+    %r143 = rotr.u128 %x140, %x141
+    call @show_u(%r143)
+    %x144 = call @mk_u128(0, 1)
+    %x145 = call @mk_u128(0, 128)
+    %r146 = rotl.u128 %x144, %x145
+    call @show_u(%r146)
+    %r147 = rotr.u128 %x144, %x145
+    call @show_u(%r147)
+    %x148 = call @mk_u128(-9223372036854775808, 0)
+    %x149 = call @mk_u128(0, 0)
+    %r150 = rotl.u128 %x148, %x149
+    call @show_u(%r150)
+    %r151 = rotr.u128 %x148, %x149
+    call @show_u(%r151)
+    %x152 = call @mk_u128(-9223372036854775808, 0)
+    %x153 = call @mk_u128(0, 1)
+    %r154 = rotl.u128 %x152, %x153
+    call @show_u(%r154)
+    %r155 = rotr.u128 %x152, %x153
+    call @show_u(%r155)
+    %x156 = call @mk_u128(-9223372036854775808, 0)
+    %x157 = call @mk_u128(0, 63)
+    %r158 = rotl.u128 %x156, %x157
+    call @show_u(%r158)
+    %r159 = rotr.u128 %x156, %x157
+    call @show_u(%r159)
+    %x160 = call @mk_u128(-9223372036854775808, 0)
+    %x161 = call @mk_u128(0, 64)
+    %r162 = rotl.u128 %x160, %x161
+    call @show_u(%r162)
+    %r163 = rotr.u128 %x160, %x161
+    call @show_u(%r163)
+    %x164 = call @mk_u128(-9223372036854775808, 0)
+    %x165 = call @mk_u128(0, 65)
+    %r166 = rotl.u128 %x164, %x165
+    call @show_u(%r166)
+    %r167 = rotr.u128 %x164, %x165
+    call @show_u(%r167)
+    %x168 = call @mk_u128(-9223372036854775808, 0)
+    %x169 = call @mk_u128(0, 127)
+    %r170 = rotl.u128 %x168, %x169
+    call @show_u(%r170)
+    %r171 = rotr.u128 %x168, %x169
+    call @show_u(%r171)
+    %x172 = call @mk_u128(-9223372036854775808, 0)
+    %x173 = call @mk_u128(0, 128)
+    %r174 = rotl.u128 %x172, %x173
+    call @show_u(%r174)
+    %r175 = rotr.u128 %x172, %x173
+    call @show_u(%r175)
+    %x176 = call @mk_u128(9223372036854775807, -1)
+    %x177 = call @mk_u128(0, 0)
+    %r178 = rotl.u128 %x176, %x177
+    call @show_u(%r178)
+    %r179 = rotr.u128 %x176, %x177
+    call @show_u(%r179)
+    %x180 = call @mk_u128(9223372036854775807, -1)
+    %x181 = call @mk_u128(0, 1)
+    %r182 = rotl.u128 %x180, %x181
+    call @show_u(%r182)
+    %r183 = rotr.u128 %x180, %x181
+    call @show_u(%r183)
+    %x184 = call @mk_u128(9223372036854775807, -1)
+    %x185 = call @mk_u128(0, 63)
+    %r186 = rotl.u128 %x184, %x185
+    call @show_u(%r186)
+    %r187 = rotr.u128 %x184, %x185
+    call @show_u(%r187)
+    %x188 = call @mk_u128(9223372036854775807, -1)
+    %x189 = call @mk_u128(0, 64)
+    %r190 = rotl.u128 %x188, %x189
+    call @show_u(%r190)
+    %r191 = rotr.u128 %x188, %x189
+    call @show_u(%r191)
+    %x192 = call @mk_u128(9223372036854775807, -1)
+    %x193 = call @mk_u128(0, 65)
+    %r194 = rotl.u128 %x192, %x193
+    call @show_u(%r194)
+    %r195 = rotr.u128 %x192, %x193
+    call @show_u(%r195)
+    %x196 = call @mk_u128(9223372036854775807, -1)
+    %x197 = call @mk_u128(0, 127)
+    %r198 = rotl.u128 %x196, %x197
+    call @show_u(%r198)
+    %r199 = rotr.u128 %x196, %x197
+    call @show_u(%r199)
+    %x200 = call @mk_u128(9223372036854775807, -1)
+    %x201 = call @mk_u128(0, 128)
+    %r202 = rotl.u128 %x200, %x201
+    call @show_u(%r202)
+    %r203 = rotr.u128 %x200, %x201
+    call @show_u(%r203)
+    %x204 = call @mk_u128(81985529216486895, -81985529216486896)
+    %x205 = call @mk_u128(0, 0)
+    %r206 = rotl.u128 %x204, %x205
+    call @show_u(%r206)
+    %r207 = rotr.u128 %x204, %x205
+    call @show_u(%r207)
+    %x208 = call @mk_u128(81985529216486895, -81985529216486896)
+    %x209 = call @mk_u128(0, 1)
+    %r210 = rotl.u128 %x208, %x209
+    call @show_u(%r210)
+    %r211 = rotr.u128 %x208, %x209
+    call @show_u(%r211)
+    %x212 = call @mk_u128(81985529216486895, -81985529216486896)
+    %x213 = call @mk_u128(0, 63)
+    %r214 = rotl.u128 %x212, %x213
+    call @show_u(%r214)
+    %r215 = rotr.u128 %x212, %x213
+    call @show_u(%r215)
+    %x216 = call @mk_u128(81985529216486895, -81985529216486896)
+    %x217 = call @mk_u128(0, 64)
+    %r218 = rotl.u128 %x216, %x217
+    call @show_u(%r218)
+    %r219 = rotr.u128 %x216, %x217
+    call @show_u(%r219)
+    %x220 = call @mk_u128(81985529216486895, -81985529216486896)
+    %x221 = call @mk_u128(0, 65)
+    %r222 = rotl.u128 %x220, %x221
+    call @show_u(%r222)
+    %r223 = rotr.u128 %x220, %x221
+    call @show_u(%r223)
+    %x224 = call @mk_u128(81985529216486895, -81985529216486896)
+    %x225 = call @mk_u128(0, 127)
+    %r226 = rotl.u128 %x224, %x225
+    call @show_u(%r226)
+    %r227 = rotr.u128 %x224, %x225
+    call @show_u(%r227)
+    %x228 = call @mk_u128(81985529216486895, -81985529216486896)
+    %x229 = call @mk_u128(0, 128)
+    %r230 = rotl.u128 %x228, %x229
+    call @show_u(%r230)
+    %r231 = rotr.u128 %x228, %x229
+    call @show_u(%r231)
+    %x232 = call @mk_i128(0, 0)
+    %r233 = ctlz.i128 %x232
+    call @show_i(%r233)
+    %r234 = cttz.i128 %x232
+    call @show_i(%r234)
+    %r235 = bswap.i128 %x232
+    call @show_i(%r235)
+    %x236 = call @mk_u128(0, 1)
+    %r237 = rotr.i128 %x232, %x236
+    call @show_i(%r237)
+    %x238 = call @mk_u128(0, 64)
+    %r239 = rotr.i128 %x232, %x238
+    call @show_i(%r239)
+    %x240 = call @mk_u128(0, 127)
+    %r241 = rotr.i128 %x232, %x240
+    call @show_i(%r241)
+    %x242 = call @mk_i128(-1, -1)
+    %r243 = ctlz.i128 %x242
+    call @show_i(%r243)
+    %r244 = cttz.i128 %x242
+    call @show_i(%r244)
+    %r245 = bswap.i128 %x242
+    call @show_i(%r245)
+    %x246 = call @mk_u128(0, 1)
+    %r247 = rotr.i128 %x242, %x246
+    call @show_i(%r247)
+    %x248 = call @mk_u128(0, 64)
+    %r249 = rotr.i128 %x242, %x248
+    call @show_i(%r249)
+    %x250 = call @mk_u128(0, 127)
+    %r251 = rotr.i128 %x242, %x250
+    call @show_i(%r251)
+    %x252 = call @mk_i128(1, 0)
+    %r253 = ctlz.i128 %x252
+    call @show_i(%r253)
+    %r254 = cttz.i128 %x252
+    call @show_i(%r254)
+    %r255 = bswap.i128 %x252
+    call @show_i(%r255)
+    %x256 = call @mk_u128(0, 1)
+    %r257 = rotr.i128 %x252, %x256
+    call @show_i(%r257)
+    %x258 = call @mk_u128(0, 64)
+    %r259 = rotr.i128 %x252, %x258
+    call @show_i(%r259)
+    %x260 = call @mk_u128(0, 127)
+    %r261 = rotr.i128 %x252, %x260
+    call @show_i(%r261)
+    %x262 = call @mk_i128(0, -9223372036854775808)
+    %r263 = ctlz.i128 %x262
+    call @show_i(%r263)
+    %r264 = cttz.i128 %x262
+    call @show_i(%r264)
+    %r265 = bswap.i128 %x262
+    call @show_i(%r265)
+    %x266 = call @mk_u128(0, 1)
+    %r267 = rotr.i128 %x262, %x266
+    call @show_i(%r267)
+    %x268 = call @mk_u128(0, 64)
+    %r269 = rotr.i128 %x262, %x268
+    call @show_i(%r269)
+    %x270 = call @mk_u128(0, 127)
+    %r271 = rotr.i128 %x262, %x270
+    call @show_i(%r271)
+    %x272 = call @mk_i128(0, 1)
+    %r273 = ctlz.i128 %x272
+    call @show_i(%r273)
+    %r274 = cttz.i128 %x272
+    call @show_i(%r274)
+    %r275 = bswap.i128 %x272
+    call @show_i(%r275)
+    %x276 = call @mk_u128(0, 1)
+    %r277 = rotr.i128 %x272, %x276
+    call @show_i(%r277)
+    %x278 = call @mk_u128(0, 64)
+    %r279 = rotr.i128 %x272, %x278
+    call @show_i(%r279)
+    %x280 = call @mk_u128(0, 127)
+    %r281 = rotr.i128 %x272, %x280
+    call @show_i(%r281)
+    %x282 = call @mk_i128(-9223372036854775808, 0)
+    %r283 = ctlz.i128 %x282
+    call @show_i(%r283)
+    %r284 = cttz.i128 %x282
+    call @show_i(%r284)
+    %r285 = bswap.i128 %x282
+    call @show_i(%r285)
+    %x286 = call @mk_u128(0, 1)
+    %r287 = rotr.i128 %x282, %x286
+    call @show_i(%r287)
+    %x288 = call @mk_u128(0, 64)
+    %r289 = rotr.i128 %x282, %x288
+    call @show_i(%r289)
+    %x290 = call @mk_u128(0, 127)
+    %r291 = rotr.i128 %x282, %x290
+    call @show_i(%r291)
+  ret.i64 0
+}
