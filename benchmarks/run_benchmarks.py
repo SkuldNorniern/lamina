@@ -153,6 +153,17 @@ def compile_native(name, tool, lv, outdir):
     return exe, None
 
 
+def stripped_size(exe, outdir):
+    if shutil.which("strip") is None:
+        return None
+    out = outdir / f"{exe.name}.stripped"
+    proc = subprocess.run(["strip", "-o", str(out), str(exe)], stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
+    if proc.returncode != 0 or not out.exists():
+        return None
+    return out.stat().st_size
+
+
 def run_once(exe, args=()):
     start = time.perf_counter()
     proc = subprocess.run([str(exe), *args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -186,7 +197,7 @@ def measure(sources, runs, warmup, compiler, vs_tools=()):
     with tempfile.TemporaryDirectory(prefix="lamina-bench-") as tmpdir:
         outdir = Path(tmpdir)
         for name, source in sources.items():
-            entry = {"status": "ok", "error": None, "levels": {}, "natives": {}, "sizes": {}}
+            entry = {"status": "ok", "error": None, "levels": {}, "natives": {}, "sizes": {}, "stripped": {}}
             results[name] = entry
             variants = {}
             for lv in LEVELS:
@@ -212,6 +223,7 @@ def measure(sources, runs, warmup, compiler, vs_tools=()):
 
             for key, (exe, _) in variants.items():
                 entry["sizes"][key] = exe.stat().st_size
+                entry["stripped"][key] = stripped_size(exe, outdir)
 
             expected = expected_lines(source)
             samples = {key: [] for key in variants}
@@ -283,7 +295,7 @@ def print_header(compiler, runs, warmup, vs_tools):
     print(f"  - stdout is checked against expected_output.txt on every run; a mismatch voids the row")
     if "go" in vs_tools:
         print("  - go has no -O levels: go build optimizes by default, so its column is 'go', not an O3")
-        print("    its binary links the Go runtime and GC, so it is far larger than the C/Rust/Zig binaries")
+        print("    its binary links the Go runtime and GC, so it is far larger than the C binaries")
     if "zig" in vs_tools:
         print("  - zig-O3 is zig build-exe -OReleaseFast (ReleaseSafe keeps bounds and overflow checks)")
     if vs_tools:
@@ -343,19 +355,56 @@ def print_native_table(results, vs_tools):
         cell = f"{ratio:.2f}x{mark}"
         row += f"{cell:<14}{best_key:<14}"
         print(row)
-        sizes_rows.append((name, entry["sizes"]))
+        sizes_rows.append((name, entry["sizes"], entry["stripped"]))
     for note in excluded_notes:
         print(note)
     print()
+    print_size_table(sizes_rows, keys, vs_tools)
+
+
+def human_size(n):
+    if n is None:
+        return "-"
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 ** 2:
+        return f"{n / 1024:.1f} KiB"
+    return f"{n / 1024 ** 2:.2f} MiB"
+
+
+def raw_cell(n):
+    return "-" if n is None else f"{n:,}"
+
+
+def ratio_cell(size, base):
+    if size is None or not base:
+        return "-"
+    return f"{size / base:.2f}x"
+
+
+def print_size_table(size_rows, keys, vs_tools):
+    print("binary size (bytes, as linked, not stripped; stripped = strip run on a copy)")
+    print("vs L-O3 = binary size / Lamina O3 size for the same benchmark, so 1.00x is Lamina O3")
+    labels = [("L-O2", "O2"), ("L-O3", "O3")] + [(k, k) for k in keys]
+    head = (f"  {'binary':<10}{'bytes':>12}  {'size':>10}  {'vs L-O3':>8}"
+            f"   {'stripped':>12}  {'size':>10}  {'vs L-O3':>8}")
+    for name, sizes, stripped in size_rows:
+        print(name)
+        print(head)
+        print("  " + "-" * (len(head) - 2))
+        base, stripped_base = sizes.get("O3"), stripped.get("O3")
+        for label, key in labels:
+            raw, stripped_raw = sizes.get(key), stripped.get(key)
+            print(f"  {label:<10}{raw_cell(raw):>12}  {human_size(raw):>10}  {ratio_cell(raw, base):>8}"
+                  f"   {raw_cell(stripped_raw):>12}  {human_size(stripped_raw):>10}"
+                  f"  {ratio_cell(stripped_raw, stripped_base):>8}")
+        print()
     if "go" in vs_tools:
-        print("go: not an O3 level; its binary includes the Go runtime and GC, so its size is not comparable")
-    print("binary size (bytes, as linked, not stripped)")
-    size_header = f"{'benchmark':<20}" + "".join(f"{c:<{width}}" for c in ["L-O2", "L-O3"] + keys)
-    print(size_header)
-    print("-" * len(size_header))
-    for name, sizes in sizes_rows:
-        cells = [sizes.get("O2"), sizes.get("O3")] + [sizes.get(k, "-") for k in keys]
-        print(f"{name:<20}" + "".join(f"{str(c):<{width}}" for c in cells))
+        print("go: the binary links the Go runtime, scheduler and GC; most of its size is that runtime, not the program")
+    if "rustc" in vs_tools:
+        print("rustc: the binary links std (I/O, panic and backtrace support, allocator); most of its size is that runtime")
+    if "zig" in vs_tools:
+        print("zig: the binary links the Zig std startup and panic runtime; most of its size is that runtime")
 
 
 def print_compare(results, baseline_path):
