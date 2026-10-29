@@ -835,7 +835,6 @@ fn touches_wide(
         IRInst::Switch { ty, .. } => is_wide_prim(*ty, int64_regs),
         IRInst::Select { ty, .. }
         | IRInst::Ret { ty, .. }
-        | IRInst::Phi { ty, .. }
         | IRInst::Copy { ty, .. }
         | IRInst::Load { ty, .. }
         | IRInst::Store { ty, .. }
@@ -948,7 +947,6 @@ fn quad_mention(instr: &IRInst<'_>, module: &IRModule<'_>, int64_regs: bool) -> 
         }
         IRInst::Select { ty, .. }
         | IRInst::Ret { ty, .. }
-        | IRInst::Phi { ty, .. }
         | IRInst::Copy { ty, .. }
         | IRInst::Load { ty, .. }
         | IRInst::Store { ty, .. }
@@ -1222,9 +1220,6 @@ pub(super) fn lower_instruction<'a>(
             let base = address_base(ptr, cx)?;
             let words = cx.operand_words(value)?;
             cx.store_words(base, words);
-        }
-        IRInst::Phi { result, ty, .. } if is_wide_type(ty, cx.int64_regs) => {
-            cx.result_pair(result);
         }
         IRInst::Copy { result, ty, value } if is_wide_type(ty, cx.int64_regs) => {
             let words = cx.operand_words(value)?;
@@ -1561,7 +1556,6 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::Trunc { .. }
         | IRInst::Load { .. }
         | IRInst::Store { .. }
-        | IRInst::Phi { .. }
         | IRInst::Copy { .. }
         | IRInst::Ret { .. }
         | IRInst::IntToFloat { .. }
@@ -1662,31 +1656,6 @@ fn address_base<'a>(ptr: &IRVal<'a>, cx: &mut Cx<'_, 'a>) -> Result<Register, Fr
         IRVal::Global(name) => cx.globals.register(name, cx.vregs),
         IRVal::Constant(_) => Err(FromIRError::UnsupportedInstruction),
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn phi_words<'a>(
-    value: &IRVal<'a>,
-    vregs: &mut VirtualRegAllocator,
-    vars: &mut VarBindings<'a>,
-    globals: &mut GlobalAddresses<'a>,
-    reservations: &mut HashMap<VirtualReg, usize>,
-    module: &IRModule<'a>,
-    pointer: PointerWidth,
-    int64_regs: bool,
-) -> Result<(Operand, Operand), FromIRError> {
-    let mut cx = Cx {
-        vregs,
-        vars,
-        reservations,
-        globals,
-        module,
-        pointer,
-        int64_regs,
-        out: Vec::new(),
-    };
-    let words = cx.operand_words(value)?;
-    Ok((words.lo, words.hi))
 }
 
 pub(super) fn load_wide_parameter(

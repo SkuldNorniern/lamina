@@ -1,5 +1,5 @@
-//! Edge moves for block arguments and phis: sequencing parallel copies and placing them on
-//! CFG edges. Shared by textual phi lowering and SSA destruction.
+//! Edge moves for block arguments: sequencing parallel copies and placing them on
+//! CFG edges. Used by SSA destruction.
 
 use crate::{
     block::Block,
@@ -133,8 +133,8 @@ pub fn insert_edge_moves(
     }
 }
 
-/// Orders the copies on one edge so none overwrites a value another still reads. A phi
-/// reads all of its operands at once, and emitting a swap in source order would make
+/// Orders the copies on one edge so none overwrites a value another still reads. The
+/// copies on an edge read all of their operands at once, and emitting a swap in source order would make
 /// both destinations hold the same value. A cycle is broken by saving one destination
 /// into a fresh register first.
 pub fn sequence_parallel_copies(

@@ -4,7 +4,7 @@
 //! store of one scalar type, the slot is never read before it is written on some path,
 //! and no access is volatile. A promoted slot becomes one virtual register: each store
 //! copies into it and each load copies out of it. MIR registers may be defined on several
-//! control-flow edges (phi lowering does this), so no merge placement is needed.
+//! control-flow edges, so no merge placement is needed.
 
 use crate::mir::{
     AddressMode, AddressSpace, Block, Function, Instruction, MirType, Operand, Register,

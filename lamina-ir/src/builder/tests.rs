@@ -817,19 +817,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "phi was removed from Lamina IR")]
-    fn test_phi_is_rejected() {
-        let mut builder = IRBuilder::new();
-        builder
-            .function("phi_test", Type::Primitive(PrimitiveType::I32))
-            .phi(
-                "result",
-                Type::Primitive(PrimitiveType::I32),
-                vec![(i32(1), "entry")],
-            );
-    }
-
-    #[test]
     fn test_select_instruction() {
         let mut builder = IRBuilder::new();
 

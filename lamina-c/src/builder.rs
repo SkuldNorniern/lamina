@@ -609,21 +609,6 @@ pub unsafe extern "C" fn lia_builder_call(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_phi(
-    _builder: *mut LaminaBuilder,
-    _result: *const c_char,
-    _ty: *const LaminaType,
-    _values: *const *const LaminaValue,
-    _labels: *const *const c_char,
-    _count: usize,
-) -> LaminaStatus {
-    set_error(
-        "phi was removed from Lamina IR; assign the value with lia_builder_copy in each predecessor",
-    );
-    LaminaStatus::ErrorInvalidArgument
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_copy(
     builder: *mut LaminaBuilder,
     result: *const c_char,

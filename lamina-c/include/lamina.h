@@ -139,10 +139,6 @@ lia_status_t lia_builder_switch(lia_builder_t *b,
     const lia_switch_case_t *cases, size_t case_count);
 lia_status_t lia_builder_call(lia_builder_t *b, const char *result,
     const char *fn_name, const lia_value_t *const *args, size_t n);
-/* Always fails: phi is not part of Lamina IR. Assign with lia_builder_copy in each predecessor. */
-lia_status_t lia_builder_phi(lia_builder_t *b, const char *result,
-    const lia_type_t *ty, const lia_value_t *const *vals,
-    const char *const *labels, size_t n);
 /* Copies one scalar value; a primitive type is required, aggregates fail. */
 lia_status_t lia_builder_copy(lia_builder_t *b, const char *result,
     const lia_type_t *ty, const lia_value_t *val);

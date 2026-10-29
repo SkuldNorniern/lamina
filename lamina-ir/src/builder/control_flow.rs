@@ -81,19 +81,6 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::Copy { result, ty, value })
     }
 
-    /// Removed: `phi` is not part of the text IR.
-    ///
-    /// # Panics
-    /// Always. Assign the value with `copy` in each predecessor instead.
-    pub fn phi(
-        &mut self,
-        _result: &'a str,
-        _ty: Type<'a>,
-        _incoming: Vec<(Value<'a>, &'a str)>,
-    ) -> &mut Self {
-        panic!("phi was removed from Lamina IR; assign the value with copy in each predecessor");
-    }
-
     /// Creates a function call instruction
     pub fn call(
         &mut self,

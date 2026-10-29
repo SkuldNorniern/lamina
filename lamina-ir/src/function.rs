@@ -93,7 +93,7 @@
 //!
 //! ### Variable Scoping
 //! - Variables are scoped to their function
-//! - Values from different blocks can be merged with optional `phi` nodes, or by reassigning a name on each path
+//! - Values from different blocks can be merged by reassigning a name on each path
 //! - No global variable shadowing within functions
 //!
 //! ## Function Creation Patterns
@@ -224,7 +224,7 @@ use std::{collections::HashMap, fmt, iter, num::NonZeroU32};
 
 use crate::{
     instruction::Instruction,
-    types::{Identifier, Label, PrimitiveType, Type, Value},
+    types::{Identifier, Label, PrimitiveType, Type},
 };
 
 /// Function annotations that provide metadata about function behavior.
@@ -403,15 +403,6 @@ pub enum FunctionAnnotation {
     /// ending in `unreachable`. Any other instruction is rejected, since it would
     /// expect a frame.
     Naked,
-
-    /// Promise that this function does not use the 128-byte System V red zone below
-    /// `%rsp`, written `@no_red_zone`.
-    ///
-    /// An interrupt clobbers that area, so code that runs with interrupts enabled must
-    /// not keep data in it. The backend never stores below `%rsp` without first moving
-    /// `%rsp`, so every function meets this promise already; the annotation makes the
-    /// requirement explicit in the source.
-    NoRedZone,
 
     /// Mark this function as unsafe (bypasses safety checks).
     ///
@@ -667,9 +658,8 @@ impl<'a> Function<'a> {
     /// - Return instructions carry a value when the return type is non-void,
     ///   and are bare when the return type is void.
     /// - Every read of a variable is assigned on every path from the entry block to
-    ///   it. Parameters are assigned on entry. A phi reads its operand on the edge from
-    ///   its named predecessor. Reads in unreachable blocks see only parameters and
-    ///   definitions earlier in the same block.
+    ///   it. Parameters are assigned on entry. Reads in unreachable blocks see only
+    ///   parameters and definitions earlier in the same block.
     ///
     /// Returns `Ok(())` when the function is valid, or a list of diagnostic
     /// strings describing every violation found.
@@ -745,16 +735,6 @@ impl<'a> Function<'a> {
                                 errors.push(format!(
                                     "switch case target '{}' in block '{}' of '@{}' not found",
                                     case_label, label, self.name
-                                ));
-                            }
-                        }
-                    }
-                    Instruction::Phi { incoming, .. } => {
-                        for (_, pred) in incoming {
-                            if !self.basic_blocks.contains_key(pred) {
-                                errors.push(format!(
-                                    "phi in block '{}' of '@{}' has incoming edge from undefined block '{}'",
-                                    label, self.name, pred
                                 ));
                             }
                         }
@@ -914,28 +894,6 @@ impl<'a> Function<'a> {
                 params.clone()
             };
             for instr in &block.instructions {
-                if let Instruction::Phi {
-                    result, incoming, ..
-                } = instr
-                {
-                    if reachable[b] {
-                        for (value, pred) in incoming {
-                            let (Value::Variable(name), Some(&p)) = (value, index.get(pred)) else {
-                                continue;
-                            };
-                            if reachable[p] && !assigned(&outs[p], name) {
-                                errors.push(format!(
-                                    "phi in block '{}' of '@{}' reads '%{}' from '{}', where it is not assigned on every path to the end of that block",
-                                    label, self.name, name, pred
-                                ));
-                            }
-                        }
-                    }
-                    if let Some(&i) = var_index.get(result) {
-                        set_bit(&mut cur, i);
-                    }
-                    continue;
-                }
                 for used in instr.used_vars() {
                     if !assigned(&cur, used) {
                         errors.push(format!(
@@ -1075,7 +1033,6 @@ impl fmt::Display for FunctionAnnotation {
             FunctionAnnotation::Section(section) => write!(f, "@section(\"{section}\")"),
             FunctionAnnotation::Align(alignment) => write!(f, "@align({alignment})"),
             FunctionAnnotation::Naked => write!(f, "@naked"),
-            FunctionAnnotation::NoRedZone => write!(f, "@no_red_zone"),
             FunctionAnnotation::Unsafe => write!(f, "@unsafe"),
             FunctionAnnotation::Deprecated(None) => write!(f, "@deprecated"),
             FunctionAnnotation::Deprecated(Some(msg)) => write!(f, "@deprecated({msg})"),
@@ -1176,61 +1133,6 @@ mod tests {
         instruction::{AllocType, BinaryOp, Instruction},
         types::{Literal, PrimitiveType, Type, Value},
     };
-
-    #[test]
-    fn phi_reads_value_its_own_block_defines_later() {
-        let mut blocks = HashMap::new();
-        blocks.insert(
-            "entry",
-            BasicBlock {
-                instructions: vec![Instruction::Jmp {
-                    target_label: "loop",
-                }],
-                instruction_locs: Vec::new(),
-            },
-        );
-        blocks.insert(
-            "loop",
-            BasicBlock {
-                instructions: vec![
-                    Instruction::Phi {
-                        result: "i",
-                        ty: Type::Primitive(PrimitiveType::I64),
-                        incoming: vec![
-                            (Value::Constant(Literal::I64(0)), "entry"),
-                            (Value::Variable("next"), "loop"),
-                        ],
-                    },
-                    Instruction::Binary {
-                        op: BinaryOp::Add,
-                        result: "next",
-                        ty: PrimitiveType::I64,
-                        lhs: Value::Variable("i"),
-                        rhs: Value::Constant(Literal::I64(1)),
-                    },
-                    Instruction::Br {
-                        condition: Value::Variable("next"),
-                        true_label: "loop",
-                        false_label: "loop",
-                    },
-                ],
-                instruction_locs: Vec::new(),
-            },
-        );
-        let func = Function {
-            name: "spin",
-            signature: FunctionSignature {
-                params: vec![],
-                return_type: Type::Void,
-                variadic: false,
-            },
-            annotations: vec![],
-            basic_blocks: blocks,
-            entry_block: "entry",
-        };
-
-        assert_eq!(func.validate(), Ok(()));
-    }
 
     #[test]
     fn test_display_function_annotation() {
@@ -1798,43 +1700,6 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_phi_from_undefined_block_fails() {
-        let mut blocks = HashMap::new();
-        blocks.insert(
-            "entry",
-            BasicBlock {
-                instructions: vec![Instruction::Jmp {
-                    target_label: "join",
-                }],
-                instruction_locs: Vec::new(),
-            },
-        );
-        blocks.insert(
-            "join",
-            BasicBlock {
-                instructions: vec![
-                    Instruction::Phi {
-                        result: "p",
-                        ty: Type::Primitive(PrimitiveType::I32),
-                        incoming: vec![
-                            (Value::Constant(Literal::I32(1)), "entry"),
-                            (Value::Constant(Literal::I32(2)), "ghost"),
-                        ],
-                    },
-                    Instruction::Ret {
-                        ty: Type::Primitive(PrimitiveType::I32),
-                        value: Some(Value::Variable("p")),
-                    },
-                ],
-                instruction_locs: Vec::new(),
-            },
-        );
-        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
-        let errs = f.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("'ghost'")));
-    }
-
-    #[test]
     fn test_validate_duplicate_switch_case_fails() {
         let mut blocks = HashMap::new();
         blocks.insert(
@@ -2050,63 +1915,6 @@ mod tests {
             ("j", vec![da_ret(Value::Variable("p"))]),
         ]);
         assert!(f.validate().is_err());
-    }
-
-    #[test]
-    fn test_definite_assignment_phi_operand_must_be_assigned_on_its_edge() {
-        let phi = |incoming: Vec<(Value<'static>, &'static str)>| Instruction::Phi {
-            result: "p",
-            ty: Type::Primitive(PrimitiveType::I32),
-            incoming,
-        };
-        let f = da_func(vec![
-            ("entry", vec![da_branch("a", "b")]),
-            (
-                "a",
-                vec![da_add("x", Value::Constant(Literal::I32(1))), da_jump("j")],
-            ),
-            ("b", vec![da_jump("j")]),
-            (
-                "j",
-                vec![
-                    phi(vec![
-                        (Value::Variable("x"), "a"),
-                        (Value::Variable("x"), "b"),
-                    ]),
-                    da_ret(Value::Variable("p")),
-                ],
-            ),
-        ]);
-        let errs = f.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("'%x' from 'b'")));
-        assert!(!errs.iter().any(|e| e.contains("from 'a'")));
-    }
-
-    #[test]
-    fn test_definite_assignment_phi_operand_assigned_on_each_edge_accepted() {
-        let f = da_func(vec![
-            ("entry", vec![da_branch("a", "b")]),
-            (
-                "a",
-                vec![da_add("x", Value::Constant(Literal::I32(1))), da_jump("j")],
-            ),
-            (
-                "b",
-                vec![da_add("z", Value::Constant(Literal::I32(2))), da_jump("j")],
-            ),
-            (
-                "j",
-                vec![
-                    Instruction::Phi {
-                        result: "p",
-                        ty: Type::Primitive(PrimitiveType::I32),
-                        incoming: vec![(Value::Variable("x"), "a"), (Value::Variable("z"), "b")],
-                    },
-                    da_ret(Value::Variable("p")),
-                ],
-            ),
-        ]);
-        assert_eq!(f.validate(), Ok(()));
     }
 
     #[test]

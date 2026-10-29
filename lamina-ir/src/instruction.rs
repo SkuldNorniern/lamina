@@ -22,9 +22,6 @@
 //! - **Function calls**: Invoking other functions
 //! - **Returns**: Exiting functions with optional return values
 //!
-//! ### Debug and I/O
-//! - **Phi nodes**: optional value merging from different control paths
-//!
 //! ## Values
 //!
 //! Values are named and typed. A name may be assigned again, but not with a
@@ -523,7 +520,7 @@ pub enum Instruction<'a> {
     ///
     /// This is the value form of a conditional expression:
     /// `result = cond ? true_val : false_val`.
-    /// It avoids introducing extra basic blocks compared to `br` + `phi`.
+    /// It avoids introducing extra basic blocks compared to a branch that assigns the result on each path.
     Select {
         result: Identifier<'a>,
         ty: Type<'a>,
@@ -881,13 +878,6 @@ pub enum Instruction<'a> {
         args: Vec<Value<'a>>,
         // Return type needs to be known from function signature context
     },
-    // --- Phi ---
-    Phi {
-        result: Identifier<'a>,
-        ty: Type<'a>,
-        // Pairs of (value, predecessor_label)
-        incoming: Vec<(Value<'a>, Label<'a>)>,
-    },
     // --- Typed value copy: `%r = copy.<ty> <value>` moves one first-class scalar ---
     Copy {
         result: Identifier<'a>,
@@ -1011,7 +1001,6 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         // Function calls (from Instruction::Call - can have result)
         "call",
         "asm",
-        // Edge merge (from Instruction::Phi)
         "copy",
         // I/O operations (from Instruction::Write, Instruction::Read, etc. - with result)
         "write",
@@ -1165,7 +1154,6 @@ impl<'a> Instruction<'a> {
             | Instruction::GetFieldPtr { .. } => prim(&PrimitiveType::Ptr),
             Instruction::Select { ty, .. }
             | Instruction::Load { ty, .. }
-            | Instruction::Phi { ty, .. }
             | Instruction::Copy { ty, .. }
             | Instruction::AtomicLoad { ty, .. }
             | Instruction::AtomicBinary { ty, .. } => Some(ty.clone()),
@@ -1204,7 +1192,6 @@ impl<'a> Instruction<'a> {
             | Instruction::ReadByte { result, .. }
             | Instruction::Write { result, .. }
             | Instruction::Read { result, .. }
-            | Instruction::Phi { result, .. }
             | Instruction::Copy { result, .. }
             | Instruction::PtrToInt { result, .. }
             | Instruction::IntToPtr { result, .. }
@@ -1332,11 +1319,6 @@ impl<'a> Instruction<'a> {
                 push_value(ptr, &mut vars);
                 push_value(expected, &mut vars);
                 push_value(desired, &mut vars);
-            }
-            Instruction::Phi { incoming, .. } => {
-                for (v, _) in incoming {
-                    push_value(v, &mut vars);
-                }
             }
             Instruction::Copy { value, .. } => push_value(value, &mut vars),
             #[cfg(feature = "nightly")]
@@ -1692,20 +1674,6 @@ impl fmt::Display for Instruction<'_> {
                 }
                 write!(f, ")")
             }
-            Instruction::Phi {
-                result,
-                ty,
-                incoming,
-            } => {
-                write!(f, "%{result} = phi.{ty} ")?;
-                for (i, (val, label)) in incoming.iter().enumerate() {
-                    write!(f, "[{val}, {label}]")?;
-                    if i < incoming.len() - 1 {
-                        write!(f, ", ")?;
-                    }
-                }
-                Ok(())
-            }
             Instruction::Copy { result, ty, value } => {
                 write!(f, "%{result} = copy.{ty} {value}")
             }
@@ -1928,20 +1896,6 @@ mod tests {
             args: vec![Value::Variable("x"), Value::Variable("y")],
         };
         assert_eq!(format!("{}", instr14), "%sum = call @calculate(%x, %y)");
-
-        // Phi
-        let instr15 = Instruction::Phi {
-            result: "merged_val",
-            ty: Type::Primitive(PrimitiveType::I32),
-            incoming: vec![
-                (Value::Variable("val1"), "label1"),
-                (Value::Constant(Literal::I32(10)), "label2"),
-            ],
-        };
-        assert_eq!(
-            format!("{}", instr15),
-            "%merged_val = phi.i32 [%val1, label1], [10, label2]"
-        );
 
         let copy = Instruction::Copy {
             result: "x",
