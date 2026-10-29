@@ -2498,6 +2498,54 @@ entry:
     }
 
     #[test]
+    fn atomic_cmpxchg_parses_and_displays_round_trip() {
+        let success = ["relaxed", "acquire", "release", "acqrel", "seqcst"];
+        let failure = ["relaxed", "acquire", "seqcst"];
+        let mut expected = Vec::new();
+        for s in success {
+            for f in failure {
+                expected.push(format!("%old = atomic_cmpxchg.i32 %p, 1, 2, {s}, {f}"));
+            }
+        }
+        expected.push("%old = atomic_cmpxchg.u8 %p, 255, 0, seqcst, seqcst".to_string());
+
+        let source = atomic_entry(&expected);
+        let module = parse_module(&source).expect("parse cmpxchg");
+        let rendered: Vec<String> = module.functions["f"].basic_blocks["entry"]
+            .instructions
+            .iter()
+            .take(expected.len())
+            .map(|i| i.to_string())
+            .collect();
+        assert_eq!(rendered, expected);
+
+        let rerendered_source = atomic_entry(&rendered);
+        let reparsed = parse_module(&rerendered_source).expect("reparse cmpxchg");
+        let reparsed_text: Vec<String> = reparsed.functions["f"].basic_blocks["entry"]
+            .instructions
+            .iter()
+            .take(expected.len())
+            .map(|i| i.to_string())
+            .collect();
+        assert_eq!(reparsed_text, expected);
+    }
+
+    #[test]
+    fn atomic_cmpxchg_builds_its_instruction_variant() {
+        let source =
+            atomic_entry(&["%old = atomic_cmpxchg.i64 %p, 7, 8, acquire, relaxed".to_string()]);
+        let module = parse_module(&source).expect("parse cmpxchg");
+        assert!(matches!(
+            &module.functions["f"].basic_blocks["entry"].instructions[0],
+            Instruction::AtomicCompareExchange {
+                success_ordering: MemoryOrdering::Acquire,
+                failure_ordering: MemoryOrdering::Relaxed,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn atomic_operations_build_their_instruction_variants() {
         let source = atomic_entry(&[
             "%old = atomic_exchange.u32 %p, 9, acqrel".to_string(),
@@ -2555,8 +2603,20 @@ entry:
                 "two results are not supported yet",
             ),
             (
-                "%r = atomic_cmpxchg.i64 %p, 1, 2, seqcst, seqcst",
-                "atomic_cmpxchg is not supported yet",
+                "%r = atomic_cmpxchg.i64 %p, 1, 2, seqcst, release",
+                "atomic_cmpxchg cannot use release failure ordering",
+            ),
+            (
+                "%r = atomic_cmpxchg.i64 %p, 1, 2, seqcst, acqrel",
+                "atomic_cmpxchg cannot use acqrel failure ordering",
+            ),
+            (
+                "atomic_cmpxchg.i64 %p, 1, 2, seqcst, seqcst",
+                "atomic_cmpxchg produces a value",
+            ),
+            (
+                "%r = atomic_cmpxchg.f64 %p, 1.0, 2.0, seqcst, seqcst",
+                "integer or pointer type",
             ),
             (
                 "atomic_add.i64 %p, 5, seqcst",

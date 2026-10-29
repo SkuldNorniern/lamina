@@ -754,9 +754,9 @@ pub enum Instruction<'a> {
         ordering: MemoryOrdering,
     },
     AtomicCompareExchange {
-        // Atomic compare-exchange operation
+        // Atomic compare-exchange. `result` is the value that was in memory before
+        // the operation; the exchange happened exactly when it equals `expected`.
         result: Identifier<'a>,
-        success: Identifier<'a>, // Boolean indicating if exchange succeeded
         ty: Type<'a>,
         ptr: Value<'a>,
         expected: Value<'a>,
@@ -1022,6 +1022,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "atomic_or",
         "atomic_xor",
         "atomic_exchange",
+        "atomic_cmpxchg",
         // Variadic argument read (from Instruction::VaArg)
         "va_arg",
     ];
@@ -1563,7 +1564,6 @@ impl fmt::Display for Instruction<'_> {
             } => write!(f, "%{result} = {op}.{ty} {ptr}, {value}, {ordering}"),
             Instruction::AtomicCompareExchange {
                 result,
-                success,
                 ty,
                 ptr,
                 expected,
@@ -1572,7 +1572,7 @@ impl fmt::Display for Instruction<'_> {
                 failure_ordering,
             } => write!(
                 f,
-                "%{result}, %{success} = atomic_cmpxchg.{ty} {ptr}, {expected}, {desired}, {success_ordering}, {failure_ordering}"
+                "%{result} = atomic_cmpxchg.{ty} {ptr}, {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
             Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
             #[cfg(feature = "nightly")]

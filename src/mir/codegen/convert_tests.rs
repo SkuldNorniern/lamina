@@ -753,7 +753,7 @@ fn atomic_binary_result_is_the_old_value_register() {
 }
 
 #[test]
-fn atomic_compare_exchange_is_not_lowered_yet() {
+fn atomic_compare_exchange_lowers_to_mir() {
     let ir = parse_module("fn @f(ptr %p) -> i64 {\nentry:\n ret.i64 0\n}").expect("parse");
     let mut module = ir;
     let block = module
@@ -765,7 +765,6 @@ fn atomic_compare_exchange_is_not_lowered_yet() {
         0,
         IRInst::AtomicCompareExchange {
             result: "old",
-            success: "ok",
             ty: IRType::Primitive(IRPrim::I64),
             ptr: IRVal::Variable("p"),
             expected: IRVal::Variable("p"),
@@ -774,8 +773,16 @@ fn atomic_compare_exchange_is_not_lowered_yet() {
             failure_ordering: IRMemOrd::SeqCst,
         },
     );
-    let err = from_ir(&module, "cas").expect_err("cmpxchg must not lower yet");
-    assert!(err.to_string().contains("atomic_cmpxchg"), "{err}");
+    let lowered = from_ir(&module, "cas").expect("cmpxchg lowers");
+    let entry = &lowered.functions["f"].blocks[0].instructions;
+    assert!(matches!(
+        entry[0],
+        Instruction::AtomicCompareExchange {
+            success_ordering: MemoryOrdering::SeqCst,
+            failure_ordering: MemoryOrdering::SeqCst,
+            ..
+        }
+    ));
 }
 
 #[test]

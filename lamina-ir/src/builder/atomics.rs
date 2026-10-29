@@ -60,12 +60,11 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Performs an atomic compare-exchange operation.
+    /// Performs an atomic compare-exchange and binds the old value to `result`.
     #[allow(clippy::too_many_arguments)]
     pub fn atomic_compare_exchange(
         &mut self,
         result: &'a str,
-        success: &'a str,
         ty: Type<'a>,
         ptr: Value<'a>,
         expected: Value<'a>,
@@ -75,7 +74,6 @@ impl<'a> IRBuilder<'a> {
     ) -> &mut Self {
         self.inst(Instruction::AtomicCompareExchange {
             result,
-            success,
             ty,
             ptr,
             expected,

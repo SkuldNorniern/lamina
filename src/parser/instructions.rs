@@ -25,7 +25,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
         let result = state.parse_value_identifier()?;
         if state.current_char() == Some(',') {
             return Err(state.error(
-                "Instructions with two results are not supported yet\n  Hint: atomic_cmpxchg yields a value and a success flag, which the text syntax cannot express yet",
+                "Instructions with two results are not supported yet\n  Hint: Each instruction has one result. atomic_cmpxchg yields the old value; compare it with the expected value (eq) to learn whether the exchange happened",
             ));
         }
         state.expect_char('=')?;
@@ -33,8 +33,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
         let opcode_str = state.parse_identifier_str()?;
 
         match opcode_str {
-            "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr" | "rotl"
-            | "rotr" => parse_binary_op(state, result, opcode_str),
+            "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr"
+            | "rotl" | "rotr" => parse_binary_op(state, result, opcode_str),
             "neg" | "not" | "sqrt" | "popcount" | "ctlz" | "cttz" | "bswap" => {
                 parse_unary_op(state, result, opcode_str)
             }
@@ -120,9 +120,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "atomic_or" => parse_atomic_rmw(state, result, AtomicBinOp::Or),
             "atomic_xor" => parse_atomic_rmw(state, result, AtomicBinOp::Xor),
             "atomic_exchange" => parse_atomic_rmw(state, result, AtomicBinOp::Exchange),
-            "atomic_cmpxchg" => Err(state.error(
-                "atomic_cmpxchg is not supported yet: it yields two results\n  Hint: Use atomic_exchange or an atomic_add-style operation for now",
-            )),
+            "atomic_cmpxchg" => parse_atomic_cmpxchg(state, result),
             "atomic_store" | "fence" => Err(state.error(format!(
                 "{opcode_str} produces no result\n  Hint: Drop the '%name =' prefix"
             ))),
@@ -339,6 +337,39 @@ fn parse_atomic_rmw<'a>(
         ptr,
         value,
         ordering,
+    })
+}
+
+/// Parses `atomic_cmpxchg.T ptr, expected, desired, success, failure`. The result is
+/// the value that was in memory before the operation.
+fn parse_atomic_cmpxchg<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let ty = parse_atomic_type(state)?;
+    let ptr = parse_value(state)?;
+    state.expect_char(',')?;
+    let expected = parse_typed_operand(state, &Type::Primitive(ty))?;
+    state.expect_char(',')?;
+    let desired = parse_typed_operand(state, &Type::Primitive(ty))?;
+    let success_ordering = parse_memory_ordering_operand(state)?;
+    let failure_ordering = parse_memory_ordering_operand(state)?;
+    if matches!(
+        failure_ordering,
+        MemoryOrdering::Release | MemoryOrdering::AcqRel
+    ) {
+        return Err(state.error(format!(
+            "atomic_cmpxchg cannot use {failure_ordering} failure ordering\n  Hint: The failure ordering is a load: use relaxed, acquire or seqcst"
+        )));
+    }
+    Ok(Instruction::AtomicCompareExchange {
+        result,
+        ty: Type::Primitive(ty),
+        ptr,
+        expected,
+        desired,
+        success_ordering,
+        failure_ordering,
     })
 }
 

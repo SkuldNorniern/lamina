@@ -1085,7 +1085,6 @@ mod tests {
             )
             .atomic_compare_exchange(
                 "old_val",
-                "success",
                 Type::Primitive(PrimitiveType::I32),
                 var("atomic_var"),
                 i32(15),

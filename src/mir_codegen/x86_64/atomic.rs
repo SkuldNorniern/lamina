@@ -100,10 +100,35 @@ pub(super) fn emit<W: Write>(
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
         }
-        MirInst::AtomicCompareExchange { .. } => {
-            return Err(LaminaError::ValidationError(
-                "x86_64 backend does not support atomic_cmpxchg yet".to_string(),
-            ));
+        MirInst::AtomicCompareExchange {
+            ty,
+            dst,
+            addr,
+            expected,
+            desired,
+            ..
+        } => {
+            let size = ty.size_bytes();
+            let suffix = size_suffix_for(size);
+            let new = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
+            let ptr = match reg_alloc.alloc_scratch() {
+                Some(ptr) => ptr,
+                None => {
+                    reg_alloc.free_scratch(new);
+                    return Err(scratch_error());
+                }
+            };
+            let new_sized = register_for_size(new, size).ok_or_else(invalid_size)?;
+            load_operand_to_register(desired, writer, reg_alloc, stack_slots, new)?;
+            load_base(address_base(addr)?, writer, reg_alloc, stack_slots, ptr)?;
+            load_operand_to_rax(expected, writer, reg_alloc, stack_slots)?;
+            writeln!(writer, "    lock cmpxchg{suffix} %{new_sized}, (%{ptr})")?;
+            reg_alloc.free_scratch(ptr);
+            reg_alloc.free_scratch(new);
+            extend_rax(size, writer)?;
+            if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
         }
         MirInst::Fence { ordering } => {
             if *ordering == MemoryOrdering::SeqCst {

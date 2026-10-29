@@ -2262,7 +2262,30 @@ fn convert_instruction<'a>(
                 result,
             }])
         }
-        IRInst::AtomicCompareExchange { .. } => Err(FromIRError::UnsupportedInstruction),
+        IRInst::AtomicCompareExchange {
+            result,
+            ty,
+            ptr,
+            expected,
+            desired,
+            success_ordering,
+            failure_ordering,
+        } => {
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            let mir_ty = map_ir_type(ty)?;
+            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg, globals)?;
+            let expected = resolve_operand(expected, vreg_alloc, var_to_reg, globals)?;
+            let desired = resolve_operand(desired, vreg_alloc, var_to_reg, globals)?;
+            Ok(vec![Instruction::AtomicCompareExchange {
+                ty: mir_ty,
+                dst,
+                addr,
+                expected,
+                desired,
+                success_ordering: ir_ordering_to_mir(success_ordering),
+                failure_ordering: ir_ordering_to_mir(failure_ordering),
+            }])
+        }
         #[cfg(feature = "nightly")]
         IRInst::SimdTernary { .. }
         | IRInst::SimdShuffle { .. }
