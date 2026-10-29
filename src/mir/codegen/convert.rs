@@ -393,10 +393,17 @@ pub fn from_ir_for_target(
             mir_module.mark_exported(*func_name);
         }
 
-        let mir_func =
-            convert_function(func_name, ir_func, ir, &mut libcalls, pointer, int64_regs)?
-                .with_pointer_width(pointer)
-                .with_int64_regs(int64_regs);
+        let mir_func = convert_function(
+            func_name,
+            ir_func,
+            ir,
+            &mut libcalls,
+            pointer,
+            int64_regs,
+            endianness,
+        )?
+        .with_pointer_width(pointer)
+        .with_int64_regs(int64_regs);
         mir_module.add_function(mir_func);
     }
     for (name, libcall) in libcalls {
@@ -790,6 +797,7 @@ fn convert_function<'a>(
     libcalls: &mut BTreeMap<String, wide::LibCall>,
     pointer: PointerWidth,
     int64_regs: bool,
+    endianness: Endianness,
 ) -> Result<Function, FromIRError> {
     if !f.signature.variadic
         && f.basic_blocks
@@ -912,6 +920,7 @@ fn convert_function<'a>(
                     &mut vreg_alloc,
                     &mut aggregate_prelude,
                     int64_regs,
+                    endianness,
                 );
                 var_to_reg.wide.insert(param.name, pair);
             } else {
@@ -1004,6 +1013,7 @@ fn convert_function<'a>(
                 &mut globals,
                 pointer,
                 int64_regs,
+                endianness,
             )
             .map_err(|error| match error {
                 FromIRError::UnsupportedInstruction => FromIRError::UnsupportedInstructionIn {
@@ -1203,6 +1213,7 @@ fn convert_instruction<'a>(
     globals: &mut GlobalAddresses<'a>,
     pointer: PointerWidth,
     int64_regs: bool,
+    endianness: Endianness,
 ) -> Result<Vec<Instruction>, FromIRError> {
     let mut wide_cx = wide::Cx {
         vregs: &mut *vreg_alloc,
@@ -1212,6 +1223,7 @@ fn convert_instruction<'a>(
         module: facts.module,
         pointer,
         int64_regs,
+        endianness,
         out: Vec::new(),
     };
     if wide::lower_instruction(instr, &mut wide_cx)? {

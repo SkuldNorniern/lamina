@@ -18,6 +18,7 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
         TargetArchitecture::Arx64 => os_supported_for_arx64(os),
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => os_supported_for_riscv(os),
         TargetArchitecture::LoongArch64 => os == TargetOperatingSystem::Linux,
+        TargetArchitecture::S390x => os == TargetOperatingSystem::Linux,
         TargetArchitecture::I686 => os == TargetOperatingSystem::Linux,
         // wasi_snapshot_preview1 passes pointers as i32, so it has no wasm64 form.
         TargetArchitecture::Wasm32 => {

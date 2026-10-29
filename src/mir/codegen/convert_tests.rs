@@ -970,3 +970,63 @@ mod pairs_on_a_32_bit_target {
         );
     }
 }
+
+#[test]
+fn a_big_endian_global_holds_its_literal_most_significant_byte_first() {
+    let ir = parse_module(
+        "global $a: i64 = 41\nglobal $b: f64 = 2.5\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+    )
+    .expect("parse globals");
+    let module = from_ir_for_target(&ir, "globals", TargetArchitecture::S390x.data_layout())
+        .expect("lower globals");
+    assert_eq!(
+        module.globals["a"].initializer.as_deref(),
+        Some(41i64.to_be_bytes().as_slice())
+    );
+    assert_eq!(
+        module.globals["b"].initializer.as_deref(),
+        Some(2.5f64.to_be_bytes().as_slice())
+    );
+}
+
+#[test]
+fn a_big_endian_pair_puts_its_high_word_at_the_lower_address() {
+    // The low word is 3 and the high word 0, so which address each lands at says which
+    // half of the pair the target calls the first word in memory.
+    let low_word_offset = |layout| {
+        let ir = parse_module(
+            "fn @main() -> i64 {\nentry:\n %p = stackalloc.i128\n \
+             store.i128 %p, 3\n ret.i64 0\n}",
+        )
+        .expect("parse pair store");
+        let module = from_ir_for_target(&ir, "pair", layout).expect("lower pair store");
+        let instructions: Vec<&Instruction> = module.functions["main"].blocks[0]
+            .instructions
+            .iter()
+            .map(|inst| &inst.instr)
+            .collect();
+        let base = match instructions.first() {
+            Some(Instruction::StackAddr { dst, .. }) => dst.clone(),
+            other => panic!("expected a stack address, found {other:?}"),
+        };
+        let mut displaced = HashMap::new();
+        let mut at = None;
+        for instruction in instructions {
+            match instruction {
+                Instruction::Lea { dst, offset, .. } => {
+                    displaced.insert(dst.clone(), *offset);
+                }
+                Instruction::Store { src, addr, .. } if src.integer_constant() == Some(3) => {
+                    let AddressMode::BaseOffset { base: on, .. } = addr else {
+                        panic!("expected base+offset addressing");
+                    };
+                    at = Some(if *on == base { 0 } else { displaced[on] });
+                }
+                _ => {}
+            }
+        }
+        at.expect("no store of the low word")
+    };
+    assert_eq!(low_word_offset(TargetArchitecture::X86_64.data_layout()), 0);
+    assert_eq!(low_word_offset(TargetArchitecture::S390x.data_layout()), 8);
+}

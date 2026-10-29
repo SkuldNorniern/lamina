@@ -252,6 +252,9 @@ fn assemble_native(
                 (TargetArchitecture::LoongArch64, TargetOperatingSystem::Linux) => {
                     "loongarch64-unknown-linux-gnu"
                 }
+                (TargetArchitecture::S390x, TargetOperatingSystem::Linux) => {
+                    "s390x-unknown-linux-gnu"
+                }
                 _ => {
                     return Err(LaminaError::ValidationError(format!(
                         "Unsupported target combination for clang assembler: {target_arch:?} {target_os:?}"
@@ -424,6 +427,7 @@ fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
         TargetArchitecture::Riscv32 => Some("riscv32-linux-gnu"),
         TargetArchitecture::Riscv64 => Some("riscv64-linux-gnu"),
         TargetArchitecture::LoongArch64 => Some("loongarch64-linux-gnu"),
+        TargetArchitecture::S390x => Some("s390x-linux-gnu"),
         TargetArchitecture::PowerPC64 => Some("powerpc64le-linux-gnu"),
         TargetArchitecture::Armv7 => Some("arm-linux-gnueabihf"),
         TargetArchitecture::I686 => Some("i686-linux-gnu"),
@@ -448,6 +452,7 @@ pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
         TargetArchitecture::Aarch64 => cfg!(target_arch = "aarch64"),
         TargetArchitecture::Riscv64 => cfg!(target_arch = "riscv64"),
         TargetArchitecture::LoongArch64 => cfg!(target_arch = "loongarch64"),
+        TargetArchitecture::S390x => cfg!(target_arch = "s390x"),
         TargetArchitecture::PowerPC64 => cfg!(target_arch = "powerpc64"),
         TargetArchitecture::Armv7 => cfg!(target_arch = "arm"),
         // An x86_64 host assembles and links i686 with its own binutils, given

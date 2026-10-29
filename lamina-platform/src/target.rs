@@ -207,6 +207,7 @@ pub enum TargetArchitecture {
     Wasm64,
     PowerPC64,
     LoongArch64,
+    S390x,
     Nvptx64,
     Amdgcn,
     #[cfg(feature = "nightly")]
@@ -225,6 +226,7 @@ impl TargetArchitecture {
             | Self::Riscv64
             | Self::PowerPC64
             | Self::LoongArch64
+            | Self::S390x
             | Self::Wasm64
             | Self::Nvptx64
             | Self::Amdgcn
@@ -256,6 +258,7 @@ impl TargetArchitecture {
             | Self::Riscv64
             | Self::PowerPC64
             | Self::LoongArch64
+            | Self::S390x
             | Self::Wasm32
             | Self::Wasm64
             | Self::Nvptx64
@@ -302,6 +305,7 @@ impl TargetArchitecture {
             | Self::Nvptx64
             | Self::Amdgcn
             | Self::Unknown => Endianness::Little,
+            Self::S390x => Endianness::Big,
             #[cfg(feature = "nightly")]
             Self::Riscv128 | Self::Lisa => Endianness::Little,
         }
@@ -321,7 +325,7 @@ impl TargetArchitecture {
             | Self::PowerPC64
             | Self::LoongArch64
             | Self::Unknown => 16,
-            Self::Arm32 | Self::Thumbv6m | Self::Thumbv7m => 8,
+            Self::Arm32 | Self::Thumbv6m | Self::Thumbv7m | Self::S390x => 8,
             Self::Wasm32 | Self::Wasm64 | Self::Nvptx64 | Self::Amdgcn => 1,
             #[cfg(feature = "nightly")]
             Self::Riscv128 => 16,
@@ -352,6 +356,7 @@ impl TargetArchitecture {
             | Self::Wasm64
             | Self::PowerPC64
             | Self::LoongArch64
+            | Self::S390x
             | Self::Nvptx64
             | Self::Amdgcn
             | Self::Unknown => false,
@@ -376,6 +381,7 @@ impl TargetArchitecture {
             | Self::Riscv64
             | Self::PowerPC64
             | Self::LoongArch64
+            | Self::S390x
             | Self::Unknown => OutputArtifact::Executable,
             Self::Wasm32 | Self::Wasm64 => OutputArtifact::Module,
             Self::Nvptx64 | Self::Amdgcn => OutputArtifact::Text,
@@ -411,6 +417,7 @@ impl TargetArchitecture {
             | Self::Wasm32
             | Self::Wasm64
             | Self::LoongArch64
+            | Self::S390x
             | Self::Nvptx64
             | Self::Amdgcn
             | Self::Unknown => ArchVariant::None,
@@ -523,6 +530,10 @@ impl FromStr for TargetArchitecture {
                 "Architecture 'ppc64' was removed\n  Hint: lamina only supports little-endian POWER. Write 'ppc64le' (e.g. ppc64le_linux)",
             ),
             "loongarch64" | "loong64" => Ok(Self::LoongArch64),
+            "s390x" | "systemz" => Ok(Self::S390x),
+            "s390" => Err(
+                "Architecture 's390' was not added\n  Hint: lamina supports 64-bit z/Architecture only. Write 's390x' (e.g. s390x_linux)",
+            ),
             #[cfg(feature = "nightly")]
             "lisa" => Ok(Self::Lisa),
             _ => Err("Unknown architecture"),
@@ -622,6 +633,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Wasm64 => "wasm64",
             Self::PowerPC64 => "ppc64le",
             Self::LoongArch64 => "loongarch64",
+            Self::S390x => "s390x",
             #[cfg(feature = "nightly")]
             Self::Lisa => "lisa",
             Self::Unknown => "unknown",
@@ -708,6 +720,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "ppc64le_linux",
     "ppc64le_unknown",
     "loongarch64_linux",
+    "s390x_linux",
     "i686_linux",
     "armv7_linux",
     "thumbv6m_unknown",
@@ -836,10 +849,15 @@ mod tests {
     }
 
     #[test]
-    fn every_target_today_is_little_endian() {
+    fn s390x_is_the_only_big_endian_target() {
         for name in HOST_ARCH_LIST {
             let target: Target = name.parse().expect(name);
-            assert_eq!(target.endianness(), Endianness::Little, "{name}");
+            let expected = if target.architecture == TargetArchitecture::S390x {
+                Endianness::Big
+            } else {
+                Endianness::Little
+            };
+            assert_eq!(target.endianness(), expected, "{name}");
         }
     }
 

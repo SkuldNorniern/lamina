@@ -536,7 +536,8 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Riscv32
         | TargetArchitecture::Riscv64
-        | TargetArchitecture::LoongArch64 => {
+        | TargetArchitecture::LoongArch64
+        | TargetArchitecture::S390x => {
             generate_mir_to_target(
                 &mir_module,
                 output_asm,

@@ -11,6 +11,7 @@ pub mod limits;
 pub mod link;
 pub mod loongarch64;
 pub mod ptx;
+pub mod s390x;
 pub mod settings;
 mod simd;
 
@@ -298,6 +299,15 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         }
         TargetArchitecture::LoongArch64 => {
             loongarch64::generate_mir_loongarch64_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
+        }
+        TargetArchitecture::S390x => {
+            s390x::generate_mir_s390x_with_units_and_settings(
                 module,
                 writer,
                 target_os,

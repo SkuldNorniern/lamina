@@ -16,7 +16,7 @@ use crate::ir::instruction::{AsmOperand as IRAsmOperand, UnaryOp};
 use crate::ir::types::Literal;
 use crate::mir::codegen::mapping::wide_aggregate;
 use lamina_codegen::abi::BuiltinLibrary;
-use lamina_platform::{PointerWidth, TargetOperatingSystem};
+use lamina_platform::{Endianness, PointerWidth, TargetOperatingSystem};
 
 /// The integer that takes two registers on a target with this register width: `i128`
 /// where a register holds 64 bits, `i64` where it holds 32.
@@ -72,6 +72,16 @@ const fn word_bits(int64_regs: bool) -> i64 {
 
 const fn word_bytes(int64_regs: bool) -> i32 {
     if int64_regs { 8 } else { 4 }
+}
+
+/// Byte offsets of the low and high word of a pair held in memory. The high word comes
+/// first in big-endian order, so a pair written out is not two words at fixed places.
+const fn word_offsets(int64_regs: bool, endianness: Endianness) -> (i32, i32) {
+    let width = word_bytes(int64_regs);
+    match endianness {
+        Endianness::Little => (0, width),
+        Endianness::Big => (width, 0),
+    }
 }
 
 fn word_imm(int64_regs: bool, value: i64) -> Operand {
@@ -144,6 +154,7 @@ pub(super) struct Cx<'c, 'a> {
     pub(super) module: &'c IRModule<'a>,
     pub(super) pointer: PointerWidth,
     pub(super) int64_regs: bool,
+    pub(super) endianness: Endianness,
     pub(super) out: Vec<Instruction>,
 }
 
@@ -453,27 +464,24 @@ impl<'c, 'a> Cx<'c, 'a> {
             stated_align: false,
         };
         let ty = self.word();
-        self.out.push(Instruction::Store {
-            ty,
-            src: words.lo,
-            addr: AddressMode::BaseOffset {
-                base: base.clone(),
-                offset: 0,
-                address_space: Default::default(),
-            },
-            attrs,
-        });
-        let high = self.word_address(&base, word_bytes(self.int64_regs));
-        self.out.push(Instruction::Store {
-            ty,
-            src: words.hi,
-            addr: AddressMode::BaseOffset {
-                base: high,
-                offset: 0,
-                address_space: Default::default(),
-            },
-            attrs,
-        });
+        let (lo_at, hi_at) = word_offsets(self.int64_regs, self.endianness);
+        for (src, offset) in [(words.lo, lo_at), (words.hi, hi_at)] {
+            let base = if offset == 0 {
+                base.clone()
+            } else {
+                self.word_address(&base, offset)
+            };
+            self.out.push(Instruction::Store {
+                ty,
+                src,
+                addr: AddressMode::BaseOffset {
+                    base,
+                    offset: 0,
+                    address_space: Default::default(),
+                },
+                attrs,
+            });
+        }
     }
 
     fn load_words(&mut self, base: Register) -> Words {
@@ -483,33 +491,29 @@ impl<'c, 'a> Cx<'c, 'a> {
             stated_align: false,
         };
         let ty = self.word();
-        let lo = self.temp();
-        self.out.push(Instruction::Load {
-            ty,
-            dst: lo.clone(),
-            addr: AddressMode::BaseOffset {
-                base: base.clone(),
-                offset: 0,
-                address_space: Default::default(),
-            },
-            attrs,
-        });
-        let high = self.word_address(&base, word_bytes(self.int64_regs));
-        let hi = self.temp();
-        self.out.push(Instruction::Load {
-            ty,
-            dst: hi.clone(),
-            addr: AddressMode::BaseOffset {
-                base: high,
-                offset: 0,
-                address_space: Default::default(),
-            },
-            attrs,
-        });
-        Words {
-            lo: Operand::Register(lo),
-            hi: Operand::Register(hi),
-        }
+        let (lo_at, hi_at) = word_offsets(self.int64_regs, self.endianness);
+        let word = |cx: &mut Self, offset: i32| {
+            let base = if offset == 0 {
+                base.clone()
+            } else {
+                cx.word_address(&base, offset)
+            };
+            let dst = cx.temp();
+            cx.out.push(Instruction::Load {
+                ty,
+                dst: dst.clone(),
+                addr: AddressMode::BaseOffset {
+                    base,
+                    offset: 0,
+                    address_space: Default::default(),
+                },
+                attrs,
+            });
+            Operand::Register(dst)
+        };
+        let lo = word(self, lo_at);
+        let hi = word(self, hi_at);
+        Words { lo, hi }
     }
 
     fn spill(&mut self, words: Words) -> Operand {
@@ -1693,40 +1697,41 @@ pub(super) fn load_wide_parameter(
     vregs: &mut VirtualRegAllocator,
     prelude: &mut Vec<Instruction>,
     int64_regs: bool,
+    endianness: Endianness,
 ) -> [Register; 2] {
-    let lo = Register::Virtual(vregs.allocate_gpr());
-    let hi = Register::Virtual(vregs.allocate_gpr());
     let word = word_ty(int64_regs);
     let attrs = MemoryAttrs {
         align: word_bytes(int64_regs) as u8,
         volatile: false,
         stated_align: false,
     };
-    prelude.push(Instruction::Load {
-        ty: word,
-        dst: lo.clone(),
-        addr: AddressMode::BaseOffset {
-            base: address.clone(),
-            offset: 0,
-            address_space: Default::default(),
-        },
-        attrs,
-    });
-    let high = Register::Virtual(vregs.allocate_gpr());
-    prelude.push(Instruction::Lea {
-        dst: high.clone(),
-        base: address,
-        offset: word_bytes(int64_regs),
-    });
-    prelude.push(Instruction::Load {
-        ty: word,
-        dst: hi.clone(),
-        addr: AddressMode::BaseOffset {
-            base: high,
-            offset: 0,
-            address_space: Default::default(),
-        },
-        attrs,
-    });
+    let (lo_at, hi_at) = word_offsets(int64_regs, endianness);
+    let mut read = |offset: i32| {
+        let dst = Register::Virtual(vregs.allocate_gpr());
+        let base = if offset == 0 {
+            address.clone()
+        } else {
+            let stepped = Register::Virtual(vregs.allocate_gpr());
+            prelude.push(Instruction::Lea {
+                dst: stepped.clone(),
+                base: address.clone(),
+                offset,
+            });
+            stepped
+        };
+        prelude.push(Instruction::Load {
+            ty: word,
+            dst: dst.clone(),
+            addr: AddressMode::BaseOffset {
+                base,
+                offset: 0,
+                address_space: Default::default(),
+            },
+            attrs,
+        });
+        dst
+    };
+    let lo = read(lo_at);
+    let hi = read(hi_at);
     [lo, hi]
 }
