@@ -560,7 +560,9 @@ pub fn from_ir_for_target(
         mir_module.relocation = relocation_model(&ir.annotations);
     }
 
-    for (global_name, decl) in &ir.global_declarations {
+    let mut global_declarations: Vec<_> = ir.global_declarations.iter().collect();
+    global_declarations.sort_unstable_by_key(|(name, _)| **name);
+    for (global_name, decl) in global_declarations {
         let resolved = resolve_type_names(&decl.ty, &ir.type_declarations)
             .ok_or(FromIRError::UnsupportedType)?;
         let mut global = if is_aggregate(&resolved) {
@@ -635,7 +637,9 @@ pub fn from_ir_for_target(
     }
 
     let mut libcalls = BTreeMap::new();
-    for (func_name, ir_func) in &ir.functions {
+    let mut functions: Vec<_> = ir.functions.iter().collect();
+    functions.sort_unstable_by_key(|(name, _)| **name);
+    for (func_name, ir_func) in functions {
         // Check if function is external before converting
         if ir_func.annotations.contains(&FunctionAnnotation::Extern) {
             mir_module.mark_external(*func_name);
