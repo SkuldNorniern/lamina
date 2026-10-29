@@ -5,6 +5,9 @@ use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::reject_function_placement;
 use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
+use crate::mir_codegen::common::{
+    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
+};
 use crate::mir_codegen::simd::vector_slots;
 
 use std::{
@@ -377,6 +380,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     reject_function_placement(module, "WASM")?;
+    reject_thread_local_globals(module, "WASM")?;
     let arch = match memory {
         Memory::I32 => TargetArchitecture::Wasm32,
         Memory::I64 => TargetArchitecture::Wasm64,
@@ -1111,6 +1115,12 @@ fn emit_instruction_wasm(
         return Ok(());
     }
     match inst {
+        MirInst::ThreadLocalAddr { .. } => {
+            return Err(unsupported_thread_local("WASM"));
+        }
+        MirInst::IntOverflow { .. } => {
+            return Err(unsupported_overflow_flag("WASM"));
+        }
         MirInst::SymbolAddress { dst, symbol } => {
             let address = addresses
                 .globals

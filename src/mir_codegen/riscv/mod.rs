@@ -6,6 +6,10 @@ use crate::mir_codegen::common::{
     emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
+use crate::mir_codegen::common::{
+    reject_thread_local_globals, reject_underaligned_accesses, unsupported_overflow_flag,
+    unsupported_thread_local,
+};
 use lamina_mir::SourceLoc;
 mod atomic;
 mod bit;
@@ -524,6 +528,8 @@ fn emit_riscv_module<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     reject_unsplit_wide_values(module, target)?;
+    reject_thread_local_globals(module, "RISC-V")?;
+    reject_underaligned_accesses(module, target_arch(target).pointer_width(), "RISC-V")?;
     let settings_arc = Arc::new(settings.clone());
     let signatures = Arc::new(AggregateSignatures::from_module(module));
     let results =
@@ -2220,6 +2226,12 @@ fn emit_instruction_riscv<W: Write>(
         | MirInst::AtomicCompareExchange { .. }
         | MirInst::Fence { .. } => {
             atomic::emit(inst, writer, reg_alloc, stack_slots, pointer_width)?
+        }
+        MirInst::ThreadLocalAddr { .. } => {
+            return Err(unsupported_thread_local("RISC-V"));
+        }
+        MirInst::IntOverflow { .. } => {
+            return Err(unsupported_overflow_flag("RISC-V"));
         }
         MirInst::InlineAsm { .. } => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(

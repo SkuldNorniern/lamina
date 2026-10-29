@@ -40,11 +40,11 @@ pub use function::{
 pub use instruction::SimdOp;
 pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
-    IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,
+    IntOverflowOp, IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,
 };
 pub use instruction::{AsmOperand, AtomicBinOp, MemoryOrdering, io_intrinsic_result_type};
 pub use loc::{Located, SourceLoc};
-pub use module::{Global, Module, ModuleBuilder, RelocationModel};
+pub use module::{Global, Module, ModuleBuilder, RelocationModel, TlsModel};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 #[cfg(feature = "nightly")]
 pub use simd::{

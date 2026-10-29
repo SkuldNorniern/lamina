@@ -6,7 +6,7 @@
 
 use crate::{
     builder::IRBuilder,
-    instruction::{BinaryOp, CmpOp, Instruction, UnaryOp},
+    instruction::{BinaryOp, CmpOp, Instruction, OverflowOp, UnaryOp},
     types::{PrimitiveType, Value},
 };
 
@@ -21,6 +21,25 @@ impl<'a> IRBuilder<'a> {
         rhs: Value<'a>,
     ) -> &mut Self {
         self.inst(Instruction::Binary {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        })
+    }
+
+    /// Creates an overflow-flag instruction (`<op>.ovf.<ty>`), whose result is a
+    /// `bool` saying whether the same wrapping arithmetic left the range of `ty`.
+    pub fn overflow_flag(
+        &mut self,
+        op: OverflowOp,
+        result: &'a str,
+        ty: PrimitiveType,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::OverflowFlag {
             op,
             result,
             ty,

@@ -1,5 +1,6 @@
 use super::gpu::{aggregate_parameter_function, error, kernels};
 use crate::mir_codegen::common::reject_function_placement;
+use crate::mir_codegen::common::{reject_thread_local_globals, reject_underaligned_accesses};
 use crate::{
     error::LaminaError,
     mir::{
@@ -686,6 +687,8 @@ pub fn emit_with_target<W: Write>(
         return Err(error("AMDGPU does not yet support global variables"));
     }
     reject_function_placement(module, "AMDGPU")?;
+    reject_thread_local_globals(module, "AMDGPU")?;
+    reject_underaligned_accesses(module, PointerWidth::Bits64, "AMDGPU")?;
     if let Some(name) = aggregate_parameter_function(module) {
         return Err(error(&format!(
             "AMDGPU does not yet pass aggregates by value, as @{name} does"
@@ -960,7 +963,11 @@ mod emission_tests {
                         offset: 0,
                         address_space: space,
                     },
-                    attrs: MemoryAttrs { align, volatile },
+                    attrs: MemoryAttrs {
+                        align,
+                        volatile,
+                        stated_align: false,
+                    },
                 })
                 .instr(Instruction::Ret { value: None })
                 .build();

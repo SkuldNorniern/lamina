@@ -372,6 +372,7 @@ impl ModuleInlining {
                 operand(src, map);
             }
             Instruction::IntBinary { dst, lhs, rhs, .. }
+            | Instruction::IntOverflow { dst, lhs, rhs, .. }
             | Instruction::IntRotate { dst, lhs, rhs, .. }
             | Instruction::FloatBinary { dst, lhs, rhs, .. }
             | Instruction::IntCmp { dst, lhs, rhs, .. }
@@ -406,7 +407,7 @@ impl ModuleInlining {
                     *slot = fresh;
                 }
             }
-            Instruction::SymbolAddress { dst, .. } => {
+            Instruction::SymbolAddress { dst, .. } | Instruction::ThreadLocalAddr { dst, .. } => {
                 *dst = map(dst);
             }
             Instruction::Lea { dst, base, .. } => {

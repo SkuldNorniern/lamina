@@ -1,0 +1,32 @@
+# per-thread storage under the local-exec model
+@thread_local global $counter: i64 = 0
+global $seen: i64 = 0
+
+@extern fn @pthread_create(ptr %t, ptr %a, ptr %f, ptr %arg) -> i32
+@extern fn @pthread_join(i64 %t, ptr %r) -> i32
+
+fn @worker(ptr %arg) -> ptr {
+  entry:
+    store.i64 $counter, 7
+    %v = load.i64 $counter
+    store.i64 $seen, %v
+    ret.ptr 0
+}
+
+fn @main() -> i64 {
+  entry:
+    store.i64 $counter, 5
+    %tid = stackalloc.i64
+    %f = funcaddr @worker
+    %rc = call @pthread_create(%tid, 0, %f, 0)
+    %t = load.i64 %tid
+    %jr = call @pthread_join(%t, 0)
+    %mine = load.i64 $counter
+    %theirs = load.i64 $seen
+    %d1 = add.i64 %mine, 48
+    %w1 = writebyte %d1
+    %d2 = add.i64 %theirs, 48
+    %w2 = writebyte %d2
+    %nl = writebyte 10
+    ret.i64 0
+}

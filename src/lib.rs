@@ -468,8 +468,8 @@ pub const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use error::LaminaError;
 pub use ir::{
     function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
-    instruction::{AllocType, BinaryOp, CmpOp, Instruction},
-    module::{GlobalDeclaration, Module, TypeDeclaration},
+    instruction::{AllocType, BinaryOp, CmpOp, Instruction, OverflowOp},
+    module::{GlobalDeclaration, Module, TlsModel, TypeDeclaration},
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
 use lamina_codegen::{is_assembly_supported, supported_assembly_targets_hint};

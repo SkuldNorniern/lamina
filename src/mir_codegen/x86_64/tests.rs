@@ -1742,3 +1742,112 @@ fn freebsd_io_intrinsics_use_the_bsd_syscall_numbers() {
     );
     assert!(!asm.contains("cmovsq"), "{asm}");
 }
+
+#[test]
+fn thread_local_globals_emit_the_relocations_their_model_names() {
+    let assemble = |annotation: &str| {
+        let source = format!(
+            "{annotation} global $t: i64 = 0\nfn @main() -> i64 {{\nentry:\n    store.i64 $t, 7\n    %v = load.i64 $t\n    ret.i64 %v\n}}\n"
+        );
+        let ir = parse_module(&source).unwrap();
+        let mir = from_ir(&ir, "tls").unwrap();
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+
+    let local = assemble("@thread_local");
+    assert!(local.contains("    movq %fs:0, %rax"), "{local}");
+    assert!(local.contains("    leaq t@tpoff(%rax), %rax"), "{local}");
+    assert!(!local.contains("gottpoff"), "{local}");
+    assert!(local.contains(".section .tbss,\"awT\",@nobits"), "{local}");
+
+    let initial = assemble("@thread_local(initial_exec)");
+    assert!(
+        initial.contains("    movq t@gottpoff(%rip), %rax"),
+        "{initial}"
+    );
+    assert!(initial.contains("    addq %fs:0, %rax"), "{initial}");
+    assert!(!initial.contains("@tpoff("), "{initial}");
+}
+
+#[test]
+fn an_initialized_thread_local_goes_to_tdata() {
+    let ir = parse_module(
+        "@thread_local global $t: i64 = 9\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
+    )
+    .unwrap();
+    let mir = from_ir(&ir, "tls").unwrap();
+    let mut output = Vec::new();
+    generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
+    let assembly = String::from_utf8(output).unwrap();
+    assert!(
+        assembly.contains(".section .tdata,\"awT\",@progbits"),
+        "{assembly}"
+    );
+}
+
+#[test]
+fn thread_local_storage_is_refused_on_mach_o() {
+    let ir = parse_module(
+        "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
+    )
+    .unwrap();
+    let mir = from_ir(&ir, "tls").unwrap();
+    let mut output = Vec::new();
+    let error = generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::MacOS)
+        .expect_err("Mach-O has no .tbss");
+    assert!(error.to_string().contains("ELF targets only"), "{error}");
+}
+
+#[test]
+fn overflow_flags_read_the_condition_the_signedness_names() {
+    let assemble = |line: &str| {
+        let source = format!(
+            "fn @main(i64 %a, i64 %b) -> i64 {{\nentry:\n    {line}\n    %r = extend.bool.i64 %f\n    ret.i64 %r\n}}\n"
+        );
+        let ir = parse_module(&source).unwrap();
+        let mir = from_ir(&ir, "ovf").unwrap();
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+
+    let signed_add = assemble("%f = add.ovf.i64 %a, %b");
+    assert!(signed_add.contains("    seto %al"), "{signed_add}");
+
+    let unsigned_add = assemble("%f = add.ovf.u64 %a, %b");
+    assert!(unsigned_add.contains("    setc %al"), "{unsigned_add}");
+
+    let signed_mul = assemble("%f = mul.ovf.i64 %a, %b");
+    assert!(signed_mul.contains("imulq"), "{signed_mul}");
+    assert!(signed_mul.contains("    seto %al"), "{signed_mul}");
+
+    let unsigned_mul = assemble("%f = mul.ovf.u64 %a, %b");
+    assert!(unsigned_mul.contains("    mulq "), "{unsigned_mul}");
+    assert!(unsigned_mul.contains("    setc %al"), "{unsigned_mul}");
+
+    let source = "fn @main(i32 %a, i32 %b) -> i64 {\nentry:\n    %f = add.ovf.i32 %a, %b\n    %r = extend.bool.i64 %f\n    ret.i64 %r\n}\n";
+    let ir = parse_module(source).unwrap();
+    let mir = from_ir(&ir, "ovf").unwrap();
+    let mut output = Vec::new();
+    generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
+    let narrow = String::from_utf8(output).unwrap();
+    assert!(narrow.contains("    setne %al"), "{narrow}");
+}
+
+#[test]
+fn a_stated_alignment_does_not_change_x86_64_code() {
+    let assemble = |line: &str| {
+        let source = format!("fn @main(ptr %p) -> i64 {{\nentry:\n    {line}\n    ret.i64 0\n}}\n");
+        let ir = parse_module(&source).unwrap();
+        let mir = from_ir(&ir, "align").unwrap();
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+    assert_eq!(
+        assemble("store.i32 %p, 1"),
+        assemble("store.i32 %p, 1 align 1"),
+    );
+}

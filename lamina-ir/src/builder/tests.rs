@@ -164,6 +164,7 @@ mod tests {
             ptr,
             value,
             volatile,
+            ..
         } = &entry.instructions[1]
         {
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
@@ -179,6 +180,7 @@ mod tests {
             ty,
             ptr,
             volatile,
+            ..
         } = &entry.instructions[2]
         {
             assert_eq!(*result, "val");

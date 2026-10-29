@@ -239,6 +239,7 @@ impl DeadCodeElimination {
             | Instruction::IntUnary { .. }
             | Instruction::IntRotate { .. }
             | Instruction::IntCmp { .. }
+            | Instruction::IntOverflow { .. }
             | Instruction::FloatCmp { .. }
             | Instruction::Select { .. }
             | Instruction::VectorOp { .. }
@@ -249,6 +250,7 @@ impl DeadCodeElimination {
             | Instruction::Bitcast { .. }
             | Instruction::StackAddr { .. }
             | Instruction::SymbolAddress { .. }
+            | Instruction::ThreadLocalAddr { .. }
                 | Instruction::Lea { .. } => true,
 
             // SIMD register-only ops are also pure (nightly only)

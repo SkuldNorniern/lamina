@@ -1,5 +1,6 @@
 //! Instruction lowering for the armv7 backend.
 
+use crate::mir_codegen::common::{unsupported_overflow_flag, unsupported_thread_local};
 use std::io::Write;
 
 use crate::{
@@ -121,6 +122,12 @@ pub(crate) fn emit_instruction<W: Write>(
         MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {}
         MirInst::Unreachable => writeln!(w, "    udf #0")?,
 
+        MirInst::ThreadLocalAddr { .. } => {
+            return Err(unsupported_thread_local("armv7"));
+        }
+        MirInst::IntOverflow { .. } => {
+            return Err(unsupported_overflow_flag("armv7"));
+        }
         MirInst::SymbolAddress { dst, symbol } => {
             let label = ctx.abi.mangle_function_name(symbol);
             let value = scratch.alloc()?;

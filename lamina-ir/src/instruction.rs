@@ -298,6 +298,30 @@ impl fmt::Display for BinaryOp {
     }
 }
 
+/// The wrapping arithmetic an `<op>.ovf` asks about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OverflowOp {
+    Add,
+    Sub,
+    Mul,
+}
+
+impl OverflowOp {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            OverflowOp::Add => "add",
+            OverflowOp::Sub => "sub",
+            OverflowOp::Mul => "mul",
+        }
+    }
+}
+
+impl fmt::Display for OverflowOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Operations on a single value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
@@ -473,6 +497,26 @@ pub enum Instruction<'a> {
     /// - Integer Div/Rem trap on zero divisors and on signed `MIN / -1`.
     Binary {
         op: BinaryOp,
+        result: Identifier<'a>,
+        ty: PrimitiveType,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+    },
+    /// Whether `op` on `lhs` and `rhs` leaves the mathematical result outside the
+    /// range of `ty`. The signedness of `ty` chooses the question: a signed type asks
+    /// about two's-complement overflow, an unsigned type about a carry or borrow.
+    ///
+    /// The value itself comes from the matching wrapping `Binary`, whose result this
+    /// never changes. Separating the two keeps every instruction single-result; a
+    /// frontend that wants both writes both and the backend computes the flag from the
+    /// same arithmetic.
+    ///
+    /// # Preconditions
+    /// - `ty` must be an integer type narrower than 128 bits.
+    /// - `lhs` and `rhs` must have type `ty`.
+    /// - The result has type `bool`.
+    OverflowFlag {
+        op: OverflowOp,
         result: Identifier<'a>,
         ty: PrimitiveType,
         lhs: Value<'a>,
@@ -710,6 +754,10 @@ pub enum Instruction<'a> {
         ty: Type<'a>,
         ptr: Value<'a>,
         volatile: bool,
+        /// Alignment the address is known to have, when it is not the natural
+        /// alignment of `ty`. A backend that cannot issue the access at that
+        /// alignment refuses the module.
+        align: Option<u32>,
     },
     /// Store a `value` of type `ty` to the address in `ptr`.
     ///
@@ -725,6 +773,10 @@ pub enum Instruction<'a> {
         ptr: Value<'a>,
         value: Value<'a>,
         volatile: bool,
+        /// Alignment the address is known to have, when it is not the natural
+        /// alignment of `ty`. A backend that cannot issue the access at that
+        /// alignment refuses the module.
+        align: Option<u32>,
     },
     // --- Atomic Operations ---
     AtomicLoad {
@@ -1147,7 +1199,9 @@ impl<'a> Instruction<'a> {
         let prim = |p: &PrimitiveType| Some(Type::Primitive(*p));
         match self {
             Instruction::Binary { ty, .. } | Instruction::Unary { ty, .. } => prim(ty),
-            Instruction::Cmp { .. } => prim(&PrimitiveType::Bool),
+            Instruction::Cmp { .. } | Instruction::OverflowFlag { .. } => {
+                prim(&PrimitiveType::Bool)
+            }
             Instruction::ZeroExtend { target_type, .. }
             | Instruction::SignExtend { target_type, .. }
             | Instruction::Trunc { target_type, .. }
@@ -1181,6 +1235,7 @@ impl<'a> Instruction<'a> {
     pub fn defined_var(&self) -> Option<&'a str> {
         match self {
             Instruction::Binary { result, .. }
+            | Instruction::OverflowFlag { result, .. }
             | Instruction::Cmp { result, .. }
             | Instruction::Alloc { result, .. }
             | Instruction::Load { result, .. }
@@ -1237,7 +1292,9 @@ impl<'a> Instruction<'a> {
         };
 
         match self {
-            Instruction::Binary { lhs, rhs, .. } | Instruction::Cmp { lhs, rhs, .. } => {
+            Instruction::Binary { lhs, rhs, .. }
+            | Instruction::OverflowFlag { lhs, rhs, .. }
+            | Instruction::Cmp { lhs, rhs, .. } => {
                 push_value(lhs, &mut vars);
                 push_value(rhs, &mut vars);
             }
@@ -1390,6 +1447,13 @@ impl fmt::Display for Instruction<'_> {
                 lhs,
                 rhs,
             } => write!(f, "%{result} = {op}.{ty} {lhs}, {rhs}"),
+            Instruction::OverflowFlag {
+                op,
+                result,
+                ty,
+                lhs,
+                rhs,
+            } => write!(f, "%{result} = {op}.ovf.{ty} {lhs}, {rhs}"),
             Instruction::Cmp {
                 op,
                 result,
@@ -1526,18 +1590,28 @@ impl fmt::Display for Instruction<'_> {
                 ty,
                 ptr,
                 volatile,
+                align,
             } => {
                 let prefix = if *volatile { "volatile " } else { "" };
-                write!(f, "%{result} = {prefix}load.{ty} {ptr}")
+                write!(f, "%{result} = {prefix}load.{ty} {ptr}")?;
+                if let Some(align) = align {
+                    write!(f, " align {align}")?;
+                }
+                Ok(())
             }
             Instruction::Store {
                 ty,
                 ptr,
                 value,
                 volatile,
+                align,
             } => {
                 let prefix = if *volatile { "volatile " } else { "" };
-                write!(f, "{prefix}store.{ty} {ptr}, {value}")
+                write!(f, "{prefix}store.{ty} {ptr}, {value}")?;
+                if let Some(align) = align {
+                    write!(f, " align {align}")?;
+                }
+                Ok(())
             }
             Instruction::AtomicLoad {
                 result,
@@ -1841,6 +1915,7 @@ mod tests {
             ty: Type::Primitive(PrimitiveType::F32),
             ptr: Value::Variable("some_ptr"),
             volatile: false,
+            align: None,
         };
         assert_eq!(format!("{}", instr9), "%loaded_val = load.f32 %some_ptr");
 
@@ -1849,6 +1924,7 @@ mod tests {
             ptr: Value::Variable("bool_ptr"),
             value: Value::Constant(Literal::Bool(true)),
             volatile: false,
+            align: None,
         };
         assert_eq!(format!("{}", instr10), "store.bool %bool_ptr, true");
 
@@ -1857,6 +1933,7 @@ mod tests {
             ty: Type::Primitive(PrimitiveType::I64),
             ptr: Value::Variable("p"),
             volatile: true,
+            align: None,
         };
         assert_eq!(format!("{}", volatile_load), "%v = volatile load.i64 %p");
 
@@ -1865,6 +1942,7 @@ mod tests {
             ptr: Value::Variable("p"),
             value: Value::Constant(Literal::I64(5)),
             volatile: true,
+            align: None,
         };
         assert_eq!(format!("{}", volatile_store), "volatile store.i64 %p, 5");
 

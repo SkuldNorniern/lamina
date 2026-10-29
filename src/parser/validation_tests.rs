@@ -272,6 +272,70 @@ fn a_pointer_returned_where_a_scalar_is_declared_is_rejected() {
 }
 
 #[test]
+fn load_and_store_accept_a_stated_alignment() {
+    for line in [
+        "%r = load.i32 %p align 1",
+        "%r = load.i32 %p align 16",
+        "store.i32 %p, 1 align 1",
+        "volatile store.i32 %p, 1 align 2",
+        "%r = volatile load.i32 %p align 4",
+    ] {
+        accepted(&body(line));
+    }
+}
+
+#[test]
+fn a_stated_alignment_is_printed_back() {
+    let source = body("%r = load.i32 %p align 1");
+    let text = parse_module(&source).expect("parse").to_string();
+    assert!(text.contains("load.i32 %p align 1"), "{text}");
+    let source = body("store.i32 %p, 1 align 2");
+    let text = parse_module(&source).expect("parse").to_string();
+    assert!(text.contains("store.i32 %p, 1 align 2"), "{text}");
+}
+
+#[test]
+fn a_non_power_of_two_access_alignment_is_rejected() {
+    let err = rejected(&body("%r = load.i32 %p align 3"));
+    assert!(err.contains("Invalid alignment: align 3"), "{err}");
+}
+
+#[test]
+fn overflow_flags_parse_for_add_sub_and_mul() {
+    for line in [
+        "%r = add.ovf.i64 %x, 1",
+        "%r = sub.ovf.i64 %x, 1",
+        "%r = mul.ovf.i64 %x, 1",
+        "%r = add.ovf.u8 1, 2",
+    ] {
+        accepted(&body(line));
+    }
+}
+
+#[test]
+fn an_overflow_flag_is_printed_back() {
+    let source = body("%r = mul.ovf.i64 %x, 3");
+    let text = parse_module(&source).expect("parse").to_string();
+    assert!(text.contains("%r = mul.ovf.i64 %x, 3"), "{text}");
+}
+
+#[test]
+fn overflow_flags_are_refused_where_they_have_no_meaning() {
+    let err = rejected(&body("%r = div.ovf.i64 %x, 1"));
+    assert!(
+        err.contains("'.ovf' applies to add, sub and mul only"),
+        "{err}"
+    );
+    let err = rejected(&body("%r = add.ovf.f64 1.0, 1.0"));
+    assert!(err.contains("takes an integer type"), "{err}");
+    let err = rejected(&body("%r = add.ovf.i128 1, 1"));
+    assert!(
+        err.contains("128-bit arithmetic is lowered to word pairs"),
+        "{err}"
+    );
+}
+
+#[test]
 fn a_returned_value_of_the_wrong_type_is_rejected() {
     let err = rejected(&return_module("() -> ptr", "ret.ptr %n"));
     assert!(err.contains("must be ptr, but %n has type i64"), "{err}");
@@ -298,4 +362,44 @@ fn a_void_return_from_a_value_returning_function_is_rejected() {
         err.contains("is written ret.void, but '@make' declares i64"),
         "{err}"
     );
+}
+
+#[test]
+fn thread_local_globals_parse_in_both_models() {
+    for annotation in [
+        "@thread_local",
+        "@thread_local(local_exec)",
+        "@thread_local(initial_exec)",
+    ] {
+        accepted(&format!(
+            "{annotation} global $t: i64 = 0\nfn @main() -> i64 {{\nentry:\n    ret.i64 0\n}}\n"
+        ));
+    }
+}
+
+#[test]
+fn the_dynamic_tls_models_are_refused_by_name() {
+    for model in ["general_dynamic", "local_dynamic"] {
+        let err = rejected(&format!(
+            "@thread_local({model}) global $t: i64 = 0\nfn @main() -> i64 {{\nentry:\n    ret.i64 0\n}}\n"
+        ));
+        assert!(err.contains("__tls_get_addr"), "{model}: {err}");
+        assert!(err.contains(model), "{model}: {err}");
+    }
+}
+
+#[test]
+fn an_unknown_tls_model_is_named() {
+    let err = rejected(
+        "@thread_local(global_dynamic) global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n",
+    );
+    assert!(err.contains("Unknown TLS model 'global_dynamic'"), "{err}");
+}
+
+#[test]
+fn a_duplicate_thread_local_annotation_is_rejected() {
+    let err = rejected(
+        "@thread_local @thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n",
+    );
+    assert!(err.contains("Duplicate annotation: @thread_local"), "{err}");
 }

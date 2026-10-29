@@ -18,6 +18,10 @@ use crate::mir_codegen::common::{
     external_names, integer_conversion_with_width, lamina_to_codegen_error, parallel_codegen_error,
     promoted_argument_type,
 };
+use crate::mir_codegen::common::{
+    reject_thread_local_globals, reject_underaligned_accesses, unsupported_overflow_flag,
+    unsupported_thread_local,
+};
 use crate::{
     error::LaminaError,
     mir::{
@@ -145,6 +149,8 @@ pub fn generate_mir_loongarch64_with_units_and_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
+    reject_thread_local_globals(module, "LoongArch64")?;
+    reject_underaligned_accesses(module, PointerWidth::Bits64, "LoongArch64")?;
     if target_os != TargetOperatingSystem::Linux {
         return Err(unsupported(format!(
             "LoongArch64 code generation supports Linux only, not {target_os}"
@@ -524,6 +530,12 @@ fn emit_instruction<W: Write>(
             }
             extend_integer(writer, "$a0", ty, true)?;
             store_result(writer, "$a0", dst, slots)?;
+        }
+        MirInst::ThreadLocalAddr { .. } => {
+            return Err(unsupported_thread_local("LoongArch64"));
+        }
+        MirInst::IntOverflow { .. } => {
+            return Err(unsupported_overflow_flag("LoongArch64"));
         }
         MirInst::SymbolAddress { dst, symbol } => {
             writeln!(writer, "    pcalau12i $a0, %pc_hi20({symbol})")?;

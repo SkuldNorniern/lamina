@@ -188,6 +188,20 @@ pub(crate) fn interpret_mir_function(
                         })?;
                     register_values.insert(dst.clone(), result);
                 }
+                Instruction::IntOverflow {
+                    op,
+                    ty,
+                    signed,
+                    dst,
+                    lhs,
+                    rhs,
+                } => {
+                    let left = evaluate_operand(lhs, &register_values)?;
+                    let right = evaluate_operand(rhs, &register_values)?;
+                    let overflowed =
+                        op.overflows(*ty, *signed, left, right, function.pointer_width);
+                    register_values.insert(dst.clone(), i64::from(overflowed));
+                }
                 Instruction::IntUnary { op, ty, dst, src } => {
                     let value = evaluate_operand(src, &register_values)?;
                     register_values
@@ -317,6 +331,7 @@ pub(crate) fn interpret_mir_function(
                 | Instruction::Store { .. }
                 | Instruction::StackAddr { .. }
                 | Instruction::SymbolAddress { .. }
+                | Instruction::ThreadLocalAddr { .. }
                 | Instruction::Lea { .. }
                 | Instruction::FloatBinary { .. }
                 | Instruction::FloatUnary { .. }

@@ -26,6 +26,9 @@ use crate::mir_codegen::common::{
     emit_symbol_visibility, external_names, integer_conversion_with_width, lamina_to_codegen_error,
     parallel_codegen_error,
 };
+use crate::mir_codegen::common::{
+    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
+};
 use crate::{
     error::LaminaError,
     mir::{
@@ -225,6 +228,7 @@ pub fn generate_mir_i686_with_units_and_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
+    reject_thread_local_globals(module, "i686")?;
     if target_os != TargetOperatingSystem::Linux {
         return Err(unsupported(format!(
             "i686 code generation supports Linux only, not {target_os}"
@@ -616,6 +620,12 @@ fn emit_instruction<W: Write>(
         | MirInst::Bitcast {
             to: ty, dst, src, ..
         } => emit_copy(ty, dst, src, writer, slots)?,
+        MirInst::ThreadLocalAddr { .. } => {
+            return Err(unsupported_thread_local("i686"));
+        }
+        MirInst::IntOverflow { .. } => {
+            return Err(unsupported_overflow_flag("i686"));
+        }
         MirInst::SymbolAddress { dst, symbol } => {
             writeln!(writer, "    movl ${symbol}, {EAX}")?;
             store_register(EAX, dst, writer, slots)?;

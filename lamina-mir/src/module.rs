@@ -38,6 +38,35 @@ pub struct Global {
 
     /// Alignment the symbol needs, in bytes.
     pub align: usize,
+
+    /// The thread-local model this symbol is placed under, or `None` for ordinary
+    /// static storage.
+    pub thread_local: Option<TlsModel>,
+}
+
+/// How a thread-local symbol's address is computed. Mirrors `lamina_ir::TlsModel`;
+/// the models that need a `__tls_get_addr` call are not represented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TlsModel {
+    /// Offset from the thread pointer is a link-time constant.
+    LocalExec,
+    /// Offset from the thread pointer is loaded from the GOT.
+    InitialExec,
+}
+
+impl TlsModel {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            TlsModel::LocalExec => "local_exec",
+            TlsModel::InitialExec => "initial_exec",
+        }
+    }
+}
+
+impl fmt::Display for TlsModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 impl Global {
@@ -50,7 +79,14 @@ impl Global {
             exported: false,
             size: ty.size_bytes(pointer),
             align: ty.alignment(pointer),
+            thread_local: None,
         }
+    }
+
+    /// Place the global in thread-local storage under `model`.
+    pub fn thread_local(mut self, model: TlsModel) -> Self {
+        self.thread_local = Some(model);
+        self
     }
 
     /// Give the global a layout of its own, for an aggregate that `ty` cannot describe.

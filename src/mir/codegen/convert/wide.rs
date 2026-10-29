@@ -28,6 +28,22 @@ pub(super) fn is_wide_prim(ty: IRPrim, int64_regs: bool) -> bool {
     }
 }
 
+/// A value wider than a register is moved a word at a time, so the access the
+/// instruction asks for is not the access the hardware performs. Rather than let a
+/// stated alignment mean nothing, refuse it.
+fn reject_wide_alignment(
+    align: Option<u32>,
+    ty: &IRType<'_>,
+    what: &str,
+) -> Result<(), FromIRError> {
+    match align {
+        None => Ok(()),
+        Some(align) => Err(FromIRError::UnsupportedAlignment(format!(
+            "{what}.{ty} align {align}: a value wider than a register is moved one word at a time, so the stated alignment would not describe the access performed"
+        ))),
+    }
+}
+
 pub(super) fn is_wide_type(ty: &IRType<'_>, int64_regs: bool) -> bool {
     matches!(ty, IRType::Primitive(p) if is_wide_prim(*p, int64_regs))
 }
@@ -434,6 +450,7 @@ impl<'c, 'a> Cx<'c, 'a> {
         let attrs = MemoryAttrs {
             align: word_bytes(self.int64_regs) as u8,
             volatile: false,
+            stated_align: false,
         };
         let ty = self.word();
         self.out.push(Instruction::Store {
@@ -463,6 +480,7 @@ impl<'c, 'a> Cx<'c, 'a> {
         let attrs = MemoryAttrs {
             align: word_bytes(self.int64_regs) as u8,
             volatile: false,
+            stated_align: false,
         };
         let ty = self.word();
         let lo = self.temp();
@@ -800,9 +818,10 @@ fn touches_wide(
     int64_regs: bool,
 ) -> bool {
     let typed = match instr {
-        IRInst::Binary { ty, .. } | IRInst::Unary { ty, .. } | IRInst::Cmp { ty, .. } => {
-            is_wide_prim(*ty, int64_regs)
-        }
+        IRInst::Binary { ty, .. }
+        | IRInst::OverflowFlag { ty, .. }
+        | IRInst::Unary { ty, .. }
+        | IRInst::Cmp { ty, .. } => is_wide_prim(*ty, int64_regs),
         IRInst::ZeroExtend {
             source_type,
             target_type,
@@ -1205,7 +1224,9 @@ pub(super) fn lower_instruction<'a>(
             ty,
             ptr,
             volatile: _,
+            align,
         } if is_wide_type(ty, cx.int64_regs) => {
+            reject_wide_alignment(*align, ty, "load")?;
             let base = address_base(ptr, cx)?;
             let loaded = cx.load_words(base);
             let pair = cx.result_pair(result);
@@ -1216,7 +1237,9 @@ pub(super) fn lower_instruction<'a>(
             ptr,
             value,
             volatile: _,
+            align,
         } if is_wide_type(ty, cx.int64_regs) => {
+            reject_wide_alignment(*align, ty, "store")?;
             let base = address_base(ptr, cx)?;
             let words = cx.operand_words(value)?;
             cx.store_words(base, words);
@@ -1448,6 +1471,7 @@ pub(super) fn lower_instruction<'a>(
                             attrs: MemoryAttrs {
                                 align: word_bytes(cx.int64_regs) as u8,
                                 volatile: false,
+                                stated_align: false,
                             },
                         });
                         let words = cx.load_words(address);
@@ -1472,6 +1496,7 @@ pub(super) fn lower_instruction<'a>(
                         attrs: MemoryAttrs {
                             align: word_bytes(cx.int64_regs) as u8,
                             volatile: false,
+                            stated_align: false,
                         },
                     });
                 }
@@ -1575,6 +1600,11 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::VaEnd { .. }
         | IRInst::VaCopy { .. }
         | IRInst::InlineAsm { .. } => return Err(FromIRError::UnsupportedInstruction),
+        IRInst::OverflowFlag { op, ty, .. } => {
+            return Err(FromIRError::NotLegalizable(format!(
+                "{op}.ovf.{ty} on a 32-bit target: the value is held in a register pair and no backend reports the overflow of the pair as a whole"
+            )));
+        }
         IRInst::VaArg { .. } => {
             return Err(FromIRError::NotLegalizable(
                 "va_arg of a 64-bit integer on a 32-bit target: a variadic slot holds one word, and reading the pair is not implemented".to_string(),
@@ -1670,6 +1700,7 @@ pub(super) fn load_wide_parameter(
     let attrs = MemoryAttrs {
         align: word_bytes(int64_regs) as u8,
         volatile: false,
+        stated_align: false,
     };
     prelude.push(Instruction::Load {
         ty: word,

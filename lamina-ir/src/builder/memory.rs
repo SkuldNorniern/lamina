@@ -47,6 +47,7 @@ impl<'a> IRBuilder<'a> {
             ptr,
             value: val,
             volatile: false,
+            align: None,
         })
     }
 
@@ -57,6 +58,7 @@ impl<'a> IRBuilder<'a> {
             ptr,
             value: val,
             volatile: true,
+            align: None,
         })
     }
 
@@ -67,6 +69,7 @@ impl<'a> IRBuilder<'a> {
             ty,
             ptr,
             volatile: false,
+            align: None,
         })
     }
 
@@ -77,6 +80,41 @@ impl<'a> IRBuilder<'a> {
             ty,
             ptr,
             volatile: true,
+            align: None,
+        })
+    }
+
+    /// Stores a value to memory at a stated alignment
+    pub fn store_aligned(
+        &mut self,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        val: Value<'a>,
+        align: u32,
+    ) -> &mut Self {
+        self.inst(Instruction::Store {
+            ty,
+            ptr,
+            value: val,
+            volatile: false,
+            align: Some(align),
+        })
+    }
+
+    /// Loads a value from memory at a stated alignment
+    pub fn load_aligned(
+        &mut self,
+        result: &'a str,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        align: u32,
+    ) -> &mut Self {
+        self.inst(Instruction::Load {
+            result,
+            ty,
+            ptr,
+            volatile: false,
+            align: Some(align),
         })
     }
 }

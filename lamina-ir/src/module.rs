@@ -211,6 +211,7 @@ impl fmt::Display for GlobalInit<'_> {
 ///     initializer: Some(GlobalInit::Value(Value::Constant(Literal::String("Hello, World!")))),
 ///     exported: false,
 ///     align: None,
+///     thread_local: None,
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq)] // PartialEq due to Value potentially holding f32
@@ -225,6 +226,39 @@ pub struct GlobalDeclaration<'a> {
     pub exported: bool,
     /// Minimum alignment in bytes (declared with `@align(n)`)
     pub align: Option<u32>,
+    /// The thread-local model this global is placed under (declared with
+    /// `@thread_local`), or `None` for ordinary static storage.
+    pub thread_local: Option<TlsModel>,
+}
+
+/// How a thread-local symbol's address is computed.
+///
+/// Only the two models that need no runtime support are here. General-dynamic and
+/// local-dynamic both call `__tls_get_addr`, which a freestanding target does not have,
+/// so the parser names them and refuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TlsModel {
+    /// The offset from the thread pointer is a link-time constant. Only valid in an
+    /// executable that defines the symbol itself.
+    LocalExec,
+    /// The offset from the thread pointer is loaded from the GOT, so the symbol may be
+    /// defined by a shared object present at program start.
+    InitialExec,
+}
+
+impl TlsModel {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            TlsModel::LocalExec => "local_exec",
+            TlsModel::InitialExec => "initial_exec",
+        }
+    }
+}
+
+impl fmt::Display for TlsModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 /// A complete Lamina IR module (file).
@@ -498,6 +532,9 @@ impl fmt::Display for GlobalDeclaration<'_> {
         if let Some(align) = self.align {
             writeln!(f, "@align({align})")?;
         }
+        if let Some(model) = self.thread_local {
+            write!(f, "@thread_local({model}) ")?;
+        }
         if self.exported {
             write!(f, "@export ")?;
         }
@@ -516,6 +553,9 @@ fn write_global(
 ) -> fmt::Result {
     if let Some(align) = decl.align {
         writeln!(f, "@align({align})")?;
+    }
+    if let Some(model) = decl.thread_local {
+        write!(f, "@thread_local({model}) ")?;
     }
     if decl.exported {
         write!(f, "@export ")?;
@@ -626,6 +666,7 @@ mod tests {
             initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(0)))),
             exported: false,
             align: None,
+            thread_local: None,
         };
         assert_eq!(format!("{}", decl1), "global $count: i32 = 0");
 
@@ -638,6 +679,7 @@ mod tests {
             initializer: None,
             exported: false,
             align: None,
+            thread_local: None,
         };
         assert_eq!(format!("{}", decl2), "global $external_data: [256 x i8]");
     }
@@ -653,6 +695,7 @@ mod tests {
             initializer: None,
             exported: true,
             align: Some(64),
+            thread_local: None,
         };
         assert_eq!(
             format!("{}", decl),
@@ -689,6 +732,7 @@ mod tests {
                         initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(1)))),
                         exported: false,
                         align: None,
+                        thread_local: None,
                     },
                 );
             }
@@ -738,6 +782,7 @@ mod tests {
                 initializer: Some(GlobalInit::Value(Value::Constant(Literal::F32(PI)))),
                 exported: false,
                 align: None,
+                thread_local: None,
             },
         );
 

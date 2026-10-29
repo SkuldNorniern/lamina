@@ -5,6 +5,7 @@
 //! code generation and optimization.
 use crate::types::AddressSpace;
 use crate::{
+    module::TlsModel,
     register::{Register, VirtualReg},
     types::{MirType, ScalarType},
 };
@@ -43,6 +44,63 @@ pub enum IntBinOp {
     Shl,
     LShr,
     AShr,
+}
+
+/// The wrapping arithmetic an `IntOverflow` asks about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntOverflowOp {
+    Add,
+    Sub,
+    Mul,
+}
+
+impl IntOverflowOp {
+    /// Whether the operation leaves the range of `ty`, read in the given signedness.
+    pub fn overflows(
+        self,
+        ty: MirType,
+        signed: bool,
+        lhs: i64,
+        rhs: i64,
+        pointer: PointerWidth,
+    ) -> bool {
+        let bits = ty.size_bytes(pointer) as u32 * 8;
+        if signed {
+            let left = i128::from(ty.signed_integer(lhs, pointer));
+            let right = i128::from(ty.signed_integer(rhs, pointer));
+            let wide = match self {
+                Self::Add => left + right,
+                Self::Sub => left - right,
+                Self::Mul => left * right,
+            };
+            let low = -(1i128 << (bits - 1));
+            let high = (1i128 << (bits - 1)) - 1;
+            wide < low || wide > high
+        } else {
+            let left = u128::from(ty.unsigned_integer(lhs, pointer));
+            let right = u128::from(ty.unsigned_integer(rhs, pointer));
+            let high = if bits == 128 {
+                u128::MAX
+            } else {
+                (1u128 << bits) - 1
+            };
+            match self {
+                Self::Add => left + right > high,
+                Self::Sub => left < right,
+                Self::Mul => left * right > high,
+            }
+        }
+    }
+}
+
+impl fmt::Display for IntOverflowOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IntOverflowOp::Add => write!(f, "add"),
+            IntOverflowOp::Sub => write!(f, "sub"),
+            IntOverflowOp::Mul => write!(f, "mul"),
+        }
+    }
 }
 
 /// Integer bit operations on a single operand. The result has the operand's type.
@@ -642,6 +700,10 @@ impl fmt::Display for AddressMode {
 pub struct MemoryAttrs {
     pub align: u8,
     pub volatile: bool,
+    /// Set when the IR stated this alignment rather than it being derived from the
+    /// accessed type. A backend that can only issue naturally-aligned accesses refuses
+    /// a stated alignment below the natural one instead of misaligning silently.
+    pub stated_align: bool,
 }
 
 impl Default for MemoryAttrs {
@@ -649,6 +711,7 @@ impl Default for MemoryAttrs {
         Self {
             align: 1,
             volatile: false,
+            stated_align: false,
         }
     }
 }
@@ -678,6 +741,25 @@ pub enum Instruction {
     SymbolAddress {
         dst: Register,
         symbol: String,
+    },
+
+    // Address of a thread-local symbol in the running thread's block, materialized
+    // into a pointer register. The model names the relocations the backend emits.
+    ThreadLocalAddr {
+        dst: Register,
+        symbol: String,
+        model: TlsModel,
+    },
+
+    // Whether the same wrapping arithmetic on lhs and rhs leaves the range of ty.
+    // The result is an i1.
+    IntOverflow {
+        op: IntOverflowOp,
+        ty: MirType,
+        signed: bool,
+        dst: Register,
+        lhs: Operand,
+        rhs: Operand,
     },
 
     // Integer arithmetic
@@ -1057,6 +1139,7 @@ impl Instruction {
     pub fn normalize_integer_immediates(&mut self, return_type: Option<MirType>) {
         match self {
             Instruction::IntBinary { ty, lhs, rhs, .. }
+            | Instruction::IntOverflow { ty, lhs, rhs, .. }
             | Instruction::IntRotate { ty, lhs, rhs, .. }
             | Instruction::IntCmp { ty, lhs, rhs, .. } => {
                 normalize_immediate(lhs, *ty);
@@ -1113,6 +1196,8 @@ impl Instruction {
         match self {
             Instruction::Copy { dst, .. }
             | Instruction::SymbolAddress { dst, .. }
+            | Instruction::ThreadLocalAddr { dst, .. }
+            | Instruction::IntOverflow { dst, .. }
             | Instruction::IntBinary { dst, .. }
             | Instruction::FloatBinary { dst, .. }
             | Instruction::FloatUnary { dst, .. }
@@ -1183,6 +1268,7 @@ impl Instruction {
             } => regs.push(r),
             Instruction::Copy { .. } => {}
             Instruction::IntBinary { lhs, rhs, .. }
+            | Instruction::IntOverflow { lhs, rhs, .. }
             | Instruction::IntRotate { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
@@ -1446,6 +1532,20 @@ impl fmt::Display for Instruction {
             }
             Instruction::SymbolAddress { dst, symbol } => {
                 write!(f, "{dst} = symbol_addr @{symbol}")
+            }
+            Instruction::ThreadLocalAddr { dst, symbol, model } => {
+                write!(f, "{dst} = tls_addr.{model} @{symbol}")
+            }
+            Instruction::IntOverflow {
+                op,
+                ty,
+                signed,
+                dst,
+                lhs,
+                rhs,
+            } => {
+                let sign = if *signed { "s" } else { "u" };
+                write!(f, "{dst} = {op}.ovf.{sign}.{ty} {lhs}, {rhs}")
             }
             Instruction::IntBinary {
                 op,
@@ -1925,5 +2025,76 @@ mod tests {
             i64::from(i16::MIN)
         );
         assert_eq!(rotl(MirType::Scalar(ScalarType::I8), 5, 9), 10);
+    }
+
+    #[test]
+    fn overflow_matches_the_native_checked_operation_at_every_width() {
+        macro_rules! native {
+            ($op:expr, $signed:ty, $unsigned:ty, $signed_flag:expr, $a:expr, $b:expr) => {{
+                if $signed_flag {
+                    let left = $a as $signed;
+                    let right = $b as $signed;
+                    match $op {
+                        IntOverflowOp::Add => left.checked_add(right).is_none(),
+                        IntOverflowOp::Sub => left.checked_sub(right).is_none(),
+                        IntOverflowOp::Mul => left.checked_mul(right).is_none(),
+                    }
+                } else {
+                    let left = $a as $unsigned;
+                    let right = $b as $unsigned;
+                    match $op {
+                        IntOverflowOp::Add => left.checked_add(right).is_none(),
+                        IntOverflowOp::Sub => left.checked_sub(right).is_none(),
+                        IntOverflowOp::Mul => left.checked_mul(right).is_none(),
+                    }
+                }
+            }};
+        }
+
+        let values: [i64; 11] = [
+            0,
+            1,
+            -1,
+            2,
+            -2,
+            127,
+            -128,
+            4_294_967_296,
+            -4_294_967_296,
+            i64::MAX,
+            i64::MIN,
+        ];
+        for signed in [true, false] {
+            for a in values {
+                for b in values {
+                    for op in [IntOverflowOp::Add, IntOverflowOp::Sub, IntOverflowOp::Mul] {
+                        for ty in [
+                            MirType::Scalar(ScalarType::I8),
+                            MirType::Scalar(ScalarType::I16),
+                            MirType::Scalar(ScalarType::I32),
+                            MirType::Scalar(ScalarType::I64),
+                        ] {
+                            let expected = match ty {
+                                MirType::Scalar(ScalarType::I8) => {
+                                    native!(op, i8, u8, signed, a, b)
+                                }
+                                MirType::Scalar(ScalarType::I16) => {
+                                    native!(op, i16, u16, signed, a, b)
+                                }
+                                MirType::Scalar(ScalarType::I32) => {
+                                    native!(op, i32, u32, signed, a, b)
+                                }
+                                _ => native!(op, i64, u64, signed, a, b),
+                            };
+                            assert_eq!(
+                                op.overflows(ty, signed, a, b, PointerWidth::Bits64),
+                                expected,
+                                "{op} {ty} signed={signed} {a} {b}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 }

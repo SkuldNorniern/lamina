@@ -23,9 +23,10 @@ use crate::{
         Module as IRModule,
         function::{Function as IRFunction, FunctionAnnotation},
         instruction::{
-            AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst, UnaryOp as IRUnary,
+            AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst,
+            OverflowOp as IROverflow, UnaryOp as IRUnary,
         },
-        module::GlobalInit,
+        module::{GlobalInit, TlsModel as IRTlsModel},
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
             align_of_type, resolve_type_names, sizeof_type, struct_field_byte_offset,
@@ -33,9 +34,9 @@ use crate::{
     },
     mir::{
         AddressMode, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
-        Global, Immediate, Instruction, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MemoryAttrs,
-        MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature,
-        SymbolVisibility, VirtualReg, VirtualRegAllocator,
+        Global, Immediate, Instruction, IntBinOp, IntCmpOp, IntOverflowOp, IntRotOp, IntUnOp,
+        MemoryAttrs, MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType,
+        Signature, SymbolVisibility, TlsModel as MirTlsModel, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{
@@ -251,6 +252,25 @@ fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
     }
 }
 
+/// The alignment a load or store is carried out at: the one the instruction states,
+/// or the natural alignment of the accessed type when it states none.
+fn access_alignment(
+    stated: Option<u32>,
+    ty: MirType,
+    pointer: PointerWidth,
+    what: &str,
+) -> Result<u8, FromIRError> {
+    let natural = ty.alignment(pointer) as u8;
+    let Some(stated) = stated else {
+        return Ok(natural);
+    };
+    u8::try_from(stated).map_err(|_| {
+        FromIRError::UnsupportedAlignment(format!(
+            "{what} align {stated} exceeds the 128-byte maximum a memory access can state"
+        ))
+    })
+}
+
 fn normalize_lowered_literal(operand: &mut Operand, ty: MirType) {
     operand.normalize_integer_immediate(ty);
     if ty == MirType::Scalar(ScalarType::F32)
@@ -333,6 +353,9 @@ pub fn from_ir_for_target(
                 if decl.exported {
                     global = global.exported();
                 }
+                if let Some(model) = decl.thread_local {
+                    global = global.thread_local(map_tls_model(model));
+                }
                 mir_module.globals.insert(global_name.to_string(), global);
                 continue;
             }
@@ -353,6 +376,9 @@ pub fn from_ir_for_target(
         };
         if decl.exported {
             global = global.exported();
+        }
+        if let Some(model) = decl.thread_local {
+            global = global.thread_local(map_tls_model(model));
         }
         mir_module.globals.insert(global_name.to_string(), global);
     }
@@ -696,10 +722,18 @@ fn literal_bytes(
     Ok(bytes)
 }
 
+fn map_tls_model(model: IRTlsModel) -> MirTlsModel {
+    match model {
+        IRTlsModel::LocalExec => MirTlsModel::LocalExec,
+        IRTlsModel::InitialExec => MirTlsModel::InitialExec,
+    }
+}
+
 /// Address registers for referenced globals. Each global gets one register,
 /// defined by a `SymbolAddress` at the top of the entry block.
 struct GlobalAddresses<'a> {
     declared: HashSet<&'a str>,
+    thread_local: BTreeMap<&'a str, MirTlsModel>,
     regs: BTreeMap<&'a str, Register>,
 }
 
@@ -707,6 +741,11 @@ impl<'a> GlobalAddresses<'a> {
     fn new(module: &IRModule<'a>) -> Self {
         Self {
             declared: module.global_declarations.keys().copied().collect(),
+            thread_local: module
+                .global_declarations
+                .iter()
+                .filter_map(|(name, global)| Some((*name, map_tls_model(global.thread_local?))))
+                .collect(),
             regs: BTreeMap::new(),
         }
     }
@@ -729,9 +768,16 @@ impl<'a> GlobalAddresses<'a> {
     fn prelude(&self) -> Vec<Instruction> {
         self.regs
             .iter()
-            .map(|(name, dst)| Instruction::SymbolAddress {
-                dst: dst.clone(),
-                symbol: (*name).to_string(),
+            .map(|(name, dst)| match self.thread_local.get(name) {
+                Some(model) => Instruction::ThreadLocalAddr {
+                    dst: dst.clone(),
+                    symbol: (*name).to_string(),
+                    model: *model,
+                },
+                None => Instruction::SymbolAddress {
+                    dst: dst.clone(),
+                    symbol: (*name).to_string(),
+                },
             })
             .collect()
     }
@@ -1199,6 +1245,32 @@ fn convert_instruction<'a>(
     }
 
     match instr {
+        IRInst::OverflowFlag {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        } => {
+            let mir_ty = map_ir_prim(*ty)?;
+            let mut lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
+            let mut rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
+            normalize_lowered_literal(&mut lhs_op, mir_ty);
+            normalize_lowered_literal(&mut rhs_op, mir_ty);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            Ok(vec![Instruction::IntOverflow {
+                op: match op {
+                    IROverflow::Add => IntOverflowOp::Add,
+                    IROverflow::Sub => IntOverflowOp::Sub,
+                    IROverflow::Mul => IntOverflowOp::Mul,
+                },
+                ty: mir_ty,
+                signed: !matches!(ty, IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64),
+                dst,
+                lhs: lhs_op,
+                rhs: rhs_op,
+            }])
+        }
         IRInst::Binary {
             op,
             result,
@@ -1579,6 +1651,7 @@ fn convert_instruction<'a>(
             ty,
             ptr,
             volatile,
+            align,
         } => {
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
@@ -1600,8 +1673,9 @@ fn convert_instruction<'a>(
                 dst,
                 addr,
                 attrs: MemoryAttrs {
-                    align: mir_ty.alignment(pointer) as u8,
+                    align: access_alignment(*align, mir_ty, pointer, "load")?,
                     volatile: *volatile,
+                    stated_align: align.is_some(),
                 },
             }])
         }
@@ -1610,6 +1684,7 @@ fn convert_instruction<'a>(
             ptr,
             value,
             volatile,
+            align,
         } => {
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
@@ -1632,8 +1707,9 @@ fn convert_instruction<'a>(
                 src,
                 addr,
                 attrs: MemoryAttrs {
-                    align: mir_ty.alignment(pointer) as u8,
+                    align: access_alignment(*align, mir_ty, pointer, "store")?,
                     volatile: *volatile,
+                    stated_align: align.is_some(),
                 },
             }])
         }

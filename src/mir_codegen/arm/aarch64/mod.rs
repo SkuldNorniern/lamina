@@ -21,6 +21,9 @@ use crate::mir_codegen::common::{
     self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
+use crate::mir_codegen::common::{
+    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
+};
 use crate::mir_codegen::simd::reserve_vector_slots;
 use lamina_mir::SourceLoc;
 
@@ -857,6 +860,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
+    reject_thread_local_globals(module, "AArch64")?;
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     let abi = AArch64ABI::new(target_os);
     reject_register_symbols(module, &abi)?;
@@ -963,6 +967,12 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc 1 {} {}", loc.line, loc.column)?;
         }
         match inst {
+            MirInst::ThreadLocalAddr { .. } => {
+                return Err(unsupported_thread_local("AArch64"));
+            }
+            MirInst::IntOverflow { .. } => {
+                return Err(unsupported_overflow_flag("AArch64"));
+            }
             MirInst::SymbolAddress { dst, symbol } => {
                 let label = abi.mangle_function_name(symbol);
                 let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;

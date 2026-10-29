@@ -1,0 +1,42 @@
+# load/store at a stated alignment below the natural one
+fn @main() -> i64 {
+  entry:
+    %buf = stackalloc.[16 x i8]
+    %p = getelem.i8 %buf, 1
+    store.i32 %p, 1145258561 align 1
+    %v = load.i32 %p align 1
+    %q = getelem.i8 %buf, 5
+    store.i32 %q, %v align 1
+    %b0 = load.i8 %p
+    %c0 = extend.i8.i64 %b0
+    %w0 = writebyte %c0
+    %p1 = getelem.i8 %buf, 2
+    %b1 = load.i8 %p1
+    %c1 = extend.i8.i64 %b1
+    %w1 = writebyte %c1
+    %p2 = getelem.i8 %buf, 3
+    %b2 = load.i8 %p2
+    %c2 = extend.i8.i64 %b2
+    %w2 = writebyte %c2
+    %p3 = getelem.i8 %buf, 4
+    %b3 = load.i8 %p3
+    %c3 = extend.i8.i64 %b3
+    %w3 = writebyte %c3
+    %r0 = load.i8 %q
+    %x0 = extend.i8.i64 %r0
+    %y0 = writebyte %x0
+    %q1 = getelem.i8 %buf, 6
+    %r1 = load.i8 %q1
+    %x1 = extend.i8.i64 %r1
+    %y1 = writebyte %x1
+    %q2 = getelem.i8 %buf, 7
+    %r2 = load.i8 %q2
+    %x2 = extend.i8.i64 %r2
+    %y2 = writebyte %x2
+    %q3 = getelem.i8 %buf, 8
+    %r3 = load.i8 %q3
+    %x3 = extend.i8.i64 %r3
+    %y3 = writebyte %x3
+    %nl = writebyte 10
+    ret.i64 0
+}

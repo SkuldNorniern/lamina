@@ -11,6 +11,7 @@ use crate::mir_codegen::common::{
     CopyLocation, emit_global_directives, integer_conversion, self_tail_arguments,
     self_tail_schedule,
 };
+use crate::mir_codegen::common::{reject_thread_local_globals, reject_underaligned_accesses};
 
 use std::{
     cmp::Ordering as CmpOrdering,
@@ -73,6 +74,8 @@ pub fn generate_mir_arx64_with_units_and_settings<W: Write>(
 
     validate_module_call_parameters(module, TargetArchitecture::Arx64)?;
     reject_function_placement(module, "ARX64")?;
+    reject_thread_local_globals(module, "ARX64")?;
+    reject_underaligned_accesses(module, PointerWidth::Bits64, "ARX64")?;
 
     writeln!(writer, ".section .text").map_err(io_error)?;
     emit_global_directives(writer, module, str::to_string)?;

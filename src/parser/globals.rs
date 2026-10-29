@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::{
     LaminaError,
     ir::{
-        GlobalDeclaration, GlobalInit, Identifier, Literal, PrimitiveType, Type, TypeDeclaration,
-        Value, types::resolve_type_names,
+        GlobalDeclaration, GlobalInit, Identifier, Literal, PrimitiveType, TlsModel, Type,
+        TypeDeclaration, Value, types::resolve_type_names,
     },
     parser::{
         functions::{parse_alignment_argument, unknown_annotation_hint},
@@ -16,13 +16,14 @@ use crate::{
     },
 };
 
-const GLOBAL_ANNOTATION_NAMES: &[&str] = &["export", "align"];
+const GLOBAL_ANNOTATION_NAMES: &[&str] = &["export", "align", "thread_local"];
 
 /// The annotations written before a `global`.
 #[derive(Debug, Default)]
 pub struct GlobalAnnotations {
     pub exported: bool,
     pub align: Option<u32>,
+    pub thread_local: Option<TlsModel>,
 }
 
 /// Parses the `@name` annotations that precede a `global`, in any order.
@@ -50,6 +51,12 @@ pub fn parse_global_annotations(
                 }
                 annotations.align = Some(parse_alignment_argument(state)?);
             }
+            "thread_local" => {
+                if annotations.thread_local.is_some() {
+                    return Err(state.error("Duplicate annotation: @thread_local"));
+                }
+                annotations.thread_local = Some(parse_tls_model_argument(state)?);
+            }
             _ => {
                 let hint = unknown_annotation_hint(name, GLOBAL_ANNOTATION_NAMES);
                 return Err(state.error(format!(
@@ -67,7 +74,11 @@ pub fn parse_global_declaration<'a>(
     annotations: GlobalAnnotations,
     types: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
 ) -> Result<GlobalDeclaration<'a>, LaminaError> {
-    let GlobalAnnotations { exported, align } = annotations;
+    let GlobalAnnotations {
+        exported,
+        align,
+        thread_local,
+    } = annotations;
     state.consume_keyword("global")?;
     let name = state.parse_global_identifier()?;
     state.expect_char(':')?;
@@ -93,7 +104,33 @@ pub fn parse_global_declaration<'a>(
         initializer,
         exported,
         align,
+        thread_local,
     })
+}
+
+/// Parses the optional `(model)` after `@thread_local`. Local-exec is the default
+/// because it needs nothing of the dynamic loader; the two dynamic models are named
+/// and refused rather than silently downgraded.
+fn parse_tls_model_argument(state: &mut ParserState<'_>) -> Result<TlsModel, LaminaError> {
+    state.skip_inline_space();
+    if state.current_char() != Some('(') {
+        return Ok(TlsModel::LocalExec);
+    }
+    state.advance();
+    state.skip_whitespace_and_comments();
+    let name = state.parse_identifier_str()?;
+    state.skip_whitespace_and_comments();
+    state.expect_char(')')?;
+    match name {
+        "local_exec" => Ok(TlsModel::LocalExec),
+        "initial_exec" => Ok(TlsModel::InitialExec),
+        "general_dynamic" | "local_dynamic" => Err(state.error(format!(
+            "@thread_local({name}) is not supported: {name} resolves through a __tls_get_addr call, and lamina has no TLS runtime\n  Hint: Use @thread_local(local_exec) in an executable that defines the symbol, or @thread_local(initial_exec) when it may come from a shared object loaded at startup"
+        ))),
+        _ => Err(state.error(format!(
+            "Unknown TLS model '{name}'\n  Hint: Valid models are local_exec and initial_exec"
+        ))),
+    }
 }
 
 /// Parses `[a, b, c]` for an array global, or `{a, b, c}` for a struct one.

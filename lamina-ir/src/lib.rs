@@ -32,12 +32,12 @@ pub use function::{
 #[cfg(feature = "nightly")]
 pub use instruction::SimdOp;
 pub use instruction::{
-    AllocType, BinaryOp, CmpOp, Instruction, UnaryOp, assignment_opcode_names,
+    AllocType, BinaryOp, CmpOp, Instruction, OverflowOp, UnaryOp, assignment_opcode_names,
     non_assignment_opcode_names,
 };
 pub use instruction::{AtomicBinOp, MemoryOrdering};
 #[cfg(feature = "nightly")]
 pub use module::ModuleAnnotation;
-pub use module::{GlobalDeclaration, GlobalInit, Module, TypeDeclaration};
+pub use module::{GlobalDeclaration, GlobalInit, Module, TlsModel, TypeDeclaration};
 pub use owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
 pub use types::{Identifier, Literal, PrimitiveType, StructField, Type, Value};

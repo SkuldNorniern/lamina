@@ -5,7 +5,7 @@ use crate::{
     LaminaError,
     ir::{
         AllocType, AtomicBinOp, BinaryOp, CmpOp, Identifier, Instruction, MemoryOrdering,
-        PrimitiveType, Type, UnaryOp, Value, instruction::AsmOperand,
+        OverflowOp, PrimitiveType, Type, UnaryOp, Value, instruction::AsmOperand,
     },
     parser::{
         functions::alignment_from_bytes,
@@ -738,6 +738,39 @@ fn parse_binary_op<'a>(
         "rotr" => BinaryOp::Rotr,
         _ => return Err(state.error(format!("Unknown binary operation '{op_str}'"))),
     };
+    if take_ovf_suffix(state) {
+        let op = match op {
+            BinaryOp::Add => OverflowOp::Add,
+            BinaryOp::Sub => OverflowOp::Sub,
+            BinaryOp::Mul => OverflowOp::Mul,
+            _ => {
+                return Err(state.error(format!(
+                    "'.ovf' applies to add, sub and mul only, found '{op_str}.ovf'\n  Hint: Division traps instead of overflowing; shifts and bitwise operations cannot overflow"
+                )));
+            }
+        };
+        let ty = parse_primitive_type_suffix(state)?;
+        if !is_integer_type(ty) {
+            return Err(state.error(format!(
+                "{op_str}.ovf takes an integer type, found {ty}\n  Hint: Overflow is defined for integers; a float operation rounds or goes to infinity instead"
+            )));
+        }
+        if matches!(ty, PrimitiveType::I128 | PrimitiveType::U128) {
+            return Err(state.error(format!(
+                "{op_str}.ovf.{ty} is not supported: 128-bit arithmetic is lowered to word pairs and no backend reports its overflow\n  Hint: Compare the operands before the operation, or use a 64-bit type"
+            )));
+        }
+        let lhs = parse_typed_operand(state, &Type::Primitive(ty))?;
+        state.expect_char(',')?;
+        let rhs = parse_typed_operand(state, &Type::Primitive(ty))?;
+        return Ok(Instruction::OverflowFlag {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        });
+    }
     let ty = parse_primitive_type_suffix(state)?;
     if matches!(op, BinaryOp::Rotl | BinaryOp::Rotr) && !is_integer_type(ty) {
         return Err(state.error(format!("{op_str} takes an integer type, found {ty}")));
@@ -752,6 +785,18 @@ fn parse_binary_op<'a>(
         lhs,
         rhs,
     })
+}
+
+/// Consumes a `.ovf` written between the opcode and its type suffix.
+fn take_ovf_suffix(state: &mut ParserState<'_>) -> bool {
+    let word_ends = !state
+        .peek_byte(4)
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
+    if state.peek_slice(4) != Some(".ovf") || !word_ends {
+        return false;
+    }
+    state.advance_by(4);
+    true
 }
 
 fn is_integer_type(ty: PrimitiveType) -> bool {
@@ -804,7 +849,7 @@ fn parse_alloc<'a>(
     alloc_type: AllocType,
 ) -> Result<Instruction<'a>, LaminaError> {
     let allocated_ty = parse_type_suffix(state)?;
-    let align = parse_alloc_align(state)?;
+    let align = parse_align_modifier(state, "stackalloc.i64 align 16")?;
     Ok(Instruction::Alloc {
         result,
         alloc_type,
@@ -813,9 +858,13 @@ fn parse_alloc<'a>(
     })
 }
 
-/// Parses the optional `align n` that may follow a stackalloc type. Anything else
-/// is left unread, so the next line still parses as its own instruction.
-fn parse_alloc_align(state: &mut ParserState<'_>) -> Result<Option<u32>, LaminaError> {
+/// Parses the optional `align n` that may follow a stackalloc type, a load or a
+/// store. Anything else is left unread, so the next line still parses as its own
+/// instruction.
+fn parse_align_modifier(
+    state: &mut ParserState<'_>,
+    example: &str,
+) -> Result<Option<u32>, LaminaError> {
     let start = state.position();
     state.skip_inline_space();
     let word_ends = !state
@@ -838,7 +887,7 @@ fn parse_alloc_align(state: &mut ParserState<'_>) -> Result<Option<u32>, LaminaE
     match alignment_from_bytes(bytes) {
         Some(alignment) => Ok(Some(alignment)),
         None => Err(state.error(format!(
-            "Invalid alignment: align {bytes}\n  Hint: Alignment must be a power of two, e.g. stackalloc.i64 align 16"
+            "Invalid alignment: align {bytes}\n  Hint: Alignment must be a power of two, e.g. {example}"
         ))),
     }
 }
@@ -878,11 +927,13 @@ fn parse_load<'a>(
 ) -> Result<Instruction<'a>, LaminaError> {
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
+    let align = parse_align_modifier(state, "load.i32 %p align 1")?;
     Ok(Instruction::Load {
         result,
         ty,
         ptr,
         volatile,
+        align,
     })
 }
 
@@ -894,11 +945,13 @@ fn parse_store<'a>(
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
     let value = parse_typed_operand(state, &ty)?;
+    let align = parse_align_modifier(state, "store.i32 %p, %v align 1")?;
     Ok(Instruction::Store {
         ty,
         ptr,
         value,
         volatile,
+        align,
     })
 }
 

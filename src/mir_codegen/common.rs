@@ -1,6 +1,6 @@
 //! Common code for MIR codegen backends.
 
-use lamina_mir::{ScalarType, SourceLoc};
+use lamina_mir::{Instruction as MirInstruction, ScalarType, SourceLoc};
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt::{Debug, Display},
@@ -27,6 +27,69 @@ pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
         "{operation} has no implementation for {os:?}"
     )))
+}
+
+/// The refusal a backend gives for `<op>.ovf`, which it must name rather than lower
+/// to the wrapping arithmetic alone.
+pub fn unsupported_overflow_flag(backend: &str) -> LaminaError {
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+        "checked arithmetic ('<op>.ovf') is not supported by the {backend} backend; it is x86_64 only"
+    )))
+}
+
+/// The refusal a backend gives for a thread-local address, whose relocations are
+/// target-specific and implemented for x86_64 alone.
+pub fn unsupported_thread_local(backend: &str) -> LaminaError {
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+        "thread-local storage ('@thread_local') is not supported by the {backend} backend; it is x86_64 only"
+    )))
+}
+
+/// Rejects modules that declare a thread-local global, for backends that have no
+/// TLS relocations.
+pub fn reject_thread_local_globals(module: &MirModule, backend: &str) -> Result<(), LaminaError> {
+    match module
+        .globals
+        .iter()
+        .find(|(_, global)| global.thread_local.is_some())
+    {
+        None => Ok(()),
+        Some((name, _)) => Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "thread-local storage is not supported by the {backend} backend; it is x86_64 only (global '{name}')"
+            ),
+        ))),
+    }
+}
+
+/// Rejects a load or store that states an alignment below the natural alignment of
+/// its type, for backends whose memory instructions fault on an unaligned address.
+pub fn reject_underaligned_accesses(
+    module: &MirModule,
+    pointer: PointerWidth,
+    backend: &str,
+) -> Result<(), LaminaError> {
+    for (name, function) in &module.functions {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let (ty, attrs, what) = match &instruction.instr {
+                    MirInstruction::Load { ty, attrs, .. } => (ty, attrs, "load"),
+                    MirInstruction::Store { ty, attrs, .. } => (ty, attrs, "store"),
+                    _ => continue,
+                };
+                let natural = ty.alignment(pointer);
+                if attrs.stated_align && usize::from(attrs.align) < natural {
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!(
+                            "{backend} cannot issue a {what} of {ty} at alignment {} (natural alignment is {natural}); its memory instructions fault on an unaligned address (function '{name}')",
+                            attrs.align
+                        ),
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn parallel_codegen_error(error: CodegenError) -> LaminaError {
@@ -791,6 +854,20 @@ pub fn emit_global_data<W: Write>(
         let label = mangle(name);
         let align_log2 = global.align.trailing_zeros();
         let size = global.size;
+        if global.thread_local.is_some() && (os_uses_macho(target_os) || os_uses_coff(target_os)) {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "thread-local storage is implemented for ELF targets only; '{name}' cannot be placed on {target_os:?}"
+                ),
+            )));
+        }
+        let (data_section, bss_section) = match global.thread_local {
+            None => (data_section, bss_section),
+            Some(_) => (
+                ".section .tdata,\"awT\",@progbits",
+                ".section .tbss,\"awT\",@nobits",
+            ),
+        };
         match global.initializer.as_deref() {
             Some(bytes) if bytes.iter().any(|&b| b != 0) => {
                 writeln!(writer, "{data_section}")?;
@@ -2015,6 +2092,7 @@ mod backend_plan_tests {
 
 #[cfg(test)]
 mod export_linkage_tests {
+    use super::{reject_thread_local_globals, reject_underaligned_accesses};
     use crate::{
         error::LaminaError,
         mir::{Module as MirModule, codegen::from_ir},
@@ -2220,6 +2298,50 @@ entry:
                 "{name}: {error}"
             );
         }
+    }
+
+    #[test]
+    fn backends_without_tls_name_the_feature_they_refuse() {
+        let ir = parse_module(
+            "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n %x = load.i64 $t\n ret.i64 %x\n}\n",
+        )
+        .expect("parse thread-local module");
+        let mir = from_ir(&ir, "tls").expect("lower thread-local module");
+        for (name, backend) in [
+            ("aarch64", "AArch64"),
+            ("riscv64", "RISC-V"),
+            ("powerpc64", "PowerPC64"),
+        ] {
+            let error = reject_thread_local_globals(&mir, backend).expect_err(name);
+            let text = error.to_string();
+            assert!(text.contains("thread-local storage"), "{name}: {text}");
+            assert!(text.contains(backend), "{name}: {text}");
+            assert!(text.contains("'t'"), "{name}: {text}");
+        }
+    }
+
+    #[test]
+    fn backends_needing_natural_alignment_name_the_access_they_refuse() {
+        let ir = parse_module(
+            "fn @main(ptr %p) -> i64 {\nentry:\n store.i32 %p, 1 align 1\n ret.i64 0\n}\n",
+        )
+        .expect("parse under-aligned module");
+        let mir = from_ir(&ir, "align").expect("lower under-aligned module");
+        let error = reject_underaligned_accesses(&mir, PointerWidth::Bits64, "RISC-V")
+            .expect_err("riscv faults on an unaligned store");
+        let text = error.to_string();
+        assert!(
+            text.contains("RISC-V cannot issue a store of i32"),
+            "{text}"
+        );
+        assert!(text.contains("alignment 1"), "{text}");
+
+        let ir =
+            parse_module("fn @main(ptr %p) -> i64 {\nentry:\n store.i32 %p, 1\n ret.i64 0\n}\n")
+                .expect("parse natural module");
+        let mir = from_ir(&ir, "align").expect("lower natural module");
+        reject_underaligned_accesses(&mir, PointerWidth::Bits64, "RISC-V")
+            .expect("a derived alignment is never a refusal");
     }
 
     #[test]

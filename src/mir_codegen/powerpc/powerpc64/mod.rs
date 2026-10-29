@@ -28,6 +28,9 @@ use crate::mir_codegen::common::{
     ClobberIndex, CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
+use crate::mir_codegen::common::{
+    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
+};
 use lamina_mir::SourceLoc;
 
 use std::{
@@ -459,6 +462,7 @@ fn emit_ppc64_module<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
+    reject_thread_local_globals(module, "PowerPC64")?;
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, ".abiversion 2")?;
@@ -1752,6 +1756,12 @@ fn emit_instruction_ppc64<W: Write>(
                     )));
                 }
             }
+        }
+        MirInst::ThreadLocalAddr { .. } => {
+            return Err(unsupported_thread_local("PowerPC64"));
+        }
+        MirInst::IntOverflow { .. } => {
+            return Err(unsupported_overflow_flag("PowerPC64"));
         }
         MirInst::SymbolAddress { dst, symbol } => {
             let label = Ppc64Abi::new(target_os).mangle_function_name(symbol);

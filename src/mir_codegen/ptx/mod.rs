@@ -1,5 +1,6 @@
 use super::gpu::{aggregate_parameter_function, error, kernels};
 use crate::mir_codegen::common::reject_function_placement;
+use crate::mir_codegen::common::{reject_thread_local_globals, reject_underaligned_accesses};
 use crate::{
     error::LaminaError,
     mir::{
@@ -331,6 +332,8 @@ impl Kernel {
 
 pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError> {
     reject_function_placement(module, "PTX")?;
+    reject_thread_local_globals(module, "PTX")?;
+    reject_underaligned_accesses(module, PointerWidth::Bits64, "PTX")?;
     if !module.globals.is_empty() {
         return Err(error("PTX does not yet support global variables"));
     }
@@ -599,7 +602,11 @@ mod emission_tests {
                         offset: 0,
                         address_space: space,
                     },
-                    attrs: MemoryAttrs { align, volatile },
+                    attrs: MemoryAttrs {
+                        align,
+                        volatile,
+                        stated_align: false,
+                    },
                 })
                 .instr(Instruction::Ret { value: None })
                 .build();

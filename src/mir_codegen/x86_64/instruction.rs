@@ -2,7 +2,7 @@ use super::variadic::SAVE_AREA_SLOTS;
 use super::*;
 use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::{align_up, unsupported_io};
-use lamina_mir::SourceLoc;
+use lamina_mir::{IntOverflowOp, SourceLoc, TlsModel};
 use lamina_platform::PointerWidth;
 
 /// Frame slots are laid out as the stack slots, then the callee-saved registers, then
@@ -2188,6 +2188,100 @@ pub(super) fn emit_instruction_x86_64(
             if let Register::Virtual(vreg) = dst {
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
+        }
+        MirInst::ThreadLocalAddr { dst, symbol, model } => {
+            let label = X86ABI::new(target_os).mangle_function_name(symbol);
+            match model {
+                TlsModel::LocalExec => {
+                    writeln!(writer, "    movq %fs:0, %rax")?;
+                    writeln!(writer, "    leaq {label}@tpoff(%rax), %rax")?;
+                }
+                TlsModel::InitialExec => {
+                    writeln!(writer, "    movq {label}@gottpoff(%rip), %rax")?;
+                    writeln!(writer, "    addq %fs:0, %rax")?;
+                }
+            }
+            if let Some(dp) = mapped_register(dst, reg_alloc) {
+                writeln!(writer, "    movq %rax, %{dp}")?;
+                return Ok(());
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
+        MirInst::IntOverflow {
+            op,
+            ty,
+            signed,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            let size = ty.size_bytes(pointer_width);
+            let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
+            load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
+            load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
+            if size < 8 {
+                // Below 64 bits the exact result fits in a register, so the question is
+                // whether re-reading it at the operand width gives the same number.
+                extend_integer(writer, "rax", size, *signed)?;
+                extend_integer(writer, scratch, size, *signed)?;
+                match op {
+                    IntOverflowOp::Add => writeln!(writer, "    addq %{scratch}, %rax")?,
+                    IntOverflowOp::Sub => writeln!(writer, "    subq %{scratch}, %rax")?,
+                    IntOverflowOp::Mul => writeln!(writer, "    imulq %{scratch}, %rax")?,
+                }
+                writeln!(writer, "    movq %rax, %{scratch}")?;
+                extend_integer(writer, scratch, size, *signed)?;
+                writeln!(writer, "    cmpq %{scratch}, %rax")?;
+                writeln!(writer, "    setne %al")?;
+            } else {
+                match (op, signed) {
+                    (IntOverflowOp::Add, true) => {
+                        writeln!(writer, "    addq %{scratch}, %rax")?;
+                        writeln!(writer, "    seto %al")?;
+                    }
+                    (IntOverflowOp::Add, false) => {
+                        writeln!(writer, "    addq %{scratch}, %rax")?;
+                        writeln!(writer, "    setc %al")?;
+                    }
+                    (IntOverflowOp::Sub, true) => {
+                        writeln!(writer, "    subq %{scratch}, %rax")?;
+                        writeln!(writer, "    seto %al")?;
+                    }
+                    (IntOverflowOp::Sub, false) => {
+                        writeln!(writer, "    subq %{scratch}, %rax")?;
+                        writeln!(writer, "    setc %al")?;
+                    }
+                    (IntOverflowOp::Mul, true) => {
+                        writeln!(writer, "    imulq %{scratch}, %rax")?;
+                        writeln!(writer, "    seto %al")?;
+                    }
+                    (IntOverflowOp::Mul, false) => {
+                        // The unsigned product needs the high word, which only the
+                        // one-operand form produces, and that form writes %rdx.
+                        writeln!(writer, "    pushq %rdx")?;
+                        writeln!(writer, "    mulq %{scratch}")?;
+                        writeln!(writer, "    setc %al")?;
+                        writeln!(writer, "    movzbq %al, %rax")?;
+                        writeln!(writer, "    popq %rdx")?;
+                        if let Some(dp) = mapped_register(dst, reg_alloc) {
+                            writeln!(writer, "    movq %rax, %{dp}")?;
+                        } else if let Register::Virtual(vreg) = dst {
+                            store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                        }
+                        reg_alloc.free_scratch(scratch);
+                        return Ok(());
+                    }
+                }
+            }
+            writeln!(writer, "    movzbq %al, %rax")?;
+            if let Some(dp) = mapped_register(dst, reg_alloc) {
+                writeln!(writer, "    movq %rax, %{dp}")?;
+            } else if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
+            reg_alloc.free_scratch(scratch);
         }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {

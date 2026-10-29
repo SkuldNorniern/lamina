@@ -1196,6 +1196,7 @@ mod tests {
                     ptr: Value::Variable("p"),
                     value: Value::Constant(Literal::I32(10)),
                     volatile: false,
+                    align: None,
                 },
                 Instruction::Jmp {
                     target_label: "next_block",

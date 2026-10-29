@@ -600,6 +600,47 @@ fn verify_instruction_types(
                         &mut instruction_errors,
                     );
                 }
+                Instruction::ThreadLocalAddr { dst, .. } => {
+                    verify_destination(
+                        dst,
+                        MirType::Scalar(ScalarType::Ptr),
+                        "ThreadLocalAddr",
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
+                Instruction::IntOverflow {
+                    ty, dst, lhs, rhs, ..
+                } => {
+                    if !is_integer_scalar(*ty) {
+                        instruction_errors.push(format!(
+                            "expected IntOverflow operand type to be an integer scalar, found {ty}"
+                        ));
+                    }
+                    verify_destination(
+                        dst,
+                        MirType::Scalar(ScalarType::I1),
+                        "IntOverflow",
+                        config,
+                        &mut instruction_errors,
+                    );
+                    verify_operand(
+                        lhs,
+                        *ty,
+                        "IntOverflow lhs",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                    verify_operand(
+                        rhs,
+                        *ty,
+                        "IntOverflow rhs",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::Copy { ty, dst, src } => {
                     verify_destination(dst, *ty, "Copy", config, &mut instruction_errors);
                     verify_operand(
@@ -1119,9 +1160,9 @@ pub(crate) fn instruction_definition_type(instruction: &Instruction) -> Option<M
             ..
         } => Some(vector_scalar(*ty)),
         Instruction::VectorOp { ty, .. } => Some(*ty),
-        Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
-            Some(MirType::Scalar(ScalarType::I1))
-        }
+        Instruction::IntCmp { .. }
+        | Instruction::FloatCmp { .. }
+        | Instruction::IntOverflow { .. } => Some(MirType::Scalar(ScalarType::I1)),
         Instruction::IntConvert { to, .. }
         | Instruction::IntToFloat { to, .. }
         | Instruction::FloatToInt { to, .. }
@@ -1129,7 +1170,8 @@ pub(crate) fn instruction_definition_type(instruction: &Instruction) -> Option<M
         | Instruction::Bitcast { to, .. } => Some(*to),
         Instruction::Lea { .. }
         | Instruction::StackAddr { .. }
-        | Instruction::SymbolAddress { .. } => Some(MirType::Scalar(ScalarType::Ptr)),
+        | Instruction::SymbolAddress { .. }
+        | Instruction::ThreadLocalAddr { .. } => Some(MirType::Scalar(ScalarType::Ptr)),
         _ => None,
     }
 }
@@ -1185,6 +1227,13 @@ fn is_integer_or_pointer(ty: MirType) -> bool {
                 | ScalarType::Ptr
                 | ScalarType::PtrIn(_)
         )
+    )
+}
+
+fn is_integer_scalar(ty: MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Scalar(ScalarType::I8 | ScalarType::I16 | ScalarType::I32 | ScalarType::I64)
     )
 }
 

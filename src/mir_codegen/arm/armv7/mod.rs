@@ -14,6 +14,7 @@ mod operand;
 #[cfg(test)]
 mod tests;
 
+use crate::mir_codegen::common::{reject_thread_local_globals, reject_underaligned_accesses};
 use std::{collections::HashMap, io::Write, sync::Arc};
 
 use crate::{
@@ -382,6 +383,8 @@ pub fn generate_mir_armv7_with_units_and_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
+    reject_thread_local_globals(module, "armv7")?;
+    reject_underaligned_accesses(module, PointerWidth::Bits32, "armv7")?;
     if !matches!(
         target_os,
         TargetOperatingSystem::Linux | TargetOperatingSystem::Unknown
