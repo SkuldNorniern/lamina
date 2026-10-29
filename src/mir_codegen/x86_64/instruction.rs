@@ -1,6 +1,7 @@
 use super::variadic::SAVE_AREA_SLOTS;
 use super::*;
 use crate::mir_codegen::common::{align_up, unsupported_io};
+use lamina_platform::PointerWidth;
 
 /// Frame slots are laid out as the stack slots, then the callee-saved registers, then
 /// the hidden sret pointer, then the variadic register save area, so the saved registers
@@ -284,8 +285,9 @@ fn emit_int_divide<W: Write>(
     ty: &MirType,
     lhs: &Operand,
     rhs: &Operand,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    if ty.size_bytes() == 8 {
+    if ty.size_bytes(pointer_width) == 8 {
         if let Some(divisor) = rhs.integer_constant() {
             if emit_const_divide(writer, op, divisor)? {
                 return Ok(());
@@ -293,15 +295,23 @@ fn emit_int_divide<W: Write>(
         }
     }
     if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
-        extend_integer(writer, "rax", ty.size_bytes(), false)?;
-        extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+        extend_integer(writer, "rax", ty.size_bytes(pointer_width), false)?;
+        extend_integer(writer, "rcx", ty.size_bytes(pointer_width), false)?;
     }
-    if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) && ty.size_bytes() < 8 {
-        extend_integer(writer, "rax", ty.size_bytes(), true)?;
-        extend_integer(writer, "rcx", ty.size_bytes(), true)?;
-        let (_, overflow) = op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+    if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) && ty.size_bytes(pointer_width) < 8 {
+        extend_integer(writer, "rax", ty.size_bytes(pointer_width), true)?;
+        extend_integer(writer, "rcx", ty.size_bytes(pointer_width), true)?;
+        let (_, overflow) = op.division_checks(
+            *ty,
+            lhs.integer_constant(),
+            rhs.integer_constant(),
+            pointer_width,
+        );
         if overflow {
-            let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+            let minimum = ty.signed_integer(
+                1i64 << (ty.size_bytes(pointer_width) * 8 - 1),
+                pointer_width,
+            );
             writeln!(
                 writer,
                 "    cmpq $-1, %rcx\n    jne 2f\n    cmpq ${minimum}, %rax\n    jne 2f\n    ud2\n2:"
@@ -310,7 +320,7 @@ fn emit_int_divide<W: Write>(
     }
     let signed = matches!(op, IntBinOp::SDiv | IntBinOp::SRem);
     let remainder = matches!(op, IntBinOp::SRem | IntBinOp::URem);
-    let narrow = ty.size_bytes() == 8 && rhs.integer_constant().is_none();
+    let narrow = ty.size_bytes(pointer_width) == 8 && rhs.integer_constant().is_none();
     if narrow && signed {
         writeln!(
             writer,
@@ -369,8 +379,9 @@ fn emit_int_unary<W: Write>(
     reg_alloc: &X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     cpu_level: X86CpuLevel,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    let bytes = ty.size_bytes();
+    let bytes = ty.size_bytes(pointer_width);
     let bits = bytes * 8;
     load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
     extend_integer(writer, "rax", bytes, false)?;
@@ -446,6 +457,7 @@ fn emit_popcount_swar<W: Write>(writer: &mut RaxTrackingWriter<W>) -> Result<(),
 
 /// Rotation of `lhs` by `rhs` modulo the bit width. Bits of `rdx` above the width are
 /// discarded by the final canonicalization, so only the low width bits must be right.
+#[allow(clippy::too_many_arguments)]
 fn emit_int_rotate<W: Write>(
     op: IntRotOp,
     ty: &MirType,
@@ -454,8 +466,9 @@ fn emit_int_rotate<W: Write>(
     writer: &mut RaxTrackingWriter<W>,
     reg_alloc: &X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    let bytes = ty.size_bytes();
+    let bytes = ty.size_bytes(pointer_width);
     let bits = bytes * 8;
     load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
     extend_integer(writer, "rax", bytes, false)?;
@@ -523,6 +536,7 @@ fn emit_int_to_float<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
     signed: bool,
     dst: &Register,
     src: &Operand,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let is_f32 = is_f32(to);
     let (cvt, add, mov_out) = if is_f32 {
@@ -530,7 +544,7 @@ fn emit_int_to_float<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
     } else {
         ("cvtsi2sdq", "addsd", "movq")
     };
-    let width = from.size_bytes();
+    let width = from.size_bytes(pointer_width);
     load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
     if signed || width < 8 {
         extend_integer(writer, "rax", width, signed)?;
@@ -575,6 +589,7 @@ fn emit_float_to_int<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
     signed: bool,
     dst: &Register,
     src: &Operand,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let source_f32 = is_f32(from);
     let (cvt, ucomi, mov_const) = if source_f32 {
@@ -582,7 +597,7 @@ fn emit_float_to_int<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
     } else {
         ("cvttsd2siq", "ucomisd", "movq")
     };
-    let bits = to.size_bytes() * 8;
+    let bits = to.size_bytes(pointer_width) * 8;
     let constant = |value: f64| fixed_bits(value, source_f32);
     load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", from)?;
     writeln!(writer, "    {cvt} %xmm0, %rax")?;
@@ -743,6 +758,7 @@ pub(super) fn emit_instruction_x86_64(
     entry_label: &str,
     sret_slot: Option<i32>,
     va_area: Option<&super::variadic::VaArea>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let unwind = os_uses_elf(target_os);
     if settings.emit_asm_debug_lines {
@@ -766,7 +782,8 @@ pub(super) fn emit_instruction_x86_64(
             extend_integer(
                 writer,
                 target,
-                from.size_bytes().min(to.size_bytes()),
+                from.size_bytes(pointer_width)
+                    .min(to.size_bytes(pointer_width)),
                 *signed,
             )?;
             canonicalize_integer(writer, target, to)?;
@@ -776,7 +793,8 @@ pub(super) fn emit_instruction_x86_64(
         extend_integer(
             writer,
             "rax",
-            from.size_bytes().min(to.size_bytes()),
+            from.size_bytes(pointer_width)
+                .min(to.size_bytes(pointer_width)),
             *signed,
         )?;
         canonicalize_integer(writer, "rax", to)?;
@@ -805,15 +823,24 @@ pub(super) fn emit_instruction_x86_64(
                 Register::Virtual(v) => reg_alloc.get_mapping_for(v),
                 Register::Physical(p) => Some(p.name),
             };
-            let in_place = ty.size_bytes() == 8 && src_phys.is_some() && src_phys == dst_phys;
+            let in_place =
+                ty.size_bytes(pointer_width) == 8 && src_phys.is_some() && src_phys == dst_phys;
             if !in_place {
                 match (dst, dst_phys) {
                     (_, Some(target)) => {
-                        load_copy_operand_into(ty, src, target, writer, reg_alloc, stack_slots)?;
+                        load_copy_operand_into(
+                            ty,
+                            src,
+                            target,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            pointer_width,
+                        )?;
                     }
                     (Register::Virtual(vreg), None) => {
                         let slot = stack_slots.get(vreg).copied();
-                        let direct = match (ty.size_bytes(), slot) {
+                        let direct = match (ty.size_bytes(pointer_width), slot) {
                             (8, Some(offset)) => match src {
                                 Operand::Register(Register::Virtual(v)) => {
                                     reg_alloc.get_mapping_for(v).map(|p| format!("%{p}"))
@@ -833,7 +860,14 @@ pub(super) fn emit_instruction_x86_64(
                                 writeln!(writer, "    movq {source}, {offset}(%rbp)")?;
                             }
                             None => {
-                                load_copy_operand_to_rax(ty, src, writer, reg_alloc, stack_slots)?;
+                                load_copy_operand_to_rax(
+                                    ty,
+                                    src,
+                                    writer,
+                                    reg_alloc,
+                                    stack_slots,
+                                    pointer_width,
+                                )?;
                                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                             }
                         }
@@ -871,13 +905,13 @@ pub(super) fn emit_instruction_x86_64(
                         // Load lhs into dp
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, dp)?;
                         if matches!(op, IntBinOp::AShr) {
-                            extend_integer(writer, dp, ty.size_bytes(), true)?;
+                            extend_integer(writer, dp, ty.size_bytes(pointer_width), true)?;
                         }
                         if matches!(op, IntBinOp::AShr) {
-                            extend_integer(writer, "rax", ty.size_bytes(), true)?;
+                            extend_integer(writer, "rax", ty.size_bytes(pointer_width), true)?;
                         }
                         if matches!(op, IntBinOp::LShr) {
-                            extend_integer(writer, dp, ty.size_bytes(), false)?;
+                            extend_integer(writer, dp, ty.size_bytes(pointer_width), false)?;
                         }
                         match rhs {
                             Operand::Immediate(imm) => {
@@ -892,7 +926,7 @@ pub(super) fn emit_instruction_x86_64(
                                         ));
                                     }
                                 };
-                                let sv = sv & (ty.size_bytes() as u64 * 8 - 1);
+                                let sv = sv & (ty.size_bytes(pointer_width) as u64 * 8 - 1);
                                 match op {
                                     IntBinOp::Shl => writeln!(writer, "    shlq ${sv}, %{dp}")?,
                                     IntBinOp::AShr => writeln!(writer, "    sarq ${sv}, %{dp}")?,
@@ -903,7 +937,9 @@ pub(super) fn emit_instruction_x86_64(
                             Operand::Register(_) if settings.x86_cpu_level >= X86CpuLevel::V3 => {
                                 let count = if rhs_in_dp {
                                     "rax"
-                                } else if let (8, Some(r)) = (ty.size_bytes(), rhs_phys) {
+                                } else if let (8, Some(r)) =
+                                    (ty.size_bytes(pointer_width), rhs_phys)
+                                {
                                     r
                                 } else {
                                     load_operand_to_register(
@@ -915,11 +951,11 @@ pub(super) fn emit_instruction_x86_64(
                                     )?;
                                     "rcx"
                                 };
-                                if ty.size_bytes() < 8 {
+                                if ty.size_bytes(pointer_width) < 8 {
                                     writeln!(
                                         writer,
                                         "    andq ${}, %{count}",
-                                        ty.size_bytes() * 8 - 1
+                                        ty.size_bytes(pointer_width) * 8 - 1
                                     )?;
                                 }
                                 match op {
@@ -948,11 +984,11 @@ pub(super) fn emit_instruction_x86_64(
                                         "rcx",
                                     )?;
                                 }
-                                if ty.size_bytes() < 8 {
+                                if ty.size_bytes(pointer_width) < 8 {
                                     writeln!(
                                         writer,
                                         "    andl ${}, %ecx",
-                                        ty.size_bytes() * 8 - 1
+                                        ty.size_bytes(pointer_width) * 8 - 1
                                     )?;
                                 }
                                 match op {
@@ -967,14 +1003,14 @@ pub(super) fn emit_instruction_x86_64(
                     IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
                         // Division always goes through rax/rdx; use rcx for divisor to avoid conflicts
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "rax")?;
-                        if !(ty.size_bytes() == 8
+                        if !(ty.size_bytes(pointer_width) == 8
                             && rhs
                                 .integer_constant()
                                 .is_some_and(|d| const_divide_applies(*op, d)))
                         {
                             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
                         }
-                        emit_int_divide(writer, *op, ty, lhs, rhs)?;
+                        emit_int_divide(writer, *op, ty, lhs, rhs, pointer_width)?;
                         // Store result (rax) into dp
                         if dp != "rax" {
                             writeln!(writer, "    movq %rax, %{dp}")?;
@@ -1070,7 +1106,7 @@ pub(super) fn emit_instruction_x86_64(
                 // No physical register for dst — fall back to rax accumulator path
                 load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
                 if matches!(op, IntBinOp::LShr) {
-                    extend_integer(writer, "rax", ty.size_bytes(), false)?;
+                    extend_integer(writer, "rax", ty.size_bytes(pointer_width), false)?;
                 }
 
                 match op {
@@ -1083,7 +1119,7 @@ pub(super) fn emit_instruction_x86_64(
                             Operand::Register(Register::Physical(p)) => Some(p.name),
                             Operand::Immediate(_) => None,
                         };
-                        let scratch = match (ty.size_bytes(), rhs_phys) {
+                        let scratch = match (ty.size_bytes(pointer_width), rhs_phys) {
                             (8, Some(_)) => None,
                             _ => {
                                 let scratch =
@@ -1099,8 +1135,12 @@ pub(super) fn emit_instruction_x86_64(
                             }
                         };
                         let count = scratch.or(rhs_phys).unwrap_or("rcx");
-                        if ty.size_bytes() < 8 {
-                            writeln!(writer, "    andq ${}, %{count}", ty.size_bytes() * 8 - 1)?;
+                        if ty.size_bytes(pointer_width) < 8 {
+                            writeln!(
+                                writer,
+                                "    andq ${}, %{count}",
+                                ty.size_bytes(pointer_width) * 8 - 1
+                            )?;
                         }
                         match op {
                             IntBinOp::Shl => writeln!(writer, "    shlxq %{count}, %rax, %rax")?,
@@ -1127,7 +1167,8 @@ pub(super) fn emit_instruction_x86_64(
                                     ));
                                 }
                             };
-                            let shift_val = shift_val & (ty.size_bytes() as u64 * 8 - 1);
+                            let shift_val =
+                                shift_val & (ty.size_bytes(pointer_width) as u64 * 8 - 1);
                             match op {
                                 IntBinOp::Shl => writeln!(writer, "    shlq ${shift_val}, %rax")?,
                                 IntBinOp::AShr => writeln!(writer, "    sarq ${shift_val}, %rax")?,
@@ -1139,8 +1180,12 @@ pub(super) fn emit_instruction_x86_64(
                             let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
                             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
                             writeln!(writer, "    movq %{scratch}, %rcx")?;
-                            if ty.size_bytes() < 8 {
-                                writeln!(writer, "    andl ${}, %ecx", ty.size_bytes() * 8 - 1)?;
+                            if ty.size_bytes(pointer_width) < 8 {
+                                writeln!(
+                                    writer,
+                                    "    andl ${}, %ecx",
+                                    ty.size_bytes(pointer_width) * 8 - 1
+                                )?;
                             }
                             match op {
                                 IntBinOp::Shl => writeln!(writer, "    shlq %cl, %rax")?,
@@ -1154,14 +1199,14 @@ pub(super) fn emit_instruction_x86_64(
                         }
                     },
                     IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
-                        if !(ty.size_bytes() == 8
+                        if !(ty.size_bytes(pointer_width) == 8
                             && rhs
                                 .integer_constant()
                                 .is_some_and(|d| const_divide_applies(*op, d)))
                         {
                             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
                         }
-                        emit_int_divide(writer, *op, ty, lhs, rhs)?;
+                        emit_int_divide(writer, *op, ty, lhs, rhs, pointer_width)?;
                     }
                     _ => {
                         let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
@@ -1196,7 +1241,16 @@ pub(super) fn emit_instruction_x86_64(
             rhs,
             ty,
         } => {
-            let scratch = emit_int_compare(op, ty, lhs, rhs, writer, reg_alloc, stack_slots)?;
+            let scratch = emit_int_compare(
+                op,
+                ty,
+                lhs,
+                rhs,
+                writer,
+                reg_alloc,
+                stack_slots,
+                pointer_width,
+            )?;
             let suffix = cmp_suffix(op)?;
             writeln!(writer, "    set{suffix} %al")?;
             writeln!(writer, "    movzbq %al, %rax")?;
@@ -1688,11 +1742,19 @@ pub(super) fn emit_instruction_x86_64(
                 };
                 match (base, base_phys, dst_phys) {
                     (_, Some(bp), Some(dp)) => {
-                        writeln!(writer, "    {} (%{bp}), %{dp}", load_mnemonic_for(ty))?;
+                        writeln!(
+                            writer,
+                            "    {} (%{bp}), %{dp}",
+                            load_mnemonic_for(ty, pointer_width)
+                        )?;
                     }
                     (Register::Virtual(bv), None, Some(dp)) if stack_slots.contains_key(bv) => {
                         load_register_to_register(bv, writer, reg_alloc, stack_slots, dp)?;
-                        writeln!(writer, "    {} (%{dp}), %{dp}", load_mnemonic_for(ty))?;
+                        writeln!(
+                            writer,
+                            "    {} (%{dp}), %{dp}",
+                            load_mnemonic_for(ty, pointer_width)
+                        )?;
                     }
                     _ => {
                         match base {
@@ -1703,7 +1765,7 @@ pub(super) fn emit_instruction_x86_64(
                                 writeln!(writer, "    movq %{}, %rax", phys.name)?;
                             }
                         }
-                        writeln!(writer, "    {}", load_insn_for(ty))?;
+                        writeln!(writer, "    {}", load_insn_for(ty, pointer_width))?;
                         if let Register::Virtual(vreg) = dst {
                             store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                         }
@@ -1724,9 +1786,17 @@ pub(super) fn emit_instruction_x86_64(
                     Register::Physical(p) => Some(p.name),
                 };
                 match dst_phys {
-                    Some(dp) => writeln!(writer, "    {} {mem}, %{dp}", load_mnemonic_for(ty))?,
+                    Some(dp) => writeln!(
+                        writer,
+                        "    {} {mem}, %{dp}",
+                        load_mnemonic_for(ty, pointer_width)
+                    )?,
                     None => {
-                        writeln!(writer, "    {} {mem}, %rax", load_mnemonic_for(ty))?;
+                        writeln!(
+                            writer,
+                            "    {} {mem}, %rax",
+                            load_mnemonic_for(ty, pointer_width)
+                        )?;
                         if let Register::Virtual(vreg) = dst {
                             store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                         }
@@ -1750,7 +1820,7 @@ pub(super) fn emit_instruction_x86_64(
                 Operand::Register(Register::Physical(p)) => Some(p.name),
                 Operand::Immediate(_) => None,
             };
-            let size = ty.size_bytes();
+            let size = ty.size_bytes(pointer_width);
             let imm_value = integer_immediate(src).map(|raw| {
                 let shift = 64 - size * 8;
                 (raw << shift) >> shift
@@ -1764,7 +1834,11 @@ pub(super) fn emit_instruction_x86_64(
                 && let Some(bp) = mapped_register(base, reg_alloc)
             {
                 let alias = register_for_size(sp, size).ok_or_else(scratch_error)?;
-                writeln!(writer, "    mov{} %{alias}, (%{bp})", size_suffix(ty))?;
+                writeln!(
+                    writer,
+                    "    mov{} %{alias}, (%{bp})",
+                    size_suffix(ty, pointer_width)
+                )?;
             } else if let (
                 Some(value),
                 AddressMode::BaseOffset {
@@ -1773,7 +1847,11 @@ pub(super) fn emit_instruction_x86_64(
             ) = (imm_value.filter(|v| i32::try_from(*v).is_ok()), addr)
                 && let Some(bp) = mapped_register(base, reg_alloc)
             {
-                writeln!(writer, "    mov{} ${value}, (%{bp})", size_suffix(ty))?;
+                writeln!(
+                    writer,
+                    "    mov{} ${value}, (%{bp})",
+                    size_suffix(ty, pointer_width)
+                )?;
             } else if let (
                 Some(sp),
                 AddressMode::BaseIndexScale {
@@ -1788,7 +1866,11 @@ pub(super) fn emit_instruction_x86_64(
                 let alias = register_for_size(sp, size).ok_or_else(scratch_error)?;
                 let (mem, scratches) =
                     indexed_memory(base, index, *scale, *offset, writer, reg_alloc, stack_slots)?;
-                writeln!(writer, "    mov{} %{alias}, {mem}", size_suffix(ty))?;
+                writeln!(
+                    writer,
+                    "    mov{} %{alias}, {mem}",
+                    size_suffix(ty, pointer_width)
+                )?;
                 release_indexed_scratch(scratches, reg_alloc);
             } else {
                 load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
@@ -1814,8 +1896,8 @@ pub(super) fn emit_instruction_x86_64(
                     writeln!(
                         writer,
                         "    mov{} %{}, (%{scratch})",
-                        size_suffix(ty),
-                        rax_for(ty)
+                        size_suffix(ty, pointer_width),
+                        rax_for(ty, pointer_width)
                     )?;
                     if scratch != "rbx" {
                         reg_alloc.free_scratch(scratch);
@@ -1837,7 +1919,12 @@ pub(super) fn emit_instruction_x86_64(
                         reg_alloc,
                         stack_slots,
                     )?;
-                    writeln!(writer, "    mov{} %{}, {mem}", size_suffix(ty), rax_for(ty))?;
+                    writeln!(
+                        writer,
+                        "    mov{} %{}, {mem}",
+                        size_suffix(ty, pointer_width),
+                        rax_for(ty, pointer_width)
+                    )?;
                     release_indexed_scratch(scratches, reg_alloc);
                 } else {
                     return Err(LaminaError::ValidationError(format!(
@@ -1851,10 +1938,17 @@ pub(super) fn emit_instruction_x86_64(
         | MirInst::AtomicBinary { .. }
         | MirInst::AtomicCompareExchange { .. }
         | MirInst::Fence { .. } => {
-            super::atomic::emit(inst, writer, reg_alloc, stack_slots)?;
+            super::atomic::emit(inst, writer, reg_alloc, stack_slots, pointer_width)?;
         }
         MirInst::InlineAsm { .. } => {
-            super::inline_asm::emit(inst, writer, reg_alloc, stack_slots, target_os)?;
+            super::inline_asm::emit(
+                inst,
+                writer,
+                reg_alloc,
+                stack_slots,
+                target_os,
+                pointer_width,
+            )?;
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
@@ -1970,6 +2064,7 @@ pub(super) fn emit_instruction_x86_64(
                     entry_label,
                     sret_slot,
                     va_area,
+                    pointer_width,
                 )?;
                 restore_saved_registers(
                     writer,
@@ -2152,14 +2247,34 @@ pub(super) fn emit_instruction_x86_64(
             signed,
             dst,
             src,
-        } => emit_int_to_float(writer, reg_alloc, stack_slots, from, to, *signed, dst, src)?,
+        } => emit_int_to_float(
+            writer,
+            reg_alloc,
+            stack_slots,
+            from,
+            to,
+            *signed,
+            dst,
+            src,
+            pointer_width,
+        )?,
         MirInst::FloatToInt {
             from,
             to,
             signed,
             dst,
             src,
-        } => emit_float_to_int(writer, reg_alloc, stack_slots, from, to, *signed, dst, src)?,
+        } => emit_float_to_int(
+            writer,
+            reg_alloc,
+            stack_slots,
+            from,
+            to,
+            *signed,
+            dst,
+            src,
+            pointer_width,
+        )?,
         MirInst::CallIndirect {
             target,
             arg_types,
@@ -2392,6 +2507,7 @@ pub(super) fn emit_instruction_x86_64(
                 reg_alloc,
                 stack_slots,
                 settings.x86_cpu_level,
+                pointer_width,
             )?;
         }
         MirInst::IntRotate {
@@ -2401,7 +2517,16 @@ pub(super) fn emit_instruction_x86_64(
             lhs,
             rhs,
         } => {
-            emit_int_rotate(*op, ty, dst, (lhs, rhs), writer, reg_alloc, stack_slots)?;
+            emit_int_rotate(
+                *op,
+                ty,
+                dst,
+                (lhs, rhs),
+                writer,
+                reg_alloc,
+                stack_slots,
+                pointer_width,
+            )?;
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
@@ -2484,8 +2609,8 @@ pub(super) fn emit_instruction_x86_64(
 }
 
 /// Sign- or zero-extending load mnemonic for a value of this type into a 64-bit register.
-pub(super) fn load_mnemonic_for(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+pub(super) fn load_mnemonic_for(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "movsbq",
         2 => "movswq",
         4 => "movslq",
@@ -2494,8 +2619,8 @@ pub(super) fn load_mnemonic_for(ty: &MirType) -> &'static str {
 }
 
 /// Width suffix for a `mov` touching memory of this type.
-pub(super) fn size_suffix(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+pub(super) fn size_suffix(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "b",
         2 => "w",
         4 => "l",
@@ -2504,8 +2629,8 @@ pub(super) fn size_suffix(ty: &MirType) -> &'static str {
 }
 
 /// The sub-register of `rax` holding exactly the bytes of this type.
-pub(super) fn rax_for(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+pub(super) fn rax_for(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "al",
         2 => "ax",
         4 => "eax",
@@ -2559,6 +2684,7 @@ pub(super) fn cmp_suffix(op: &IntCmpOp) -> Result<&'static str, LaminaError> {
 
 /// Emit the `cmpq` for an integer comparison, leaving the flags set. Returns the scratch
 /// register that must be released, or "" when the right operand folded into an immediate.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_int_compare(
     op: &IntCmpOp,
     ty: &MirType,
@@ -2567,19 +2693,20 @@ pub(super) fn emit_int_compare(
     writer: &mut RaxTrackingWriter<impl Write>,
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<&'static str, LaminaError> {
     let unsigned = matches!(
         op,
         IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
     );
     // Both sides already in registers at full width: compare them where they sit.
-    if !unsigned || ty.size_bytes() == 8 {
+    if !unsigned || ty.size_bytes(pointer_width) == 8 {
         let physical = |value: &Operand| match value {
             Operand::Register(Register::Virtual(vreg)) => reg_alloc.get_mapping_for(vreg),
             _ => None,
         };
         if let Some(left) = physical(lhs) {
-            if let Some(v) = cmp_immediate(rhs, ty, unsigned) {
+            if let Some(v) = cmp_immediate(rhs, ty, unsigned, pointer_width) {
                 writeln!(writer, "    cmpq ${v}, %{left}")?;
                 return Ok("");
             }
@@ -2590,9 +2717,9 @@ pub(super) fn emit_int_compare(
         }
     }
     load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
-    if let Some(v) = cmp_immediate(rhs, ty, unsigned) {
+    if let Some(v) = cmp_immediate(rhs, ty, unsigned, pointer_width) {
         if unsigned {
-            extend_integer(writer, "rax", ty.size_bytes(), false)?;
+            extend_integer(writer, "rax", ty.size_bytes(pointer_width), false)?;
         }
         writeln!(writer, "    cmpq ${v}, %rax")?;
         return Ok("");
@@ -2600,8 +2727,8 @@ pub(super) fn emit_int_compare(
     let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
     load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
     if unsigned {
-        extend_integer(writer, "rax", ty.size_bytes(), false)?;
-        extend_integer(writer, scratch, ty.size_bytes(), false)?;
+        extend_integer(writer, "rax", ty.size_bytes(pointer_width), false)?;
+        extend_integer(writer, scratch, ty.size_bytes(pointer_width), false)?;
     }
     writeln!(writer, "    cmpq %{scratch}, %rax")?;
     Ok(scratch)

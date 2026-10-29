@@ -169,11 +169,13 @@ pub(super) fn emit(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
+
     use crate::mir_codegen::simd_support::*;
     use crate::{
         mir::{MirType, Module, VectorLane, VectorOp, VectorType},
         mir_codegen::RegallocStrategy,
     };
+    use lamina_platform::PointerWidth;
     use std::{
         array, env, fs,
         process::{self, Command},
@@ -188,7 +190,7 @@ mod tests {
 
         let mut cases = Vec::new();
         for lane in LANES {
-            let width = scalar(lane).size_bytes();
+            let width = scalar(lane).size_bytes(PointerWidth::Bits64);
             for pattern in 0..3 {
                 let mut a =
                     array::from_fn(|i| (i as u8).wrapping_mul(37).wrapping_add(129 + pattern));
@@ -286,13 +288,13 @@ mod tests {
                         _ => (-123_i64) as u64,
                     }
                     .to_le_bytes();
-                    let width = scalar(c.lane).size_bytes();
+                    let width = scalar(c.lane).size_bytes(PointerWidth::Bits64);
                     if matches!(c.op, VectorOp::VSplat | VectorOp::VInsertLane) {
                         b[..width].copy_from_slice(&bytes[..width]);
                     }
                 }
                 module.add_function(f);
-                let result = expected(c.op, c.lane, &c.a, &b, c.index);
+                let result = expected(c.op, c.lane, &c.a, &b, c.index, PointerWidth::Bits64);
                 data.extend(c.a);
                 data.extend(c.b);
                 let mut guarded = [165; 18];
@@ -341,6 +343,6 @@ for i in range(len(data)//50):
 
     #[test]
     fn wasm_rejects_unsupported_pairs() {
-        negative(Backend::Wasm);
+        negative(Backend::Wasm, PointerWidth::Bits64);
     }
 }

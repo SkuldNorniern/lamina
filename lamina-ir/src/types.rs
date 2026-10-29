@@ -115,6 +115,8 @@
 //!     .ret_void();
 //! ```
 
+use lamina_platform::PointerWidth;
+
 use crate::module::TypeDeclaration;
 use std::{
     collections::{HashMap, HashSet},
@@ -389,23 +391,25 @@ impl fmt::Display for Value<'_> {
 }
 
 /// Returns the ABI alignment of a primitive type in bytes.
-pub const fn align_of_primitive(ty: PrimitiveType) -> u64 {
+pub const fn align_of_primitive(ty: PrimitiveType, pointer: PointerWidth) -> u64 {
     match ty {
         PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
         PrimitiveType::I16 | PrimitiveType::U16 => 2,
         PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
-        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 8,
+        PrimitiveType::Ptr => pointer.bytes() as u64,
         PrimitiveType::I128 | PrimitiveType::U128 => 16,
     }
 }
 
 /// Returns the size in bytes of a primitive type.
-pub const fn sizeof_primitive(ty: PrimitiveType) -> u64 {
+pub const fn sizeof_primitive(ty: PrimitiveType, pointer: PointerWidth) -> u64 {
     match ty {
         PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
         PrimitiveType::I16 | PrimitiveType::U16 => 2,
         PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
-        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 8,
+        PrimitiveType::Ptr => pointer.bytes() as u64,
         PrimitiveType::I128 | PrimitiveType::U128 => 16,
     }
 }
@@ -458,11 +462,12 @@ fn round_up(value: u64, align: u64) -> Option<u64> {
 fn aggregate_layout<'a>(
     fields: impl Iterator<Item = &'a Type<'a>>,
     packed: bool,
+    pointer: PointerWidth,
 ) -> Option<(u64, u64)> {
     let mut size = 0u64;
     let mut alignment = 1;
     for field in fields {
-        let (field_size, field_alignment) = type_layout(field)?;
+        let (field_size, field_alignment) = type_layout(field, pointer)?;
         if !packed {
             alignment = alignment.max(field_alignment);
             size = round_up(size, field_alignment)?;
@@ -472,29 +477,37 @@ fn aggregate_layout<'a>(
     Some((round_up(size, alignment)?, alignment))
 }
 
-fn type_layout(ty: &Type<'_>) -> Option<(u64, u64)> {
+fn type_layout(ty: &Type<'_>, pointer: PointerWidth) -> Option<(u64, u64)> {
     match ty {
-        Type::Primitive(p) => Some((sizeof_primitive(*p), align_of_primitive(*p))),
+        Type::Primitive(p) => Some((
+            sizeof_primitive(*p, pointer),
+            align_of_primitive(*p, pointer),
+        )),
         Type::Array { element_type, size } => {
-            let (element_size, alignment) = type_layout(element_type)?;
+            let (element_size, alignment) = type_layout(element_type, pointer)?;
             Some((element_size.checked_mul(*size)?, alignment))
         }
-        Type::Struct { fields, packed } => {
-            aggregate_layout(fields.iter().map(|field| &field.ty), *packed)
-        }
-        Type::VaList => Some((24, 8)),
+        Type::Struct { fields, packed } => aggregate_layout(
+            fields.iter().map(|field| &field.ty),
+            *packed,
+            pointer,
+        ),
+        Type::VaList => match pointer {
+            PointerWidth::Bits64 => Some((24, 8)),
+            PointerWidth::Bits32 => Some((4, 4)),
+        },
         _ => None,
     }
 }
 
 /// Returns the size in bytes, or `None` for unsized types or overflowing layouts.
-pub fn sizeof_type(ty: &Type<'_>) -> Option<u64> {
-    type_layout(ty).map(|(size, _)| size)
+pub fn sizeof_type(ty: &Type<'_>, pointer: PointerWidth) -> Option<u64> {
+    type_layout(ty, pointer).map(|(size, _)| size)
 }
 
 /// Returns the ABI alignment in bytes of an IR type.
-pub fn align_of_type(ty: &Type<'_>) -> u64 {
-    type_layout(ty).map_or(8, |(_, alignment)| alignment)
+pub fn align_of_type(ty: &Type<'_>, pointer: PointerWidth) -> u64 {
+    type_layout(ty, pointer).map_or(8, |(_, alignment)| alignment)
 }
 
 /// Computes the byte offset of `field_index` within a struct.
@@ -518,6 +531,7 @@ pub fn struct_field_byte_offset(
     fields: &[StructField<'_>],
     packed: bool,
     field_index: usize,
+    pointer: PointerWidth,
 ) -> Option<u64> {
     if field_index >= fields.len() {
         return None;
@@ -525,12 +539,12 @@ pub fn struct_field_byte_offset(
     let mut offset = 0u64;
     for (index, field) in fields.iter().enumerate() {
         if !packed {
-            offset = round_up(offset, align_of_type(&field.ty))?;
+            offset = round_up(offset, align_of_type(&field.ty, pointer))?;
         }
         if index == field_index {
             return Some(offset);
         }
-        offset = offset.checked_add(sizeof_type(&field.ty)?)?;
+        offset = offset.checked_add(sizeof_type(&field.ty, pointer)?)?;
     }
     None
 }
@@ -604,6 +618,41 @@ mod tests {
     }
 
     #[test]
+    fn pointer_fields_take_the_width_of_the_target() {
+        assert_eq!(sizeof_primitive(PrimitiveType::Ptr, PointerWidth::Bits32), 4);
+        assert_eq!(align_of_primitive(PrimitiveType::Ptr, PointerWidth::Bits32), 4);
+        assert_eq!(sizeof_primitive(PrimitiveType::Ptr, PointerWidth::Bits64), 8);
+        let pointer_and_byte = Type::Struct {
+            fields: vec![
+                StructField {
+                    name: "p",
+                    ty: Type::Primitive(PrimitiveType::Ptr),
+                },
+                StructField {
+                    name: "b",
+                    ty: Type::Primitive(PrimitiveType::I8),
+                },
+            ],
+            packed: false,
+        };
+        assert_eq!(sizeof_type(&pointer_and_byte, PointerWidth::Bits32), Some(8));
+        assert_eq!(align_of_type(&pointer_and_byte, PointerWidth::Bits32), 4);
+        assert_eq!(sizeof_type(&pointer_and_byte, PointerWidth::Bits64), Some(16));
+        assert_eq!(
+            struct_field_byte_offset(
+                match &pointer_and_byte {
+                    Type::Struct { fields, .. } => fields,
+                    _ => unreachable!(),
+                },
+                false,
+                1,
+                PointerWidth::Bits32,
+            ),
+            Some(4)
+        );
+    }
+
+    #[test]
     fn test_packed_struct_offsets_and_size() {
         let byte_word = [
             StructField {
@@ -615,20 +664,20 @@ mod tests {
                 ty: Type::Primitive(PrimitiveType::I32),
             },
         ];
-        assert_eq!(struct_field_byte_offset(&byte_word, false, 1), Some(4));
-        assert_eq!(struct_field_byte_offset(&byte_word, true, 1), Some(1));
+        assert_eq!(struct_field_byte_offset(&byte_word, false, 1, PointerWidth::Bits64), Some(4));
+        assert_eq!(struct_field_byte_offset(&byte_word, true, 1, PointerWidth::Bits64), Some(1));
         let packed = Type::Struct {
             fields: byte_word.to_vec(),
             packed: true,
         };
-        assert_eq!(sizeof_type(&packed), Some(5));
-        assert_eq!(align_of_type(&packed), 1);
+        assert_eq!(sizeof_type(&packed, PointerWidth::Bits64), Some(5));
+        assert_eq!(align_of_type(&packed, PointerWidth::Bits64), 1);
         let padded = Type::Struct {
             fields: byte_word.to_vec(),
             packed: false,
         };
-        assert_eq!(sizeof_type(&padded), Some(8));
-        assert_eq!(align_of_type(&padded), 4);
+        assert_eq!(sizeof_type(&padded, PointerWidth::Bits64), Some(8));
+        assert_eq!(align_of_type(&padded, PointerWidth::Bits64), 4);
     }
 
     #[test]
@@ -647,7 +696,7 @@ mod tests {
             fields: tail.to_vec(),
             packed: true,
         };
-        assert_eq!(sizeof_type(&packed_tail), Some(9));
+        assert_eq!(sizeof_type(&packed_tail, PointerWidth::Bits64), Some(9));
         let outer = [
             StructField {
                 name: "c",
@@ -658,15 +707,15 @@ mod tests {
                 ty: packed_tail,
             },
         ];
-        assert_eq!(struct_field_byte_offset(&outer, false, 1), Some(1));
+        assert_eq!(struct_field_byte_offset(&outer, false, 1, PointerWidth::Bits64), Some(1));
         assert_eq!(
             sizeof_type(&Type::Struct {
                 fields: outer.to_vec(),
                 packed: false,
-            }),
+            }, PointerWidth::Bits64),
             Some(10)
         );
-        assert_eq!(struct_field_byte_offset(&outer, false, 2), None);
+        assert_eq!(struct_field_byte_offset(&outer, false, 2, PointerWidth::Bits64), None);
     }
 
     #[test]

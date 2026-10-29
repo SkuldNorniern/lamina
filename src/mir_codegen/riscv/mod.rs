@@ -43,7 +43,7 @@ use lamina_codegen::{
     GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
     riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen},
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use std::{
     collections::{HashMap, HashSet},
     io::{self, Write},
@@ -58,9 +58,9 @@ pub struct RiscVCodegen<'a> {
 }
 
 impl<'a> RiscVCodegen<'a> {
-    pub fn new(target_os: TargetOperatingSystem) -> Self {
+    pub fn new(target_os: TargetOperatingSystem, pointer_width: PointerWidth) -> Self {
         Self {
-            base: CodegenBase::new(target_os),
+            base: CodegenBase::new(target_os, pointer_width),
         }
     }
 
@@ -546,6 +546,7 @@ enum RiscVArgPlace {
 /// returning how many bytes of it to release after the call. An aggregate larger than
 /// two words travels as the address of a copy made in that area, and a hidden result
 /// pointer, when there is one, takes a0 ahead of the arguments.
+#[allow(clippy::too_many_arguments)]
 fn pass_riscv_arguments<W: Write>(
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
@@ -554,6 +555,7 @@ fn pass_riscv_arguments<W: Write>(
     kinds: &[ArgKind],
     hidden: Option<i32>,
     target: RiscVTarget,
+    pointer_width: PointerWidth,
 ) -> Result<usize, LaminaError> {
     let arg_regs = RiscVAbi::ARG_REGISTERS;
     let word = target.word_bytes() as usize;
@@ -630,7 +632,7 @@ fn pass_riscv_arguments<W: Write>(
                 reg_alloc,
                 stack_slots,
                 &format!("fa{bank}"),
-                kind.ty.size_bytes() == 4,
+                kind.ty.size_bytes(pointer_width) == 4,
             )?,
             RiscVArgPlace::Words { first, words } => {
                 load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
@@ -749,7 +751,7 @@ fn store_incoming_arguments<W: Write>(
                 writer,
                 reg_alloc,
                 stack_slots,
-                param.ty.size_bytes() == 4,
+                param.ty.size_bytes(func.pointer_width) == 4,
             )?,
             RiscVArgPlace::Gpr(bank) if kind.by_reference() => {
                 copy_from_pointer_to_frame(writer, arg_regs[bank], words, slot, target)?
@@ -1050,8 +1052,8 @@ fn emit_planned_block_riscv<W: Write>(
                     op,
                     IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
                 );
-                extend_integer(writer, "a0", ty, ctx.target, !unsigned)?;
-                extend_integer(writer, "a1", ty, ctx.target, !unsigned)?;
+                extend_integer(writer, "a0", ty, ctx.target, !unsigned, func.pointer_width)?;
+                extend_integer(writer, "a1", ty, ctx.target, !unsigned, func.pointer_width)?;
                 let (invert, taken, other) =
                     plan.branch(func, index, next, true_target, false_target);
                 let (mnemonic, lhs, rhs) = match (op, invert) {
@@ -1084,6 +1086,7 @@ fn emit_planned_block_riscv<W: Write>(
                 reg_alloc,
                 stack_slots,
                 ctx,
+                func.pointer_width,
             )?;
         }
         position += 1;
@@ -1098,6 +1101,7 @@ fn emit_instruction_riscv<W: Write>(
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     ctx: &mut EmitCtx<'_>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     if let Some(operations) = integer_conversion_with_width(
         inst,
@@ -1106,6 +1110,7 @@ fn emit_instruction_riscv<W: Write>(
         } else {
             MirType::i64()
         },
+        pointer_width,
     ) {
         for operation in operations {
             emit_instruction_riscv(
@@ -1115,6 +1120,7 @@ fn emit_instruction_riscv<W: Write>(
                 reg_alloc,
                 stack_slots,
                 ctx,
+                pointer_width,
             )?;
         }
         return Ok(());
@@ -1157,7 +1163,7 @@ fn emit_instruction_riscv<W: Write>(
                     } else if let Some(offset) = stack_slots.get(vreg) {
                         RiscVFrame::fp_load(
                             writer,
-                            copy_load_mnemonic(ty, ctx.target),
+                            copy_load_mnemonic(ty, ctx.target, pointer_width),
                             "a0",
                             *offset,
                             "a0",
@@ -1183,7 +1189,7 @@ fn emit_instruction_riscv<W: Write>(
                     writeln!(writer, "    li a0, {}", bits as i64)?;
                 }
             }
-            extend_integer(writer, "a0", ty, ctx.target, true)?;
+            extend_integer(writer, "a0", ty, ctx.target, true, pointer_width)?;
             match dst {
                 Register::Virtual(vreg) => {
                     if let Some(physical) = reg_alloc.get_mapping(vreg) {
@@ -1269,30 +1275,38 @@ fn emit_instruction_riscv<W: Write>(
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
 
             if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
-                extend_integer(writer, "a0", ty, ctx.target, false)?;
-                extend_integer(writer, "a1", ty, ctx.target, false)?;
+                extend_integer(writer, "a0", ty, ctx.target, false, pointer_width)?;
+                extend_integer(writer, "a1", ty, ctx.target, false, pointer_width)?;
             }
             if matches!(op, IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::AShr) {
-                extend_integer(writer, "a0", ty, ctx.target, true)?;
+                extend_integer(writer, "a0", ty, ctx.target, true, pointer_width)?;
                 if !matches!(op, IntBinOp::AShr) {
-                    extend_integer(writer, "a1", ty, ctx.target, true)?;
+                    extend_integer(writer, "a1", ty, ctx.target, true, pointer_width)?;
                 }
             }
-            let (zero, overflow) =
-                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            let (zero, overflow) = op.division_checks(
+                *ty,
+                lhs.integer_constant(),
+                rhs.integer_constant(),
+                pointer_width,
+            );
             if zero {
                 writeln!(writer, "    bnez a1, 1f\n    .word 0\n1:")?;
             }
             if overflow {
-                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                let minimum = ty.signed_integer(
+                    1i64 << (ty.size_bytes(pointer_width) * 8 - 1),
+                    pointer_width,
+                );
                 writeln!(
                     writer,
                     "    li t0, -1\n    bne a1, t0, 2f\n    li t0, {minimum}\n    bne a0, t0, 2f\n    .word 0\n2:"
                 )?;
             }
-            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) && ty.size_bytes() < 8
+            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr)
+                && ty.size_bytes(pointer_width) < 8
             {
-                let mask = ty.size_bytes() * 8 - 1;
+                let mask = ty.size_bytes(pointer_width) * 8 - 1;
                 writeln!(writer, "    andi a1, a1, {mask}")?;
             }
             match op {
@@ -1325,7 +1339,7 @@ fn emit_instruction_riscv<W: Write>(
                 IntBinOp::LShr => writeln!(writer, "    srl a0, a0, a1")?,
             }
 
-            extend_integer(writer, "a0", ty, ctx.target, true)?;
+            extend_integer(writer, "a0", ty, ctx.target, true, pointer_width)?;
             // Store result
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
@@ -1348,8 +1362,8 @@ fn emit_instruction_riscv<W: Write>(
                 op,
                 IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
             ) {
-                extend_integer(writer, "a0", ty, ctx.target, false)?;
-                extend_integer(writer, "a1", ty, ctx.target, false)?;
+                extend_integer(writer, "a0", ty, ctx.target, false, pointer_width)?;
+                extend_integer(writer, "a1", ty, ctx.target, false, pointer_width)?;
             }
             // Perform comparison
             emit_int_cmp_op(op, writer)?;
@@ -1469,6 +1483,7 @@ fn emit_instruction_riscv<W: Write>(
                     &kinds,
                     hidden,
                     ctx.target,
+                    pointer_width,
                 )?;
 
                 // Resolve function name (check for intrinsic stubs first)
@@ -1514,7 +1529,7 @@ fn emit_instruction_riscv<W: Write>(
                             writer,
                             reg_alloc,
                             stack_slots,
-                            ty.size_bytes() == 4,
+                            ty.size_bytes(pointer_width) == 4,
                         )?,
                         None => {
                             store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?
@@ -1562,6 +1577,7 @@ fn emit_instruction_riscv<W: Write>(
                 &kinds,
                 None,
                 ctx.target,
+                pointer_width,
             )?;
             writeln!(writer, "    jalr t1")?;
             if stack_space > 0 {
@@ -1576,7 +1592,7 @@ fn emit_instruction_riscv<W: Write>(
                         writer,
                         reg_alloc,
                         stack_slots,
-                        ty.size_bytes() == 4,
+                        ty.size_bytes(pointer_width) == 4,
                     )?,
                     _ => store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?,
                 }
@@ -1614,7 +1630,7 @@ fn emit_instruction_riscv<W: Write>(
                         reg_alloc,
                         stack_slots,
                         &format!("fa{bank}"),
-                        kind.ty.size_bytes() == 4,
+                        kind.ty.size_bytes(pointer_width) == 4,
                     )?,
                     _ => {}
                 }
@@ -1806,7 +1822,7 @@ fn emit_instruction_riscv<W: Write>(
                             reg_alloc,
                             stack_slots,
                             "fa0",
-                            ty.size_bytes() == 4,
+                            ty.size_bytes(pointer_width) == 4,
                         )?,
                         None => {
                             load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?
@@ -1843,7 +1859,7 @@ fn emit_instruction_riscv<W: Write>(
             rhs,
             ty,
         } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
             ctx.target
                 .require_float(is_f32)
                 .map_err(|e| LaminaError::ValidationError(format!("{:?}: {e}", op)))?;
@@ -1873,7 +1889,7 @@ fn emit_instruction_riscv<W: Write>(
             dst,
             src,
         } => {
-            let is_f32 = from.size_bytes() == 4;
+            let is_f32 = from.size_bytes(pointer_width) == 4;
             ctx.target
                 .require_float(is_f32)
                 .map_err(|e| LaminaError::ValidationError(format!("floattoint: {e}")))?;
@@ -1891,7 +1907,7 @@ fn emit_instruction_riscv<W: Write>(
             writeln!(writer, "    feq.{suffix} t0, fa0, fa0")?;
             writeln!(writer, "    neg t0, t0")?;
             writeln!(writer, "    and a0, a0, t0")?;
-            let bits = to.size_bytes() * 8;
+            let bits = to.size_bytes(pointer_width) * 8;
             if bits < 64 {
                 let compare = if *signed { "slt" } else { "sltu" };
                 let max = if *signed {
@@ -1916,7 +1932,7 @@ fn emit_instruction_riscv<W: Write>(
             dst,
             src,
         } => {
-            let is_f32 = to.size_bytes() == 4;
+            let is_f32 = to.size_bytes(pointer_width) == 4;
             ctx.target
                 .require_float(is_f32)
                 .map_err(|e| LaminaError::ValidationError(format!("inttofloat: {e}")))?;
@@ -1926,7 +1942,7 @@ fn emit_instruction_riscv<W: Write>(
                 )));
             }
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
-            let bits = from.size_bytes() * 8;
+            let bits = from.size_bytes(pointer_width) * 8;
             if bits < 64 {
                 if *signed {
                     sign_extend_to_xlen(writer, bits)?;
@@ -1943,14 +1959,14 @@ fn emit_instruction_riscv<W: Write>(
             }
         }
         MirInst::FloatConvert { from, to, dst, src } => {
-            let to_f32 = to.size_bytes() == 4;
+            let to_f32 = to.size_bytes(pointer_width) == 4;
             ctx.target
                 .require_float(true)
                 .map_err(|e| LaminaError::ValidationError(format!("floatconvert: {e}")))?;
             ctx.target
                 .require_float(false)
                 .map_err(|e| LaminaError::ValidationError(format!("floatconvert: {e}")))?;
-            let from_f32 = from.size_bytes() == 4;
+            let from_f32 = from.size_bytes(pointer_width) == 4;
             load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", from_f32)?;
             if to_f32 {
                 writeln!(writer, "    fcvt.s.d fa0, fa0")?;
@@ -1962,7 +1978,7 @@ fn emit_instruction_riscv<W: Write>(
             }
         }
         MirInst::FloatUnary { op, dst, src, ty } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
             let suffix = if is_f32 { "s" } else { "d" };
 
             // Load operand to floating-point register
@@ -1986,7 +2002,7 @@ fn emit_instruction_riscv<W: Write>(
             rhs,
             ty,
         } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
             ctx.target
                 .require_float(is_f32)
                 .map_err(|e| LaminaError::ValidationError(format!("{op:?}: {e}")))?;
@@ -2078,7 +2094,16 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::VectorOp { .. } => simd::emit(inst, writer, reg_alloc, stack_slots, ctx.target)?,
         MirInst::IntUnary { op, ty, dst, src } => {
-            bit::emit_int_unary(writer, *op, ty, dst, src, reg_alloc, stack_slots)?;
+            bit::emit_int_unary(
+                writer,
+                *op,
+                ty,
+                dst,
+                src,
+                reg_alloc,
+                stack_slots,
+                pointer_width,
+            )?;
         }
         MirInst::IntRotate {
             op,
@@ -2087,13 +2112,24 @@ fn emit_instruction_riscv<W: Write>(
             lhs,
             rhs,
         } => {
-            bit::emit_int_rotate(writer, *op, ty, dst, (lhs, rhs), reg_alloc, stack_slots)?;
+            bit::emit_int_rotate(
+                writer,
+                *op,
+                ty,
+                dst,
+                (lhs, rhs),
+                reg_alloc,
+                stack_slots,
+                pointer_width,
+            )?;
         }
         MirInst::AtomicLoad { .. }
         | MirInst::AtomicStore { .. }
         | MirInst::AtomicBinary { .. }
         | MirInst::AtomicCompareExchange { .. }
-        | MirInst::Fence { .. } => atomic::emit(inst, writer, reg_alloc, stack_slots)?,
+        | MirInst::Fence { .. } => {
+            atomic::emit(inst, writer, reg_alloc, stack_slots, pointer_width)?
+        }
         MirInst::InlineAsm { .. } => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 "inline assembly is not supported by the RISC-V backend; it is x86_64 Linux only"
@@ -2152,8 +2188,12 @@ fn reload_caller_saved<W: Write>(
     Ok(())
 }
 
-fn copy_load_mnemonic(ty: &MirType, target: RiscVTarget) -> &'static str {
-    match ty.size_bytes() {
+fn copy_load_mnemonic(
+    ty: &MirType,
+    target: RiscVTarget,
+    pointer_width: PointerWidth,
+) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "lb",
         2 => "lh",
         4 => "lw",
@@ -2167,6 +2207,7 @@ fn extend_integer(
     ty: &MirType,
     target: RiscVTarget,
     signed: bool,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     if !matches!(
         ty,
@@ -2174,7 +2215,7 @@ fn extend_integer(
     ) {
         return Ok(());
     }
-    let bits = ty.size_bytes() as u32 * 8;
+    let bits = ty.size_bytes(pointer_width) as u32 * 8;
     let shift = target.xlen.bits().saturating_sub(bits);
     if shift != 0 {
         writeln!(w, "    slli {register}, {register}, {shift}")?;

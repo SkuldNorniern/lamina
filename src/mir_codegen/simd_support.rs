@@ -7,7 +7,7 @@ use crate::{
     },
     mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use std::{env, fs, process, process::Command, process::Stdio};
 
 pub const LANES: [VectorLane; 6] = [
@@ -200,9 +200,10 @@ pub fn expected(
     a: &[u8; 16],
     b: &[u8; 16],
     index: usize,
+    pointer_width: PointerWidth,
 ) -> Vec<u8> {
     use VectorOp::*;
-    let width = scalar(lane).size_bytes();
+    let width = scalar(lane).size_bytes(pointer_width);
     match op {
         VSplat => return b[..width].repeat(16 / width),
         VExtractLane => return a[index * width..(index + 1) * width].to_vec(),
@@ -405,7 +406,7 @@ pub fn immediate(f: &mut Function, lane: VectorLane) {
     }
 }
 
-pub fn negative(backend: Backend) {
+pub fn negative(backend: Backend, pointer_width: PointerWidth) {
     for lane in LANES {
         for op in ops() {
             let mut m = Module::new("negative");
@@ -448,7 +449,7 @@ pub fn negative(backend: Backend) {
                 for index in [
                     Operand::reg(reg(0)),
                     Operand::imm_i64(-1),
-                    Operand::imm_i64((16 / scalar(lane).size_bytes()) as i64),
+                    Operand::imm_i64((16 / scalar(lane).size_bytes(pointer_width)) as i64),
                 ] {
                     let mut f = f.clone();
                     for inst in &mut f.blocks[0].instructions {
@@ -466,7 +467,11 @@ pub fn negative(backend: Backend) {
     }
 }
 
-pub fn native(backend: Backend, mnemonic: impl Fn(VectorOp, VectorLane, usize) -> String) {
+pub fn native(
+    backend: Backend,
+    mnemonic: impl Fn(VectorOp, VectorLane, usize) -> String,
+    pointer_width: PointerWidth,
+) {
     if !tools_available(&["clang", "llvm-objdump-18"]) {
         return;
     }
@@ -480,7 +485,7 @@ pub fn native(backend: Backend, mnemonic: impl Fn(VectorOp, VectorLane, usize) -
         let mut module = Module::new("simd");
         for lane in LANES {
             for op in ops().filter(|&op| supported(backend, op, lane)) {
-                let count = 16 / scalar(lane).size_bytes();
+                let count = 16 / scalar(lane).size_bytes(pointer_width);
                 for index in 0..count {
                     {
                         for imm in [false, true] {
@@ -498,7 +503,7 @@ pub fn native(backend: Backend, mnemonic: impl Fn(VectorOp, VectorLane, usize) -
                             single.add_function(f.clone());
                             let asm = emit(&single, backend, strategy, true).expect("emit");
                             if matches!(backend, Backend::Rvv) {
-                                let bits = scalar(lane).size_bytes() * 8;
+                                let bits = scalar(lane).size_bytes(pointer_width) * 8;
                                 assert!(
                                     asm.contains(&format!(
                                         "vsetivli zero, {}, e{bits}, m1, tu, mu",

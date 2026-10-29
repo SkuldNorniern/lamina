@@ -8,6 +8,7 @@ use crate::{
         gpu::{GpuAxis, GpuIntrinsic},
     },
 };
+use lamina_platform::{PointerWidth, TargetArchitecture};
 use std::{collections::HashMap, io::Write};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -40,8 +41,8 @@ struct Value {
 }
 
 impl Value {
-    fn assembly(self) -> String {
-        if self.ty.size_bytes() == 8 {
+    fn assembly(self, pointer_width: PointerWidth) -> String {
+        if self.ty.size_bytes(pointer_width) == 8 {
             format!("v[{}:{}]", self.start, self.start + 1)
         } else {
             format!("v{}", self.start)
@@ -53,6 +54,8 @@ struct Argument {
     offset: usize,
     ty: MirType,
 }
+
+const AMDGCN_POINTER: PointerWidth = TargetArchitecture::Amdgcn.pointer_width();
 
 struct Kernel {
     body: Vec<u8>,
@@ -68,7 +71,11 @@ struct Kernel {
 }
 
 impl Kernel {
-    fn new(function: &Function, target: AmdGpuTarget) -> Result<Self, LaminaError> {
+    fn new(
+        function: &Function,
+        target: AmdGpuTarget,
+        pointer_width: PointerWidth,
+    ) -> Result<Self, LaminaError> {
         let mut kernel = Self {
             body: Vec::new(),
             values: HashMap::new(),
@@ -106,7 +113,7 @@ impl Kernel {
                     "AMDGPU arguments require i32, i64, or global pointers",
                 ));
             }
-            let size = ty.size_bytes();
+            let size = ty.size_bytes(pointer_width);
             let offset = kernel.kernarg_size.next_multiple_of(size);
             kernel.kernarg_align = kernel.kernarg_align.max(size);
             kernel.kernarg_size = offset + size;
@@ -116,7 +123,7 @@ impl Kernel {
             kernel.arguments.push(Argument { offset, ty });
             let value = kernel.allocate(&parameter.reg, ty)?;
             kernel.sgprs = 10;
-            if value.ty.size_bytes() == 8 {
+            if value.ty.size_bytes(pointer_width) == 8 {
                 writeln!(
                     kernel.body,
                     "    s_load_dwordx2 s[8:9], {kernarg}, {offset}"
@@ -168,7 +175,7 @@ impl Kernel {
         ) {
             return Err(error("AMDGPU values require i32, i64, or global pointers"));
         }
-        let words = (ty.size_bytes() / 4) as u32;
+        let words = (ty.size_bytes(AMDGCN_POINTER) / 4) as u32;
         self.vgprs = self.vgprs.next_multiple_of(words);
         let value = Value {
             start: self.vgprs,
@@ -205,7 +212,7 @@ impl Kernel {
                     "    v_mov_b32 v{}, 0x{:08x}",
                     value.start, bits as u32
                 )?;
-                if ty.size_bytes() == 8 {
+                if ty.size_bytes(AMDGCN_POINTER) == 8 {
                     writeln!(
                         self.body,
                         "    v_mov_b32 v{}, 0x{:08x}",
@@ -219,7 +226,7 @@ impl Kernel {
     }
 
     fn copy(&mut self, dst: Value, src: Value) -> Result<(), LaminaError> {
-        for word in 0..(dst.ty.size_bytes() / 4) as u32 {
+        for word in 0..(dst.ty.size_bytes(AMDGCN_POINTER) / 4) as u32 {
             writeln!(
                 self.body,
                 "    v_mov_b32 v{}, v{}",
@@ -247,7 +254,7 @@ impl Kernel {
             IntBinOp::Xor => "v_xor_b32",
             _ => return Err(error("unsupported AMDGPU integer operation")),
         };
-        if dst.ty.size_bytes() == 4 {
+        if dst.ty.size_bytes(AMDGCN_POINTER) == 4 {
             writeln!(self.body, "    {mnemonic} v{d}, v{l}, v{r}")?;
         } else {
             match op {
@@ -316,7 +323,7 @@ impl Kernel {
     ) -> Result<Value, LaminaError> {
         if !matches!(ty, MirType::Scalar(ScalarType::I32 | ScalarType::I64))
             || attrs.volatile
-            || usize::from(attrs.align) < ty.size_bytes()
+            || usize::from(attrs.align) < ty.size_bytes(AMDGCN_POINTER)
             || !attrs.align.is_power_of_two()
         {
             return Err(error(
@@ -390,7 +397,7 @@ impl Kernel {
             } => {
                 let address = self.memory_address(addr, attrs, *ty)?;
                 let dst = self.allocate(dst, *ty)?;
-                let mnemonic = if ty.size_bytes() == 8 {
+                let mnemonic = if ty.size_bytes(AMDGCN_POINTER) == 8 {
                     "global_load_dwordx2"
                 } else {
                     "global_load_dword"
@@ -398,8 +405,8 @@ impl Kernel {
                 writeln!(
                     self.body,
                     "    {mnemonic} {}, {}, off",
-                    dst.assembly(),
-                    address.assembly()
+                    dst.assembly(AMDGCN_POINTER),
+                    address.assembly(AMDGCN_POINTER)
                 )?;
                 self.wait_memory(false)?;
             }
@@ -411,7 +418,7 @@ impl Kernel {
             } => {
                 let address = self.memory_address(addr, attrs, *ty)?;
                 let src = self.operand(src, *ty)?;
-                let mnemonic = if ty.size_bytes() == 8 {
+                let mnemonic = if ty.size_bytes(AMDGCN_POINTER) == 8 {
                     "global_store_dwordx2"
                 } else {
                     "global_store_dword"
@@ -419,8 +426,8 @@ impl Kernel {
                 writeln!(
                     self.body,
                     "    {mnemonic} {}, {}, off",
-                    address.assembly(),
-                    src.assembly()
+                    address.assembly(AMDGCN_POINTER),
+                    src.assembly(AMDGCN_POINTER)
                 )?;
                 self.wait_memory(true)?;
             }
@@ -448,8 +455,8 @@ impl Kernel {
                     "    v_mov_b32 v{}, v{}",
                     destination.start, source.start
                 )?;
-                if to.size_bytes() == 8 {
-                    if from.size_bytes() == 8 {
+                if to.size_bytes(AMDGCN_POINTER) == 8 {
+                    if from.size_bytes(AMDGCN_POINTER) == 8 {
                         writeln!(
                             self.body,
                             "    v_mov_b32 v{}, v{}",
@@ -492,8 +499,8 @@ impl Kernel {
                         ) => *value,
                         _ => return Err(error("AMDGPU shifts require a matching immediate count")),
                     };
-                    let shift = shift & (ty.size_bytes() as i64 * 8 - 1);
-                    let mnemonic = match (op, ty.size_bytes()) {
+                    let shift = shift & (ty.size_bytes(AMDGCN_POINTER) as i64 * 8 - 1);
+                    let mnemonic = match (op, ty.size_bytes(AMDGCN_POINTER)) {
                         (IntBinOp::Shl, 4) => "v_lshlrev_b32",
                         (IntBinOp::LShr, 4) => "v_lshrrev_b32",
                         (IntBinOp::AShr, 4) => "v_ashrrev_i32",
@@ -504,8 +511,8 @@ impl Kernel {
                     writeln!(
                         self.body,
                         "    {mnemonic} {}, {shift}, {}",
-                        dst.assembly(),
-                        lhs.assembly()
+                        dst.assembly(AMDGCN_POINTER),
+                        lhs.assembly(AMDGCN_POINTER)
                     )?;
                 } else {
                     let rhs = self.operand(rhs, *ty)?;
@@ -666,13 +673,14 @@ impl Kernel {
 }
 
 pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError> {
-    emit_with_target(module, writer, AmdGpuTarget::default())
+    emit_with_target(module, writer, AmdGpuTarget::default(), AMDGCN_POINTER)
 }
 
 pub fn emit_with_target<W: Write>(
     module: &Module,
     writer: &mut W,
     target: AmdGpuTarget,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     if !module.globals.is_empty() {
         return Err(error("AMDGPU does not yet support global variables"));
@@ -692,7 +700,7 @@ pub fn emit_with_target<W: Write>(
         target.cpu()
     )?;
     for (function, name, _) in &kernels {
-        let mut kernel = Kernel::new(function, target)?;
+        let mut kernel = Kernel::new(function, target, pointer_width)?;
         for instruction in &function.blocks[0].instructions {
             kernel.instruction(instruction)?;
         }
@@ -757,7 +765,7 @@ pub fn emit_with_target<W: Write>(
                 writeln!(
                     output,
                     "      - .name: arg{index}\n        .size: {}\n        .offset: {}\n        .value_kind: {}",
-                    argument.ty.size_bytes(),
+                    argument.ty.size_bytes(pointer_width),
                     argument.offset,
                     if pointer { "global_buffer" } else { "by_value" }
                 )?;
@@ -774,6 +782,8 @@ pub fn emit_with_target<W: Write>(
 
 #[cfg(test)]
 mod emission_tests {
+    use lamina_platform::PointerWidth;
+
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
     use std::{
         env,
@@ -921,7 +931,10 @@ mod emission_tests {
             let mir = from_ir(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
             for target in [amdgpu::AmdGpuTarget::Gfx900, amdgpu::AmdGpuTarget::Gfx1200] {
                 let mut output = Vec::new();
-                assert!(amdgpu::emit_with_target(&mir, &mut output, target).is_err());
+                assert!(
+                    amdgpu::emit_with_target(&mir, &mut output, target, PointerWidth::Bits64)
+                        .is_err()
+                );
                 assert!(output.is_empty());
             }
         }

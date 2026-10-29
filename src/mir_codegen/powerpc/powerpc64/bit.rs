@@ -1,6 +1,8 @@
 use super::*;
 use crate::mir::{IntRotOp, IntUnOp};
+use lamina_platform::PointerWidth;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_int_unary<W: Write>(
     writer: &mut W,
     op: IntUnOp,
@@ -9,8 +11,9 @@ pub(super) fn emit_int_unary<W: Write>(
     src: &Operand,
     reg_alloc: &Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    let bits = ty.size_bytes() * 8;
+    let bits = ty.size_bytes(pointer_width) * 8;
     load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
     zero_extend(writer, bits)?;
     match op {
@@ -40,10 +43,11 @@ pub(super) fn emit_int_unary<W: Write>(
             }
         }
     }
-    extend_integer(writer, "3", ty, true)?;
+    extend_integer(writer, "3", ty, true, pointer_width)?;
     store_r3(writer, dst, reg_alloc, stack_slots)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_int_rotate<W: Write>(
     writer: &mut W,
     op: IntRotOp,
@@ -52,8 +56,9 @@ pub(super) fn emit_int_rotate<W: Write>(
     (lhs, rhs): (&Operand, &Operand),
     reg_alloc: &Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    let bits = ty.size_bytes() * 8;
+    let bits = ty.size_bytes(pointer_width) * 8;
     load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
     load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
     zero_extend(writer, bits)?;
@@ -89,7 +94,7 @@ pub(super) fn emit_int_rotate<W: Write>(
             zero_extend(writer, bits)?;
         }
     }
-    extend_integer(writer, "3", ty, true)?;
+    extend_integer(writer, "3", ty, true, pointer_width)?;
     store_r3(writer, dst, reg_alloc, stack_slots)
 }
 

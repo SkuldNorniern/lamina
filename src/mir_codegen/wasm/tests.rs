@@ -2,6 +2,7 @@ use super::*;
 use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir};
 use crate::mir_codegen::{simd_support::tool_available, test_support::PRINT_I64_HELPERS};
 use crate::parser::parse_module;
+use lamina_platform::PointerWidth;
 use std::{
     env, fs,
     io::Write,
@@ -34,6 +35,7 @@ fn float_copy_emits_local_move_not_add() {
         &mut output,
         TargetArchitecture::Wasm32,
         TargetOperatingSystem::Unknown,
+        PointerWidth::Bits64,
     )
     .expect("WASM codegen should succeed");
     let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
@@ -74,6 +76,7 @@ fn dispatcher_starts_at_non_leading_entry_block() {
         &mut output,
         TargetArchitecture::Wasm32,
         TargetOperatingSystem::Unknown,
+        PointerWidth::Bits64,
     )
     .expect("WASM codegen should succeed");
     let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
@@ -125,6 +128,7 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
         &mut wat,
         TargetArchitecture::Wasm32,
         TargetOperatingSystem::Unknown,
+        PointerWidth::Bits64,
     )
     .expect("WASM codegen should succeed");
     let dir = env::temp_dir().join(format!("lamina-wasm-{test_name}-{}", id()));
@@ -266,8 +270,14 @@ fn emit_wat(source: &str, arch: TargetArchitecture) -> String {
     let ir = parse_module(source).expect("source should parse");
     let mir = from_ir(&ir, "module").expect("source should lower");
     let mut wat = Vec::new();
-    generate_mir_wasm(&mir, &mut wat, arch, TargetOperatingSystem::Unknown)
-        .expect("WASM codegen should succeed");
+    generate_mir_wasm(
+        &mir,
+        &mut wat,
+        arch,
+        TargetOperatingSystem::Unknown,
+        PointerWidth::Bits64,
+    )
+    .expect("WASM codegen should succeed");
     String::from_utf8(wat).expect("WAT should be UTF-8")
 }
 
@@ -358,6 +368,7 @@ fn wasi_writes_without_a_console_import() {
         &mut wat,
         TargetArchitecture::Wasm32,
         TargetOperatingSystem::Wasi,
+        PointerWidth::Bits64,
     )
     .expect("WASM codegen should succeed");
     let wat = String::from_utf8(wat).expect("WAT should be UTF-8");
@@ -396,6 +407,7 @@ fn wasi_has_no_wasm64_form() {
         &mut wat,
         TargetArchitecture::Wasm64,
         TargetOperatingSystem::Wasi,
+        PointerWidth::Bits64,
     )
     .expect_err("wasm64 WASI should be refused");
     assert!(format!("{error:?}").contains("no wasm64 form"), "{error:?}");
@@ -456,6 +468,7 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         &mut wat,
         TargetArchitecture::Wasm32,
         TargetOperatingSystem::Wasi,
+        PointerWidth::Bits64,
     )
     .expect("codegen");
     let dir = env::temp_dir().join(format!("lamina-narrow-{}", id()));
@@ -496,6 +509,7 @@ fn emit_wasi(source: &str) -> Result<String, LaminaError> {
         &mut wat,
         TargetArchitecture::Wasm32,
         TargetOperatingSystem::Wasi,
+        PointerWidth::Bits64,
     )?;
     Ok(String::from_utf8(wat).expect("WAT should be UTF-8"))
 }

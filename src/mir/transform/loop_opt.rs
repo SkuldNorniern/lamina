@@ -7,6 +7,7 @@ use crate::mir::{
         calculate_dominators,
     },
 };
+use lamina_platform::PointerWidth;
 use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet, hash_map::Entry},
@@ -451,7 +452,7 @@ impl LoopInvariantCodeMotion {
                 .all(|reg| self.is_invariant_register(func, loop_info, defs_in_loop, reg));
 
             // Check if instruction has no side effects
-            let no_side_effects = !self.has_side_effects(instr);
+            let no_side_effects = !self.has_side_effects(instr, func.pointer_width);
 
             operands_invariant && no_side_effects
         } else {
@@ -472,8 +473,8 @@ impl LoopInvariantCodeMotion {
         }
     }
 
-    fn has_side_effects(&self, instr: &Instruction) -> bool {
-        instr.may_trap_integer()
+    fn has_side_effects(&self, instr: &Instruction, pointer: PointerWidth) -> bool {
+        instr.may_trap_integer(pointer)
             || matches!(
                 instr,
                 Instruction::Load { .. }

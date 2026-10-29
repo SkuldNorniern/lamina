@@ -1,6 +1,7 @@
 use super::*;
 use crate::mir::FunctionBuilder;
 use crate::mir_codegen::test_support::cross_assembler_ready;
+use lamina_platform::PointerWidth;
 use std::error::Error;
 
 /// Replays the `li`, `slli`, `addi` and `add` lines that build the `t0` and `a0`
@@ -129,11 +130,13 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
                 Immediate::F64(v)
             })
         };
-        let mut function = FunctionBuilder::new(format!("float_{}", ty.size_bytes()))
-            .param(reg(0), MirType::ptr())
-            .returns(MirType::i32())
-            .block("entry")
-            .build();
+        let mut function =
+            FunctionBuilder::new(format!("float_{}", ty.size_bytes(PointerWidth::Bits32)))
+                .param(reg(0), MirType::ptr())
+                .returns(MirType::i32())
+                .block("entry")
+                .build()
+                .with_pointer_width(PointerWidth::Bits32);
         let instructions = &mut function.blocks[0].instructions;
         instructions.push(MirInst::Copy {
             ty,

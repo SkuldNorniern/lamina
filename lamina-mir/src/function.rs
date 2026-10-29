@@ -2,6 +2,8 @@
 //!
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
+use lamina_platform::PointerWidth;
+
 use crate::{
     block::Block,
     instruction::Instruction,
@@ -216,10 +218,15 @@ pub struct Function {
     /// Required alignment in bytes for a virtual register's stack slot, set by
     /// `stackalloc ... align n` when n exceeds the 8-byte slot size.
     pub stack_alignments: HashMap<VirtualReg, usize>,
+
+    /// Width of data pointers on the target this function is lowered for. Sizes of
+    /// pointer-typed values derive from it.
+    pub pointer_width: PointerWidth,
 }
 
 impl Function {
-    /// Create a new function with the given signature
+    /// Create a new function with the given signature. Pointers are 64-bit until
+    /// [`Function::with_pointer_width`] says otherwise.
     pub fn new(sig: Signature) -> Self {
         Self {
             sig,
@@ -227,7 +234,13 @@ impl Function {
             entry: "entry".to_string(),
             stack_reservations: HashMap::new(),
             stack_alignments: HashMap::new(),
+            pointer_width: PointerWidth::Bits64,
         }
+    }
+
+    pub fn with_pointer_width(mut self, pointer_width: PointerWidth) -> Self {
+        self.pointer_width = pointer_width;
+        self
     }
 
     /// Set the entry block label

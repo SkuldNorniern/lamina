@@ -9,7 +9,7 @@ use crate::{
         wasm::generate_mir_wasm,
     },
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use std::{
     env::temp_dir,
     error::Error,
@@ -224,6 +224,7 @@ fn check_wasm(module: &Module, directory: &Path, traps: bool) -> TestResult {
         &mut bytes,
         TargetArchitecture::Wasm32,
         TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
     )?;
     let wat = directory.join("test.wat");
     let wasm = directory.join("test.wasm");
@@ -279,7 +280,7 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
         MirType::i32(),
         MirType::i64(),
     ] {
-        let width = ty.size_bytes() * 8;
+        let width = ty.size_bytes(PointerWidth::Bits64) * 8;
         let min = -(1i128 << (width - 1));
         let max = -min - 1;
         let mut cases = vec![
@@ -309,13 +310,13 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
                     IntBinOp::Shl,
                     1,
                     count,
-                    ty.signed_integer((1u64 << shift) as i64),
+                    ty.signed_integer((1u64 << shift) as i64, PointerWidth::Bits64),
                 ),
                 (
                     IntBinOp::LShr,
                     min as i64,
                     count,
-                    ty.signed_integer(bits as i64),
+                    ty.signed_integer(bits as i64, PointerWidth::Bits64),
                 ),
                 (IntBinOp::AShr, min as i64, count, (min >> shift) as i64),
             ]);
@@ -415,7 +416,10 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
         MirType::i32(),
         MirType::i64(),
     ] {
-        let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+        let minimum = ty.signed_integer(
+            1i64 << (ty.size_bytes(PointerWidth::Bits64) * 8 - 1),
+            PointerWidth::Bits64,
+        );
         for (op, lhs, rhs) in [
             (IntBinOp::SDiv, 1, 0),
             (IntBinOp::SRem, 1, 0),
@@ -579,7 +583,7 @@ fn division_traps_stay_inside_unentered_loops() -> TestResult {
 fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
     let directory = directory("comparisons")?;
     for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
-        let width = ty.size_bytes() * 8;
+        let width = ty.size_bytes(PointerWidth::Bits64) * 8;
         let modulus = 1i64 << width;
         let sign = modulus / 2;
         let values = [0, 1, sign - 1, sign, modulus - 1, -1];
@@ -724,7 +728,9 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
                 continue;
             }
             for signed in [false, true] {
-                if signed && from.size_bytes() > to.size_bytes() {
+                if signed
+                    && from.size_bytes(PointerWidth::Bits64) > to.size_bytes(PointerWidth::Bits64)
+                {
                     continue;
                 }
                 for value in [
@@ -735,11 +741,14 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
                     let failed = reg(id + 2);
                     let accumulated = reg(id + 3);
                     id += 4;
-                    let expected = to.signed_integer(if signed {
-                        from.signed_integer(value)
-                    } else {
-                        from.unsigned_integer(value) as i64
-                    });
+                    let expected = to.signed_integer(
+                        if signed {
+                            from.signed_integer(value, PointerWidth::Bits64)
+                        } else {
+                            from.unsigned_integer(value, PointerWidth::Bits64) as i64
+                        },
+                        PointerWidth::Bits64,
+                    );
                     let instruction = Instruction::IntConvert {
                         from,
                         to,

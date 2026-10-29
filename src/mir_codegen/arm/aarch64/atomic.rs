@@ -1,5 +1,6 @@
 use super::*;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
+use lamina_platform::PointerWidth;
 
 const STATUS: &str = "w16";
 
@@ -8,6 +9,7 @@ pub(super) fn emit<W: Write>(
     w: &mut W,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     match inst {
         MirInst::AtomicLoad {
@@ -16,7 +18,7 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
             let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
             materialize_address(w, addr, a, frame, ra)?;
@@ -34,7 +36,7 @@ pub(super) fn emit<W: Write>(
                 reg_of(size, t)
             )?;
             ra.free_scratch(a);
-            extend_integer(w, t, ty, true)?;
+            extend_integer(w, t, ty, true, pointer_width)?;
             store_result(w, dst, &x_alias(t), frame, ra)?;
             ra.free_scratch(t);
         }
@@ -44,7 +46,7 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
             let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
             materialize_address(w, addr, a, frame, ra)?;
@@ -78,7 +80,7 @@ pub(super) fn emit<W: Write>(
                     "AArch64 backend: atomic_cmpxchg is not a read-modify-write operation; use cmpxchg".into(),
                 ));
             }
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
             materialize_address(w, addr, a, frame, ra)?;
             let v = ra.alloc_scratch().ok_or_else(scratch_error)?;
@@ -108,7 +110,7 @@ pub(super) fn emit<W: Write>(
             }
             ra.free_scratch(v);
             ra.free_scratch(a);
-            extend_integer(w, old, ty, true)?;
+            extend_integer(w, old, ty, true, pointer_width)?;
             store_result(w, dst, &x_alias(old), frame, ra)?;
             ra.free_scratch(old);
         }
@@ -121,7 +123,7 @@ pub(super) fn emit<W: Write>(
             success_ordering,
             failure_ordering,
         } => {
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             if matches!(
                 failure_ordering,
                 MemoryOrdering::Release | MemoryOrdering::AcqRel
@@ -161,7 +163,7 @@ pub(super) fn emit<W: Write>(
             ra.free_scratch(d);
             ra.free_scratch(e);
             ra.free_scratch(a);
-            extend_integer(w, old, ty, true)?;
+            extend_integer(w, old, ty, true, pointer_width)?;
             store_result(w, dst, &x_alias(old), frame, ra)?;
             ra.free_scratch(old);
         }
@@ -210,8 +212,8 @@ fn exclusive_ops(ordering: &MemoryOrdering, size: usize) -> (String, String) {
     (format!("{ld}{sfx}"), format!("{st}{sfx}"))
 }
 
-fn access_size(ty: &MirType) -> Result<usize, LaminaError> {
-    match ty.size_bytes() {
+fn access_size(ty: &MirType, pointer_width: PointerWidth) -> Result<usize, LaminaError> {
+    match ty.size_bytes(pointer_width) {
         size @ (1 | 2 | 4 | 8) => Ok(size),
         _ => Err(LaminaError::ValidationError(
             "AArch64 atomic operation has an unsupported width".into(),

@@ -2,6 +2,8 @@
 //!
 //! A module is a collection of functions and global data. Modules are the
 //! top-level unit of organization in LUMIR and can be compiled independently.
+use lamina_platform::PointerWidth;
+
 use crate::{
     function::Function,
     types::MirType,
@@ -39,15 +41,15 @@ pub struct Global {
 }
 
 impl Global {
-    pub fn new(name: impl Into<String>, ty: MirType) -> Self {
+    pub fn new(name: impl Into<String>, ty: MirType, pointer: PointerWidth) -> Self {
         Self {
             name: name.into(),
             ty,
             mutable: true,
             initializer: None,
             exported: false,
-            size: ty.size_bytes(),
-            align: ty.alignment(),
+            size: ty.size_bytes(pointer),
+            align: ty.alignment(pointer),
         }
     }
 
@@ -305,7 +307,7 @@ mod tests {
     #[test]
     fn test_module_add_global() {
         let mut module = Module::new("test");
-        let global = Global::new("my_global", MirType::Scalar(ScalarType::I32));
+        let global = Global::new("my_global", MirType::Scalar(ScalarType::I32), PointerWidth::Bits64);
 
         module.add_global(global);
         assert_eq!(module.globals.len(), 1);
@@ -315,7 +317,7 @@ mod tests {
     #[test]
     fn test_module_builder() {
         let func = Function::new(Signature::new("main"));
-        let global = Global::new("counter", MirType::Scalar(ScalarType::I64));
+        let global = Global::new("counter", MirType::Scalar(ScalarType::I64), PointerWidth::Bits64);
 
         let module = ModuleBuilder::new("my_module")
             .function(func)

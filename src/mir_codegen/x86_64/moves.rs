@@ -1,4 +1,5 @@
 use super::*;
+use lamina_platform::PointerWidth;
 
 pub struct RaxTrackingWriter<W> {
     pub(super) inner: W,
@@ -72,8 +73,8 @@ pub(super) fn emit_parallel_copy(
     Ok(())
 }
 
-pub(super) fn load_insn_for(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+pub(super) fn load_insn_for(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "movsbq (%rax), %rax",
         2 => "movswq (%rax), %rax",
         4 => "movslq (%rax), %rax",
@@ -87,8 +88,17 @@ pub(super) fn load_copy_operand_to_rax(
     writer: &mut impl Write,
     reg_alloc: &X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    load_copy_operand_into(ty, src, "rax", writer, reg_alloc, stack_slots)
+    load_copy_operand_into(
+        ty,
+        src,
+        "rax",
+        writer,
+        reg_alloc,
+        stack_slots,
+        pointer_width,
+    )
 }
 
 pub(super) fn load_copy_operand_into(
@@ -98,8 +108,9 @@ pub(super) fn load_copy_operand_into(
     writer: &mut impl Write,
     reg_alloc: &X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    let size = ty.size_bytes();
+    let size = ty.size_bytes(pointer_width);
     match src {
         Operand::Register(Register::Virtual(vreg)) => {
             if let Some(physical) = reg_alloc.get_mapping_for(vreg) {

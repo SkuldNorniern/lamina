@@ -13,6 +13,6 @@ mod convert;
 mod error;
 mod mapping;
 
-pub use convert::from_ir;
+pub use convert::{from_ir, from_ir_for_target};
 pub use error::FromIRError;
 pub use mapping::MAX_REGISTER_AGGREGATE;

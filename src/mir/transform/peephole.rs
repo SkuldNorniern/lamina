@@ -2,6 +2,8 @@
 
 use core::mem::swap;
 
+use lamina_platform::PointerWidth;
+
 use crate::mir::{
     Block, Function, MirType, Register, ScalarType,
     instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp, Operand},
@@ -45,21 +47,22 @@ impl Peephole {
     pub fn run_on_function(&self, func: &mut Function) -> bool {
         let mut changed = false;
         let loop_headers = compute_back_edge_headers(func);
+        let pointer = func.pointer_width;
         for block in &mut func.blocks {
             let in_loop_block = loop_headers.contains(block.label.as_str());
-            if self.run_on_block(block, in_loop_block) {
+            if self.run_on_block(block, in_loop_block, pointer) {
                 changed = true;
             }
         }
         changed
     }
 
-    fn run_on_block(&self, block: &mut Block, in_loop_block: bool) -> bool {
+    fn run_on_block(&self, block: &mut Block, in_loop_block: bool, pointer: PointerWidth) -> bool {
         let mut changed = false;
 
         // First pass: optimize individual instructions
         for inst in &mut block.instructions {
-            if self.try_optimize_instruction(inst, in_loop_block) {
+            if self.try_optimize_instruction(inst, in_loop_block, pointer) {
                 inst.normalize_integer_immediates(None);
                 changed = true;
             }
@@ -69,12 +72,17 @@ impl Peephole {
     }
 
     /// Try to optimize a single instruction through various peephole patterns
-    fn try_optimize_instruction(&self, inst: &mut Instruction, _in_loop_block: bool) -> bool {
+    fn try_optimize_instruction(
+        &self,
+        inst: &mut Instruction,
+        _in_loop_block: bool,
+        pointer: PointerWidth,
+    ) -> bool {
         if let Instruction::IntBinary { lhs, rhs, .. } = inst
             && lhs.integer_constant().is_some()
             && rhs.integer_constant().is_some()
         {
-            return super::ConstantFolding.try_fold_int(inst);
+            return super::ConstantFolding.try_fold_int(inst, pointer);
         }
         match inst {
             Instruction::IntBinary { op, lhs, rhs, .. } => {

@@ -1,4 +1,5 @@
 use super::*;
+use lamina_platform::PointerWidth;
 
 pub(super) fn mapped_register(reg: &Register, alloc: &X64RegAlloc) -> Option<&'static str> {
     match reg {
@@ -22,6 +23,7 @@ pub(super) fn select_lea(
     alloc: &X64RegAlloc,
     uses: &HashMap<VirtualReg, usize>,
     flags_live: impl Fn(usize) -> bool,
+    pointer_width: PointerWidth,
 ) -> Option<(usize, String, &'static str)> {
     for length in (1..=instructions.len().min(3)).rev() {
         let MirInst::IntBinary {
@@ -37,12 +39,13 @@ pub(super) fn select_lea(
         let Some(dst) = mapped_register(dst, alloc) else {
             continue;
         };
-        if (0..length).any(&flags_live) || ty.size_bytes() != 8 {
+        if (0..length).any(&flags_live) || ty.size_bytes(pointer_width) != 8 {
             continue;
         }
         let mut terms = Vec::new();
         let mut displacement = 0i64;
         let mut expanded = HashSet::new();
+        #[allow(clippy::too_many_arguments)]
         fn collect(
             value: &Operand,
             prefix: &[MirInst],
@@ -51,6 +54,7 @@ pub(super) fn select_lea(
             terms: &mut Vec<(&'static str, i64)>,
             displacement: &mut i64,
             expanded: &mut HashSet<usize>,
+            pointer_width: PointerWidth,
         ) -> Option<()> {
             if let Some(imm) = integer_immediate(value) {
                 *displacement = displacement.checked_add(imm)?;
@@ -70,7 +74,7 @@ pub(super) fn select_lea(
                     .iter()
                     .enumerate()
                     .find(|(_, inst)| inst.def_reg() == Some(reg))
-                && ty.size_bytes() == 8
+                && ty.size_bytes(pointer_width) == 8
             {
                 match op {
                     IntBinOp::Add => {
@@ -82,6 +86,7 @@ pub(super) fn select_lea(
                             terms,
                             displacement,
                             expanded,
+                            pointer_width,
                         )?;
                         collect(
                             rhs,
@@ -91,6 +96,7 @@ pub(super) fn select_lea(
                             terms,
                             displacement,
                             expanded,
+                            pointer_width,
                         )?;
                     }
                     IntBinOp::Shl => {
@@ -120,6 +126,7 @@ pub(super) fn select_lea(
                 &mut terms,
                 &mut displacement,
                 &mut expanded,
+                pointer_width,
             )
         };
         if collect_operand(lhs).is_none()
@@ -155,7 +162,12 @@ pub(super) fn select_lea(
 /// Value for `cmpq $imm, %rax`, or None when the operand is not an immediate that fits
 /// a sign-extended imm32. Unsigned compares see the operand zero-extended to the type
 /// width, matching the `extend_integer` the register path performs.
-pub(super) fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
+pub(super) fn cmp_immediate(
+    rhs: &Operand,
+    ty: &MirType,
+    unsigned: bool,
+    pointer_width: PointerWidth,
+) -> Option<i64> {
     let Operand::Immediate(imm) = rhs else {
         return None;
     };
@@ -167,7 +179,7 @@ pub(super) fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Opti
         _ => return None,
     };
     let value = if unsigned {
-        match ty.size_bytes() {
+        match ty.size_bytes(pointer_width) {
             1 => raw & 0xff,
             2 => raw & 0xffff,
             4 => raw & 0xffff_ffff,

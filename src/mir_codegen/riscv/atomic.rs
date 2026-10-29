@@ -1,11 +1,13 @@
 use super::*;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
+use lamina_platform::PointerWidth;
 
 pub(super) fn emit<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let target = reg_alloc.target();
     match inst {
@@ -15,7 +17,7 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
-            let size = access_size(ty, target)?;
+            let size = access_size(ty, target, pointer_width)?;
             let load = load_op(size);
             address_into_t0(addr, writer, reg_alloc, stack_slots)?;
             match ordering {
@@ -41,7 +43,7 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
-            let size = access_size(ty, target)?;
+            let size = access_size(ty, target, pointer_width)?;
             let store = store_op(size);
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "a1")?;
             address_into_t0(addr, writer, reg_alloc, stack_slots)?;
@@ -68,7 +70,7 @@ pub(super) fn emit<W: Write>(
                     "RISC-V backend: atomic_cmpxchg is not a read-modify-write operation; use cmpxchg".into(),
                 ));
             }
-            let size = access_size(ty, target)?;
+            let size = access_size(ty, target, pointer_width)?;
             require_a(target)?;
             load_operand_to_register(value, writer, reg_alloc, stack_slots, "a1")?;
             address_into_t0(addr, writer, reg_alloc, stack_slots)?;
@@ -117,7 +119,7 @@ pub(super) fn emit<W: Write>(
                 writeln!(writer, "    bnez a6, 1b")?;
                 writeln!(writer, "    mv a0, a4")?;
             }
-            extend_integer(writer, "a0", ty, target, true)?;
+            extend_integer(writer, "a0", ty, target, true, pointer_width)?;
             store_a0(writer, dst, reg_alloc, stack_slots)?;
         }
         MirInst::AtomicCompareExchange {
@@ -129,7 +131,7 @@ pub(super) fn emit<W: Write>(
             success_ordering,
             failure_ordering,
         } => {
-            let size = access_size(ty, target)?;
+            let size = access_size(ty, target, pointer_width)?;
             require_a(target)?;
             if matches!(
                 failure_ordering,
@@ -172,7 +174,7 @@ pub(super) fn emit<W: Write>(
                 writeln!(writer, "3:")?;
                 writeln!(writer, "    mv a0, a4")?;
             }
-            extend_integer(writer, "a0", ty, target, true)?;
+            extend_integer(writer, "a0", ty, target, true, pointer_width)?;
             store_a0(writer, dst, reg_alloc, stack_slots)?;
         }
         MirInst::Fence { ordering } => match ordering {
@@ -259,8 +261,12 @@ fn amo_suffix(ordering: &MemoryOrdering) -> &'static str {
     }
 }
 
-fn access_size(ty: &MirType, target: RiscVTarget) -> Result<usize, LaminaError> {
-    let size = ty.size_bytes();
+fn access_size(
+    ty: &MirType,
+    target: RiscVTarget,
+    pointer_width: PointerWidth,
+) -> Result<usize, LaminaError> {
+    let size = ty.size_bytes(pointer_width);
     match size {
         1 | 2 | 4 => Ok(size),
         8 if target.xlen == Xlen::Rv64 => Ok(8),

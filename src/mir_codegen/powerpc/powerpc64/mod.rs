@@ -61,16 +61,16 @@ use lamina_codegen::{
         frame::{LINKAGE_SIZE, load_imm, r1_address, r1_mem},
     },
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 
 pub struct Ppc64Codegen<'a> {
     base: CodegenBase<'a>,
 }
 
 impl<'a> Ppc64Codegen<'a> {
-    pub fn new(target_os: TargetOperatingSystem) -> Self {
+    pub fn new(target_os: TargetOperatingSystem, pointer_width: PointerWidth) -> Self {
         Self {
-            base: CodegenBase::new(target_os),
+            base: CodegenBase::new(target_os, pointer_width),
         }
     }
 
@@ -707,16 +707,16 @@ fn store_incoming_parameters<W: Write>(
                 writer,
                 reg_alloc,
                 stack_slots,
-                param.ty.size_bytes() == 4,
+                param.ty.size_bytes(func.pointer_width) == 4,
             )?,
             PpcArgPlace::Gpr(bank) => {
                 let src = Ppc64Abi::ARG_REGISTERS[bank];
-                extend_param(writer, src, &param.ty)?;
+                extend_param(writer, src, &param.ty, func.pointer_width)?;
                 r1_mem(writer, "std", src, offset)?;
             }
             PpcArgPlace::Stack(slot) => {
                 r1_mem(writer, "ld", "0", frame + parameter_save_offset(slot))?;
-                extend_param(writer, "0", &param.ty)?;
+                extend_param(writer, "0", &param.ty, func.pointer_width)?;
                 r1_mem(writer, "std", "0", offset)?;
             }
             PpcArgPlace::Words { first, words } => {
@@ -836,8 +836,8 @@ fn emit_planned_block_ppc64<W: Write>(
                     op,
                     IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
                 );
-                extend_integer(writer, "3", ty, !unsigned)?;
-                extend_integer(writer, "4", ty, !unsigned)?;
+                extend_integer(writer, "3", ty, !unsigned, func.pointer_width)?;
+                extend_integer(writer, "4", ty, !unsigned, func.pointer_width)?;
                 let compare = if unsigned { "cmpld" } else { "cmpd" };
                 writeln!(writer, "    {compare} 3, 4")?;
                 let (invert, taken, other) =
@@ -872,6 +872,7 @@ fn emit_planned_block_ppc64<W: Write>(
                 emit,
                 debug_line,
                 cmp_seq,
+                func.pointer_width,
             )?;
         }
         position += 1;
@@ -879,6 +880,7 @@ fn emit_planned_block_ppc64<W: Write>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_instruction_ppc64<W: Write>(
     inst: &MirInst,
     writer: &mut W,
@@ -887,6 +889,7 @@ fn emit_instruction_ppc64<W: Write>(
     emit: &Ppc64Emit<'_>,
     debug_line: &mut u32,
     cmp_seq: &mut u32,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let Ppc64Emit {
         target_os,
@@ -904,7 +907,7 @@ fn emit_instruction_ppc64<W: Write>(
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
     }
-    if let Some(operations) = integer_conversion(inst) {
+    if let Some(operations) = integer_conversion(inst, pointer_width) {
         for operation in operations {
             emit_instruction_ppc64(
                 &operation,
@@ -914,6 +917,7 @@ fn emit_instruction_ppc64<W: Write>(
                 emit,
                 debug_line,
                 cmp_seq,
+                pointer_width,
             )?;
         }
         return Ok(());
@@ -933,7 +937,7 @@ fn emit_instruction_ppc64<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
                         writeln!(writer, "    mr 3, {physical}")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        r1_mem(writer, copy_load_mnemonic(ty), "3", *offset)?;
+                        r1_mem(writer, copy_load_mnemonic(ty, pointer_width), "3", *offset)?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!("PowerPC64 Copy source {vreg:?} has no register or stack slot"),
@@ -947,7 +951,7 @@ fn emit_instruction_ppc64<W: Write>(
                     load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
                 }
             }
-            extend_integer(writer, "3", ty, true)?;
+            extend_integer(writer, "3", ty, true, pointer_width)?;
             match dst {
                 Register::Virtual(vreg) => {
                     if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
@@ -978,28 +982,35 @@ fn emit_instruction_ppc64<W: Write>(
             load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
             if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
-                extend_integer(writer, "3", ty, false)?;
-                extend_integer(writer, "4", ty, false)?;
+                extend_integer(writer, "3", ty, false, pointer_width)?;
+                extend_integer(writer, "4", ty, false, pointer_width)?;
             }
             if matches!(op, IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::AShr) {
-                extend_integer(writer, "3", ty, true)?;
+                extend_integer(writer, "3", ty, true, pointer_width)?;
                 if !matches!(op, IntBinOp::AShr) {
-                    extend_integer(writer, "4", ty, true)?;
+                    extend_integer(writer, "4", ty, true, pointer_width)?;
                 }
             }
-            let (zero, overflow) =
-                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            let (zero, overflow) = op.division_checks(
+                *ty,
+                lhs.integer_constant(),
+                rhs.integer_constant(),
+                pointer_width,
+            );
             if zero {
                 writeln!(writer, "    tdi 4, 4, 0")?;
             }
             if overflow {
-                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                let minimum = ty.signed_integer(
+                    1i64 << (ty.size_bytes(pointer_width) * 8 - 1),
+                    pointer_width,
+                );
                 writeln!(writer, "    cmpdi 4, -1\n    bne 2f")?;
                 emit_load_imm64(writer, 5, minimum)?;
                 writeln!(writer, "    td 4, 3, 5\n2:")?;
             }
             if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
-                let clear = 64 - (ty.size_bytes() * 8).trailing_zeros();
+                let clear = 64 - (ty.size_bytes(pointer_width) * 8).trailing_zeros();
                 writeln!(writer, "    clrldi 4, 4, {clear}")?;
             }
             match op {
@@ -1026,7 +1037,7 @@ fn emit_instruction_ppc64<W: Write>(
                 IntBinOp::AShr => writeln!(writer, "    srad 3, 3, 4")?,
                 IntBinOp::LShr => writeln!(writer, "    srd 3, 3, 4")?,
             }
-            extend_integer(writer, "3", ty, true)?;
+            extend_integer(writer, "3", ty, true, pointer_width)?;
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
@@ -1044,8 +1055,8 @@ fn emit_instruction_ppc64<W: Write>(
                 op,
                 IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
             ) {
-                extend_integer(writer, "3", ty, false)?;
-                extend_integer(writer, "4", ty, false)?;
+                extend_integer(writer, "3", ty, false, pointer_width)?;
+                extend_integer(writer, "4", ty, false, pointer_width)?;
             }
             // cmpd sets CR0; use branch + li to materialise 0/1 into r3.
             writeln!(writer, "    cmpd 3, 4")?;
@@ -1089,7 +1100,7 @@ fn emit_instruction_ppc64<W: Write>(
             rhs,
             ty,
         } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
             // Double has no suffix on PowerPC; only single takes the s form.
             let suffix = if is_f32 { "s" } else { "" };
             // Load float operands from integer stack slots into FPRs via memory.
@@ -1112,7 +1123,7 @@ fn emit_instruction_ppc64<W: Write>(
             dst,
             src,
         } => {
-            let is_f32 = from.size_bytes() == 4;
+            let is_f32 = from.size_bytes(pointer_width) == 4;
             emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
             // The convert saturates but turns NaN into the most negative integer, so
             // the unordered bit of a self-comparison picks zero instead.
@@ -1123,7 +1134,7 @@ fn emit_instruction_ppc64<W: Write>(
             writeln!(writer, "    ld 3, -8(1)")?;
             writeln!(writer, "    li 4, 0")?;
             writeln!(writer, "    isel 3, 4, 3, 3")?;
-            let bits = to.size_bytes() * 8;
+            let bits = to.size_bytes(pointer_width) * 8;
             if bits < 64 {
                 let compare = if *signed { "cmpd" } else { "cmpld" };
                 let max = if *signed {
@@ -1139,7 +1150,7 @@ fn emit_instruction_ppc64<W: Write>(
                     writeln!(writer, "    cmpd 0, 3, 4")?;
                     writeln!(writer, "    isel 3, 4, 3, 0")?;
                 }
-                extend_integer(writer, "3", to, true)?;
+                extend_integer(writer, "3", to, true, pointer_width)?;
             }
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -1152,12 +1163,12 @@ fn emit_instruction_ppc64<W: Write>(
             dst,
             src,
         } => {
-            let is_f32 = to.size_bytes() == 4;
+            let is_f32 = to.size_bytes(pointer_width) == 4;
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
-            let bits = from.size_bytes() * 8;
+            let bits = from.size_bytes(pointer_width) * 8;
             if bits < 64 {
                 if *signed {
-                    extend_integer(writer, "3", from, true)?;
+                    extend_integer(writer, "3", from, true, pointer_width)?;
                 } else {
                     writeln!(writer, "    clrldi 3, 3, {}", 64 - bits)?;
                 }
@@ -1176,14 +1187,14 @@ fn emit_instruction_ppc64<W: Write>(
             }
         }
         MirInst::FloatConvert { from, to, dst, src } => {
-            let to_f32 = to.size_bytes() == 4;
+            let to_f32 = to.size_bytes(pointer_width) == 4;
             emit_load_fp_operand(
                 src,
                 writer,
                 reg_alloc,
                 stack_slots,
                 "1",
-                from.size_bytes() == 4,
+                from.size_bytes(pointer_width) == 4,
             )?;
             if to_f32 {
                 writeln!(writer, "    frsp 1, 1")?;
@@ -1193,7 +1204,7 @@ fn emit_instruction_ppc64<W: Write>(
             }
         }
         MirInst::FloatUnary { op, dst, src, ty } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
             let suffix = if is_f32 { "s" } else { "" };
             emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
             match op {
@@ -1211,7 +1222,7 @@ fn emit_instruction_ppc64<W: Write>(
             rhs,
             ty,
         } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
             emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32)?;
             emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
             writeln!(writer, "    fcmpu 0, 1, 2")?;
@@ -1400,7 +1411,7 @@ fn emit_instruction_ppc64<W: Write>(
                                 reg_alloc,
                                 stack_slots,
                                 &bank.to_string(),
-                                kind.ty.size_bytes() == 4,
+                                kind.ty.size_bytes(pointer_width) == 4,
                             )?;
                             // ELFv2 hands a variadic callee its floats in both banks, and
                             // the callee reads whichever one its va_arg takes.
@@ -1505,7 +1516,7 @@ fn emit_instruction_ppc64<W: Write>(
                             writer,
                             reg_alloc,
                             stack_slots,
-                            ty.size_bytes() == 4,
+                            ty.size_bytes(pointer_width) == 4,
                         )?,
                         None => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
                     },
@@ -1542,7 +1553,7 @@ fn emit_instruction_ppc64<W: Write>(
                             reg_alloc,
                             stack_slots,
                             &bank.to_string(),
-                            ty.size_bytes() == 4,
+                            ty.size_bytes(pointer_width) == 4,
                         )?;
                         if index >= fixed && gpr < arg_regs.len() {
                             writeln!(writer, "    stfd {bank}, -8(1)")?;
@@ -1581,7 +1592,7 @@ fn emit_instruction_ppc64<W: Write>(
                         writer,
                         reg_alloc,
                         stack_slots,
-                        ty.size_bytes() == 4,
+                        ty.size_bytes(pointer_width) == 4,
                     )?,
                     _ => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
                 }
@@ -1656,7 +1667,7 @@ fn emit_instruction_ppc64<W: Write>(
                         Register::Physical(p) => writeln!(writer, "    mr 5, {}", p.name)?,
                     }
                     writeln!(writer, "    {load_op} 3, {offset}(5)")?;
-                    extend_integer(writer, "3", ty, true)?;
+                    extend_integer(writer, "3", ty, true, pointer_width)?;
                     if let Register::Virtual(vreg) = dst {
                         if matches!(ty, MirType::Scalar(ScalarType::F32 | ScalarType::F64)) {
                             emit_store_fp_result(
@@ -1828,7 +1839,7 @@ fn emit_instruction_ppc64<W: Write>(
                             reg_alloc,
                             stack_slots,
                             "1",
-                            ty.size_bytes() == 4,
+                            ty.size_bytes(pointer_width) == 4,
                         )?,
                         None => load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?,
                     },
@@ -1848,7 +1859,9 @@ fn emit_instruction_ppc64<W: Write>(
         | MirInst::AtomicStore { .. }
         | MirInst::AtomicBinary { .. }
         | MirInst::AtomicCompareExchange { .. }
-        | MirInst::Fence { .. } => atomic::emit(inst, writer, reg_alloc, stack_slots)?,
+        | MirInst::Fence { .. } => {
+            atomic::emit(inst, writer, reg_alloc, stack_slots, pointer_width)?
+        }
         MirInst::InlineAsm { .. } => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 "inline assembly is not supported by the PowerPC64 backend; it is x86_64 Linux only".to_string(),
@@ -1863,7 +1876,16 @@ fn emit_instruction_ppc64<W: Write>(
             )));
         }
         MirInst::IntUnary { op, ty, dst, src } => {
-            bit::emit_int_unary(writer, *op, ty, dst, src, reg_alloc, stack_slots)?;
+            bit::emit_int_unary(
+                writer,
+                *op,
+                ty,
+                dst,
+                src,
+                reg_alloc,
+                stack_slots,
+                pointer_width,
+            )?;
         }
         MirInst::IntRotate {
             op,
@@ -1872,7 +1894,16 @@ fn emit_instruction_ppc64<W: Write>(
             lhs,
             rhs,
         } => {
-            bit::emit_int_rotate(writer, *op, ty, dst, (lhs, rhs), reg_alloc, stack_slots)?;
+            bit::emit_int_rotate(
+                writer,
+                *op,
+                ty,
+                dst,
+                (lhs, rhs),
+                reg_alloc,
+                stack_slots,
+                pointer_width,
+            )?;
         }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
@@ -1883,8 +1914,8 @@ fn emit_instruction_ppc64<W: Write>(
     Ok(())
 }
 
-fn copy_load_mnemonic(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+fn copy_load_mnemonic(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "lbz",
         2 => "lhz",
         4 => "lwz",
@@ -2027,12 +2058,17 @@ fn emit_store_fp_result<W: Write>(
     Ok(())
 }
 
-fn extend_param(w: &mut impl Write, register: &str, ty: &MirType) -> Result<(), LaminaError> {
+fn extend_param(
+    w: &mut impl Write,
+    register: &str,
+    ty: &MirType,
+    pointer_width: PointerWidth,
+) -> Result<(), LaminaError> {
     if matches!(ty, MirType::Scalar(ScalarType::I1)) {
         writeln!(w, "    clrldi {register}, {register}, 56")?;
         return Ok(());
     }
-    extend_integer(w, register, ty, true)
+    extend_integer(w, register, ty, true, pointer_width)
 }
 
 fn extend_integer(
@@ -2040,6 +2076,7 @@ fn extend_integer(
     register: &str,
     ty: &MirType,
     signed: bool,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let instruction = match ty {
         MirType::Scalar(ScalarType::I8) => "extsb",
@@ -2050,7 +2087,7 @@ fn extend_integer(
     if signed {
         writeln!(w, "    {instruction} {register}, {register}")?;
     } else {
-        let clear = 64 - ty.size_bytes() * 8;
+        let clear = 64 - ty.size_bytes(pointer_width) * 8;
         writeln!(w, "    clrldi {register}, {register}, {clear}")?;
     }
     Ok(())

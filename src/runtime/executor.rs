@@ -52,7 +52,10 @@ pub(crate) fn interpret_mir_function(
 
     let mut register_values: HashMap<Register, i64> = HashMap::new();
     for (param, value) in function.sig.params.iter().zip(args.iter().copied()) {
-        register_values.insert(param.reg.clone(), param.ty.signed_integer(value));
+        register_values.insert(
+            param.reg.clone(),
+            param.ty.signed_integer(value, function.pointer_width),
+        );
     }
 
     let mut block_index_by_label: HashMap<String, usize> = HashMap::new();
@@ -88,7 +91,7 @@ pub(crate) fn interpret_mir_function(
                     let value = if ty.is_float() {
                         value
                     } else {
-                        ty.signed_integer(value)
+                        ty.signed_integer(value, function.pointer_width)
                     };
                     register_values.insert(dst.clone(), value);
                 }
@@ -101,11 +104,11 @@ pub(crate) fn interpret_mir_function(
                 } => {
                     let value = evaluate_operand(src, &register_values)?;
                     let value = if *signed {
-                        from.signed_integer(value)
+                        from.signed_integer(value, function.pointer_width)
                     } else {
-                        from.unsigned_integer(value) as i64
+                        from.unsigned_integer(value, function.pointer_width) as i64
                     };
-                    let value = to.signed_integer(value);
+                    let value = to.signed_integer(value, function.pointer_width);
                     register_values.insert(dst.clone(), value);
                 }
                 Instruction::IntToFloat {
@@ -116,11 +119,17 @@ pub(crate) fn interpret_mir_function(
                     src,
                 } => {
                     let bits = evaluate_operand(src, &register_values)?;
-                    let result = match (to.size_bytes(), *signed) {
-                        (4, true) => i64::from((from.signed_integer(bits) as f32).to_bits()),
-                        (4, false) => i64::from((from.unsigned_integer(bits) as f32).to_bits()),
-                        (_, true) => (from.signed_integer(bits) as f64).to_bits() as i64,
-                        (_, false) => (from.unsigned_integer(bits) as f64).to_bits() as i64,
+                    let result = match (to.size_bytes(function.pointer_width), *signed) {
+                        (4, true) => i64::from(
+                            (from.signed_integer(bits, function.pointer_width) as f32).to_bits(),
+                        ),
+                        (4, false) => i64::from(
+                            (from.unsigned_integer(bits, function.pointer_width) as f32).to_bits(),
+                        ),
+                        (_, true) => (from.signed_integer(bits, function.pointer_width) as f64)
+                            .to_bits() as i64,
+                        (_, false) => (from.unsigned_integer(bits, function.pointer_width) as f64)
+                            .to_bits() as i64,
                     };
                     register_values.insert(dst.clone(), result);
                 }
@@ -146,7 +155,7 @@ pub(crate) fn interpret_mir_function(
                     } else {
                         f64::from_bits(bits as u64)
                     };
-                    let converted = match (*signed, to.size_bytes()) {
+                    let converted = match (*signed, to.size_bytes(function.pointer_width)) {
                         (true, 1) => value as i8 as i64,
                         (true, 2) => value as i16 as i64,
                         (true, 4) => value as i32 as i64,
@@ -156,7 +165,10 @@ pub(crate) fn interpret_mir_function(
                         (false, 4) => value as u32 as i64,
                         (false, _) => value as u64 as i64,
                     };
-                    register_values.insert(dst.clone(), to.signed_integer(converted));
+                    register_values.insert(
+                        dst.clone(),
+                        to.signed_integer(converted, function.pointer_width),
+                    );
                 }
                 Instruction::IntBinary {
                     op,
@@ -167,16 +179,19 @@ pub(crate) fn interpret_mir_function(
                 } => {
                     let left = evaluate_operand(lhs, &register_values)?;
                     let right = evaluate_operand(rhs, &register_values)?;
-                    let result = op.evaluate(*ty, left, right).ok_or_else(|| {
-                        LaminaError::RuntimeError(format!(
-                            "Interpreter: {op} integer division trap"
-                        ))
-                    })?;
+                    let result = op
+                        .evaluate(*ty, left, right, function.pointer_width)
+                        .ok_or_else(|| {
+                            LaminaError::RuntimeError(format!(
+                                "Interpreter: {op} integer division trap"
+                            ))
+                        })?;
                     register_values.insert(dst.clone(), result);
                 }
                 Instruction::IntUnary { op, ty, dst, src } => {
                     let value = evaluate_operand(src, &register_values)?;
-                    register_values.insert(dst.clone(), op.evaluate(*ty, value));
+                    register_values
+                        .insert(dst.clone(), op.evaluate(*ty, value, function.pointer_width));
                 }
                 Instruction::IntRotate {
                     op,
@@ -187,7 +202,10 @@ pub(crate) fn interpret_mir_function(
                 } => {
                     let value = evaluate_operand(lhs, &register_values)?;
                     let count = evaluate_operand(rhs, &register_values)?;
-                    register_values.insert(dst.clone(), op.evaluate(*ty, value, count));
+                    register_values.insert(
+                        dst.clone(),
+                        op.evaluate(*ty, value, count, function.pointer_width),
+                    );
                 }
                 Instruction::IntCmp {
                     op,
@@ -196,22 +214,32 @@ pub(crate) fn interpret_mir_function(
                     lhs,
                     rhs,
                 } => {
-                    let left_value = ty.signed_integer(evaluate_operand(lhs, &register_values)?);
-                    let right_value = ty.signed_integer(evaluate_operand(rhs, &register_values)?);
+                    let left_value = ty.signed_integer(
+                        evaluate_operand(lhs, &register_values)?,
+                        function.pointer_width,
+                    );
+                    let right_value = ty.signed_integer(
+                        evaluate_operand(rhs, &register_values)?,
+                        function.pointer_width,
+                    );
                     let result = match op {
                         IntCmpOp::Eq => left_value == right_value,
                         IntCmpOp::Ne => left_value != right_value,
                         IntCmpOp::ULt => {
-                            ty.unsigned_integer(left_value) < ty.unsigned_integer(right_value)
+                            ty.unsigned_integer(left_value, function.pointer_width)
+                                < ty.unsigned_integer(right_value, function.pointer_width)
                         }
                         IntCmpOp::ULe => {
-                            ty.unsigned_integer(left_value) <= ty.unsigned_integer(right_value)
+                            ty.unsigned_integer(left_value, function.pointer_width)
+                                <= ty.unsigned_integer(right_value, function.pointer_width)
                         }
                         IntCmpOp::UGt => {
-                            ty.unsigned_integer(left_value) > ty.unsigned_integer(right_value)
+                            ty.unsigned_integer(left_value, function.pointer_width)
+                                > ty.unsigned_integer(right_value, function.pointer_width)
                         }
                         IntCmpOp::UGe => {
-                            ty.unsigned_integer(left_value) >= ty.unsigned_integer(right_value)
+                            ty.unsigned_integer(left_value, function.pointer_width)
+                                >= ty.unsigned_integer(right_value, function.pointer_width)
                         }
                         IntCmpOp::SLt => left_value < right_value,
                         IntCmpOp::SLe => left_value <= right_value,

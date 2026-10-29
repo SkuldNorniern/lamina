@@ -725,7 +725,10 @@ fn verify_instruction_types(
                     );
                 }
                 Instruction::Bitcast { from, to, dst, src } => {
-                    if from.size_bytes() != to.size_bytes() || from.is_vector() || to.is_vector() {
+                    if from.size_bytes(function.pointer_width) != to.size_bytes(function.pointer_width)
+                        || from.is_vector()
+                        || to.is_vector()
+                    {
                         instruction_errors.push("expected equal-width scalar bitcast".into());
                     }
                     verify_destination(dst, *to, "Bitcast", config, &mut instruction_errors);
@@ -747,7 +750,7 @@ fn verify_instruction_types(
                 } => {
                     if !is_integer_or_pointer(*from)
                         || !is_integer_or_pointer(*to)
-                        || (*signed && from.size_bytes() >= to.size_bytes())
+                        || (*signed && from.size_bytes(function.pointer_width) >= to.size_bytes(function.pointer_width))
                     {
                         instruction_errors.push("expected a valid integer conversion".into());
                     }

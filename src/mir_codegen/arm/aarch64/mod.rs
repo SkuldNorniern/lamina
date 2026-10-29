@@ -48,7 +48,7 @@ use lamina_codegen::{
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
 };
 use lamina_codegen::{os_uses_elf, os_uses_macho};
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {
@@ -109,15 +109,15 @@ struct ArgKind {
 }
 
 impl ArgKind {
-    fn of(ty: MirType, aggregate: Option<Aggregate>) -> Self {
+    fn of(ty: MirType, aggregate: Option<Aggregate>, pointer_width: PointerWidth) -> Self {
         let by_reference = aggregate.is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE);
         Self {
             float: aggregate.is_none() && ty.is_float(),
-            ty_is_f32: ty.size_bytes() == 4,
+            ty_is_f32: ty.size_bytes(pointer_width) == 4,
             bytes: if by_reference {
                 8
             } else {
-                aggregate.map_or(ty.size_bytes(), |a| a.size)
+                aggregate.map_or(ty.size_bytes(pointer_width), |a| a.size)
             },
             aggregate,
             by_reference,
@@ -267,8 +267,8 @@ fn load_argument_bytes(
 
 /// Aggregate markers of each function's boundary, so a call site knows how the callee
 /// reads its arguments and hands back its result.
-#[derive(Default)]
 struct AggregateSignatures {
+    pointer_width: PointerWidth,
     params: HashMap<String, Vec<ArgKind>>,
     returns: HashMap<String, Aggregate>,
     float_returns: HashMap<String, MirType>,
@@ -276,8 +276,20 @@ struct AggregateSignatures {
 }
 
 impl AggregateSignatures {
-    fn from_module(module: &MirModule) -> Self {
+    #[cfg(test)]
+    fn empty(pointer_width: PointerWidth) -> Self {
         Self {
+            pointer_width,
+            params: HashMap::new(),
+            returns: HashMap::new(),
+            float_returns: HashMap::new(),
+            variadic: HashSet::new(),
+        }
+    }
+
+    fn from_module(module: &MirModule, pointer_width: PointerWidth) -> Self {
+        Self {
+            pointer_width,
             params: module
                 .functions
                 .iter()
@@ -287,7 +299,7 @@ impl AggregateSignatures {
                         func.sig
                             .params
                             .iter()
-                            .map(|p| ArgKind::of(p.ty, p.aggregate))
+                            .map(|p| ArgKind::of(p.ty, p.aggregate, pointer_width))
                             .collect(),
                     )
                 })
@@ -337,7 +349,7 @@ impl AggregateSignatures {
             .enumerate()
             .map(|(index, arg)| match declared {
                 Some(kinds) if index < fixed && index < kinds.len() => kinds[index],
-                _ => ArgKind::of(promoted_argument_type(arg), None),
+                _ => ArgKind::of(promoted_argument_type(arg), None, self.pointer_width),
             })
             .collect()
     }
@@ -493,7 +505,7 @@ fn compile_single_function_aarch64_with(
         .sig
         .params
         .iter()
-        .map(|p| ArgKind::of(p.ty, p.aggregate))
+        .map(|p| ArgKind::of(p.ty, p.aggregate, func.pointer_width))
         .collect();
     let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
@@ -506,7 +518,7 @@ fn compile_single_function_aarch64_with(
                     // The slot holds the bits, so the float register is moved through a
                     // general one on its way in.
                     let value = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
-                    if p.ty.size_bytes() == 4 {
+                    if p.ty.size_bytes(func.pointer_width) == 4 {
                         writeln!(&mut output, "    fmov {}, s{index}", w_alias(value))
                             .and_then(|()| {
                                 writeln!(&mut output, "    str {}, [{addr}]", w_alias(value))
@@ -700,8 +712,8 @@ fn compile_single_function_aarch64_with(
                             op,
                             IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
                         );
-                        extend_integer(output, "x16", ty, !unsigned)?;
-                        extend_integer(output, "x17", ty, !unsigned)?;
+                        extend_integer(output, "x16", ty, !unsigned, func.pointer_width)?;
+                        extend_integer(output, "x17", ty, !unsigned, func.pointer_width)?;
                         writeln!(output, "    cmp x16, x17")?;
                         let (invert, taken, other) =
                             plan.branch(func, index, next, true_target, false_target);
@@ -745,6 +757,7 @@ fn compile_single_function_aarch64_with(
                         func.sig.ret_aggregate,
                         func.sig.ret_ty.filter(|ty| ty.is_float()),
                         sret_slot,
+                        func.pointer_width,
                     )?;
                 }
                 position += 1;
@@ -803,8 +816,9 @@ pub fn generate_mir_aarch64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    generate_mir_aarch64_with_units(module, writer, target_os, 1)
+    generate_mir_aarch64_with_units(module, writer, target_os, 1, pointer_width)
 }
 
 pub fn generate_mir_aarch64_with_units<W: Write>(
@@ -812,6 +826,7 @@ pub fn generate_mir_aarch64_with_units<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     generate_mir_aarch64_with_units_and_settings(
         module,
@@ -819,6 +834,7 @@ pub fn generate_mir_aarch64_with_units<W: Write>(
         target_os,
         codegen_units,
         &MirCodegenSettings::default(),
+        pointer_width,
     )
 }
 
@@ -828,12 +844,13 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     let abi = AArch64ABI::new(target_os);
     reject_register_symbols(module, &abi)?;
     let settings_arc = Arc::new(settings.clone());
-    let signatures = Arc::new(AggregateSignatures::from_module(module));
+    let signatures = Arc::new(AggregateSignatures::from_module(module, pointer_width));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_single_function_aarch64(
@@ -926,6 +943,7 @@ fn emit_block<W: Write>(
     ret_aggregate: Option<Aggregate>,
     ret_float: Option<MirType>,
     sret_slot: Option<i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines {
@@ -950,7 +968,7 @@ fn emit_block<W: Write>(
                 simd::emit(inst, w, frame, ra)?
             }
             MirInst::IntConvert { .. } => {
-                if let Some(operations) = integer_conversion(inst) {
+                if let Some(operations) = integer_conversion(inst, pointer_width) {
                     emit_block(
                         &operations,
                         w,
@@ -966,6 +984,7 @@ fn emit_block<W: Write>(
                         ret_aggregate,
                         ret_float,
                         sret_slot,
+                        pointer_width,
                     )?;
                 }
             }
@@ -985,11 +1004,16 @@ fn emit_block<W: Write>(
                     Operand::Immediate(immediate) => {
                         emit_mov_imm64(w, &value, imm_to_u64(immediate))?
                     }
-                    Operand::Register(register) => {
-                        load_copy_reg_to(w, register, &value, ty.size_bytes(), frame, ra)?
-                    }
+                    Operand::Register(register) => load_copy_reg_to(
+                        w,
+                        register,
+                        &value,
+                        ty.size_bytes(pointer_width),
+                        frame,
+                        ra,
+                    )?,
                 }
-                extend_integer(w, &value, ty, true)?;
+                extend_integer(w, &value, ty, true, pointer_width)?;
                 store_result(w, dst, &value, frame, ra)?;
                 ra.free_scratch(scratch);
             }
@@ -1006,33 +1030,41 @@ fn emit_block<W: Write>(
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                 if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
-                    extend_integer(w, s_l, ty, false)?;
-                    extend_integer(w, s_r, ty, false)?;
+                    extend_integer(w, s_l, ty, false, pointer_width)?;
+                    extend_integer(w, s_r, ty, false, pointer_width)?;
                 }
                 let dl = x_alias(s_d);
                 let rl = x_alias(s_l);
                 let rr = x_alias(s_r);
-                let (zero, overflow) =
-                    op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+                let (zero, overflow) = op.division_checks(
+                    *ty,
+                    lhs.integer_constant(),
+                    rhs.integer_constant(),
+                    pointer_width,
+                );
                 if matches!(op, IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::AShr) {
-                    extend_integer(w, s_l, ty, true)?;
+                    extend_integer(w, s_l, ty, true, pointer_width)?;
                     if !matches!(op, IntBinOp::AShr) {
-                        extend_integer(w, s_r, ty, true)?;
+                        extend_integer(w, s_r, ty, true, pointer_width)?;
                     }
                 }
                 if zero {
                     writeln!(w, "    cbnz {rr}, 1f\n    udf #0\n1:")?;
                 }
                 if overflow {
-                    let minimum = 1u64 << (ty.size_bytes() * 8 - 1);
+                    let minimum = 1u64 << (ty.size_bytes(pointer_width) * 8 - 1);
                     writeln!(w, "    cmn {rr}, #1\n    b.ne 2f")?;
-                    emit_mov_imm64(w, &dl, ty.signed_integer(minimum as i64) as u64)?;
+                    emit_mov_imm64(
+                        w,
+                        &dl,
+                        ty.signed_integer(minimum as i64, pointer_width) as u64,
+                    )?;
                     writeln!(w, "    cmp {rl}, {dl}\n    b.ne 2f\n    udf #0\n2:")?;
                 }
                 if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr)
-                    && ty.size_bytes() < 8
+                    && ty.size_bytes(pointer_width) < 8
                 {
-                    let mask = ty.size_bytes() * 8 - 1;
+                    let mask = ty.size_bytes(pointer_width) * 8 - 1;
                     writeln!(w, "    and {rr}, {rr}, #{mask}")?;
                 }
                 match op {
@@ -1071,7 +1103,7 @@ fn emit_block<W: Write>(
                     IntBinOp::Shl => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= ty.size_bytes() as u32 * 8 - 1;
+                            sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
                             writeln!(w, "    lsl {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
@@ -1081,7 +1113,7 @@ fn emit_block<W: Write>(
                     IntBinOp::LShr => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= ty.size_bytes() as u32 * 8 - 1;
+                            sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
                             writeln!(w, "    lsr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
@@ -1091,7 +1123,7 @@ fn emit_block<W: Write>(
                     IntBinOp::AShr => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= ty.size_bytes() as u32 * 8 - 1;
+                            sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
                             writeln!(w, "    asr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
@@ -1099,7 +1131,7 @@ fn emit_block<W: Write>(
                         }
                     },
                 }
-                extend_integer(w, s_d, ty, true)?;
+                extend_integer(w, s_d, ty, true, pointer_width)?;
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
                 ra.free_scratch(s_l);
                 ra.free_scratch(s_r);
@@ -1118,7 +1150,7 @@ fn emit_block<W: Write>(
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
 
-                let is32 = ty.size_bytes() == 4;
+                let is32 = ty.size_bytes(pointer_width) == 4;
                 let suffix = if is32 { "s" } else { "d" };
 
                 if is32 {
@@ -1148,7 +1180,7 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_d);
             }
             MirInst::IntUnary { op, ty, dst, src } => {
-                bit::emit_int_unary(w, *op, ty, dst, src, frame, ra)?;
+                bit::emit_int_unary(w, *op, ty, dst, src, frame, ra, pointer_width)?;
             }
             MirInst::IntRotate {
                 op,
@@ -1157,14 +1189,14 @@ fn emit_block<W: Write>(
                 lhs,
                 rhs,
             } => {
-                bit::emit_int_rotate(w, *op, ty, dst, (lhs, rhs), frame, ra)?;
+                bit::emit_int_rotate(w, *op, ty, dst, (lhs, rhs), frame, ra, pointer_width)?;
             }
             MirInst::FloatUnary { op, src, dst, ty } => {
                 let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 emit_materialize_operand(w, src, s_s, frame, ra)?;
 
-                let is32 = ty.size_bytes() == 4;
+                let is32 = ty.size_bytes(pointer_width) == 4;
                 let suffix = if is32 { "s" } else { "d" };
 
                 if is32 {
@@ -1204,8 +1236,8 @@ fn emit_block<W: Write>(
                     op,
                     IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
                 ) {
-                    extend_integer(w, s_l, ty, false)?;
-                    extend_integer(w, s_r, ty, false)?;
+                    extend_integer(w, s_l, ty, false, pointer_width)?;
+                    extend_integer(w, s_r, ty, false, pointer_width)?;
                 }
                 writeln!(w, "    cmp {}, {}", x_alias(s_l), x_alias(s_r))?;
                 let cond = match op {
@@ -1239,7 +1271,7 @@ fn emit_block<W: Write>(
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
 
-                let is32 = ty.size_bytes() == 4;
+                let is32 = ty.size_bytes(pointer_width) == 4;
 
                 if is32 {
                     writeln!(w, "    fmov s0, {}", w_alias(s_l))?;
@@ -1270,12 +1302,16 @@ fn emit_block<W: Write>(
                 let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 materialize_address(w, addr, a, frame, ra)?;
-                match ty.size_bytes() {
+                match ty.size_bytes(pointer_width) {
                     1 => writeln!(w, "    ldrsb {}, [{}]", x_alias(t), a)?,
                     2 => writeln!(w, "    ldrsh {}, [{}]", x_alias(t), a)?,
                     4 => writeln!(w, "    ldrsw {}, [{}]", x_alias(t), a)?,
                     8 => writeln!(w, "    ldr {}, [{}]", x_alias(t), a)?,
-                    _ => writeln!(w, "    // Unhandled load size: {}", ty.size_bytes())?,
+                    _ => writeln!(
+                        w,
+                        "    // Unhandled load size: {}",
+                        ty.size_bytes(pointer_width)
+                    )?,
                 }
                 store_result(w, dst, &x_alias(t), frame, ra)?;
                 ra.free_scratch(a);
@@ -1294,7 +1330,7 @@ fn emit_block<W: Write>(
                 load_reg_to(w, cond, r_cond, frame, ra)?;
                 emit_materialize_operand(w, true_val, r_t, frame, ra)?;
                 emit_materialize_operand(w, false_val, r_f, frame, ra)?;
-                if ty.size_bytes() == 4 {
+                if ty.size_bytes(pointer_width) == 4 {
                     writeln!(w, "    cmp {}, #0", w_alias(r_cond))?;
                     writeln!(
                         w,
@@ -1324,12 +1360,16 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 materialize_address(w, addr, a, frame, ra)?;
                 emit_materialize_operand(w, src, t, frame, ra)?;
-                match ty.size_bytes() {
+                match ty.size_bytes(pointer_width) {
                     1 => writeln!(w, "    strb {}, [{}]", w_alias(t), a)?,
                     2 => writeln!(w, "    strh {}, [{}]", w_alias(t), a)?,
                     4 => writeln!(w, "    str {}, [{}]", w_alias(t), a)?,
                     8 => writeln!(w, "    str {}, [{}]", x_alias(t), a)?,
-                    _ => writeln!(w, "    // Unhandled store size: {}", ty.size_bytes())?,
+                    _ => writeln!(
+                        w,
+                        "    // Unhandled store size: {}",
+                        ty.size_bytes(pointer_width)
+                    )?,
                 }
                 ra.free_scratch(a);
                 ra.free_scratch(t);
@@ -1370,9 +1410,9 @@ fn emit_block<W: Write>(
                 signed,
                 dst,
                 src,
-            } => emit_int_to_float(w, from, to, *signed, dst, src, frame, ra)?,
+            } => emit_int_to_float(w, from, to, *signed, dst, src, frame, ra, pointer_width)?,
             MirInst::FloatConvert { to, dst, src, .. } => {
-                emit_float_convert(w, to, dst, src, frame, ra)?;
+                emit_float_convert(w, to, dst, src, frame, ra, pointer_width)?;
             }
             MirInst::FloatToInt {
                 from,
@@ -1380,7 +1420,7 @@ fn emit_block<W: Write>(
                 signed,
                 dst,
                 src,
-            } => emit_float_to_int(w, from, to, *signed, dst, src, frame, ra)?,
+            } => emit_float_to_int(w, from, to, *signed, dst, src, frame, ra, pointer_width)?,
             MirInst::CallIndirect {
                 target,
                 arg_types,
@@ -1389,8 +1429,10 @@ fn emit_block<W: Write>(
                 ret,
                 ret_ty,
             } => {
-                let kinds: Vec<ArgKind> =
-                    arg_types.iter().map(|ty| ArgKind::of(*ty, None)).collect();
+                let kinds: Vec<ArgKind> = arg_types
+                    .iter()
+                    .map(|ty| ArgKind::of(*ty, None, pointer_width))
+                    .collect();
                 let places = classify_aarch64_arguments(&kinds, abi.target_os(), *variadic_fixed);
                 let stack_space = (aarch64_stack_bytes(&places) + 15) & !15;
                 if stack_space > 0 {
@@ -1432,7 +1474,7 @@ fn emit_block<W: Write>(
                 }
                 if let Some(dst) = ret {
                     match ret_ty {
-                        Some(ty) if ty.is_float() && ty.size_bytes() == 4 => {
+                        Some(ty) if ty.is_float() && ty.size_bytes(pointer_width) == 4 => {
                             writeln!(w, "    fmov w0, s0")?;
                             store_result(w, dst, "x0", frame, ra)?;
                         }
@@ -1704,7 +1746,7 @@ fn emit_block<W: Write>(
                         && let Some(ty) = signatures.float_result(name)
                     {
                         // The result arrives in v0 and the body wants its bits.
-                        if ty.size_bytes() == 4 {
+                        if ty.size_bytes(pointer_width) == 4 {
                             writeln!(w, "    fmov w0, s0")?;
                         } else {
                             writeln!(w, "    fmov x0, d0")?;
@@ -1793,7 +1835,7 @@ fn emit_block<W: Write>(
                 {
                     let bits = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     emit_materialize_operand(w, v, bits, frame, ra)?;
-                    if ty.size_bytes() == 4 {
+                    if ty.size_bytes(pointer_width) == 4 {
                         writeln!(w, "    fmov s0, {}", w_alias(bits))?;
                     } else {
                         writeln!(w, "    fmov d0, {bits}")?;
@@ -1898,7 +1940,7 @@ fn emit_block<W: Write>(
             | MirInst::AtomicStore { .. }
             | MirInst::AtomicBinary { .. }
             | MirInst::AtomicCompareExchange { .. }
-            | MirInst::Fence { .. } => atomic::emit(inst, w, frame, ra)?,
+            | MirInst::Fence { .. } => atomic::emit(inst, w, frame, ra, pointer_width)?,
             MirInst::InlineAsm { .. } => {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "inline assembly is not yet supported by the AArch64 backend; it is x86_64 Linux only".to_owned(),
@@ -2288,9 +2330,9 @@ pub struct AArch64Codegen<'a> {
 }
 
 impl<'a> AArch64Codegen<'a> {
-    pub fn new(target_os: TargetOperatingSystem) -> Self {
+    pub fn new(target_os: TargetOperatingSystem, pointer_width: PointerWidth) -> Self {
         Self {
-            base: CodegenBase::new(target_os),
+            base: CodegenBase::new(target_os, pointer_width),
         }
     }
 
@@ -2317,6 +2359,7 @@ impl<'a> AArch64Codegen<'a> {
             self.base.target_os,
             codegen_units,
             &MirCodegenSettings::default(),
+            self.base.pointer_width,
         )
     }
 }
@@ -2367,9 +2410,16 @@ impl<'a> Codegen for AArch64Codegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
+        let pointer_width = self.base.pointer_width;
         self.base.emit_asm_base_with_units(
             |module, writer, target_os, codegen_units| {
-                generate_mir_aarch64_with_units(module, writer, target_os, codegen_units)
+                generate_mir_aarch64_with_units(
+                    module,
+                    writer,
+                    target_os,
+                    codegen_units,
+                    pointer_width,
+                )
             },
             "AArch64",
             self.base.codegen_units,
@@ -2409,13 +2459,14 @@ fn emit_int_to_float<W: Write>(
     src: &Operand,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
     let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, src, s_s, frame, ra)?;
-    extend_integer(w, s_s, from, signed)?;
+    extend_integer(w, s_s, from, signed, pointer_width)?;
     let cvt = if signed { "scvtf" } else { "ucvtf" };
-    if to.size_bytes() == 4 {
+    if to.size_bytes(pointer_width) == 4 {
         writeln!(w, "    {cvt} s0, {s_s}")?;
         writeln!(w, "    fmov {}, s0", w_alias(s_d))?;
     } else {
@@ -2435,10 +2486,11 @@ fn emit_float_convert<W: Write>(
     src: &Operand,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, src, s_s, frame, ra)?;
-    if to.size_bytes() == 4 {
+    if to.size_bytes(pointer_width) == 4 {
         writeln!(w, "    fmov d0, {s_s}")?;
         writeln!(w, "    fcvt s0, d0")?;
         writeln!(w, "    fmov {}, s0", w_alias(s_s))?;
@@ -2462,26 +2514,35 @@ fn emit_float_to_int<W: Write>(
     src: &Operand,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
     let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
     let s_t = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, src, s_s, frame, ra)?;
-    if from.size_bytes() == 4 {
+    if from.size_bytes(pointer_width) == 4 {
         writeln!(w, "    fmov s0, {}", w_alias(s_s))?;
     } else {
         writeln!(w, "    fmov d0, {s_s}")?;
     }
-    let bits = to.size_bytes() * 8;
+    let bits = to.size_bytes(pointer_width) * 8;
     let d32 = w_alias(s_d);
     let t32 = w_alias(s_t);
     if bits == 64 {
         let cvt = if signed { "fcvtzs" } else { "fcvtzu" };
-        let from_suffix = if from.size_bytes() == 4 { "s0" } else { "d0" };
+        let from_suffix = if from.size_bytes(pointer_width) == 4 {
+            "s0"
+        } else {
+            "d0"
+        };
         writeln!(w, "    {cvt} {s_d}, {from_suffix}")?;
     } else {
         let cvt = if signed { "fcvtzs" } else { "fcvtzu" };
-        let from_suffix = if from.size_bytes() == 4 { "s0" } else { "d0" };
+        let from_suffix = if from.size_bytes(pointer_width) == 4 {
+            "s0"
+        } else {
+            "d0"
+        };
         writeln!(w, "    {cvt} {d32}, {from_suffix}")?;
         if bits < 32 {
             let (min, max) = if signed {
@@ -2503,7 +2564,7 @@ fn emit_float_to_int<W: Write>(
             }
         }
     }
-    extend_integer(w, s_d, to, signed)?;
+    extend_integer(w, s_d, to, signed, pointer_width)?;
     store_result(w, dst, s_d, frame, ra)?;
     ra.free_scratch(s_s);
     ra.free_scratch(s_d);
@@ -2516,6 +2577,7 @@ fn extend_integer(
     register: &str,
     ty: &MirType,
     signed: bool,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     if !matches!(
         ty,
@@ -2523,7 +2585,7 @@ fn extend_integer(
     ) {
         return Ok(());
     }
-    let bits = ty.size_bytes() * 8;
+    let bits = ty.size_bytes(pointer_width) * 8;
     let instruction = if signed { "sbfx" } else { "ubfx" };
     writeln!(w, "    {instruction} {register}, {register}, #0, #{bits}")?;
     Ok(())

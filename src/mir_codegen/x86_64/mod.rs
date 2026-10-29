@@ -54,7 +54,7 @@ use crate::{
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LiveInterval,
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
 use std::{collections::hash_map::Entry, sync::Arc};
 
 use crate::mir_codegen::common::external_names;
@@ -71,9 +71,9 @@ pub struct X86Codegen<'a> {
 }
 
 impl<'a> X86Codegen<'a> {
-    pub fn new(target_os: TargetOperatingSystem) -> Self {
+    pub fn new(target_os: TargetOperatingSystem, pointer_width: PointerWidth) -> Self {
         Self {
-            base: CodegenBase::new(target_os),
+            base: CodegenBase::new(target_os, pointer_width),
         }
     }
 

@@ -27,7 +27,7 @@ use crate::{
     },
     mir_codegen::{CodegenError, MirCodegenSettings, validate_module_call_parameters},
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 
 const RA: &str = "r1";
 const SP: &str = "r2";
@@ -145,7 +145,14 @@ fn emit_function<W: Write>(name: &str, func: &Function, writer: &mut W) -> Resul
                 writeln!(writer, "    jal r0, {}", block_label(name, &func.entry))
                     .map_err(io_error)?;
             } else {
-                emit_instruction(name, inst, &mut stack, frame_size, writer)?;
+                emit_instruction(
+                    name,
+                    inst,
+                    &mut stack,
+                    frame_size,
+                    writer,
+                    func.pointer_width,
+                )?;
             }
         }
     }
@@ -159,10 +166,18 @@ fn emit_instruction<W: Write>(
     stack: &mut StackLayout,
     frame_size: usize,
     writer: &mut W,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    if let Some(operations) = integer_conversion(inst) {
+    if let Some(operations) = integer_conversion(inst, pointer_width) {
         for operation in operations {
-            emit_instruction(func_name, &operation, stack, frame_size, writer)?;
+            emit_instruction(
+                func_name,
+                &operation,
+                stack,
+                frame_size,
+                writer,
+                pointer_width,
+            )?;
         }
         return Ok(());
     }
@@ -180,7 +195,13 @@ fn emit_instruction<W: Write>(
             match src {
                 Operand::Register(register @ Register::Virtual(_)) => {
                     let offset = stack.slot_for(register)?;
-                    emit_load(writer, copy_load_mnemonic(ty), SCR0, offset, FP)?;
+                    emit_load(
+                        writer,
+                        copy_load_mnemonic(ty, pointer_width),
+                        SCR0,
+                        offset,
+                        FP,
+                    )?;
                 }
                 Operand::Register(Register::Physical(physical)) => {
                     writeln!(writer, "    mv {SCR0}, {}", physical.name).map_err(io_error)?;
@@ -196,7 +217,13 @@ fn emit_instruction<W: Write>(
             match dst {
                 Register::Virtual(_) => {
                     let offset = stack.slot_for(dst)?;
-                    emit_store(writer, copy_store_mnemonic(ty), SCR0, offset, FP)
+                    emit_store(
+                        writer,
+                        copy_store_mnemonic(ty, pointer_width),
+                        SCR0,
+                        offset,
+                        FP,
+                    )
                 }
                 Register::Physical(physical) => {
                     writeln!(writer, "    mv {}, {SCR0}", physical.name).map_err(io_error)
@@ -214,15 +241,19 @@ fn emit_instruction<W: Write>(
             emit_operand_to_reg(writer, lhs, SCR0, stack)?;
             emit_operand_to_reg(writer, rhs, SCR1, stack)?;
             let unsigned = matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr);
-            extend_integer(writer, SCR0, *ty, !unsigned)?;
+            extend_integer(writer, SCR0, *ty, !unsigned, pointer_width)?;
             if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
-                emit_li(writer, SCR2, (ty.size_bytes() * 8 - 1) as i64)?;
+                emit_li(writer, SCR2, (ty.size_bytes(pointer_width) * 8 - 1) as i64)?;
                 writeln!(writer, "    and {SCR1}, {SCR1}, {SCR2}").map_err(io_error)?;
             } else {
-                extend_integer(writer, SCR1, *ty, !unsigned)?;
+                extend_integer(writer, SCR1, *ty, !unsigned, pointer_width)?;
             }
-            let (zero, overflow) =
-                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            let (zero, overflow) = op.division_checks(
+                *ty,
+                lhs.integer_constant(),
+                rhs.integer_constant(),
+                pointer_width,
+            );
             if zero {
                 let safe = unique_local("div_nonzero");
                 writeln!(writer, "    bne {SCR1}, r0, {safe}\n    ebreak\n{safe}:")
@@ -235,7 +266,10 @@ fn emit_instruction<W: Write>(
                 emit_li(
                     writer,
                     SCR2,
-                    ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1)),
+                    ty.signed_integer(
+                        1i64 << (ty.size_bytes(pointer_width) * 8 - 1),
+                        pointer_width,
+                    ),
                 )?;
                 writeln!(
                     writer,
@@ -259,7 +293,7 @@ fn emit_instruction<W: Write>(
                 IntBinOp::AShr => "sra",
             };
             writeln!(writer, "    {mnemonic} {SCR2}, {SCR0}, {SCR1}").map_err(io_error)?;
-            extend_integer(writer, SCR2, *ty, true)?;
+            extend_integer(writer, SCR2, *ty, true, pointer_width)?;
             store_reg_to_dst(writer, SCR2, dst, stack)
         }
         Instruction::IntCmp {
@@ -662,8 +696,8 @@ fn store_mnemonic(ty: &MirType) -> Result<&'static str, LaminaError> {
     }
 }
 
-fn copy_load_mnemonic(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+fn copy_load_mnemonic(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "lb",
         2 => "lh",
         4 => "lw",
@@ -671,8 +705,8 @@ fn copy_load_mnemonic(ty: &MirType) -> &'static str {
     }
 }
 
-fn copy_store_mnemonic(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+fn copy_store_mnemonic(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
+    match ty.size_bytes(pointer_width) {
         1 => "sb",
         2 => "sh",
         4 => "sw",
@@ -718,10 +752,15 @@ fn extend_integer<W: Write>(
     register: &str,
     ty: MirType,
     signed: bool,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    if ty.size_bytes() < 8 {
+    if ty.size_bytes(pointer_width) < 8 {
         let scratch = if register == SCR2 { SCR1 } else { SCR2 };
-        emit_li(writer, scratch, (64 - ty.size_bytes() * 8) as i64)?;
+        emit_li(
+            writer,
+            scratch,
+            (64 - ty.size_bytes(pointer_width) * 8) as i64,
+        )?;
         let right = if signed { "sra" } else { "srl" };
         writeln!(writer, "    sll {register}, {register}, {scratch}\n    {right} {register}, {register}, {scratch}").map_err(io_error)?;
     }

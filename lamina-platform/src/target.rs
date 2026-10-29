@@ -408,4 +408,18 @@ mod tests {
         }
         assert_eq!(linux.to_string(), "riscv64_linux");
     }
+
+    #[test]
+    fn pointer_width_follows_the_architecture() {
+        let width = |name: &str| name.parse::<Target>().unwrap().pointer_width();
+        assert_eq!(width("x86_64_linux"), PointerWidth::Bits64);
+        assert_eq!(width("aarch64_linux"), PointerWidth::Bits64);
+        assert_eq!(width("riscv64_unknown"), PointerWidth::Bits64);
+        assert_eq!(width("riscv32_unknown"), PointerWidth::Bits32);
+        assert_eq!(width("arm32_vita"), PointerWidth::Bits32);
+        assert_eq!(width("wasm32_unknown"), PointerWidth::Bits32);
+        assert_eq!(width("wasm64_unknown"), PointerWidth::Bits64);
+        assert_eq!(PointerWidth::Bits32.bytes(), 4);
+        assert_eq!(PointerWidth::Bits64.bytes(), 8);
+    }
 }

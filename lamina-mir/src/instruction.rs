@@ -10,6 +10,8 @@ use crate::{
 };
 use std::fmt;
 
+use lamina_platform::PointerWidth;
+
 /// Result type of the I/O intrinsics: a byte count, -1 at end of input, or -2 on error.
 pub fn io_intrinsic_result_type(name: &str) -> Option<MirType> {
     matches!(
@@ -52,16 +54,16 @@ pub enum IntUnOp {
 
 impl IntUnOp {
     /// Evaluate on a concrete operand, returning the canonical value of the operand's type.
-    pub fn evaluate(self, ty: MirType, value: i64) -> i64 {
-        let bits = ty.size_bytes() as u32 * 8;
-        let unsigned = ty.unsigned_integer(value);
+    pub fn evaluate(self, ty: MirType, value: i64, pointer: PointerWidth) -> i64 {
+        let bits = ty.size_bytes(pointer) as u32 * 8;
+        let unsigned = ty.unsigned_integer(value, pointer);
         let result = match self {
             Self::Popcount => u64::from(unsigned.count_ones()),
             Self::Ctlz => u64::from(unsigned.leading_zeros() - (64 - bits)),
             Self::Cttz => u64::from(unsigned.trailing_zeros().min(bits)),
             Self::Bswap => unsigned.swap_bytes() >> (64 - bits),
         };
-        ty.signed_integer(result as i64)
+        ty.signed_integer(result as i64, pointer)
     }
 }
 
@@ -88,16 +90,16 @@ pub enum IntRotOp {
 
 impl IntRotOp {
     /// Evaluate on concrete operands, returning the canonical value of `ty`.
-    pub fn evaluate(self, ty: MirType, value: i64, count: i64) -> i64 {
-        let bits = ty.size_bytes() as u32 * 8;
-        let unsigned = ty.unsigned_integer(value);
-        let count = (ty.unsigned_integer(count) % u64::from(bits)) as u32;
+    pub fn evaluate(self, ty: MirType, value: i64, count: i64, pointer: PointerWidth) -> i64 {
+        let bits = ty.size_bytes(pointer) as u32 * 8;
+        let unsigned = ty.unsigned_integer(value, pointer);
+        let count = (ty.unsigned_integer(count, pointer) % u64::from(bits)) as u32;
         let (near, far) = match self {
             Self::Rotl => (count, (bits - count) % bits),
             Self::Rotr => ((bits - count) % bits, count),
         };
         let rotated = (unsigned << near) | (unsigned >> far);
-        ty.signed_integer(rotated as i64)
+        ty.signed_integer(rotated as i64, pointer)
     }
 }
 
@@ -112,13 +114,13 @@ impl fmt::Display for IntRotOp {
 
 impl IntBinOp {
     /// Evaluate concrete operands, returning None when division would trap.
-    pub fn evaluate(self, ty: MirType, lhs: i64, rhs: i64) -> Option<i64> {
-        let left = ty.signed_integer(lhs);
-        let right = ty.signed_integer(rhs);
-        let unsigned_left = ty.unsigned_integer(lhs);
-        let unsigned_right = ty.unsigned_integer(rhs);
-        let shift = (rhs as u32) & (ty.size_bytes() as u32 * 8 - 1);
-        let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+    pub fn evaluate(self, ty: MirType, lhs: i64, rhs: i64, pointer: PointerWidth) -> Option<i64> {
+        let left = ty.signed_integer(lhs, pointer);
+        let right = ty.signed_integer(rhs, pointer);
+        let unsigned_left = ty.unsigned_integer(lhs, pointer);
+        let unsigned_right = ty.unsigned_integer(rhs, pointer);
+        let shift = (rhs as u32) & (ty.size_bytes(pointer) as u32 * 8 - 1);
+        let minimum = ty.signed_integer(1i64 << (ty.size_bytes(pointer) * 8 - 1), pointer);
         let result = match self {
             Self::Add => left.wrapping_add(right),
             Self::Sub => left.wrapping_sub(right),
@@ -137,18 +139,24 @@ impl IntBinOp {
             Self::LShr => (unsigned_left >> shift) as i64,
             Self::AShr => left >> shift,
         };
-        Some(ty.signed_integer(result))
+        Some(ty.signed_integer(result, pointer))
     }
 
-    pub fn division_checks(self, ty: MirType, lhs: Option<i64>, rhs: Option<i64>) -> (bool, bool) {
+    pub fn division_checks(
+        self,
+        ty: MirType,
+        lhs: Option<i64>,
+        rhs: Option<i64>,
+        pointer: PointerWidth,
+    ) -> (bool, bool) {
         if !matches!(self, Self::SDiv | Self::SRem | Self::UDiv | Self::URem) {
             return (false, false);
         }
-        let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
-        let zero = rhs.is_none_or(|value| ty.signed_integer(value) == 0);
+        let minimum = ty.signed_integer(1i64 << (ty.size_bytes(pointer) * 8 - 1), pointer);
+        let zero = rhs.is_none_or(|value| ty.signed_integer(value, pointer) == 0);
         let overflow = matches!(self, Self::SDiv | Self::SRem)
-            && lhs.is_none_or(|value| ty.signed_integer(value) == minimum)
-            && rhs.is_none_or(|value| ty.signed_integer(value) == -1);
+            && lhs.is_none_or(|value| ty.signed_integer(value, pointer) == minimum)
+            && rhs.is_none_or(|value| ty.signed_integer(value, pointer) == -1);
         (zero, overflow)
     }
 }
@@ -1027,13 +1035,13 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn may_trap_integer(&self) -> bool {
+    pub fn may_trap_integer(&self, pointer: PointerWidth) -> bool {
         if let Self::IntBinary {
             op, ty, lhs, rhs, ..
         } = self
         {
             let (zero, overflow) =
-                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant(), pointer);
             zero || overflow
         } else {
             false
@@ -1825,28 +1833,28 @@ mod tests {
 
     #[test]
     fn bit_unary_evaluates_within_operand_width() {
-        let popcount = |ty: MirType, v: i64| IntUnOp::Popcount.evaluate(ty, v);
+        let popcount = |ty: MirType, v: i64| IntUnOp::Popcount.evaluate(ty, v, PointerWidth::Bits64);
         assert_eq!(popcount(MirType::i8(), -1), 8);
         assert_eq!(popcount(MirType::i64(), -1), 64);
         assert_eq!(popcount(MirType::i64(), 0), 0);
-        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i8(), 1), 7);
-        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i8(), 0), 8);
-        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i64(), 0), 64);
-        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i16(), 0), 16);
-        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i64(), 0), 64);
-        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i32(), 8), 3);
-        assert_eq!(IntUnOp::Bswap.evaluate(MirType::i16(), 0x1234), 0x3412);
+        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i8(), 1, PointerWidth::Bits64), 7);
+        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i8(), 0, PointerWidth::Bits64), 8);
+        assert_eq!(IntUnOp::Ctlz.evaluate(MirType::i64(), 0, PointerWidth::Bits64), 64);
+        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i16(), 0, PointerWidth::Bits64), 16);
+        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i64(), 0, PointerWidth::Bits64), 64);
+        assert_eq!(IntUnOp::Cttz.evaluate(MirType::i32(), 8, PointerWidth::Bits64), 3);
+        assert_eq!(IntUnOp::Bswap.evaluate(MirType::i16(), 0x1234, PointerWidth::Bits64), 0x3412);
         assert_eq!(
-            IntUnOp::Bswap.evaluate(MirType::i32(), 0x0102_0304),
+            IntUnOp::Bswap.evaluate(MirType::i32(), 0x0102_0304, PointerWidth::Bits64),
             0x0403_0201
         );
-        assert_eq!(IntUnOp::Bswap.evaluate(MirType::i8(), -127), -127);
+        assert_eq!(IntUnOp::Bswap.evaluate(MirType::i8(), -127, PointerWidth::Bits64), -127);
     }
 
     #[test]
     fn rotate_evaluates_with_count_modulo_width() {
-        let rotl = |ty: MirType, v: i64, n: i64| IntRotOp::Rotl.evaluate(ty, v, n);
-        let rotr = |ty: MirType, v: i64, n: i64| IntRotOp::Rotr.evaluate(ty, v, n);
+        let rotl = |ty: MirType, v: i64, n: i64| IntRotOp::Rotl.evaluate(ty, v, n, PointerWidth::Bits64);
+        let rotr = |ty: MirType, v: i64, n: i64| IntRotOp::Rotr.evaluate(ty, v, n, PointerWidth::Bits64);
         assert_eq!(rotl(MirType::i8(), -127, 1), 3);
         assert_eq!(rotr(MirType::i8(), -127, 1), -64);
         assert_eq!(rotl(MirType::i32(), 0x8000_0001, 4), 0x18);

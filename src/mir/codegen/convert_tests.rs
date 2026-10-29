@@ -654,9 +654,30 @@ fn string_global_resolves_escapes() {
 
 #[test]
 fn switch_edge_moves_run_on_their_own_edge() {
-    let source = "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %i = phi.i64 [0, entry], [%n, loop]\n  %n = add.i64 %i, 2\n  switch.i64 %i, loop, [4, done]\ndone:\n  ret.i64 %n\n}\n";
-    let ir = parse_module(source).expect("parse switch");
-    let module = from_ir(&ir, "switch").expect("lower switch");
+    let mut builder = IRBuilder::new();
+    builder
+        .function("main", IRType::Primitive(IRPrim::I64))
+        .jump("loop")
+        .block("loop")
+        .phi(
+            "i",
+            IRType::Primitive(IRPrim::I64),
+            vec![
+                (IRVal::Constant(IRLit::I64(0)), "entry"),
+                (var("n"), "loop"),
+            ],
+        )
+        .binary(
+            IRBin::Add,
+            "n",
+            IRPrim::I64,
+            var("i"),
+            IRVal::Constant(IRLit::I64(2)),
+        )
+        .switch(IRPrim::I64, var("i"), "loop", &[(IRLit::I64(4), "done")])
+        .block("done")
+        .ret(IRType::Primitive(IRPrim::I64), var("n"));
+    let module = from_ir(&builder.build(), "switch").expect("lower switch");
 
     let block = module.functions["main"]
         .blocks
@@ -855,10 +876,26 @@ fn io_result_is_i64_in_every_typed_position() {
 
 #[test]
 fn identical_branch_arms_with_phi_copies_share_one_trampoline() {
-    let module = lowered_global_module(
-        "fn @f(i64 %n) -> i64 {\nentry:\n %c = lt.i64 %n, 0\n br %c, join, join\njoin:\n %m = phi.i64 [7, entry]\n ret.i64 %m\n}",
-    )
-    .expect("lower identical branch with phi");
+    let mut builder = IRBuilder::new();
+    builder
+        .function_with_params(
+            "f",
+            vec![FunctionParameter {
+                name: "condition",
+                ty: IRType::Primitive(IRPrim::Bool),
+                annotations: vec![],
+            }],
+            IRType::Primitive(IRPrim::I64),
+        )
+        .branch(var("condition"), "join", "join")
+        .block("join")
+        .phi(
+            "m",
+            IRType::Primitive(IRPrim::I64),
+            vec![(IRVal::Constant(IRLit::I64(7)), "entry")],
+        )
+        .ret(IRType::Primitive(IRPrim::I64), var("m"));
+    let module = from_ir(&builder.build(), "identical").expect("lower identical branch with phi");
     let entry = &module.functions["f"].blocks[0];
     let Some(Instruction::Br {
         true_target,

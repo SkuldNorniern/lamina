@@ -17,6 +17,8 @@
 //! memory layout and register allocation decisions.
 use std::fmt;
 
+use lamina_platform::PointerWidth;
+
 /// Which memory a pointer addresses. Only the gpu backends distinguish them; every
 /// other target treats them all as `Generic`.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -108,25 +110,26 @@ pub enum MirType {
 
 impl MirType {
     /// Reads `value` as this type's two's complement, sign-extended to 64 bits.
-    pub fn signed_integer(self, value: i64) -> i64 {
-        let shift = 64 - self.size_bytes() * 8;
+    pub fn signed_integer(self, value: i64, pointer: PointerWidth) -> i64 {
+        let shift = 64 - self.size_bytes(pointer) * 8;
         (value << shift) >> shift
     }
 
     /// Reads `value` as this type's unsigned bits, zero-extended to 64 bits.
-    pub fn unsigned_integer(self, value: i64) -> u64 {
-        let shift = 64 - self.size_bytes() * 8;
+    pub fn unsigned_integer(self, value: i64, pointer: PointerWidth) -> u64 {
+        let shift = 64 - self.size_bytes(pointer) * 8;
         ((value as u64) << shift) >> shift
     }
 
     /// Size of the type in bytes
-    pub fn size_bytes(&self) -> usize {
+    pub fn size_bytes(&self, pointer: PointerWidth) -> usize {
         match self {
             MirType::Scalar(s) => match s {
                 ScalarType::I1 | ScalarType::I8 => 1,
                 ScalarType::I16 => 2,
                 ScalarType::I32 | ScalarType::F32 => 4,
-                ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_) => 8,
+                ScalarType::I64 | ScalarType::F64 => 8,
+                ScalarType::Ptr | ScalarType::PtrIn(_) => pointer.bytes(),
             },
             MirType::Vector(v) => match v {
                 VectorType::V128(_) => 16,
@@ -136,13 +139,14 @@ impl MirType {
     }
 
     /// Alignment requirement in bytes
-    pub fn alignment(&self) -> usize {
+    pub fn alignment(&self, pointer: PointerWidth) -> usize {
         match self {
             MirType::Scalar(s) => match s {
                 ScalarType::I1 | ScalarType::I8 => 1,
                 ScalarType::I16 => 2,
                 ScalarType::I32 | ScalarType::F32 => 4,
-                ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_) => 8,
+                ScalarType::I64 | ScalarType::F64 => 8,
+                ScalarType::Ptr | ScalarType::PtrIn(_) => pointer.bytes(),
             },
             MirType::Vector(v) => match v {
                 VectorType::V128(_) => 16,
@@ -275,8 +279,14 @@ mod tests {
             AddressSpace::Parameter,
         ] {
             let ty = MirType::ptr_in(space);
-            assert_eq!(ty.size_bytes(), MirType::ptr().size_bytes());
-            assert_eq!(ty.alignment(), MirType::ptr().alignment());
+            assert_eq!(
+                ty.size_bytes(PointerWidth::Bits64),
+                MirType::ptr().size_bytes(PointerWidth::Bits64)
+            );
+            assert_eq!(
+                ty.alignment(PointerWidth::Bits64),
+                MirType::ptr().alignment(PointerWidth::Bits64)
+            );
         }
         assert_ne!(
             MirType::ptr_in(AddressSpace::Global),
@@ -286,19 +296,32 @@ mod tests {
 
     #[test]
     fn test_scalar_sizes() {
-        assert_eq!(MirType::Scalar(ScalarType::I8).size_bytes(), 1);
-        assert_eq!(MirType::Scalar(ScalarType::I32).size_bytes(), 4);
-        assert_eq!(MirType::Scalar(ScalarType::I64).size_bytes(), 8);
+        let w = PointerWidth::Bits64;
+        assert_eq!(MirType::Scalar(ScalarType::I8).size_bytes(w), 1);
+        assert_eq!(MirType::Scalar(ScalarType::I32).size_bytes(w), 4);
+        assert_eq!(MirType::Scalar(ScalarType::I64).size_bytes(w), 8);
+    }
+
+    #[test]
+    fn pointer_size_and_alignment_follow_pointer_width() {
+        for ty in [MirType::ptr(), MirType::ptr_in(AddressSpace::Local)] {
+            assert_eq!(ty.size_bytes(PointerWidth::Bits32), 4);
+            assert_eq!(ty.alignment(PointerWidth::Bits32), 4);
+            assert_eq!(ty.size_bytes(PointerWidth::Bits64), 8);
+            assert_eq!(ty.alignment(PointerWidth::Bits64), 8);
+        }
+        assert_eq!(MirType::i64().size_bytes(PointerWidth::Bits32), 8);
+        assert_eq!(MirType::i64().alignment(PointerWidth::Bits32), 8);
     }
 
     #[test]
     fn test_vector_sizes() {
         assert_eq!(
-            MirType::Vector(VectorType::V128(VectorLane::I32)).size_bytes(),
+            MirType::Vector(VectorType::V128(VectorLane::I32)).size_bytes(PointerWidth::Bits64),
             16
         );
         assert_eq!(
-            MirType::Vector(VectorType::V256(VectorLane::F64)).size_bytes(),
+            MirType::Vector(VectorType::V256(VectorLane::F64)).size_bytes(PointerWidth::Bits64),
             32
         );
     }

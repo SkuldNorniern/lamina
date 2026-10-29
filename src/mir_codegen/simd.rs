@@ -42,7 +42,7 @@ pub(super) fn vector_slots(func: &Function) -> Vec<(VirtualReg, usize)> {
             }))
         {
             if let Register::Virtual(v) = reg {
-                vectors.push((*v, ty.size_bytes() / 8 - 1));
+                vectors.push((*v, ty.size_bytes(func.pointer_width) / 8 - 1));
             }
         }
     }

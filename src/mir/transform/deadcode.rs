@@ -4,6 +4,7 @@ use crate::mir::{
     Block, Function, Instruction, Module, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_platform::PointerWidth;
 use std::collections::{HashMap, HashSet};
 
 /// Statistics about dead code elimination
@@ -46,6 +47,7 @@ impl DeadCodeElimination {
     /// Apply dead code elimination to a function
     pub fn apply_internal(&self, func: &mut Function) -> Result<DeadCodeStats, TransformError> {
         let mut stats = DeadCodeStats::default();
+        let pointer = func.pointer_width;
 
         // 1. Compute liveness analysis (inter-block)
         let live_out_map = self.compute_liveness(func)?;
@@ -55,7 +57,7 @@ impl DeadCodeElimination {
             // Start with registers live at the end of the block
             let mut live_regs = live_out_map.get(&block.label).cloned().unwrap_or_default();
 
-            let removed = self.remove_dead_instructions_in_block(block, &mut live_regs);
+            let removed = self.remove_dead_instructions_in_block(block, &mut live_regs, pointer);
             stats.instructions_removed += removed;
         }
 
@@ -67,6 +69,7 @@ impl DeadCodeElimination {
         &self,
         func: &Function,
     ) -> Result<HashMap<String, HashSet<Register>>, TransformError> {
+        let pointer = func.pointer_width;
         let mut live_in: HashMap<String, HashSet<Register>> = HashMap::new();
         let mut live_out: HashMap<String, HashSet<Register>> = HashMap::new();
 
@@ -132,7 +135,7 @@ impl DeadCodeElimination {
                 // 2. Calculate LiveIn = Use U (LiveOut - Def)
                 let mut current_live_in = current_live_out.clone();
                 for instr in block.instructions.iter().rev() {
-                    if self.is_dead_instruction(instr, &current_live_in) {
+                    if self.is_dead_instruction(instr, &current_live_in, pointer) {
                         continue;
                     }
                     if let Some(def) = instr.def_reg() {
@@ -163,13 +166,14 @@ impl DeadCodeElimination {
         &self,
         block: &mut Block,
         live_regs: &mut HashSet<Register>,
+        pointer: PointerWidth,
     ) -> usize {
         let mut removed_count = 0;
         let mut instructions_to_keep = Vec::new();
 
         // We collect instructions to keep, then reverse them back
         for instr in block.instructions.iter().rev() {
-            if self.is_dead_instruction(instr, live_regs) {
+            if self.is_dead_instruction(instr, live_regs, pointer) {
                 removed_count += 1;
                 // Don't add to keep list
             } else {
@@ -194,7 +198,12 @@ impl DeadCodeElimination {
     }
 
     /// Check if an instruction is dead and can be safely removed
-    fn is_dead_instruction(&self, instr: &Instruction, live_regs: &HashSet<Register>) -> bool {
+    fn is_dead_instruction(
+        &self,
+        instr: &Instruction,
+        live_regs: &HashSet<Register>,
+        pointer: PointerWidth,
+    ) -> bool {
         // Never remove terminators
         if instr.is_terminator() {
             return false;
@@ -204,21 +213,21 @@ impl DeadCodeElimination {
             // If the defined register is not live, instruction is dead
             if !live_regs.contains(def_reg) {
                 // Additional check: ensure instruction has no side effects
-                return self.has_no_side_effects(instr);
+                return self.has_no_side_effects(instr, pointer);
             }
         } else {
             // Instructions that don't define a register are usually for side effects (e.g. stores)
             // But some might be useless?
             // Assuming has_no_side_effects check covers it.
-            return self.has_no_side_effects(instr);
+            return self.has_no_side_effects(instr, pointer);
         }
 
         false
     }
 
     /// Check if an instruction has no side effects and can be safely removed
-    fn has_no_side_effects(&self, instr: &Instruction) -> bool {
-        if instr.may_trap_integer() {
+    fn has_no_side_effects(&self, instr: &Instruction, pointer: PointerWidth) -> bool {
+        if instr.may_trap_integer(pointer) {
             return false;
         }
         match instr {
@@ -803,7 +812,9 @@ mod annotation_tests {
         type Emitter = fn(&Module, &mut Vec<u8>, TargetOperatingSystem) -> Result<(), LaminaError>;
         let emitters: [(&str, Emitter); 4] = [
             ("x86_64", generate_mir_x86_64::<Vec<u8>>),
-            ("aarch64", generate_mir_aarch64::<Vec<u8>>),
+            ("aarch64", |module, writer, os| {
+                generate_mir_aarch64(module, writer, os, PointerWidth::Bits64)
+            }),
             ("riscv", generate_mir_riscv::<Vec<u8>>),
             ("ppc64", generate_mir_ppc64::<Vec<u8>>),
         ];

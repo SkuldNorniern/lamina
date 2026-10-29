@@ -1,5 +1,6 @@
 use super::*;
 use crate::mir::{FunctionBuilder, Immediate, ScalarType};
+use lamina_platform::PointerWidth;
 use std::error::Error;
 
 #[test]
@@ -30,7 +31,7 @@ fn global_parameters_are_initialized_before_entry() -> Result<(), Box<dyn Error>
                 &func,
                 TargetOperatingSystem::Linux,
                 &settings,
-                &AggregateSignatures::default(),
+                &AggregateSignatures::empty(PointerWidth::Bits64),
             )
             .map_err(|error| error.to_string())?,
         )?;
@@ -74,7 +75,7 @@ fn narrow_parameters_are_sign_extended_on_entry() -> Result<(), Box<dyn Error>> 
                 &func,
                 TargetOperatingSystem::Linux,
                 &MirCodegenSettings::default(),
-                &AggregateSignatures::default(),
+                &AggregateSignatures::empty(PointerWidth::Bits64),
             )
             .map_err(|error| error.to_string())?,
         )?;
@@ -105,7 +106,7 @@ fn bool_parameters_are_zero_extended_on_entry() -> Result<(), Box<dyn Error>> {
             &func,
             TargetOperatingSystem::Linux,
             &MirCodegenSettings::default(),
-            &AggregateSignatures::default(),
+            &AggregateSignatures::empty(PointerWidth::Bits64),
         )
         .map_err(|error| error.to_string())?,
     )?;
@@ -135,8 +136,13 @@ fn float_copy_emits_bit_move_not_add() {
     let mut module = MirModule::new("copy_test");
     module.add_function(function);
     let mut output = Vec::new();
-    generate_mir_aarch64(&module, &mut output, TargetOperatingSystem::Linux)
-        .expect("AArch64 codegen should succeed");
+    generate_mir_aarch64(
+        &module,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )
+    .expect("AArch64 codegen should succeed");
     let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
 
     assert!(assembly.contains("mov "), "expected move: {assembly}");
@@ -154,14 +160,19 @@ fn mach_o_targets_call_underscored_libc_symbols() -> Result<(), Box<dyn Error>> 
     let mir = from_ir(&module, "libc_test").expect("lower libc call module");
     for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::IOS] {
         let mut output = Vec::new();
-        generate_mir_aarch64(&mir, &mut output, os)?;
+        generate_mir_aarch64(&mir, &mut output, os, PointerWidth::Bits64)?;
         let assembly = String::from_utf8(output)?;
         assert!(assembly.contains("bl _labs\n"), "{os:?}: {assembly}");
         assert!(assembly.contains("_main:\n"), "{os:?}: {assembly}");
         assert!(!assembly.contains("bl labs\n"), "{os:?}: {assembly}");
     }
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
     assert!(assembly.contains("bl labs\n"), "{assembly}");
     Ok(())
@@ -189,6 +200,7 @@ fn global_allocation_keeps_values_out_of_caller_saved_pool_across_calls()
             TargetOperatingSystem::Linux,
             1,
             &settings,
+            PointerWidth::Bits64,
         )?;
         let assembly = String::from_utf8(output)?;
         let (_, main) = assembly.split_once("\nmain:\n").ok_or("missing main")?;
@@ -234,7 +246,7 @@ fn tail_call_releases_the_frame_the_prologue_reserved() -> Result<(), Box<dyn Er
             &func,
             TargetOperatingSystem::Linux,
             &MirCodegenSettings::default(),
-            &AggregateSignatures::default(),
+            &AggregateSignatures::empty(PointerWidth::Bits64),
         )
         .map_err(|error| error.to_string())?,
     )?;
@@ -261,7 +273,7 @@ fn elf_frames_carry_cfi_and_mach_o_frames_do_not() -> Result<(), Box<dyn Error>>
     });
     func.add_block(block);
     let settings = MirCodegenSettings::default();
-    let signatures = AggregateSignatures::default();
+    let signatures = AggregateSignatures::empty(PointerWidth::Bits64);
     let emit = |os| -> Result<String, Box<dyn Error>> {
         let bytes = compile_single_function_aarch64("f", &func, os, &settings, &signatures)
             .map_err(|error| error.to_string())?;
@@ -306,7 +318,12 @@ fn switch_case_constants_are_materialized_without_immediate_range_limits()
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "switch_range").expect("lower switch module");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
     assert!(!assembly.contains("mov x9, #100000"), "{assembly}");
     assert!(assembly.contains("movz x9, #34464, lsl #0"), "{assembly}");
@@ -320,7 +337,12 @@ fn integer_float_conversions_select_width_and_saturation_forms() -> Result<(), B
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "conversions").expect("lower conversion module");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
     assert!(assembly.contains("sbfx x"), "{assembly}");
     assert!(assembly.contains("scvtf s0, x"), "{assembly}");
@@ -338,7 +360,12 @@ fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "globals").expect("lower global module");
     let mut linux = Vec::new();
-    generate_mir_aarch64(&mir, &mut linux, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut linux,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let linux = String::from_utf8(linux)?;
     assert!(linux.contains("adrp x9, counter\n"), "{linux}");
     assert!(linux.contains("add x9, x9, :lo12:counter\n"), "{linux}");
@@ -347,7 +374,12 @@ fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn
         "{linux}"
     );
     let mut macho = Vec::new();
-    generate_mir_aarch64(&mir, &mut macho, TargetOperatingSystem::MacOS)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut macho,
+        TargetOperatingSystem::MacOS,
+        PointerWidth::Bits64,
+    )?;
     let macho = String::from_utf8(macho)?;
     assert!(macho.contains("adrp x9, _counter@PAGE\n"), "{macho}");
     assert!(macho.contains("add x9, x9, _counter@PAGEOFF\n"), "{macho}");
@@ -362,7 +394,12 @@ fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register()
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "big_frame").expect("lower big frame module");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
     for line in assembly.lines() {
         if line.contains("sp, sp, #") || line.contains("x29, #") || line.contains("x29, x29, #") {
@@ -387,7 +424,12 @@ fn integer_aggregates_use_consecutive_x_registers() -> Result<(), Box<dyn Error>
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "aggregates").expect("lower aggregates");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
 
     let prologue = assembly
@@ -446,7 +488,12 @@ fn floats_cross_the_boundary_in_v_registers() -> Result<(), Box<dyn Error>> {
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "floats").expect("lower floats");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
 
     // Both arguments arrive in the float bank, and the result leaves in d0.
@@ -484,7 +531,12 @@ fn integer_aggregate_returns_come_back_in_x0_and_x1() -> Result<(), Box<dyn Erro
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "returns").expect("lower aggregate return");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
 
     let callee = assembly.split("\nmake:\n").nth(1).ok_or("missing make")?;
@@ -525,7 +577,12 @@ fn stack_aggregate_prologue_keeps_off_callee_saved_registers() -> Result<(), Box
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "stack_aggregate").expect("lower aggregate");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
 
     for index in 19..=28 {
@@ -546,7 +603,7 @@ fn darwin_packs_narrow_stack_arguments_at_natural_size() -> Result<(), Box<dyn E
 
     let emit = |os| -> Result<String, Box<dyn Error>> {
         let mut output = Vec::new();
-        generate_mir_aarch64(&mir, &mut output, os)?;
+        generate_mir_aarch64(&mir, &mut output, os, PointerWidth::Bits64)?;
         Ok(String::from_utf8(output)?)
     };
 
@@ -582,7 +639,7 @@ fn darwin_sends_variadic_arguments_to_stack() -> Result<(), Box<dyn Error>> {
 
     let emit = |os| -> Result<String, Box<dyn Error>> {
         let mut output = Vec::new();
-        generate_mir_aarch64(&mir, &mut output, os)?;
+        generate_mir_aarch64(&mir, &mut output, os, PointerWidth::Bits64)?;
         Ok(String::from_utf8(output)?)
     };
 
@@ -633,9 +690,14 @@ fn register_named_functions_are_rejected() -> Result<(), Box<dyn Error>> {
     let mut module = MirModule::new("registers");
     module.functions.insert("x0".to_string(), func);
     let mut out = Vec::new();
-    let error = generate_mir_aarch64(&module, &mut out, TargetOperatingSystem::Linux)
-        .err()
-        .ok_or("expected a rejection")?;
+    let error = generate_mir_aarch64(
+        &module,
+        &mut out,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )
+    .err()
+    .ok_or("expected a rejection")?;
     assert!(
         error
             .to_string()
@@ -653,7 +715,12 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() -> Result<(), Box
     )?;
     let mir = from_ir(&module, "io").expect("lower io");
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::MacOS)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::MacOS,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
     assert_eq!(
         assembly
@@ -663,7 +730,12 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() -> Result<(), Box
         "{assembly}"
     );
     let mut output = Vec::new();
-    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
     let assembly = String::from_utf8(output)?;
     assert!(!assembly.contains("csel x0, x9, x0, cs"), "{assembly}");
     Ok(())

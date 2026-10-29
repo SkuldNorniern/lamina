@@ -466,7 +466,7 @@ mod tests {
         },
         mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
     };
-    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+    use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
     use std::{array, env, fmt::Write as _, fs, path::Path, process, process::Command};
 
     const LANES: [VectorLane; 6] = [
@@ -654,9 +654,10 @@ mod tests {
         a: &[u8; 16],
         b: &[u8; 16],
         index: usize,
+        pointer_width: PointerWidth,
     ) -> Vec<u8> {
         use VectorOp::*;
-        let width = scalar(lane).size_bytes();
+        let width = scalar(lane).size_bytes(pointer_width);
         match op {
             VSplat => return b[..width].repeat(16 / width),
             VExtractLane => return a[index * width..(index + 1) * width].to_vec(),
@@ -738,7 +739,13 @@ mod tests {
         b: [u8; 16],
     }
 
-    fn execute(cases: &[Case], strategy: RegallocStrategy, dir: &Path, immediate: bool) {
+    fn execute(
+        cases: &[Case],
+        strategy: RegallocStrategy,
+        dir: &Path,
+        immediate: bool,
+        pointer_width: PointerWidth,
+    ) {
         let mut module = Module::new("simd");
         let mut harness = String::from("#include <stdio.h>\n#include <string.h>\n");
         for i in 0..cases.len() {
@@ -753,7 +760,7 @@ mod tests {
                 c.op,
                 c.index as i64,
             ));
-            let expected = expected(c.op, c.lane, &c.a, &c.b, c.index);
+            let expected = expected(c.op, c.lane, &c.a, &c.b, c.index, pointer_width);
             let a = c.a.iter().map(u8::to_string).collect::<Vec<_>>().join(",");
             let b = c.b.iter().map(u8::to_string).collect::<Vec<_>>().join(",");
             writeln!(harness, "{{ unsigned char a[18]={{0,{a},0}}, b[18]={{0,{b},0}}, out[18]; memset(out, 165, 18); simd_{i}(a,b,out); fwrite(out,1,18,stdout); }}").expect("format");
@@ -774,7 +781,9 @@ mod tests {
                     VectorLane::I8 => Operand::imm_i8(bits(&c.b[..1]) as i8),
                     VectorLane::I16 => Operand::Immediate(Immediate::I16(bits(&c.b[..2]) as i16)),
                     VectorLane::I32 => Operand::imm_i32(bits(&c.b[..4]) as i32),
-                    _ => Operand::imm_i64(bits(&c.b[..scalar(c.lane).size_bytes()]) as i64),
+                    _ => Operand::imm_i64(
+                        bits(&c.b[..scalar(c.lane).size_bytes(pointer_width)]) as i64
+                    ),
                 };
                 for inst in &mut f.blocks[0].instructions {
                     if let Instruction::VectorOp { op, operands, .. } = inst {
@@ -831,7 +840,7 @@ mod tests {
         }
         let mut cases = Vec::new();
         for lane in LANES {
-            let width = scalar(lane).size_bytes();
+            let width = scalar(lane).size_bytes(PointerWidth::Bits64);
             for pattern in 0..3 {
                 let mut a =
                     array::from_fn(|i| (i as u8).wrapping_mul(37).wrapping_add(129 + pattern));
@@ -914,7 +923,7 @@ mod tests {
             RegallocStrategy::GraphColorGlobal,
         ] {
             for immediate in [false, true] {
-                execute(&cases, strategy, &dir, immediate);
+                execute(&cases, strategy, &dir, immediate, PointerWidth::Bits64);
             }
         }
         fs::remove_dir_all(dir).expect("remove temp directory");
@@ -1002,7 +1011,7 @@ mod tests {
                 for index in [
                     Operand::reg(reg(0)),
                     Operand::imm_i64(-1),
-                    Operand::imm_i64((16 / scalar(lane).size_bytes()) as i64),
+                    Operand::imm_i64((16 / scalar(lane).size_bytes(PointerWidth::Bits64)) as i64),
                 ] {
                     let mut m = Module::new("negative");
                     let mut f = function("bad", MirType::Vector(VectorType::V128(lane)), op, 0);

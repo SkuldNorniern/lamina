@@ -4,7 +4,7 @@
 
 use crate::{
     error::LaminaError,
-    mir::codegen::from_ir,
+    mir::codegen::from_ir_for_target,
     parser::parse_module,
     runtime::{RuntimeResult, compile_to_runtime},
 };
@@ -36,7 +36,7 @@ pub fn compile_lir_internal(
     let target_os = host.operating_system;
 
     let ir_module = parse_module(ir_code)?;
-    let mir_module = from_ir(&ir_module, "lir_macro")?;
+    let mir_module = from_ir_for_target(&ir_module, "lir_macro", host.pointer_width())?;
 
     // MIR stores function names without @ prefix, so strip it if present
     let lookup_name = function_name.strip_prefix('@').unwrap_or(function_name);

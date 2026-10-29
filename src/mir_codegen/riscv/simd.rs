@@ -196,45 +196,49 @@ mod tests {
 
     #[test]
     fn rvv_assembles_every_supported_pair() {
-        native(Backend::Rvv, |op, lane, index| {
-            use VectorOp::*;
-            let float = matches!(lane, VectorLane::F32 | VectorLane::F64);
-            match op {
-                VAdd | VSub | VMul => format!(
-                    "v{}{}.vv v0, v0, v1",
-                    if float { "f" } else { "" },
-                    match op {
-                        VAdd => "add",
-                        VSub => "sub",
-                        _ => "mul",
-                    }
-                ),
-                VAnd | VOr | VXor => format!(
-                    "v{}.vv v0, v0, v1",
-                    match op {
-                        VAnd => "and",
-                        VOr => "or",
-                        _ => "xor",
-                    }
-                ),
-                VShl | VLShr | VAShr => format!(
-                    "v{}.vx v0, v0, t0",
-                    match op {
-                        VShl => "sll",
-                        VLShr => "srl",
-                        _ => "sra",
-                    }
-                ),
-                VSplat => "vmv.v.x v0, t0".into(),
-                VExtractLane => format!("vslidedown.vi v1, v0, {index}"),
-                VInsertLane => format!("vslideup.vi v0, v1, {index}"),
-            }
-        });
+        native(
+            Backend::Rvv,
+            |op, lane, index| {
+                use VectorOp::*;
+                let float = matches!(lane, VectorLane::F32 | VectorLane::F64);
+                match op {
+                    VAdd | VSub | VMul => format!(
+                        "v{}{}.vv v0, v0, v1",
+                        if float { "f" } else { "" },
+                        match op {
+                            VAdd => "add",
+                            VSub => "sub",
+                            _ => "mul",
+                        }
+                    ),
+                    VAnd | VOr | VXor => format!(
+                        "v{}.vv v0, v0, v1",
+                        match op {
+                            VAnd => "and",
+                            VOr => "or",
+                            _ => "xor",
+                        }
+                    ),
+                    VShl | VLShr | VAShr => format!(
+                        "v{}.vx v0, v0, t0",
+                        match op {
+                            VShl => "sll",
+                            VLShr => "srl",
+                            _ => "sra",
+                        }
+                    ),
+                    VSplat => "vmv.v.x v0, t0".into(),
+                    VExtractLane => format!("vslidedown.vi v1, v0, {index}"),
+                    VInsertLane => format!("vslideup.vi v0, v1, {index}"),
+                }
+            },
+            PointerWidth::Bits64,
+        );
     }
 
     #[test]
     fn rvv_rejects_unsupported_pairs_and_missing_extension() {
-        negative(Backend::Rvv);
+        negative(Backend::Rvv, PointerWidth::Bits64);
     }
 
     #[test]

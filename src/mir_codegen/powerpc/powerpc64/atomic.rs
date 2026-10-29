@@ -1,11 +1,13 @@
 use super::*;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
+use lamina_platform::PointerWidth;
 
 pub(super) fn emit<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     match inst {
         MirInst::AtomicLoad {
@@ -14,7 +16,7 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             address_into_r5(addr, writer, reg_alloc, stack_slots)?;
             match ordering {
                 MemoryOrdering::Relaxed => {}
@@ -28,7 +30,7 @@ pub(super) fn emit<W: Write>(
             if matches!(ordering, MemoryOrdering::Acquire | MemoryOrdering::SeqCst) {
                 writeln!(writer, "    lwsync")?;
             }
-            extend_integer(writer, "3", ty, true)?;
+            extend_integer(writer, "3", ty, true, pointer_width)?;
             store_r3(writer, dst, reg_alloc, stack_slots)?;
         }
         MirInst::AtomicStore {
@@ -37,7 +39,7 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             address_into_r5(addr, writer, reg_alloc, stack_slots)?;
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "4")?;
             match ordering {
@@ -63,7 +65,7 @@ pub(super) fn emit<W: Write>(
                     "PowerPC64 backend: atomic_cmpxchg is not a read-modify-write operation; use cmpxchg".into(),
                 ));
             }
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             address_into_r5(addr, writer, reg_alloc, stack_slots)?;
             load_operand_to_register(value, writer, reg_alloc, stack_slots, "4")?;
             leading_barrier(writer, ordering)?;
@@ -97,7 +99,7 @@ pub(super) fn emit<W: Write>(
             writeln!(writer, "    {stwcx} {new}, 0, 5")?;
             writeln!(writer, "    bne 1b")?;
             trailing_barrier(writer, ordering)?;
-            extend_integer(writer, "3", ty, true)?;
+            extend_integer(writer, "3", ty, true, pointer_width)?;
             store_r3(writer, dst, reg_alloc, stack_slots)?;
         }
         MirInst::AtomicCompareExchange {
@@ -109,7 +111,7 @@ pub(super) fn emit<W: Write>(
             success_ordering,
             failure_ordering,
         } => {
-            let size = access_size(ty)?;
+            let size = access_size(ty, pointer_width)?;
             if matches!(
                 failure_ordering,
                 MemoryOrdering::Release | MemoryOrdering::AcqRel
@@ -133,7 +135,7 @@ pub(super) fn emit<W: Write>(
             if is_acquire(success_ordering) || is_acquire(failure_ordering) {
                 writeln!(writer, "    isync")?;
             }
-            extend_integer(writer, "3", ty, true)?;
+            extend_integer(writer, "3", ty, true, pointer_width)?;
             store_r3(writer, dst, reg_alloc, stack_slots)?;
         }
         MirInst::Fence { ordering } => match ordering {
@@ -209,8 +211,8 @@ fn address_into_r5<W: Write>(
     }
 }
 
-fn access_size(ty: &MirType) -> Result<usize, LaminaError> {
-    match ty.size_bytes() {
+fn access_size(ty: &MirType, pointer_width: PointerWidth) -> Result<usize, LaminaError> {
+    match ty.size_bytes(pointer_width) {
         size @ (1 | 2 | 4 | 8) => Ok(size),
         _ => Err(LaminaError::ValidationError(
             "PowerPC64 atomic operation has an unsupported width".into(),

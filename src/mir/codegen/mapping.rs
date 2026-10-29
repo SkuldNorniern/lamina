@@ -11,6 +11,7 @@ use crate::{
         types::{Aggregate, AggregateClass, MirType, ScalarType, Signedness},
     },
 };
+use lamina_platform::PointerWidth;
 
 /// Largest aggregate passed in registers. Beyond this every target in the table puts
 /// the value in memory, except ppc64, which is why ppc64 rejects aggregates for now.
@@ -70,8 +71,12 @@ fn integer_fields_only(ty: &IRType<'_>) -> bool {
 /// Classifies an aggregate crossing a function boundary. `what` names the value for
 /// the error text. Scalars return `Ok(None)`; aggregates outside the supported subset
 /// are an error rather than a wrong ABI.
-pub fn classify_aggregate(ty: &IRType<'_>, what: &str) -> Result<Option<Aggregate>, FromIRError> {
-    classify_aggregate_within(ty, what, None)
+pub fn classify_aggregate(
+    ty: &IRType<'_>,
+    what: &str,
+    pointer: PointerWidth,
+) -> Result<Option<Aggregate>, FromIRError> {
+    classify_aggregate_within(ty, what, None, pointer)
 }
 
 /// The ABI of a 128-bit integer crossing a boundary: 16 bytes, 16-byte aligned, two
@@ -88,6 +93,7 @@ fn classify_aggregate_within(
     ty: &IRType<'_>,
     what: &str,
     max: Option<u64>,
+    pointer: PointerWidth,
 ) -> Result<Option<Aggregate>, FromIRError> {
     if matches!(ty, IRType::Primitive(IRPrim::I128 | IRPrim::U128)) {
         return Ok(Some(wide_aggregate()));
@@ -100,7 +106,7 @@ fn classify_aggregate_within(
             "{what} has a float field; only integer aggregates cross a boundary so far"
         )));
     }
-    let size = sizeof_type(ty).ok_or(FromIRError::UnsupportedType)?;
+    let size = sizeof_type(ty, pointer).ok_or(FromIRError::UnsupportedType)?;
     if size == 0 {
         return Err(FromIRError::UnsupportedAggregate(format!(
             "{what} is empty; an aggregate crossing a boundary holds at least one byte"
@@ -115,7 +121,7 @@ fn classify_aggregate_within(
     }
     Ok(Some(Aggregate {
         size: size as usize,
-        align: align_of_type(ty) as usize,
+        align: align_of_type(ty, pointer) as usize,
         class: AggregateClass::Integer,
     }))
 }

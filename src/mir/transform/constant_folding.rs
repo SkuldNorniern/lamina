@@ -1,5 +1,7 @@
 //! Constant folding transform for MIR.
 
+use lamina_platform::PointerWidth;
+
 use crate::mir::{
     FloatBinOp, Function, Immediate, Instruction, IntCmpOp, MirType, Operand, ScalarType,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
@@ -34,10 +36,11 @@ impl Transform for ConstantFolding {
 impl ConstantFolding {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
+        let pointer = func.pointer_width;
 
         for block in &mut func.blocks {
             for instr in &mut block.instructions {
-                if self.try_fold_int(instr)
+                if self.try_fold_int(instr, pointer)
                     || self.try_fold_float(instr)
                     || self.try_fold_cmp(instr)
                 {
@@ -50,7 +53,7 @@ impl ConstantFolding {
         Ok(changed)
     }
 
-    pub(super) fn try_fold_int(&self, instr: &mut Instruction) -> bool {
+    pub(super) fn try_fold_int(&self, instr: &mut Instruction, pointer: PointerWidth) -> bool {
         if let Instruction::IntBinary {
             op,
             ty,
@@ -60,7 +63,7 @@ impl ConstantFolding {
         } = instr
             && let (Some(lhs_val), Some(rhs_val)) = (self.extract_i64(lhs), self.extract_i64(rhs))
         {
-            let Some(result) = op.evaluate(*ty, lhs_val, rhs_val) else {
+            let Some(result) = op.evaluate(*ty, lhs_val, rhs_val, pointer) else {
                 return false;
             };
 
@@ -176,13 +179,18 @@ mod tests {
             MirType::i32(),
             MirType::i64(),
         ] {
-            let width = ty.size_bytes() * 8;
-            let minimum = ty.signed_integer(1i64 << (width - 1));
+            let width = ty.size_bytes(PointerWidth::Bits64) * 8;
+            let minimum = ty.signed_integer(1i64 << (width - 1), PointerWidth::Bits64);
             let maximum = minimum.wrapping_sub(1);
             for (op, lhs, rhs, expected) in [
                 (IntBinOp::Add, maximum, 1, Some(minimum)),
                 (IntBinOp::Add, maximum, 2, Some(minimum + 1)),
-                (IntBinOp::Sub, minimum, 1, Some(ty.signed_integer(maximum))),
+                (
+                    IntBinOp::Sub,
+                    minimum,
+                    1,
+                    Some(ty.signed_integer(maximum, PointerWidth::Bits64)),
+                ),
                 (IntBinOp::Mul, minimum, 2, Some(0)),
                 (IntBinOp::Mul, minimum, 3, Some(minimum)),
                 (IntBinOp::Shl, 1, width as i64, Some(1)),
@@ -202,7 +210,7 @@ mod tests {
                     rhs: Operand::Immediate(Immediate::I64(rhs)),
                 };
                 assert_eq!(
-                    ConstantFolding.try_fold_int(&mut instruction),
+                    ConstantFolding.try_fold_int(&mut instruction, PointerWidth::Bits64),
                     expected.is_some(),
                     "{ty} {op}"
                 );
@@ -231,7 +239,7 @@ mod tests {
         func.add_block(bb);
 
         let pass = ConstantFolding;
-        let changed = pass.try_fold_int(&mut func.blocks[0].instructions[0]);
+        let changed = pass.try_fold_int(&mut func.blocks[0].instructions[0], PointerWidth::Bits64);
         // Should NOT change due to overflow prevention
         assert!(!changed);
     }

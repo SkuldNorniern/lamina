@@ -3,6 +3,7 @@ use crate::{
     mir::{FunctionBuilder, RelocationModel, ScalarType, codegen::from_ir},
     parser::parse_module,
 };
+use lamina_platform::PointerWidth;
 use std::{error::Error as StdError, slice};
 
 #[test]
@@ -190,18 +191,49 @@ fn lea_selection_respects_flags_uses_and_encoding() {
     let imm = |v| Operand::Immediate(Immediate::I64(v));
     let add = binary(IntBinOp::Add, 2, operand(0), operand(1));
     assert_eq!(
-        select_lea(slice::from_ref(&add), &alloc, &HashMap::new(), |_| {
-            false
-        }),
+        select_lea(
+            slice::from_ref(&add),
+            &alloc,
+            &HashMap::new(),
+            |_| { false },
+            PointerWidth::Bits64
+        ),
         Some((1, "0(%r8,%r9,1)".into(), "r10"))
     );
-    assert!(select_lea(&[add], &alloc, &HashMap::new(), |_| true).is_none());
+    assert!(
+        select_lea(
+            &[add],
+            &alloc,
+            &HashMap::new(),
+            |_| true,
+            PointerWidth::Bits64
+        )
+        .is_none()
+    );
     for displacement in [i64::from(i32::MIN), i64::from(i32::MAX)] {
         let add = binary(IntBinOp::Add, 2, operand(0), imm(displacement));
-        assert!(select_lea(&[add], &alloc, &HashMap::new(), |_| false).is_some());
+        assert!(
+            select_lea(
+                &[add],
+                &alloc,
+                &HashMap::new(),
+                |_| false,
+                PointerWidth::Bits64
+            )
+            .is_some()
+        );
     }
     let add = binary(IntBinOp::Add, 2, operand(0), imm(i64::from(i32::MAX) + 1));
-    assert!(select_lea(&[add], &alloc, &HashMap::new(), |_| false).is_none());
+    assert!(
+        select_lea(
+            &[add],
+            &alloc,
+            &HashMap::new(),
+            |_| false,
+            PointerWidth::Bits64
+        )
+        .is_none()
+    );
     let instructions = [
         binary(IntBinOp::Shl, 2, operand(1), imm(3)),
         binary(IntBinOp::Add, 3, operand(0), operand(2)),
@@ -209,13 +241,28 @@ fn lea_selection_respects_flags_uses_and_encoding() {
     ];
     let mut uses = HashMap::from([(regs[2], 1), (regs[3], 1)]);
     assert_eq!(
-        select_lea(&instructions, &alloc, &uses, |_| false),
+        select_lea(
+            &instructions,
+            &alloc,
+            &uses,
+            |_| false,
+            PointerWidth::Bits64
+        ),
         Some((3, "24(%r8,%r9,8)".into(), "r12"))
     );
     uses.insert(regs[2], 2);
-    assert!(select_lea(&instructions, &alloc, &uses, |_| false).is_none());
+    assert!(
+        select_lea(
+            &instructions,
+            &alloc,
+            &uses,
+            |_| false,
+            PointerWidth::Bits64
+        )
+        .is_none()
+    );
     let add = binary(IntBinOp::Add, 0, operand(0), imm(1));
-    assert!(select_lea(&[add], &alloc, &uses, |_| false).is_none());
+    assert!(select_lea(&[add], &alloc, &uses, |_| false, PointerWidth::Bits64).is_none());
 }
 
 #[test]
@@ -1474,11 +1521,11 @@ mod edge_move_tests {
     }
 
     #[test]
-    fn swapped_phis_exchange_their_values() -> Result<(), Box<dyn Error>> {
-        // a and b trade places three times, so the loop leaves a = 1 and b = 2.
+    fn swapped_copies_exchange_their_values() -> Result<(), Box<dyn Error>> {
+        // a and b trade places on each back edge, so the loop leaves a = 1 and b = 2.
         let printed = run(
             "swap",
-            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %a = phi.i64 [1, entry], [%b, loop]\n  %b = phi.i64 [2, entry], [%a, loop]\n  %c = phi.i64 [0, entry], [%cn, loop]\n  %cn = add.i64 %c, 1\n  %go = lt.i64 %cn, 3\n  br %go, loop, done\ndone:\n  %t = mul.i64 %a, 10\n  %r = add.i64 %t, %b\n  call @print_i64(%r)\n  ret.i64 0\n}\n",
+            "fn @main() -> i64 {\nentry:\n  %a = copy.i64 1\n  %b = copy.i64 2\n  %c = copy.i64 0\n  jmp loop\nloop:\n  %cn = add.i64 %c, 1\n  %go = lt.i64 %cn, 3\n  br %go, latch, done\nlatch:\n  %t0 = copy.i64 %a\n  %a = copy.i64 %b\n  %b = copy.i64 %t0\n  %c = copy.i64 %cn\n  jmp loop\ndone:\n  %t = mul.i64 %a, 10\n  %r = add.i64 %t, %b\n  call @print_i64(%r)\n  ret.i64 0\n}\n",
         )?;
         assert_eq!(printed, "12\n");
         Ok(())
@@ -1489,7 +1536,7 @@ mod edge_move_tests {
         // i is read by the switch, so i <- n must not happen before the comparison.
         let printed = run(
             "switch",
-            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %i = phi.i64 [0, entry], [%n, loop]\n  %n = add.i64 %i, 2\n  switch.i64 %i, loop, [4, done]\ndone:\n  call @print_i64(%n)\n  ret.i64 0\n}\n",
+            "fn @main() -> i64 {\nentry:\n  %i = copy.i64 0\n  jmp loop\nloop:\n  %n = add.i64 %i, 2\n  switch.i64 %i, latch, [4, done]\nlatch:\n  %i = copy.i64 %n\n  jmp loop\ndone:\n  call @print_i64(%n)\n  ret.i64 0\n}\n",
         )?;
         assert_eq!(printed, "6\n");
         Ok(())

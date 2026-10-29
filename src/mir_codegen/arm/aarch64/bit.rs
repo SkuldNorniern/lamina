@@ -1,6 +1,8 @@
 use super::*;
 use crate::mir::{IntRotOp, IntUnOp};
+use lamina_platform::PointerWidth;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_int_unary<W: Write>(
     w: &mut W,
     op: IntUnOp,
@@ -9,12 +11,13 @@ pub(super) fn emit_int_unary<W: Write>(
     src: &Operand,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    let bits = ty.size_bytes() * 8;
+    let bits = ty.size_bytes(pointer_width) * 8;
     let x = ra.alloc_scratch().ok_or_else(scratch_error)?;
     let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, src, x, frame, ra)?;
-    extend_integer(w, x, ty, false)?;
+    extend_integer(w, x, ty, false, pointer_width)?;
     match op {
         IntUnOp::Popcount => {
             writeln!(w, "    fmov d0, {x}")?;
@@ -43,12 +46,13 @@ pub(super) fn emit_int_unary<W: Write>(
         },
     }
     ra.free_scratch(x);
-    extend_integer(w, t, ty, true)?;
+    extend_integer(w, t, ty, true, pointer_width)?;
     store_result(w, dst, &x_alias(t), frame, ra)?;
     ra.free_scratch(t);
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_int_rotate<W: Write>(
     w: &mut W,
     op: IntRotOp,
@@ -57,14 +61,15 @@ pub(super) fn emit_int_rotate<W: Write>(
     (lhs, rhs): (&Operand, &Operand),
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    let bits = ty.size_bytes() * 8;
+    let bits = ty.size_bytes(pointer_width) * 8;
     let mask = bits - 1;
     let x = ra.alloc_scratch().ok_or_else(scratch_error)?;
     let c = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, lhs, x, frame, ra)?;
     emit_materialize_operand(w, rhs, c, frame, ra)?;
-    extend_integer(w, x, ty, false)?;
+    extend_integer(w, x, ty, false, pointer_width)?;
     let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
     match bits {
         32 | 64 => {
@@ -96,7 +101,7 @@ pub(super) fn emit_int_rotate<W: Write>(
     }
     ra.free_scratch(x);
     ra.free_scratch(c);
-    extend_integer(w, t, ty, true)?;
+    extend_integer(w, t, ty, true, pointer_width)?;
     store_result(w, dst, &x_alias(t), frame, ra)?;
     ra.free_scratch(t);
     Ok(())

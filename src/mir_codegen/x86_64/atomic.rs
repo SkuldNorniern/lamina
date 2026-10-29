@@ -2,16 +2,18 @@
 
 use super::*;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
+use lamina_platform::PointerWidth;
 
 pub(super) fn emit<W: Write>(
     inst: &MirInst,
     writer: &mut RaxTrackingWriter<W>,
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     match inst {
         MirInst::AtomicLoad { ty, dst, addr, .. } => {
-            let size = ty.size_bytes();
+            let size = ty.size_bytes(pointer_width);
             load_base(address_base(addr)?, writer, reg_alloc, stack_slots, "rax")?;
             writeln!(writer, "    {}", sized_load("rax", size))?;
             if let Register::Virtual(vreg) = dst {
@@ -24,7 +26,7 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
-            let size = ty.size_bytes();
+            let size = ty.size_bytes(pointer_width);
             let base = address_base(addr)?;
             load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
             let ptr = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
@@ -46,7 +48,7 @@ pub(super) fn emit<W: Write>(
             value,
             ..
         } => {
-            let size = ty.size_bytes();
+            let size = ty.size_bytes(pointer_width);
             let suffix = size_suffix_for(size);
             let rax = register_for_size("rax", size).ok_or_else(invalid_size)?;
             let ptr = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
@@ -108,7 +110,7 @@ pub(super) fn emit<W: Write>(
             desired,
             ..
         } => {
-            let size = ty.size_bytes();
+            let size = ty.size_bytes(pointer_width);
             let suffix = size_suffix_for(size);
             let new = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
             let ptr = match reg_alloc.alloc_scratch() {

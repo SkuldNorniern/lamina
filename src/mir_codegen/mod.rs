@@ -152,6 +152,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
+    let pointer_width = target_arch.pointer_width();
     let builtins = BuiltinLibrary::from_env(target_os);
     let retargeted = retarget_runtime_calls(input, &builtins);
     let module: &Module = &retargeted;
@@ -209,7 +210,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             ptx::emit(module, writer)?
         }
         TargetArchitecture::Amdgcn if target_os == TargetOperatingSystem::AmdHsa => {
-            amdgpu::emit_with_target(module, writer, settings.amdgpu_target)?
+            amdgpu::emit_with_target(module, writer, settings.amdgpu_target, pointer_width)?
         }
         TargetArchitecture::Aarch64 => {
             arm::aarch64::generate_mir_aarch64_with_units_and_settings(
@@ -218,6 +219,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 target_os,
                 codegen_units,
                 settings,
+                pointer_width,
             )?;
         }
         TargetArchitecture::Arx64 => {

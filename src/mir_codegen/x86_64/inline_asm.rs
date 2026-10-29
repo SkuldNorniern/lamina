@@ -10,6 +10,7 @@ use super::*;
 use crate::mir::asm::{GPR_CLASS, x86_64_register, x86_64_register_names};
 use crate::mir::{AsmOperand, MirType, Register};
 use lamina_codegen::x86_64::extend_integer;
+use lamina_platform::PointerWidth;
 
 /// Registers a `reg` operand may be given, in the order they are tried.
 const REG_CLASS_POOL: &[&str] = &["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"];
@@ -168,6 +169,7 @@ pub(super) fn emit<W: Write>(
     reg_alloc: &X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     target_os: TargetOperatingSystem,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let MirInst::InlineAsm {
         template,
@@ -198,6 +200,7 @@ pub(super) fn emit<W: Write>(
                 writer,
                 reg_alloc,
                 stack_slots,
+                pointer_width,
             )?;
         }
     }

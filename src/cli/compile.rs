@@ -3,7 +3,7 @@ use super::{
     options::{CompileOptions, toolchain_backends},
 };
 use crate::{
-    mir::{TransformPipeline, codegen::from_ir},
+    mir::{TransformPipeline, codegen::from_ir_for_target},
     mir_codegen::{
         assemble::{
             assemble_with_ras_object_options, get_assembly_output_extension,
@@ -109,8 +109,12 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
 
     if options.emit_mir {
         let ir_mod = parse_module(&ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
-        let mut mir_mod = from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-            .map_err(|e| format!("MIR lowering failed: {e}"))?;
+        let mut mir_mod = from_ir_for_target(
+            &ir_mod,
+            input_path.to_string_lossy().as_ref(),
+            target_for_extensions.pointer_width(),
+        )
+        .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
         if options.opt_level > 0 {
             let pipeline = TransformPipeline::default_for_opt_level(options.opt_level);
@@ -163,8 +167,12 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     };
 
     let ir_mod = parse_module(&ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
-    let mut mir_mod = from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-        .map_err(|e| format!("MIR lowering failed: {e}"))?;
+    let mut mir_mod = from_ir_for_target(
+        &ir_mod,
+        input_path.to_string_lossy().as_ref(),
+        target.pointer_width(),
+    )
+    .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
     if options.opt_level > 0 {
         let pipeline = TransformPipeline::default_for_opt_level(options.opt_level);

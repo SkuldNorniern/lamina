@@ -855,7 +855,7 @@ mod tests {
                     _ => panic!("unsupported operand"),
                 };
                 let mask = |ty: &MirType, v: u64| {
-                    let bits = ty.size_bytes() * 8;
+                    let bits = ty.size_bytes(func.pointer_width) * 8;
                     if bits == 64 {
                         v
                     } else {

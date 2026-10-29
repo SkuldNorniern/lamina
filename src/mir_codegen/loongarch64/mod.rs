@@ -28,7 +28,7 @@ use crate::{
     },
 };
 use abi::{ARG_FPRS, ARG_GPRS, ArgPlace, WORD};
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use operand::{
     Slots, load_float_operand, load_operand, phys, slot, store_float, store_register, unsupported,
 };
@@ -247,7 +247,7 @@ fn store_incoming_arguments<W: Write>(
         let Some(&offset) = slots.get(vreg) else {
             continue;
         };
-        let single = param.ty.size_bytes() == 4;
+        let single = param.ty.size_bytes(PointerWidth::Bits64) == 4;
         match place {
             ArgPlace::Gpr(bank) => {
                 abi::fp_store(writer, "st.d", ARG_GPRS[bank], offset, "$t0")?;
@@ -354,7 +354,7 @@ fn extend_integer<W: Write>(
     ) {
         return Ok(());
     }
-    let shift = 64 - ty.size_bytes() * 8;
+    let shift = 64 - ty.size_bytes(PointerWidth::Bits64) * 8;
     writeln!(writer, "    slli.d {reg}, {reg}, {shift}")?;
     let right = if signed { "srai.d" } else { "srli.d" };
     writeln!(writer, "    {right} {reg}, {reg}, {shift}")?;
@@ -447,7 +447,13 @@ fn pass_arguments<W: Write>(
     }
     for ((arg, ty), place) in args.iter().zip(types).zip(&places) {
         if let ArgPlace::Fpr(bank) = *place {
-            load_float_operand(arg, writer, slots, ARG_FPRS[bank], ty.size_bytes() == 4)?;
+            load_float_operand(
+                arg,
+                writer,
+                slots,
+                ARG_FPRS[bank],
+                ty.size_bytes(PointerWidth::Bits64) == 4,
+            )?;
         }
     }
     for (arg, place) in args.iter().zip(&places) {
@@ -467,9 +473,13 @@ fn store_call_result<W: Write>(
     slots: &Slots,
 ) -> Result<(), LaminaError> {
     match (ret, float) {
-        (Register::Virtual(vreg), Some(ty)) => {
-            store_float("$fa0", vreg, writer, slots, ty.size_bytes() == 4)
-        }
+        (Register::Virtual(vreg), Some(ty)) => store_float(
+            "$fa0",
+            vreg,
+            writer,
+            slots,
+            ty.size_bytes(PointerWidth::Bits64) == 4,
+        ),
         (dst, _) => store_result(writer, "$a0", dst, slots),
     }
 }
@@ -480,7 +490,9 @@ fn emit_instruction<W: Write>(
     slots: &Slots,
     ctx: &mut EmitCtx<'_>,
 ) -> Result<(), LaminaError> {
-    if let Some(operations) = integer_conversion_with_width(inst, MirType::i64()) {
+    if let Some(operations) =
+        integer_conversion_with_width(inst, MirType::i64(), PointerWidth::Bits64)
+    {
         for operation in operations {
             emit_instruction(&operation, writer, slots, ctx)?;
         }
@@ -555,23 +567,31 @@ fn emit_instruction<W: Write>(
                     extend_integer(writer, "$a1", ty, true)?;
                 }
             }
-            let (zero, overflow) =
-                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            let (zero, overflow) = op.division_checks(
+                *ty,
+                lhs.integer_constant(),
+                rhs.integer_constant(),
+                PointerWidth::Bits64,
+            );
             if zero {
                 let ok = ctx.fresh_label("nonzero");
                 writeln!(writer, "    bnez $a1, {ok}\n    break 0\n{ok}:")?;
             }
             if overflow {
                 let ok = ctx.fresh_label("nooverflow");
-                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                let minimum = ty.signed_integer(
+                    1i64 << (ty.size_bytes(PointerWidth::Bits64) * 8 - 1),
+                    PointerWidth::Bits64,
+                );
                 writeln!(writer, "    addi.d $t0, $zero, -1")?;
                 writeln!(writer, "    bne $a1, $t0, {ok}")?;
                 abi::load_imm(writer, "$t0", minimum)?;
                 writeln!(writer, "    bne $a0, $t0, {ok}\n    break 0\n{ok}:")?;
             }
-            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) && ty.size_bytes() < 8
+            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr)
+                && ty.size_bytes(PointerWidth::Bits64) < 8
             {
-                let mask = ty.size_bytes() * 8 - 1;
+                let mask = ty.size_bytes(PointerWidth::Bits64) * 8 - 1;
                 writeln!(writer, "    andi $a1, $a1, {mask}")?;
             }
             let mnemonic = match op {
@@ -711,9 +731,13 @@ fn emit_instruction<W: Write>(
         MirInst::Ret { value } => {
             if let Some(val) = value {
                 match ctx.ret_float {
-                    Some(ty) => {
-                        load_float_operand(val, writer, slots, "$fa0", ty.size_bytes() == 4)?
-                    }
+                    Some(ty) => load_float_operand(
+                        val,
+                        writer,
+                        slots,
+                        "$fa0",
+                        ty.size_bytes(PointerWidth::Bits64) == 4,
+                    )?,
                     None => load_operand(val, writer, slots, "$a0")?,
                 }
             }
@@ -790,7 +814,13 @@ fn emit_instruction<W: Write>(
             }
             for ((arg, ty), place) in args.iter().zip(&types).zip(&places) {
                 if let ArgPlace::Fpr(bank) = *place {
-                    load_float_operand(arg, writer, slots, ARG_FPRS[bank], ty.size_bytes() == 4)?;
+                    load_float_operand(
+                        arg,
+                        writer,
+                        slots,
+                        ARG_FPRS[bank],
+                        ty.size_bytes(PointerWidth::Bits64) == 4,
+                    )?;
                 }
             }
             for (arg, place) in args.iter().zip(&places) {
@@ -808,7 +838,7 @@ fn emit_instruction<W: Write>(
             rhs,
             ty,
         } => {
-            let single = ty.size_bytes() == 4;
+            let single = ty.size_bytes(PointerWidth::Bits64) == 4;
             let suffix = if single { "s" } else { "d" };
             load_float_operand(lhs, writer, slots, "$fa0", single)?;
             load_float_operand(rhs, writer, slots, "$fa1", single)?;
@@ -824,7 +854,7 @@ fn emit_instruction<W: Write>(
             }
         }
         MirInst::FloatUnary { op, dst, src, ty } => {
-            let single = ty.size_bytes() == 4;
+            let single = ty.size_bytes(PointerWidth::Bits64) == 4;
             let suffix = if single { "s" } else { "d" };
             load_float_operand(src, writer, slots, "$fa0", single)?;
             let mnemonic = match op {
@@ -843,7 +873,7 @@ fn emit_instruction<W: Write>(
             rhs,
             ty,
         } => {
-            let single = ty.size_bytes() == 4;
+            let single = ty.size_bytes(PointerWidth::Bits64) == 4;
             let suffix = if single { "s" } else { "d" };
             load_float_operand(lhs, writer, slots, "$fa0", single)?;
             load_float_operand(rhs, writer, slots, "$fa1", single)?;
@@ -871,7 +901,7 @@ fn emit_instruction<W: Write>(
                     "LoongArch64 unsigned float to integer conversion is not implemented",
                 ));
             }
-            let single = from.size_bytes() == 4;
+            let single = from.size_bytes(PointerWidth::Bits64) == 4;
             let suffix = if single { "s" } else { "d" };
             load_float_operand(src, writer, slots, "$fa0", single)?;
             writeln!(writer, "    fcmp.ceq.{suffix} $fcc0, $fa0, $fa0")?;
@@ -880,7 +910,7 @@ fn emit_instruction<W: Write>(
             writeln!(writer, "    ftintrz.l.{suffix} $fa0, $fa0")?;
             writeln!(writer, "    movfr2gr.d $a0, $fa0")?;
             writeln!(writer, "    and $a0, $a0, $t0")?;
-            let bits = to.size_bytes() * 8;
+            let bits = to.size_bytes(PointerWidth::Bits64) * 8;
             if bits < 64 {
                 let max = (1i64 << (bits - 1)) - 1;
                 clamp_above(writer, max, "slt")?;
@@ -896,7 +926,7 @@ fn emit_instruction<W: Write>(
             dst,
             src,
         } => {
-            let from_bits = from.size_bytes() * 8;
+            let from_bits = from.size_bytes(PointerWidth::Bits64) * 8;
             if !signed && from_bits == 64 {
                 return Err(unsupported(
                     "LoongArch64 unsigned 64-bit integer to float conversion is not implemented",
@@ -911,7 +941,7 @@ fn emit_instruction<W: Write>(
                     writeln!(writer, "    srli.d $a0, $a0, {}", 64 - from_bits)?;
                 }
             }
-            let single = to.size_bytes() == 4;
+            let single = to.size_bytes(PointerWidth::Bits64) == 4;
             let suffix = if single { "s" } else { "d" };
             writeln!(writer, "    movgr2fr.d $fa0, $a0")?;
             writeln!(writer, "    ffint.{suffix}.l $fa0, $fa0")?;
@@ -920,8 +950,8 @@ fn emit_instruction<W: Write>(
             }
         }
         MirInst::FloatConvert { from, to, dst, src } => {
-            let from_single = from.size_bytes() == 4;
-            let to_single = to.size_bytes() == 4;
+            let from_single = from.size_bytes(PointerWidth::Bits64) == 4;
+            let to_single = to.size_bytes(PointerWidth::Bits64) == 4;
             load_float_operand(src, writer, slots, "$fa0", from_single)?;
             match (from_single, to_single) {
                 (true, false) => writeln!(writer, "    fcvt.d.s $fa0, $fa0")?,
@@ -990,7 +1020,7 @@ fn emit_instruction<W: Write>(
 }
 
 fn copy_load(ty: &MirType) -> &'static str {
-    match ty.size_bytes() {
+    match ty.size_bytes(PointerWidth::Bits64) {
         1 => "ld.b",
         2 => "ld.h",
         4 => "ld.w",

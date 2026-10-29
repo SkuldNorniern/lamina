@@ -20,7 +20,7 @@ use crate::{
     mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
 use lamina_codegen::{Allocation, LiveInterval, os_uses_coff, os_uses_macho};
-use lamina_platform::TargetOperatingSystem;
+use lamina_platform::{PointerWidth, TargetOperatingSystem};
 
 pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
@@ -119,15 +119,19 @@ pub(super) fn claim_stack_slot(
     index
 }
 
-pub(super) fn integer_conversion(instruction: &Instruction) -> Option<Vec<Instruction>> {
-    integer_conversion_with_width(instruction, MirType::i64())
+pub(super) fn integer_conversion(
+    instruction: &Instruction,
+    pointer_width: PointerWidth,
+) -> Option<Vec<Instruction>> {
+    integer_conversion_with_width(instruction, MirType::i64(), pointer_width)
 }
 
 pub(super) fn integer_conversion_with_width(
     instruction: &Instruction,
     word_ty: MirType,
+    pointer_width: PointerWidth,
 ) -> Option<Vec<Instruction>> {
-    let word_bits = word_ty.size_bytes() * 8;
+    let word_bits = word_ty.size_bytes(pointer_width) * 8;
     let Instruction::IntConvert {
         from,
         to,
@@ -138,7 +142,10 @@ pub(super) fn integer_conversion_with_width(
     else {
         return None;
     };
-    let width = from.size_bytes().min(to.size_bytes()) * 8;
+    let width = from
+        .size_bytes(pointer_width)
+        .min(to.size_bytes(pointer_width))
+        * 8;
     let mut operations = if *signed {
         let shift = (word_bits - width) as i64;
         vec![
@@ -172,7 +179,7 @@ pub(super) fn integer_conversion_with_width(
             rhs: Operand::Immediate(Immediate::I64(((1u64 << width) - 1) as i64)),
         }]
     };
-    if to.size_bytes() < word_ty.size_bytes() {
+    if to.size_bytes(pointer_width) < word_ty.size_bytes(pointer_width) {
         operations.push(Instruction::Copy {
             ty: *to,
             dst: dst.clone(),
@@ -185,6 +192,7 @@ pub(super) fn integer_conversion_with_width(
 /// Base structure for codegen backends with common fields.
 pub struct CodegenBase<'a> {
     pub target_os: TargetOperatingSystem,
+    pub pointer_width: PointerWidth,
     pub module: Option<&'a MirModule>,
     pub prepared: bool,
     pub verbose: bool,
@@ -193,9 +201,10 @@ pub struct CodegenBase<'a> {
 }
 
 impl<'a> CodegenBase<'a> {
-    pub fn new(target_os: TargetOperatingSystem) -> Self {
+    pub fn new(target_os: TargetOperatingSystem, pointer_width: PointerWidth) -> Self {
         Self {
             target_os,
+            pointer_width,
             module: None,
             prepared: false,
             verbose: false,
@@ -912,9 +921,9 @@ pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
 macro_rules! impl_backend_boilerplate {
     ($backend:ty) => {
         impl<'a> $backend {
-            pub fn new(target_os: TargetOperatingSystem) -> Self {
+            pub fn new(target_os: TargetOperatingSystem, pointer_width: PointerWidth) -> Self {
                 Self {
-                    base: CodegenBase::new(target_os),
+                    base: CodegenBase::new(target_os, pointer_width),
                 }
             }
 
@@ -1064,7 +1073,12 @@ fn dying_input(inst: &Instruction) -> Option<(VirtualReg, VirtualReg)> {
             dst: Register::Virtual(dst),
             src: Operand::Register(Register::Virtual(src)),
             ..
-        } if dst != src && from.size_bytes() == 8 && to.size_bytes() == 8 => Some((*dst, *src)),
+        } if dst != src
+            && from.size_bytes(PointerWidth::Bits64) == 8
+            && to.size_bytes(PointerWidth::Bits64) == 8 =>
+        {
+            Some((*dst, *src))
+        }
         _ => None,
     }
 }
@@ -1970,6 +1984,7 @@ mod export_linkage_tests {
         },
         parser::parse_module,
     };
+    use lamina_platform::PointerWidth;
     use lamina_platform::TargetOperatingSystem;
 
     const SOURCE: &str = r#"
@@ -2004,7 +2019,7 @@ entry:
             ),
             (
                 "aarch64",
-                generate_mir_aarch64::<Vec<u8>>,
+                |module, writer, os| generate_mir_aarch64(module, writer, os, PointerWidth::Bits64),
                 TargetOperatingSystem::Linux,
             ),
             (

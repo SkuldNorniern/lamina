@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use lamina_platform::PointerWidth;
+
 use super::loop_opt::{LoopInfo, LoopInvariantCodeMotion};
 use crate::mir::{
     Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register,
@@ -138,6 +140,7 @@ struct Shape {
     inclusive: bool,
     entry: String,
     live_out: HashSet<Register>,
+    pointer: PointerWidth,
 }
 
 fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
@@ -304,6 +307,7 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
             .cloned(),
     );
     Some(Shape {
+        pointer: func.pointer_width,
         header: info.header.clone(),
         body,
         labels,
@@ -409,7 +413,7 @@ fn guarded_candidate(func: &Function, info: &LoopInfo, loops: &[LoopInfo]) -> bo
             .iter()
             .filter(|b| info.blocks.contains(&b.label))
             .flat_map(|b| &b.instructions)
-            .any(Instruction::may_trap_integer)
+            .any(|instr| instr.may_trap_integer(func.pointer_width))
 }
 
 fn clone_guarded(func: &mut Function, info: &LoopInfo, factor: usize, next: &mut u32) {
@@ -647,7 +651,7 @@ fn counter_only(shape: &Shape) -> bool {
     let mut dependent = HashSet::from([shape.iv.clone()]);
     for i in &shape.body {
         let uses_counter = i.use_regs().iter().any(|r| dependent.contains(*r));
-        if uses_counter && i.may_trap_integer() {
+        if uses_counter && i.may_trap_integer(shape.pointer) {
             return false;
         }
         if let Some(dst) = i.def_reg() {
@@ -938,7 +942,8 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
         .into_iter()
         .rev()
         .filter(|i| {
-            let needed = i.may_trap_integer() || i.def_reg().is_none_or(|r| live.contains(r));
+            let needed =
+                i.may_trap_integer(shape.pointer) || i.def_reg().is_none_or(|r| live.contains(r));
             if needed {
                 if let Some(r) = i.def_reg() {
                     live.remove(r);
@@ -1067,7 +1072,7 @@ fn constant_trip_count(func: &Function, shape: &Shape) -> Option<u64> {
                 op, ty, lhs, rhs, ..
             } => value(lhs)
                 .zip(value(rhs))
-                .and_then(|(a, b)| op.evaluate(*ty, a, b)),
+                .and_then(|(a, b)| op.evaluate(*ty, a, b, func.pointer_width)),
             _ => None,
         };
         if let Some(dst) = i.def_reg() {

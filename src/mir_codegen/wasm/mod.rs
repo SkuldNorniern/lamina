@@ -32,7 +32,7 @@ use crate::{
 };
 
 use lamina_codegen::wasm::WasmABI;
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use util::{
     emit_float_binary_op, emit_float_cmp_op, emit_float_unary_op, emit_int_binary_op,
     emit_int_cmp_op, load_fp_operand_wasm, load_operand_wasm, load_register_wasm,
@@ -88,7 +88,7 @@ pub struct WasmCodegen<'a> {
 impl<'a> WasmCodegen<'a> {
     pub fn new(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Self {
         Self {
-            base: CodegenBase::new(target_os),
+            base: CodegenBase::new(target_os, target_arch.pointer_width()),
             memory: Memory::of(target_arch),
         }
     }
@@ -116,6 +116,7 @@ impl<'a> WasmCodegen<'a> {
             self.memory,
             self.base.target_os,
             codegen_units,
+            self.base.pointer_width,
         )
     }
 }
@@ -164,8 +165,11 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
         let memory = self.memory;
+        let pointer_width = self.base.pointer_width;
         self.base.emit_asm_base(
-            |module, writer, os| generate_mir_wasm_with_units(module, writer, memory, os, 1),
+            |module, writer, os| {
+                generate_mir_wasm_with_units(module, writer, memory, os, 1, pointer_width)
+            },
             "WASM",
         )
     }
@@ -330,6 +334,7 @@ fn compile_single_function_wasm(
                 &block_labels,
                 &frame,
                 addresses,
+                func.pointer_width,
             )
             .map_err(lamina_to_codegen_error)?;
         }
@@ -352,8 +357,16 @@ pub fn generate_mir_wasm<W: Write>(
     writer: &mut W,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    generate_mir_wasm_with_units(module, writer, Memory::of(target_arch), target_os, 1)
+    generate_mir_wasm_with_units(
+        module,
+        writer,
+        Memory::of(target_arch),
+        target_os,
+        1,
+        pointer_width,
+    )
 }
 
 pub fn generate_mir_wasm_with_units<W: Write>(
@@ -362,6 +375,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     memory: Memory,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     reject_function_placement(module, "WASM")?;
     let arch = match memory {
@@ -466,11 +480,19 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
             let shape = &addresses.imports[func_name];
             for param in &shape.params {
-                write!(writer, " (param {})", wasm_type(*param, memory))?;
+                write!(
+                    writer,
+                    " (param {})",
+                    wasm_type(*param, memory, pointer_width)
+                )?;
             }
 
             if func.sig.ret_ty.is_some() {
-                write!(writer, " (result {})", wasm_type(shape.result, memory))?;
+                write!(
+                    writer,
+                    " (result {})",
+                    wasm_type(shape.result, memory, pointer_width)
+                )?;
             }
 
             writeln!(writer, "))")?;
@@ -526,11 +548,11 @@ pub fn generate_mir_wasm_with_units<W: Write>(
                 writeln!(writer)?;
                 for index in 0..shape.params.len() {
                     writeln!(writer, "    local.get {index}")?;
-                    convert_param(writer, shape.params[index], memory)?;
+                    convert_param(writer, shape.params[index], memory, pointer_width)?;
                 }
                 writeln!(writer, "    call ${mangled}")?;
                 if func.sig.ret_ty.is_some() {
-                    convert_result(writer, shape.result, memory)?;
+                    convert_result(writer, shape.result, memory, pointer_width)?;
                 }
                 writeln!(writer, "  )")?;
             }
@@ -880,11 +902,12 @@ fn convert_param(
     writer: &mut impl Write,
     boundary: Boundary,
     memory: Memory,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     match boundary {
         Boundary::Integer => {}
         Boundary::Pointer => memory.narrow(writer, "      ")?,
-        Boundary::Float(ty) => reinterpret_out(writer, &ty)?,
+        Boundary::Float(ty) => reinterpret_out(writer, &ty, pointer_width)?,
     }
     Ok(())
 }
@@ -894,28 +917,33 @@ fn convert_result(
     writer: &mut impl Write,
     boundary: Boundary,
     memory: Memory,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     match boundary {
         Boundary::Integer => {}
         Boundary::Pointer => memory.widen(writer, "      ")?,
-        Boundary::Float(ty) => reinterpret_in(writer, &ty)?,
+        Boundary::Float(ty) => reinterpret_in(writer, &ty, pointer_width)?,
     }
     Ok(())
 }
 
 /// Declares `boundary` the way a wasm signature spells it.
-fn wasm_type(boundary: Boundary, memory: Memory) -> &'static str {
+fn wasm_type(boundary: Boundary, memory: Memory, pointer_width: PointerWidth) -> &'static str {
     match boundary {
         Boundary::Integer => "i64",
         Boundary::Pointer => memory.index_type(),
-        Boundary::Float(ty) if ty.size_bytes() == 4 => "f32",
+        Boundary::Float(ty) if ty.size_bytes(pointer_width) == 4 => "f32",
         Boundary::Float(_) => "f64",
     }
 }
 
 /// Turns the i64 bits on the stack into the float an import declares.
-fn reinterpret_out(writer: &mut impl Write, ty: &MirType) -> Result<(), LaminaError> {
-    if ty.size_bytes() == 4 {
+fn reinterpret_out(
+    writer: &mut impl Write,
+    ty: &MirType,
+    pointer_width: PointerWidth,
+) -> Result<(), LaminaError> {
+    if ty.size_bytes(pointer_width) == 4 {
         writeln!(writer, "      i32.wrap_i64")?;
         writeln!(writer, "      f32.reinterpret_i32")?;
     } else {
@@ -925,8 +953,12 @@ fn reinterpret_out(writer: &mut impl Write, ty: &MirType) -> Result<(), LaminaEr
 }
 
 /// Turns a float an import returned back into the i64 bits the backend holds.
-fn reinterpret_in(writer: &mut impl Write, ty: &MirType) -> Result<(), LaminaError> {
-    if ty.size_bytes() == 4 {
+fn reinterpret_in(
+    writer: &mut impl Write,
+    ty: &MirType,
+    pointer_width: PointerWidth,
+) -> Result<(), LaminaError> {
+    if ty.size_bytes(pointer_width) == 4 {
         writeln!(writer, "      i32.reinterpret_f32")?;
         writeln!(writer, "      i64.extend_i32_u")?;
     } else {
@@ -1040,9 +1072,10 @@ fn extend_integer_wasm(
     writer: &mut impl Write,
     ty: MirType,
     signed: bool,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    if ty.size_bytes() < 8 {
-        let shift = 64 - ty.size_bytes() * 8;
+    if ty.size_bytes(pointer_width) < 8 {
+        let shift = 64 - ty.size_bytes(pointer_width) * 8;
         let right = if signed { "i64.shr_s" } else { "i64.shr_u" };
         writeln!(
             writer,
@@ -1052,6 +1085,7 @@ fn extend_integer_wasm(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_instruction_wasm(
     inst: &MirInst,
     writer: &mut impl Write,
@@ -1060,8 +1094,9 @@ fn emit_instruction_wasm(
     block_labels: &HashMap<&str, usize>,
     frame: &StackFrame,
     addresses: &Addresses,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    if let Some(operations) = integer_conversion(inst) {
+    if let Some(operations) = integer_conversion(inst, pointer_width) {
         for operation in operations {
             emit_instruction_wasm(
                 &operation,
@@ -1071,6 +1106,7 @@ fn emit_instruction_wasm(
                 block_labels,
                 frame,
                 addresses,
+                pointer_width,
             )?;
         }
         return Ok(());
@@ -1135,7 +1171,7 @@ fn emit_instruction_wasm(
                 _ => load_operand_wasm(src, writer, vreg_to_local)?,
             }
             if !ty.is_float() {
-                extend_integer_wasm(writer, *ty, true)?;
+                extend_integer_wasm(writer, *ty, true, pointer_width)?;
             }
             store_to_register_wasm(dst, writer, vreg_to_local)?;
         }
@@ -1146,15 +1182,22 @@ fn emit_instruction_wasm(
             rhs,
             ty,
         } => {
-            let (_, overflow) =
-                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            let (_, overflow) = op.division_checks(
+                *ty,
+                lhs.integer_constant(),
+                rhs.integer_constant(),
+                pointer_width,
+            );
             if overflow {
-                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                let minimum = ty.signed_integer(
+                    1i64 << (ty.size_bytes(pointer_width) * 8 - 1),
+                    pointer_width,
+                );
                 load_operand_wasm(lhs, writer, vreg_to_local)?;
-                extend_integer_wasm(writer, *ty, true)?;
+                extend_integer_wasm(writer, *ty, true, pointer_width)?;
                 writeln!(writer, "      i64.const {minimum}\n      i64.eq")?;
                 load_operand_wasm(rhs, writer, vreg_to_local)?;
-                extend_integer_wasm(writer, *ty, true)?;
+                extend_integer_wasm(writer, *ty, true, pointer_width)?;
                 writeln!(
                     writer,
                     "      i64.const -1\n      i64.eq\n      i32.and\n      if\n        unreachable\n      end"
@@ -1162,19 +1205,19 @@ fn emit_instruction_wasm(
             }
             let unsigned = matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr);
             load_operand_wasm(lhs, writer, vreg_to_local)?;
-            extend_integer_wasm(writer, *ty, !unsigned)?;
+            extend_integer_wasm(writer, *ty, !unsigned, pointer_width)?;
             load_operand_wasm(rhs, writer, vreg_to_local)?;
             if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
                 writeln!(
                     writer,
                     "      i64.const {}\n      i64.and",
-                    ty.size_bytes() * 8 - 1
+                    ty.size_bytes(pointer_width) * 8 - 1
                 )?;
             } else {
-                extend_integer_wasm(writer, *ty, !unsigned)?;
+                extend_integer_wasm(writer, *ty, !unsigned, pointer_width)?;
             }
             emit_int_binary_op(op, writer)?;
-            extend_integer_wasm(writer, *ty, true)?;
+            extend_integer_wasm(writer, *ty, true, pointer_width)?;
             store_to_register_wasm(dst, writer, vreg_to_local)?;
         }
         MirInst::IntCmp {
@@ -1189,9 +1232,9 @@ fn emit_instruction_wasm(
                 IntCmpOp::SLt | IntCmpOp::SLe | IntCmpOp::SGt | IntCmpOp::SGe
             );
             load_operand_wasm(lhs, writer, vreg_to_local)?;
-            extend_integer_wasm(writer, *ty, signed)?;
+            extend_integer_wasm(writer, *ty, signed, pointer_width)?;
             load_operand_wasm(rhs, writer, vreg_to_local)?;
-            extend_integer_wasm(writer, *ty, signed)?;
+            extend_integer_wasm(writer, *ty, signed, pointer_width)?;
 
             emit_int_cmp_op(op, writer)?;
 
@@ -1207,7 +1250,7 @@ fn emit_instruction_wasm(
             for (index, arg) in args.iter().enumerate() {
                 load_operand_wasm(arg, writer, vreg_to_local)?;
                 if let Some(boundary) = shape.and_then(|shape| shape.params.get(index)) {
-                    convert_param(writer, *boundary, memory)?;
+                    convert_param(writer, *boundary, memory, pointer_width)?;
                 }
             }
 
@@ -1217,7 +1260,7 @@ fn emit_instruction_wasm(
             writeln!(writer, "      call ${symbol}")?;
 
             if let Some(shape) = shape {
-                convert_result(writer, shape.result, memory)?;
+                convert_result(writer, shape.result, memory, pointer_width)?;
             }
             if addresses.wasi && ret.is_none() && matches!(symbol, "memcpy" | "memmove" | "memset")
             {
@@ -1491,12 +1534,12 @@ fn emit_instruction_wasm(
             dst,
             src,
         } => {
-            let is_f32 = to.size_bytes() == 4;
+            let is_f32 = to.size_bytes(pointer_width) == 4;
             load_operand_wasm(src, writer, vreg_to_local)?;
-            if from.size_bytes() < 8 {
-                extend_integer_wasm(writer, *from, *signed)?;
+            if from.size_bytes(pointer_width) < 8 {
+                extend_integer_wasm(writer, *from, *signed, pointer_width)?;
             }
-            let unsigned_word = !*signed && from.size_bytes() == 8;
+            let unsigned_word = !*signed && from.size_bytes(pointer_width) == 8;
             let convert = match (is_f32, unsigned_word) {
                 (true, true) => "f32.convert_i64_u",
                 (true, false) => "f32.convert_i64_s",
@@ -1514,13 +1557,13 @@ fn emit_instruction_wasm(
         }
         MirInst::FloatConvert { from, to, dst, src } => {
             load_operand_wasm(src, writer, vreg_to_local)?;
-            if from.size_bytes() == 4 {
+            if from.size_bytes(pointer_width) == 4 {
                 writeln!(writer, "      i32.wrap_i64")?;
                 writeln!(writer, "      f32.reinterpret_i32")?;
             } else {
                 writeln!(writer, "      f64.reinterpret_i64")?;
             }
-            if to.size_bytes() == 4 {
+            if to.size_bytes(pointer_width) == 4 {
                 writeln!(writer, "      f32.demote_f64")?;
                 writeln!(writer, "      i32.reinterpret_f32")?;
                 writeln!(writer, "      i64.extend_i32_u")?;
@@ -1540,7 +1583,7 @@ fn emit_instruction_wasm(
             // trunc_sat maps NaN to 0 and saturates to the 64-bit range. Narrower
             // targets are clamped with select, then sign-extended to match the x86
             // backend's canonical register form.
-            let is_f32 = from.size_bytes() == 4;
+            let is_f32 = from.size_bytes(pointer_width) == 4;
             load_fp_operand_wasm(src, writer, vreg_to_local, is_f32)?;
             let trunc = match (is_f32, *signed) {
                 (true, true) => "i64.trunc_sat_f32_s",
@@ -1550,7 +1593,7 @@ fn emit_instruction_wasm(
             };
             writeln!(writer, "      {trunc}")?;
             store_to_register_wasm(dst, writer, vreg_to_local)?;
-            let bits = to.size_bytes() * 8;
+            let bits = to.size_bytes(pointer_width) * 8;
             if bits < 64 {
                 let clamps: Vec<(i128, &str)> = if *signed {
                     let max = (1i128 << (bits - 1)) - 1;
@@ -1569,7 +1612,7 @@ fn emit_instruction_wasm(
                     store_to_register_wasm(dst, writer, vreg_to_local)?;
                 }
                 load_operand_wasm(&Operand::Register(dst.clone()), writer, vreg_to_local)?;
-                extend_integer_wasm(writer, *to, true)?;
+                extend_integer_wasm(writer, *to, true, pointer_width)?;
                 store_to_register_wasm(dst, writer, vreg_to_local)?;
             }
         }
@@ -1580,7 +1623,7 @@ fn emit_instruction_wasm(
             rhs,
             ty,
         } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
 
             // Load operands as floats
             load_fp_operand_wasm(lhs, writer, vreg_to_local, is_f32)?;
@@ -1595,7 +1638,7 @@ fn emit_instruction_wasm(
             }
         }
         MirInst::FloatUnary { op, dst, src, ty } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
 
             // Load operand as float
             load_fp_operand_wasm(src, writer, vreg_to_local, is_f32)?;
@@ -1615,7 +1658,7 @@ fn emit_instruction_wasm(
             rhs,
             ty,
         } => {
-            let is_f32 = ty.size_bytes() == 4;
+            let is_f32 = ty.size_bytes(pointer_width) == 4;
 
             // Load operands as floats
             load_fp_operand_wasm(lhs, writer, vreg_to_local, is_f32)?;

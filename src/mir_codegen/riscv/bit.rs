@@ -1,6 +1,8 @@
 use super::*;
 use crate::mir::{IntRotOp, IntUnOp};
+use lamina_platform::PointerWidth;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_int_unary<W: Write>(
     writer: &mut W,
     op: IntUnOp,
@@ -9,10 +11,11 @@ pub(super) fn emit_int_unary<W: Write>(
     src: &Operand,
     reg_alloc: &RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let target = reg_alloc.target();
     require_rv64(target, "integer bit intrinsics")?;
-    let bits = ty.size_bytes() * 8;
+    let bits = ty.size_bytes(pointer_width) * 8;
     load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
     zero_extend(writer, "a0", bits)?;
     match op {
@@ -42,10 +45,11 @@ pub(super) fn emit_int_unary<W: Write>(
             }
         }
     }
-    extend_integer(writer, "a0", ty, target, true)?;
+    extend_integer(writer, "a0", ty, target, true, pointer_width)?;
     store_a0(writer, dst, reg_alloc, stack_slots)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_int_rotate<W: Write>(
     writer: &mut W,
     op: IntRotOp,
@@ -54,10 +58,11 @@ pub(super) fn emit_int_rotate<W: Write>(
     (lhs, rhs): (&Operand, &Operand),
     reg_alloc: &RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let target = reg_alloc.target();
     require_rv64(target, "integer rotates")?;
-    let bits = ty.size_bytes() * 8;
+    let bits = ty.size_bytes(pointer_width) * 8;
     let mask = bits - 1;
     load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "a0")?;
     load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
@@ -74,7 +79,7 @@ pub(super) fn emit_int_rotate<W: Write>(
     writeln!(writer, "    {far} a5, a0, a2")?;
     writeln!(writer, "    or a0, a4, a5")?;
     zero_extend(writer, "a0", bits)?;
-    extend_integer(writer, "a0", ty, target, true)?;
+    extend_integer(writer, "a0", ty, target, true, pointer_width)?;
     store_a0(writer, dst, reg_alloc, stack_slots)
 }
 

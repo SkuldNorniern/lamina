@@ -4,6 +4,7 @@ use crate::mir::{
     Block, Function, Instruction, IntBinOp, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_platform::PointerWidth;
 use std::{
     cmp::Ordering,
     collections::{BinaryHeap, HashMap},
@@ -39,9 +40,10 @@ impl Transform for InstructionScheduling {
 impl InstructionScheduling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
+        let pointer = func.pointer_width;
 
         for block in &mut func.blocks {
-            if self.schedule_block(block) {
+            if self.schedule_block(block, pointer) {
                 changed = true;
             }
         }
@@ -49,13 +51,13 @@ impl InstructionScheduling {
         Ok(changed)
     }
 
-    fn schedule_block(&self, block: &mut Block) -> bool {
+    fn schedule_block(&self, block: &mut Block, pointer: PointerWidth) -> bool {
         if block.instructions.len() < 3 {
             return false;
         }
 
         // 1. Build Dependency Graph
-        let graph = self.build_dependency_graph(&block.instructions);
+        let graph = self.build_dependency_graph(&block.instructions, pointer);
 
         // 2. Calculate Priorities (Critical Path)
         let priorities = self.calculate_priorities(&graph, &block.instructions);
@@ -77,7 +79,11 @@ impl InstructionScheduling {
         }
     }
 
-    fn build_dependency_graph(&self, instructions: &[Instruction]) -> DependencyGraph {
+    fn build_dependency_graph(
+        &self,
+        instructions: &[Instruction],
+        pointer: PointerWidth,
+    ) -> DependencyGraph {
         let mut graph = DependencyGraph::new(instructions.len());
         let mut reg_defs: HashMap<Register, usize> = HashMap::new();
         let mut reg_readers: HashMap<Register, Vec<usize>> = HashMap::new();
@@ -127,7 +133,7 @@ impl InstructionScheduling {
             }
 
             // 3. Memory Dependencies
-            if self.is_memory_op(instr) || instr.may_trap_integer() {
+            if self.is_memory_op(instr) || instr.may_trap_integer(pointer) {
                 if let Some(prev_mem_idx) = last_memory_op {
                     graph.add_edge(prev_mem_idx, idx);
                 }
@@ -384,7 +390,7 @@ mod tests {
             false_target: "exit".into(),
         });
         let tail = block.instructions[block.instructions.len() - 2..].to_vec();
-        InstructionScheduling.schedule_block(&mut block);
+        InstructionScheduling.schedule_block(&mut block, PointerWidth::Bits64);
         assert_eq!(block.instructions[block.instructions.len() - 2..], tail);
     }
 

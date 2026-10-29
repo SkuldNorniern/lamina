@@ -497,6 +497,7 @@ pub(super) fn compile_single_function_x86_64(
                 &reg_alloc,
                 &use_counts,
                 |offset| flag_producers.contains(&(block_index, position + offset)),
+                func.pointer_width,
             ) {
                 writeln!(output, "    leaq {address}, %{dst}")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -519,9 +520,17 @@ pub(super) fn compile_single_function_x86_64(
                 && cond == cmp_dst
                 && flag_producers.contains(&(block_index, position))
             {
-                let scratch =
-                    emit_int_compare(op, ty, lhs, rhs, &mut output, &mut reg_alloc, &stack_slots)
-                        .map_err(lamina_to_codegen_error)?;
+                let scratch = emit_int_compare(
+                    op,
+                    ty,
+                    lhs,
+                    rhs,
+                    &mut output,
+                    &mut reg_alloc,
+                    &stack_slots,
+                    func.pointer_width,
+                )
+                .map_err(lamina_to_codegen_error)?;
                 let suffix = cmp_suffix(op).map_err(lamina_to_codegen_error)?;
                 if true_target == next_label
                     || rotations
@@ -569,6 +578,7 @@ pub(super) fn compile_single_function_x86_64(
                 &func.entry,
                 sret_slot,
                 va_area.as_ref(),
+                func.pointer_width,
             )
             .map_err(|e| match e {
                 LaminaError::CodegenError(refusal @ CodegenError::CpuLevelRequired { .. }) => {

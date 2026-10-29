@@ -8,6 +8,7 @@ use crate::{
         gpu::{GpuAxis, GpuIntrinsic},
     },
 };
+use lamina_platform::{PointerWidth, TargetArchitecture};
 use std::{collections::HashMap, io::Write};
 
 fn width(ty: MirType) -> Result<usize, LaminaError> {
@@ -26,6 +27,8 @@ fn is_pointer(ty: MirType) -> bool {
         MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(AddressSpace::Global))
     )
 }
+
+const NVPTX_POINTER: PointerWidth = TargetArchitecture::Nvptx64.pointer_width();
 
 struct Kernel {
     body: Vec<u8>,
@@ -217,7 +220,7 @@ impl Kernel {
                 addr,
                 attrs,
             } => {
-                Self::memory_type(*ty, attrs)?;
+                Self::memory_type(*ty, attrs, NVPTX_POINTER)?;
                 let address = self.address(addr)?;
                 let dst = self.allocate(dst, *ty)?;
                 writeln!(
@@ -232,7 +235,7 @@ impl Kernel {
                 addr,
                 attrs,
             } => {
-                Self::memory_type(*ty, attrs)?;
+                Self::memory_type(*ty, attrs, NVPTX_POINTER)?;
                 let address = self.address(addr)?;
                 let source = self.operand(src, *ty)?;
                 writeln!(
@@ -308,10 +311,14 @@ impl Kernel {
         Ok(())
     }
 
-    fn memory_type(ty: MirType, attrs: &MemoryAttrs) -> Result<(), LaminaError> {
+    fn memory_type(
+        ty: MirType,
+        attrs: &MemoryAttrs,
+        pointer_width: PointerWidth,
+    ) -> Result<(), LaminaError> {
         if !matches!(ty, MirType::Scalar(ScalarType::I32 | ScalarType::I64))
             || attrs.volatile
-            || usize::from(attrs.align) < ty.size_bytes()
+            || usize::from(attrs.align) < ty.size_bytes(pointer_width)
             || !attrs.align.is_power_of_two()
         {
             return Err(error(

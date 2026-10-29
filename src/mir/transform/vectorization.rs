@@ -427,6 +427,7 @@ impl AutoVectorization {
         func: &mut Function,
         pattern: &VectorizationPattern,
     ) -> Result<bool, TransformError> {
+        let pointer_width = func.pointer_width;
         let block = func.get_block_mut(&pattern.block).ok_or_else(|| {
             TransformError::Unsupported(format!("Block {} not found", pattern.block))
         })?;
@@ -518,7 +519,7 @@ impl AutoVectorization {
                         addr: AddressMode::BaseOffset {
                             base,
                             offset: offset
-                                + (MirType::Scalar(pattern.element_type).size_bytes()
+                                + (MirType::Scalar(pattern.element_type).size_bytes(pointer_width)
                                     * vectorization_factor)
                                     as i16,
                             address_space,
