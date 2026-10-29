@@ -66,18 +66,15 @@ const MAX_REGISTER_RETURN: usize = 16;
 const ULOAD: &str = "uld";
 const USTORE: &str = "usd";
 
-/// Whether an access through a pointer the program handed us has to take the
-/// unaligned form.
+/// Whether an access has to take the unaligned form.
 ///
-/// Always, for anything wider than a byte. A stated alignment below the natural one
-/// says so outright, and an unstated one says nothing: `MemoryAttrs::align` then
-/// carries the natural alignment of the accessed type rather than the alignment of the
-/// address, so a `load.i32` of a field inside a packed struct claims four and may land
-/// on an odd byte. Every other backend runs on hardware that reads it anyway; this one
-/// would take the trap. Honouring both cases costs one extra instruction and never
-/// refuses a program the other backends accept.
-const fn unaligned(_claimed: MemoryAttrs, size: usize) -> bool {
-    size > 1
+/// MIPS traps on a misaligned address where every other target this compiler emits for
+/// reads it anyway, so the unaligned pair is the only safe lowering when the address is
+/// short of the width being moved. `MemoryAttrs::align` states the alignment of the
+/// address, so a field of a packed struct is covered whether or not the program spelled
+/// the alignment out.
+const fn unaligned(claimed: MemoryAttrs, size: usize) -> bool {
+    size > 1 && (claimed.align as usize) < size
 }
 
 /// Signatures the caller side needs: parameter types, variadic arity and float returns.

@@ -898,4 +898,112 @@ done:
         assert_eq!(vector_ops(&source, X86CpuLevel::V3), 0);
         assert!(vector_ops(&source, X86CpuLevel::V4) > 0);
     }
+
+    #[test]
+    fn refuses_a_store_that_overlaps_the_previous_load() {
+        let source = loop_over(
+            "  %dst = getelem.i64 %a, %j
+  %j1 = add.i64 %j, 1
+  %src = getelem.i64 %a, %j1
+  %x = load.i64 %src
+  %z = add.i64 %x, 3
+  store.i64 %dst, %z",
+        );
+        assert_eq!(vector_ops(&source, X86CpuLevel::V2), 0);
+    }
+
+    #[test]
+    fn refuses_a_loop_carried_scalar() {
+        let source = "fn @f() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  %carry = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, 64
+  br %more, body, done
+body:
+  %q = getelem.i64 %a, %j
+  %x = load.i64 %q
+  %z = add.i64 %x, %carry
+  store.i64 %q, %z
+  %carry = add.i64 %z, 0
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
+}";
+        assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
+    }
+
+    #[test]
+    fn refuses_two_pointer_parameters_the_analysis_cannot_separate() {
+        let source = "fn @f(ptr %dst, ptr %src) -> i64 {
+entry:
+  %j = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, 64
+  br %more, body, done
+body:
+  %pd = getelem.i64 %dst, %j
+  %ps = getelem.i64 %src, %j
+  %x = load.i64 %ps
+  %z = add.i64 %x, 3
+  store.i64 %pd, %z
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
+}";
+        assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
+    }
+
+    #[test]
+    fn refuses_a_float_reduction() {
+        let source = "fn @f() -> i64 {
+entry:
+  %a = stackalloc.[64 x f64]
+  %k = add.i64 0, 0
+  %t = add.f64 0.0, 0.0
+  jmp head
+head:
+  %more = lt.i64 %k, 64
+  br %more, body, done
+body:
+  %q = getelem.f64 %a, %k
+  %w = load.f64 %q
+  %t = add.f64 %t, %w
+  %k = add.i64 %k, 1
+  jmp head
+done:
+  %ti = fptoint.f64.i64 %t
+  ret.i64 %ti
+}";
+        assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
+    }
+
+    #[test]
+    fn refuses_a_float_division() {
+        let source = "fn @f() -> i64 {
+entry:
+  %a = stackalloc.[64 x f64]
+  %j = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, 64
+  br %more, body, done
+body:
+  %q = getelem.f64 %a, %j
+  %x = load.f64 %q
+  %z = div.f64 %x, 2.0
+  store.f64 %q, %z
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
+}";
+        assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
+    }
 }

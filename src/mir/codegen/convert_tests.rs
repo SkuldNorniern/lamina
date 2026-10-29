@@ -1030,3 +1030,170 @@ fn a_big_endian_pair_puts_its_high_word_at_the_lower_address() {
     assert_eq!(low_word_offset(TargetArchitecture::X86_64.data_layout()), 0);
     assert_eq!(low_word_offset(TargetArchitecture::S390x.data_layout()), 8);
 }
+
+/// Alignment of every load and store in `@main`, in program order.
+fn access_aligns(source: &str) -> Vec<(u8, bool)> {
+    let ir = parse_module(source).expect("parse alignment probe");
+    let module = from_ir(&ir, "align").expect("lower alignment probe");
+    module.functions["main"].blocks[0]
+        .instructions
+        .iter()
+        .filter_map(|inst| match &inst.instr {
+            Instruction::Load { attrs, .. } | Instruction::Store { attrs, .. } => {
+                Some((attrs.align, attrs.stated_align))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_packed_field_access_is_aligned_like_its_address() {
+    assert_eq!(
+        access_aligns(
+            "type !Bw = packed struct { a: i8, b: i32 }\n\
+             fn @main() -> i32 {\nentry:\n\
+             %p = stackalloc.!Bw\n\
+             %b = getfieldptr.!Bw %p, 1\n\
+             store.i32 %b, 7\n\
+             %v = load.i32 %b\n\
+             ret.i32 %v\n}"
+        ),
+        vec![(1, false), (1, false)]
+    );
+}
+
+#[test]
+fn a_packed_field_keeps_the_alignment_its_offset_leaves() {
+    assert_eq!(
+        access_aligns(
+            "type !Sm = packed struct { x: i32, s: i16, y: i32 }\n\
+             fn @main() -> i32 {\nentry:\n\
+             %p = stackalloc.!Sm\n\
+             %y = getfieldptr.!Sm %p, 2\n\
+             %v = load.i32 %y\n\
+             ret.i32 %v\n}"
+        ),
+        vec![(2, false)]
+    );
+}
+
+#[test]
+fn a_plain_struct_field_access_keeps_its_natural_alignment() {
+    assert_eq!(
+        access_aligns(
+            "type !Ns = struct { a: i8, b: i32 }\n\
+             fn @main() -> i32 {\nentry:\n\
+             %p = stackalloc.!Ns\n\
+             %b = getfieldptr.!Ns %p, 1\n\
+             store.i32 %b, 7\n\
+             %v = load.i32 %b\n\
+             ret.i32 %v\n}"
+        ),
+        vec![(4, false), (4, false)]
+    );
+}
+
+#[test]
+fn a_packed_field_of_a_pointer_the_function_was_handed_is_still_under_aligned() {
+    assert_eq!(
+        access_aligns(
+            "type !Bw = packed struct { a: i8, b: i32 }\n\
+             fn @main(ptr %p) -> i32 {\nentry:\n\
+             %b = getfieldptr.!Bw %p, 1\n\
+             %v = load.i32 %b\n\
+             ret.i32 %v\n}"
+        ),
+        vec![(1, false)]
+    );
+}
+
+#[test]
+fn a_field_of_a_packed_global_is_aligned_like_the_global() {
+    assert_eq!(
+        access_aligns(
+            "type !Pair = packed struct { a: i32, b: i32 }\n\
+             global $g: !Pair = {1, 2}\n\
+             fn @main() -> i32 {\nentry:\n\
+             %b = getfieldptr.!Pair $g, 1\n\
+             %v = load.i32 %b\n\
+             ret.i32 %v\n}"
+        ),
+        vec![(1, false)]
+    );
+}
+
+#[test]
+fn a_nested_packed_field_carries_the_alignment_of_the_whole_path() {
+    assert_eq!(
+        access_aligns(
+            "type !Tail = packed struct { a: i64, b: i8 }\n\
+             type !Outer = struct { c: i8, tail: !Tail }\n\
+             fn @main() -> i64 {\nentry:\n\
+             %p = stackalloc.!Outer\n\
+             %t = getfieldptr.!Outer %p, 1\n\
+             %a = getfieldptr.!Tail %t, 0\n\
+             %v = load.i64 %a\n\
+             ret.i64 %v\n}"
+        ),
+        vec![(1, false)]
+    );
+}
+
+#[test]
+fn an_array_element_keeps_the_alignment_of_its_stride() {
+    assert_eq!(
+        access_aligns(
+            "fn @main() -> i32 {\nentry:\n\
+             %p = stackalloc.[4 x i32]\n\
+             %e = getelem.i32 %p, 3\n\
+             %v = load.i32 %e\n\
+             ret.i32 %v\n}"
+        ),
+        vec![(4, false)]
+    );
+}
+
+#[test]
+fn a_stated_alignment_still_overrides_what_the_address_shows() {
+    assert_eq!(
+        access_aligns(
+            "type !Ns = struct { a: i8, b: i32 }\n\
+             fn @main() -> i32 {\nentry:\n\
+             %p = stackalloc.!Ns\n\
+             %b = getfieldptr.!Ns %p, 1\n\
+             %v = load.i32 %b align 1\n\
+             ret.i32 %v\n}"
+        ),
+        vec![(1, true)]
+    );
+}
+
+#[test]
+fn a_variable_index_scaled_by_a_constant_keeps_what_the_scale_guarantees() {
+    assert_eq!(
+        access_aligns(
+            "fn @main(ptr %out, i64 %i) -> i64 {\nentry:\n\
+             %scaled = mul.i64 %i, 2\n\
+             %e = getelem.i64 %out, %scaled\n\
+             %v = load.i64 %e\n\
+             ret.i64 %v\n}"
+        ),
+        vec![(8, false)]
+    );
+}
+
+#[test]
+fn an_element_of_a_packed_array_is_aligned_like_its_stride() {
+    assert_eq!(
+        access_aligns(
+            "type !Odd = packed struct { a: i64, b: i8 }\n\
+             fn @main(ptr %p, i64 %i) -> i64 {\nentry:\n\
+             %e = getelem.!Odd %p, %i\n\
+             %a = getfieldptr.!Odd %e, 0\n\
+             %v = load.i64 %a\n\
+             ret.i64 %v\n}"
+        ),
+        vec![(1, false)]
+    );
+}

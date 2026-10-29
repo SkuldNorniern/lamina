@@ -155,6 +155,7 @@ pub(super) struct Cx<'c, 'a> {
     pub(super) pointer: PointerWidth,
     pub(super) int64_regs: bool,
     pub(super) endianness: Endianness,
+    pub(super) pointer_aligns: &'c PointerAligns<'a>,
     pub(super) out: Vec<Instruction>,
 }
 
@@ -458,8 +459,22 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn store_words(&mut self, base: Register, words: Words) {
+        self.store_words_at(base, words, self.word_align());
+    }
+
+    /// The alignment each half of a wide value is moved at: a word, unless the address
+    /// itself is known to fall short of one.
+    fn word_align(&self) -> u8 {
+        word_bytes(self.int64_regs) as u8
+    }
+
+    fn address_align(&self, ptr: &IRVal<'a>) -> u8 {
+        pointer_align(ptr, self.pointer_aligns, self.module, self.pointer)
+    }
+
+    fn store_words_at(&mut self, base: Register, words: Words, align: u8) {
         let attrs = MemoryAttrs {
-            align: word_bytes(self.int64_regs) as u8,
+            align: align.min(self.word_align()),
             volatile: false,
             stated_align: false,
         };
@@ -485,8 +500,12 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn load_words(&mut self, base: Register) -> Words {
+        self.load_words_at(base, self.word_align())
+    }
+
+    fn load_words_at(&mut self, base: Register, align: u8) -> Words {
         let attrs = MemoryAttrs {
-            align: word_bytes(self.int64_regs) as u8,
+            align: align.min(self.word_align()),
             volatile: false,
             stated_align: false,
         };
@@ -1231,8 +1250,9 @@ pub(super) fn lower_instruction<'a>(
             align,
         } if is_wide_type(ty, cx.int64_regs) => {
             reject_wide_alignment(*align, ty, "load")?;
+            let at = cx.address_align(ptr);
             let base = address_base(ptr, cx)?;
-            let loaded = cx.load_words(base);
+            let loaded = cx.load_words_at(base, at);
             let pair = cx.result_pair(result);
             cx.write_pair(pair, loaded);
         }
@@ -1244,9 +1264,10 @@ pub(super) fn lower_instruction<'a>(
             align,
         } if is_wide_type(ty, cx.int64_regs) => {
             reject_wide_alignment(*align, ty, "store")?;
+            let at = cx.address_align(ptr);
             let base = address_base(ptr, cx)?;
             let words = cx.operand_words(value)?;
-            cx.store_words(base, words);
+            cx.store_words_at(base, words, at);
         }
         IRInst::Copy { result, ty, value } if is_wide_type(ty, cx.int64_regs) => {
             let words = cx.operand_words(value)?;

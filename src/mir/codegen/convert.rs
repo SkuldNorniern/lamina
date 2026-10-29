@@ -252,17 +252,269 @@ fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
     }
 }
 
-/// The alignment a load or store is carried out at: the one the instruction states,
-/// or the natural alignment of the accessed type when it states none.
+/// The alignment attributed to an address nothing is known about. Above every natural
+/// alignment, so an unknown base never lowers the alignment of an access through it.
+const UNCONSTRAINED_ALIGN: u8 = 128;
+
+/// The alignment of `base + offset`, given the alignment of `base`.
+fn displaced_align(base: u8, offset: u64) -> u8 {
+    if offset == 0 {
+        return base;
+    }
+    let step = 1u64 << offset.trailing_zeros();
+    base.min(u8::try_from(step).unwrap_or(UNCONSTRAINED_ALIGN))
+}
+
+/// The alignment of every pointer a function derives from an address it can reason
+/// about, keyed by the IR name that holds it.
+///
+/// A name missing from the map is a pointer whose alignment the lowering cannot bound:
+/// a parameter, a loaded pointer, a call result. Those keep [`UNCONSTRAINED_ALIGN`], the
+/// same assumption C makes of a pointer it is handed.
+type PointerAligns<'a> = HashMap<&'a str, u8>;
+
+/// Power of two every value of an index is known to be a multiple of, by IR name.
+/// An index missing from the map is a multiple of one and nothing more.
+type IndexSteps<'a> = HashMap<&'a str, u64>;
+
+/// Ceiling on a tracked step, past any alignment a target asks for.
+const MAX_STEP: u64 = 1 << 32;
+
+/// The largest power of two, up to [`MAX_STEP`], that divides `value`. Zero is a
+/// multiple of everything.
+fn step_of(value: u128) -> u64 {
+    if value == 0 {
+        return MAX_STEP;
+    }
+    let zeros = value.trailing_zeros();
+    if zeros >= MAX_STEP.trailing_zeros() {
+        MAX_STEP
+    } else {
+        1u64 << zeros
+    }
+}
+
+fn literal_step(literal: &IRLit<'_>) -> Option<u64> {
+    let value = match literal {
+        IRLit::I8(v) => i64::from(*v),
+        IRLit::I16(v) => i64::from(*v),
+        IRLit::I32(v) => i64::from(*v),
+        IRLit::I64(v) => *v,
+        IRLit::U8(v) => i64::from(*v),
+        IRLit::U16(v) => i64::from(*v),
+        IRLit::U32(v) => i64::from(*v),
+        IRLit::U64(v) => *v as i64,
+        _ => return None,
+    };
+    Some(step_of(u128::from(value.unsigned_abs())))
+}
+
+fn index_step<'a>(value: &IRVal<'a>, steps: &IndexSteps<'a>) -> u64 {
+    match value {
+        IRVal::Variable(id) => steps.get(id).copied().unwrap_or(1),
+        IRVal::Constant(literal) => literal_step(literal).unwrap_or(1),
+        _ => 1,
+    }
+}
+
+/// Records what each integer value is known to be a multiple of, so a variable array
+/// index scaled by the element size does not look worse aligned than it is.
+///
+/// Wrapping never adds a low one bit, so each rule holds for the wrapped result too.
+fn record_index_step<'a>(instr: &IRInst<'a>, steps: &mut IndexSteps<'a>) {
+    let (result, step) = match instr {
+        IRInst::Binary {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        } => {
+            let (a, b) = (index_step(lhs, steps), index_step(rhs, steps));
+            let step = match op {
+                IRBin::Add | IRBin::Sub | IRBin::Or | IRBin::Xor => a.min(b),
+                IRBin::Mul => step_of(u128::from(a) * u128::from(b)),
+                IRBin::And => a.max(b),
+                IRBin::Shl => match literal_shift(rhs, *ty) {
+                    Some(by) => step_of(u128::from(a).checked_shl(by).unwrap_or(0)),
+                    None => 1,
+                },
+                _ => 1,
+            };
+            (*result, step)
+        }
+        IRInst::ZeroExtend { result, value, .. }
+        | IRInst::SignExtend { result, value, .. }
+        | IRInst::Trunc { result, value, .. }
+        | IRInst::Bitcast { result, value, .. }
+        | IRInst::Copy { result, value, .. } => (*result, index_step(value, steps)),
+        _ => return,
+    };
+    if step > 1 {
+        steps.insert(result, step);
+    }
+}
+
+/// A shift count written as a literal, reduced the way the shift itself reduces it.
+fn literal_shift(rhs: &IRVal<'_>, ty: IRPrim) -> Option<u32> {
+    let IRVal::Constant(literal) = rhs else {
+        return None;
+    };
+    let count = match literal {
+        IRLit::I8(v) => i64::from(*v),
+        IRLit::I16(v) => i64::from(*v),
+        IRLit::I32(v) => i64::from(*v),
+        IRLit::I64(v) => *v,
+        IRLit::U8(v) => i64::from(*v),
+        IRLit::U16(v) => i64::from(*v),
+        IRLit::U32(v) => i64::from(*v),
+        IRLit::U64(v) => *v as i64,
+        _ => return None,
+    };
+    let bits = int_bits_for_bitcast(&ty);
+    u32::try_from(count).ok().map(|count| count & (bits - 1))
+}
+
+/// The alignment of the storage a global names.
+fn global_align(module: &IRModule<'_>, name: &str, pointer: PointerWidth) -> u8 {
+    let Some(decl) = module.global_declarations.get(name) else {
+        return UNCONSTRAINED_ALIGN;
+    };
+    let Some(resolved) = resolve_type_names(&decl.ty, &module.type_declarations) else {
+        return UNCONSTRAINED_ALIGN;
+    };
+    let align = (align_of_type(&resolved, pointer) as usize).max(declared_align(decl.align));
+    u8::try_from(align).unwrap_or(UNCONSTRAINED_ALIGN)
+}
+
+fn pointer_align<'a>(
+    value: &IRVal<'a>,
+    known: &PointerAligns<'a>,
+    module: &IRModule<'a>,
+    pointer: PointerWidth,
+) -> u8 {
+    match value {
+        IRVal::Variable(id) => known.get(id).copied().unwrap_or(UNCONSTRAINED_ALIGN),
+        IRVal::Global(name) => global_align(module, name, pointer),
+        _ => UNCONSTRAINED_ALIGN,
+    }
+}
+
+/// Records the alignment of each pointer `f` derives, so a load or store through one
+/// states the alignment of the address rather than of the type it reads.
+///
+/// Walks the blocks in the order the conversion walks them. The IR is in SSA form with
+/// no pointer-valued phi, so a definition is always seen before its uses.
+fn pointer_alignments<'a>(
+    f: &IRFunction<'a>,
+    module: &IRModule<'a>,
+    pointer: PointerWidth,
+) -> PointerAligns<'a> {
+    let mut known: PointerAligns<'a> = HashMap::new();
+    let mut steps: IndexSteps<'a> = HashMap::new();
+    let mut visited: HashSet<&'a str> = HashSet::new();
+    let mut worklist: VecDeque<&'a str> = VecDeque::new();
+    if !f.basic_blocks.contains_key(f.entry_block) {
+        return known;
+    }
+    worklist.push_back(f.entry_block);
+    visited.insert(f.entry_block);
+    while let Some(label) = worklist.pop_front() {
+        let block = &f.basic_blocks[label];
+        for instr in &block.instructions {
+            record_index_step(instr, &mut steps);
+            match instr {
+                IRInst::GetFieldPtr {
+                    result,
+                    struct_ptr,
+                    struct_type,
+                    field_index,
+                } => {
+                    let Some(resolved) = resolve_type_names(struct_type, &module.type_declarations)
+                    else {
+                        continue;
+                    };
+                    let IRType::Struct { fields, packed } = &resolved else {
+                        continue;
+                    };
+                    let Some(offset) =
+                        struct_field_byte_offset(fields, *packed, *field_index, pointer)
+                    else {
+                        continue;
+                    };
+                    let base = pointer_align(struct_ptr, &known, module, pointer);
+                    known.insert(result, displaced_align(base, offset));
+                }
+                IRInst::GetElemPtr {
+                    result,
+                    array_ptr,
+                    index,
+                    element_type,
+                } => {
+                    let Some(resolved) =
+                        resolve_type_names(element_type, &module.type_declarations)
+                    else {
+                        continue;
+                    };
+                    let Some(size) = sizeof_type(&resolved, pointer) else {
+                        continue;
+                    };
+                    let base = pointer_align(array_ptr, &known, module, pointer);
+                    let step = step_of(u128::from(index_step(index, &steps)) * u128::from(size));
+                    known.insert(result, displaced_align(base, step));
+                }
+                IRInst::Copy { result, value, .. } => {
+                    let align = pointer_align(value, &known, module, pointer);
+                    if align != UNCONSTRAINED_ALIGN {
+                        known.insert(result, align);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for target in block.instructions.iter().flat_map(successors) {
+            if visited.insert(target) {
+                worklist.push_back(target);
+            }
+        }
+    }
+    known
+}
+
+fn successors<'a>(instr: &IRInst<'a>) -> Vec<&'a str> {
+    match instr {
+        IRInst::Jmp { target_label } => vec![*target_label],
+        IRInst::Br {
+            true_label,
+            false_label,
+            ..
+        } => vec![*true_label, *false_label],
+        IRInst::Switch { cases, default, .. } => {
+            let mut labels: Vec<&'a str> = cases.iter().map(|(_, label)| *label).collect();
+            labels.push(*default);
+            labels
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The alignment a load or store is carried out at: the one the instruction states, or
+/// the alignment the lowering can prove of the address, capped at the natural alignment
+/// of the accessed type.
+///
+/// The cap keeps a derived alignment reporting what the access needs rather than what
+/// the address happens to exceed, so only an address that is genuinely short of the
+/// natural alignment — a field of a packed struct, say — comes out below it.
 fn access_alignment(
     stated: Option<u32>,
     ty: MirType,
+    address: u8,
     pointer: PointerWidth,
     what: &str,
 ) -> Result<u8, FromIRError> {
     let natural = ty.alignment(pointer) as u8;
     let Some(stated) = stated else {
-        return Ok(natural);
+        return Ok(natural.min(address));
     };
     u8::try_from(stated).map_err(|_| {
         FromIRError::UnsupportedAlignment(format!(
@@ -442,6 +694,8 @@ struct ValueFacts<'t, 'a> {
     /// argument promotions begin.
     variadic_fixed: &'t HashMap<&'a str, usize>,
     module: &'t IRModule<'a>,
+    /// Alignment of each pointer the function derives, by the IR name holding it.
+    pointer_aligns: &'t PointerAligns<'a>,
 }
 
 fn conflicting_definitions(name: &str) -> FromIRError {
@@ -888,6 +1142,7 @@ fn convert_function<'a>(
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut alignments: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
+    let pointer_aligns = pointer_alignments(f, module, pointer);
 
     let mut aggregate_prelude = Vec::new();
     for param in &f.signature.params {
@@ -1009,6 +1264,7 @@ fn convert_function<'a>(
                     types: &register_types,
                     variadic_fixed: &variadic_fixed,
                     module,
+                    pointer_aligns: &pointer_aligns,
                 },
                 &mut globals,
                 pointer,
@@ -1224,6 +1480,7 @@ fn convert_instruction<'a>(
         pointer,
         int64_regs,
         endianness,
+        pointer_aligns: facts.pointer_aligns,
         out: Vec::new(),
     };
     if wide::lower_instruction(instr, &mut wide_cx)? {
@@ -1685,7 +1942,13 @@ fn convert_instruction<'a>(
                 dst,
                 addr,
                 attrs: MemoryAttrs {
-                    align: access_alignment(*align, mir_ty, pointer, "load")?,
+                    align: access_alignment(
+                        *align,
+                        mir_ty,
+                        pointer_align(ptr, facts.pointer_aligns, facts.module, pointer),
+                        pointer,
+                        "load",
+                    )?,
                     volatile: *volatile,
                     stated_align: align.is_some(),
                 },
@@ -1719,7 +1982,13 @@ fn convert_instruction<'a>(
                 src,
                 addr,
                 attrs: MemoryAttrs {
-                    align: access_alignment(*align, mir_ty, pointer, "store")?,
+                    align: access_alignment(
+                        *align,
+                        mir_ty,
+                        pointer_align(ptr, facts.pointer_aligns, facts.module, pointer),
+                        pointer,
+                        "store",
+                    )?,
                     volatile: *volatile,
                     stated_align: align.is_some(),
                 },

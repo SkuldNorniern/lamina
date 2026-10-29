@@ -93,9 +93,11 @@ fn @overlap() -> i64 {
     %hi = load.i32 %w1
     %whole = load.i64 %w0
     %pv4 = extend.i32.i64 %lo
-    call @print_i64(%pv4)
     %pv5 = extend.i32.i64 %hi
-    call @print_i64(%pv5)
+    %sum = add.i64 %pv4, %pv5
+    %prod = mul.i64 %pv4, %pv5
+    call @print_i64(%sum)
+    call @print_i64(%prod)
     call @print_i64(%whole)
     ret.i64 0
 }

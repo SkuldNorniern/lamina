@@ -98,8 +98,11 @@ def load_expected_output(test_path):
     """Load expected output from .expected or expected_output.txt file"""
     test_path = Path(test_path)
     
-    # Try .expected first (standard for testcases)
+    # A <stem>.<byteorder>.expected file takes precedence on hosts of that byte order.
     expected_path = test_path.with_suffix('.expected')
+    byte_order_path = test_path.with_name(f"{test_path.stem}.{sys.byteorder}.expected")
+    if byte_order_path.exists():
+        expected_path = byte_order_path
     
     # If not found, try expected_output.txt (standard for benchmarks)
     if not expected_path.exists():
