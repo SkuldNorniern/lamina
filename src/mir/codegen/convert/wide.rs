@@ -43,8 +43,8 @@ pub(super) fn is_quad_type(ty: &IRType<'_>, pointer: PointerWidth) -> bool {
 
 pub(super) fn word_ty(pointer: PointerWidth) -> MirType {
     match pointer {
-        PointerWidth::Bits32 => MirType::i32(),
-        PointerWidth::Bits64 => MirType::i64(),
+        PointerWidth::Bits32 => MirType::Scalar(ScalarType::I32),
+        PointerWidth::Bits64 => MirType::Scalar(ScalarType::I64),
     }
 }
 
@@ -94,10 +94,11 @@ impl LibCall {
         for (index, param) in self.params.iter().enumerate() {
             let slot = u32::try_from(index).unwrap_or(u32::MAX);
             let parameter = match param {
-                Abi::Wide => {
-                    Parameter::new(Register::Virtual(VirtualReg::gpr(slot)), MirType::ptr())
-                        .with_aggregate(wide_aggregate(pointer))
-                }
+                Abi::Wide => Parameter::new(
+                    Register::Virtual(VirtualReg::gpr(slot)),
+                    MirType::Scalar(ScalarType::Ptr),
+                )
+                .with_aggregate(wide_aggregate(pointer)),
                 Abi::Scalar(ty) => {
                     let class = if ty.is_float() {
                         RegisterClass::Fpr
@@ -113,7 +114,7 @@ impl LibCall {
             None => {}
             Some(Abi::Wide) => {
                 sig = sig
-                    .with_return(MirType::ptr())
+                    .with_return(MirType::Scalar(ScalarType::Ptr))
                     .with_return_aggregate(wide_aggregate(pointer));
             }
             Some(Abi::Scalar(ty)) => sig = sig.with_return(ty),
@@ -1296,14 +1297,26 @@ pub(super) fn lower_instruction<'a>(
             let arg = cx.spill(words);
             let wide = cx.pointer == PointerWidth::Bits64;
             let (symbol, ret_ty) = match target_type {
-                IRPrim::F64 if *signed && wide => (RuntimeSymbol::Floattidf, MirType::f64()),
-                IRPrim::F64 if wide => (RuntimeSymbol::Floatuntidf, MirType::f64()),
-                IRPrim::F32 if *signed && wide => (RuntimeSymbol::Floattisf, MirType::f32()),
-                IRPrim::F32 if wide => (RuntimeSymbol::Floatuntisf, MirType::f32()),
-                IRPrim::F64 if *signed => (RuntimeSymbol::Floatdidf, MirType::f64()),
-                IRPrim::F64 => (RuntimeSymbol::Floatundidf, MirType::f64()),
-                IRPrim::F32 if *signed => (RuntimeSymbol::Floatdisf, MirType::f32()),
-                IRPrim::F32 => (RuntimeSymbol::Floatundisf, MirType::f32()),
+                IRPrim::F64 if *signed && wide => {
+                    (RuntimeSymbol::Floattidf, MirType::Scalar(ScalarType::F64))
+                }
+                IRPrim::F64 if wide => {
+                    (RuntimeSymbol::Floatuntidf, MirType::Scalar(ScalarType::F64))
+                }
+                IRPrim::F32 if *signed && wide => {
+                    (RuntimeSymbol::Floattisf, MirType::Scalar(ScalarType::F32))
+                }
+                IRPrim::F32 if wide => {
+                    (RuntimeSymbol::Floatuntisf, MirType::Scalar(ScalarType::F32))
+                }
+                IRPrim::F64 if *signed => {
+                    (RuntimeSymbol::Floatdidf, MirType::Scalar(ScalarType::F64))
+                }
+                IRPrim::F64 => (RuntimeSymbol::Floatundidf, MirType::Scalar(ScalarType::F64)),
+                IRPrim::F32 if *signed => {
+                    (RuntimeSymbol::Floatdisf, MirType::Scalar(ScalarType::F32))
+                }
+                IRPrim::F32 => (RuntimeSymbol::Floatundisf, MirType::Scalar(ScalarType::F32)),
                 IRPrim::I8
                 | IRPrim::I16
                 | IRPrim::I32
@@ -1334,14 +1347,26 @@ pub(super) fn lower_instruction<'a>(
         } if is_wide_prim(*target_type, cx.pointer) => {
             let wide = cx.pointer == PointerWidth::Bits64;
             let (symbol, param_ty) = match source_type {
-                IRPrim::F64 if *signed && wide => (RuntimeSymbol::Fixdfti, MirType::f64()),
-                IRPrim::F64 if wide => (RuntimeSymbol::Fixunsdfti, MirType::f64()),
-                IRPrim::F32 if *signed && wide => (RuntimeSymbol::Fixsfti, MirType::f32()),
-                IRPrim::F32 if wide => (RuntimeSymbol::Fixunssfti, MirType::f32()),
-                IRPrim::F64 if *signed => (RuntimeSymbol::Fixdfdi, MirType::f64()),
-                IRPrim::F64 => (RuntimeSymbol::Fixunsdfdi, MirType::f64()),
-                IRPrim::F32 if *signed => (RuntimeSymbol::Fixsfdi, MirType::f32()),
-                IRPrim::F32 => (RuntimeSymbol::Fixunssfdi, MirType::f32()),
+                IRPrim::F64 if *signed && wide => {
+                    (RuntimeSymbol::Fixdfti, MirType::Scalar(ScalarType::F64))
+                }
+                IRPrim::F64 if wide => {
+                    (RuntimeSymbol::Fixunsdfti, MirType::Scalar(ScalarType::F64))
+                }
+                IRPrim::F32 if *signed && wide => {
+                    (RuntimeSymbol::Fixsfti, MirType::Scalar(ScalarType::F32))
+                }
+                IRPrim::F32 if wide => {
+                    (RuntimeSymbol::Fixunssfti, MirType::Scalar(ScalarType::F32))
+                }
+                IRPrim::F64 if *signed => {
+                    (RuntimeSymbol::Fixdfdi, MirType::Scalar(ScalarType::F64))
+                }
+                IRPrim::F64 => (RuntimeSymbol::Fixunsdfdi, MirType::Scalar(ScalarType::F64)),
+                IRPrim::F32 if *signed => {
+                    (RuntimeSymbol::Fixsfdi, MirType::Scalar(ScalarType::F32))
+                }
+                IRPrim::F32 => (RuntimeSymbol::Fixunssfdi, MirType::Scalar(ScalarType::F32)),
                 IRPrim::I8
                 | IRPrim::I16
                 | IRPrim::I32
@@ -1463,7 +1488,7 @@ pub(super) fn lower_instruction<'a>(
             let lo = cx.temp();
             let to = cx.word();
             cx.out.push(Instruction::IntConvert {
-                from: MirType::ptr(),
+                from: MirType::Scalar(ScalarType::Ptr),
                 to,
                 signed: false,
                 dst: lo.clone(),
@@ -1486,7 +1511,7 @@ pub(super) fn lower_instruction<'a>(
             let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
             cx.out.push(Instruction::IntConvert {
                 from,
-                to: MirType::ptr(),
+                to: MirType::Scalar(ScalarType::Ptr),
                 signed: false,
                 dst,
                 src,
@@ -1508,7 +1533,7 @@ pub(super) fn lower_instruction<'a>(
             let address = cx.temp();
             let word = cx.word();
             cx.out.push(Instruction::IntConvert {
-                from: MirType::ptr(),
+                from: MirType::Scalar(ScalarType::Ptr),
                 to: word,
                 signed: false,
                 dst: address.clone(),
@@ -1518,7 +1543,7 @@ pub(super) fn lower_instruction<'a>(
             let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
             cx.out.push(Instruction::IntConvert {
                 from: word,
-                to: MirType::ptr(),
+                to: MirType::Scalar(ScalarType::Ptr),
                 signed: false,
                 dst,
                 src: sum,

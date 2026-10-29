@@ -1,6 +1,6 @@
 //! Common code for MIR codegen backends.
 
-use lamina_mir::SourceLoc;
+use lamina_mir::{ScalarType, SourceLoc};
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt::{Debug, Display},
@@ -124,7 +124,7 @@ pub(super) fn integer_conversion(
     instruction: &Instruction,
     pointer_width: PointerWidth,
 ) -> Option<Vec<Instruction>> {
-    integer_conversion_with_width(instruction, MirType::i64(), pointer_width)
+    integer_conversion_with_width(instruction, MirType::Scalar(ScalarType::I64), pointer_width)
 }
 
 pub(super) fn integer_conversion_with_width(
@@ -884,9 +884,9 @@ pub fn promoted_argument_type(arg: &Operand) -> MirType {
         _ => false,
     };
     if float {
-        MirType::f64()
+        MirType::Scalar(ScalarType::F64)
     } else {
-        MirType::i64()
+        MirType::Scalar(ScalarType::I64)
     }
 }
 
@@ -1747,7 +1747,7 @@ mod analysis_tests {
             dst,
             lhs: Operand::Immediate(Immediate::I64(1)),
             rhs: Operand::Immediate(Immediate::I64(0)),
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
         };
         let mut builder = FunctionBuilder::new("nested")
             .block("entry")
@@ -1775,7 +1775,7 @@ mod analysis_tests {
             .block("body");
         for _ in 0..24 {
             builder = builder.instr(MirInst::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 src: Operand::Immediate(Immediate::I64(0)),
             });
@@ -1840,14 +1840,14 @@ mod analysis_tests {
             (false, false, false, "r9"),
         ] {
             let mut func = FunctionBuilder::new("increment")
-                .param(a.into(), MirType::i64())
+                .param(a.into(), MirType::Scalar(ScalarType::I64))
                 .block("body")
                 .instr(MirInst::IntBinary {
                     op: IntBinOp::Add,
                     dst: b.into(),
                     lhs: Operand::Register(a.into()),
                     rhs: Operand::Immediate(Immediate::I64(1)),
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                 })
                 .instr(MirInst::TailCall {
                     name: "increment".into(),
@@ -1859,7 +1859,7 @@ mod analysis_tests {
                 })
                 .block("entry")
                 .instr(MirInst::Copy {
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: c.into(),
                     src: Operand::Register(a.into()),
                 })
@@ -1899,16 +1899,16 @@ mod backend_plan_tests {
         let b = VirtualReg::gpr(1);
         let cond = VirtualReg::gpr(2);
         let func = FunctionBuilder::new("swap")
-            .param(a.into(), MirType::i64())
-            .param(b.into(), MirType::i64())
-            .returns(MirType::i64())
+            .param(a.into(), MirType::Scalar(ScalarType::I64))
+            .param(b.into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntCmp {
                 op: IntCmpOp::SGt,
                 dst: cond.into(),
                 lhs: Operand::Register(a.into()),
                 rhs: Operand::Register(b.into()),
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
             })
             .instr(Instruction::Br {
                 cond: cond.into(),

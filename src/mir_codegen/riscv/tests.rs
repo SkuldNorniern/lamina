@@ -49,7 +49,7 @@ fn riscv_frame_arithmetic(asm: &str) -> (i64, Vec<i64>) {
 fn stack_reservation_is_reserved_in_the_prologue() -> Result<(), Box<dyn Error>> {
     let slot = VirtualReg::gpr(1);
     let mut function = FunctionBuilder::new("reserved")
-        .returns(MirType::ptr())
+        .returns(MirType::Scalar(ScalarType::Ptr))
         .block("entry")
         .instr(MirInst::StackAddr {
             dst: Register::Virtual(VirtualReg::gpr(0)),
@@ -76,7 +76,7 @@ fn lea_offset_beyond_the_immediate_range_reaches_the_element() -> Result<(), Box
     let slot = VirtualReg::gpr(1);
     let base = Register::Virtual(VirtualReg::gpr(0));
     let mut function = FunctionBuilder::new("element")
-        .returns(MirType::ptr())
+        .returns(MirType::Scalar(ScalarType::Ptr))
         .block("entry")
         .instr(MirInst::StackAddr {
             dst: base.clone(),
@@ -122,9 +122,12 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
     let mut module = MirModule::new("rv32_scalar");
     let freg = |id| Register::Virtual(VirtualReg::fpr(id));
     let foperand = |id| Operand::Register(freg(id));
-    for ty in [MirType::f32(), MirType::f64()] {
+    for ty in [
+        MirType::Scalar(ScalarType::F32),
+        MirType::Scalar(ScalarType::F64),
+    ] {
         let immediate = |v: f64| {
-            Operand::Immediate(if ty == MirType::f32() {
+            Operand::Immediate(if ty == MirType::Scalar(ScalarType::F32) {
                 Immediate::F32(v as f32)
             } else {
                 Immediate::F64(v)
@@ -132,8 +135,8 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         };
         let mut function =
             FunctionBuilder::new(format!("float_{}", ty.size_bytes(PointerWidth::Bits32)))
-                .param(reg(0), MirType::ptr())
-                .returns(MirType::i32())
+                .param(reg(0), MirType::Scalar(ScalarType::Ptr))
+                .returns(MirType::Scalar(ScalarType::I32))
                 .block("entry")
                 .build()
                 .with_pointer_width(PointerWidth::Bits32);
@@ -210,34 +213,38 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         module.add_function(function);
     }
     let mut function = FunctionBuilder::new("integers")
-        .param(reg(0), MirType::ptr())
-        .param(reg(1), MirType::i32())
-        .returns(MirType::i32())
+        .param(reg(0), MirType::Scalar(ScalarType::Ptr))
+        .param(reg(1), MirType::Scalar(ScalarType::I32))
+        .returns(MirType::Scalar(ScalarType::I32))
         .block("entry")
         .build();
     let instructions = &mut function.blocks[0].instructions;
     instructions.push(Located::from(MirInst::Load {
-        ty: MirType::ptr(),
+        ty: MirType::Scalar(ScalarType::Ptr),
         dst: reg(2),
         addr: addr.clone(),
         attrs: Default::default(),
     }));
     instructions.push(Located::from(MirInst::Copy {
-        ty: MirType::ptr(),
+        ty: MirType::Scalar(ScalarType::Ptr),
         dst: reg(3),
         src: operand(2),
     }));
     instructions.push(Located::from(MirInst::Store {
-        ty: MirType::ptr(),
+        ty: MirType::Scalar(ScalarType::Ptr),
         src: operand(3),
         addr: addr.clone(),
         attrs: Default::default(),
     }));
     let mut id = 4;
-    for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
+    for ty in [
+        MirType::Scalar(ScalarType::I8),
+        MirType::Scalar(ScalarType::I16),
+        MirType::Scalar(ScalarType::I32),
+    ] {
         let input = id;
         instructions.push(Located::from(MirInst::IntConvert {
-            from: MirType::i32(),
+            from: MirType::Scalar(ScalarType::I32),
             to: ty,
             signed: false,
             dst: reg(input),
@@ -269,9 +276,12 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
             id += 1;
         }
     }
-    for ty in [MirType::i8(), MirType::i16()] {
+    for ty in [
+        MirType::Scalar(ScalarType::I8),
+        MirType::Scalar(ScalarType::I16),
+    ] {
         instructions.push(Located::from(MirInst::IntConvert {
-            from: MirType::i32(),
+            from: MirType::Scalar(ScalarType::I32),
             to: ty,
             signed: false,
             dst: reg(id),
@@ -281,7 +291,7 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         for signed in [false, true] {
             instructions.push(Located::from(MirInst::IntConvert {
                 from: ty,
-                to: MirType::i32(),
+                to: MirType::Scalar(ScalarType::I32),
                 signed,
                 dst: reg(id + 1),
                 src: operand(truncated),
@@ -352,16 +362,16 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
 fn narrow_loads_sign_extend_on_both_register_widths() -> Result<(), Box<dyn Error>> {
     for xlen in [Xlen::Rv32, Xlen::Rv64] {
         for (ty, mnemonic) in [
-            (MirType::i8(), "lb"),
-            (MirType::i16(), "lh"),
-            (MirType::i32(), "lw"),
+            (MirType::Scalar(ScalarType::I8), "lb"),
+            (MirType::Scalar(ScalarType::I16), "lh"),
+            (MirType::Scalar(ScalarType::I32), "lw"),
         ] {
             let base = Register::Virtual(VirtualReg::gpr(0));
             let dst = Register::Virtual(VirtualReg::gpr(1));
             let mut module = MirModule::new("loads");
             module.add_function(
                 FunctionBuilder::new("load_bits")
-                    .param(base.clone(), MirType::ptr())
+                    .param(base.clone(), MirType::Scalar(ScalarType::Ptr))
                     .returns(ty)
                     .block("entry")
                     .instr(MirInst::Load {

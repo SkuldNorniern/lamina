@@ -252,7 +252,7 @@ fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
 
 fn normalize_lowered_literal(operand: &mut Operand, ty: MirType) {
     operand.normalize_integer_immediate(ty);
-    if ty == MirType::f32()
+    if ty == MirType::Scalar(ScalarType::F32)
         && let Operand::Immediate(Immediate::F64(value)) = operand
     {
         *operand = Operand::imm_f32(*value as f32);
@@ -301,8 +301,8 @@ pub fn from_ir_for_target(
                 decl.initializer.as_ref(),
                 pointer,
             )?;
-            let mut global =
-                Global::new(*global_name, MirType::i8(), pointer).with_layout(size, align);
+            let mut global = Global::new(*global_name, MirType::Scalar(ScalarType::I8), pointer)
+                .with_layout(size, align);
             if let Some(bytes) = bytes {
                 global = global.with_initializer(bytes);
             }
@@ -320,7 +320,8 @@ pub fn from_ir_for_target(
                 let align = size.max(declared_align(decl.align));
                 let bytes = wide_global_bytes(global_name, decl.initializer.as_ref(), size)?;
                 let mut global =
-                    Global::new(*global_name, MirType::i8(), pointer).with_layout(size, align);
+                    Global::new(*global_name, MirType::Scalar(ScalarType::I8), pointer)
+                        .with_layout(size, align);
                 if let Some(bytes) = bytes {
                     global = global.with_initializer(bytes);
                 }
@@ -774,7 +775,7 @@ fn convert_function<'a>(
                 classify_aggregate(&resolved, &format!("return of @{name}"), pointer)?
             {
                 mir_sig = mir_sig
-                    .with_return(MirType::ptr())
+                    .with_return(MirType::Scalar(ScalarType::Ptr))
                     .with_return_aggregate(aggregate);
             } else {
                 let ty = map_ir_type(other)?;
@@ -807,9 +808,10 @@ fn convert_function<'a>(
                 reservations.insert(slot, words - 1);
             }
             let addr = Register::Virtual(vreg_alloc.allocate_gpr());
-            register_types.insert(addr.clone(), MirType::ptr());
+            register_types.insert(addr.clone(), MirType::Scalar(ScalarType::Ptr));
             mir_sig.params.push(
-                Parameter::new(Register::Virtual(slot), MirType::ptr()).with_aggregate(aggregate),
+                Parameter::new(Register::Virtual(slot), MirType::Scalar(ScalarType::Ptr))
+                    .with_aggregate(aggregate),
             );
             aggregate_prelude.push(Instruction::StackAddr {
                 dst: addr.clone(),
@@ -976,7 +978,7 @@ fn convert_function<'a>(
                     let address = ret
                         .replace(Register::Virtual(slot))
                         .ok_or(FromIRError::InvalidIR)?;
-                    register_types.insert(address.clone(), MirType::ptr());
+                    register_types.insert(address.clone(), MirType::Scalar(ScalarType::Ptr));
                     result_address = Some(Instruction::StackAddr { dst: address, slot });
                 }
                 if let Instruction::Call { name, args, .. } = &mut mir_instr
@@ -1016,7 +1018,7 @@ fn convert_function<'a>(
                         | Instruction::AtomicBinary { ty, .. }
                         | Instruction::VaArg { ty, .. } => Some(*ty),
                         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
-                            Some(MirType::i1())
+                            Some(MirType::Scalar(ScalarType::I1))
                         }
                         Instruction::CallIndirect { ret_ty, .. } => *ret_ty,
                         Instruction::Call { name, .. } => module
@@ -1025,7 +1027,7 @@ fn convert_function<'a>(
                             .and_then(|callee| map_ir_type(&callee.signature.return_type).ok())
                             .or_else(|| io_intrinsic_result_type(name, pointer)),
                         Instruction::Lea { .. } | Instruction::StackAddr { .. } => {
-                            Some(MirType::ptr())
+                            Some(MirType::Scalar(ScalarType::Ptr))
                         }
                         _ => None,
                     };
@@ -1743,13 +1745,13 @@ fn convert_instruction<'a>(
                 let Operand::Register(reg) = arg else {
                     continue;
                 };
-                if facts.types.get(reg) != Some(&MirType::f32()) {
+                if facts.types.get(reg) != Some(&MirType::Scalar(ScalarType::F32)) {
                     continue;
                 }
                 let dst = Register::Virtual(vreg_alloc.allocate_fpr());
                 instructions.push(Instruction::FloatConvert {
-                    from: MirType::f32(),
-                    to: MirType::f64(),
+                    from: MirType::Scalar(ScalarType::F32),
+                    to: MirType::Scalar(ScalarType::F64),
                     dst: dst.clone(),
                     src: arg.clone(),
                 });
@@ -1786,16 +1788,16 @@ fn convert_instruction<'a>(
                 let mut mir_ty = map_ir_type(arg_ty)?;
                 let mut operand = resolve_operand(argument, vreg_alloc, var_to_reg, globals)?;
                 normalize_lowered_literal(&mut operand, mir_ty);
-                if index >= fixed && mir_ty == MirType::f32() {
+                if index >= fixed && mir_ty == MirType::Scalar(ScalarType::F32) {
                     let dst = Register::Virtual(vreg_alloc.allocate_fpr());
                     instructions.push(Instruction::FloatConvert {
-                        from: MirType::f32(),
-                        to: MirType::f64(),
+                        from: MirType::Scalar(ScalarType::F32),
+                        to: MirType::Scalar(ScalarType::F64),
                         dst: dst.clone(),
                         src: operand,
                     });
                     operand = Operand::Register(dst);
-                    mir_ty = MirType::f64();
+                    mir_ty = MirType::Scalar(ScalarType::F64);
                 }
                 arg_types.push(mir_ty);
                 mir_args.push(operand);
@@ -1850,7 +1852,7 @@ fn convert_instruction<'a>(
                 )));
             }
             let bits = |ty: MirType| {
-                if ty == MirType::i1() {
+                if ty == MirType::Scalar(ScalarType::I1) {
                     1
                 } else {
                     ty.size_bytes(pointer) * 8
@@ -2003,7 +2005,7 @@ fn convert_instruction<'a>(
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::IntConvert {
-                from: MirType::ptr(),
+                from: MirType::Scalar(ScalarType::Ptr),
                 to: map_ir_prim(*target_type)?,
                 signed: false,
                 dst,
@@ -2020,7 +2022,7 @@ fn convert_instruction<'a>(
             let from = operand_type(&val_op, register_types);
             Ok(vec![Instruction::IntConvert {
                 from,
-                to: MirType::ptr(),
+                to: MirType::Scalar(ScalarType::Ptr),
                 signed: false,
                 dst,
                 src: val_op,
@@ -2096,7 +2098,7 @@ fn convert_instruction<'a>(
                         rhs: Operand::Immediate(Immediate::I64(elem_size)),
                     },
                     Instruction::IntConvert {
-                        from: MirType::ptr(),
+                        from: MirType::Scalar(ScalarType::Ptr),
                         to: word,
                         signed: false,
                         dst: address.clone(),
@@ -2111,7 +2113,7 @@ fn convert_instruction<'a>(
                     },
                     Instruction::IntConvert {
                         from: word,
-                        to: MirType::ptr(),
+                        to: MirType::Scalar(ScalarType::Ptr),
                         signed: false,
                         dst,
                         src: Operand::Register(sum),
@@ -2446,8 +2448,8 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
 /// The integer an address is computed in on a target with this pointer width.
 fn address_word(pointer: PointerWidth) -> MirType {
     match pointer {
-        PointerWidth::Bits32 => MirType::i32(),
-        _ => MirType::i64(),
+        PointerWidth::Bits32 => MirType::Scalar(ScalarType::I32),
+        _ => MirType::Scalar(ScalarType::I64),
     }
 }
 
@@ -2466,22 +2468,22 @@ fn displace_pointer(
     let sum = Register::Virtual(vreg_alloc.allocate_gpr());
     vec![
         Instruction::IntConvert {
-            from: MirType::ptr(),
-            to: MirType::i64(),
+            from: MirType::Scalar(ScalarType::Ptr),
+            to: MirType::Scalar(ScalarType::I64),
             signed: false,
             dst: address.clone(),
             src: Operand::Register(base),
         },
         Instruction::IntBinary {
             op: IntBinOp::Add,
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: sum.clone(),
             lhs: Operand::Register(address),
             rhs: Operand::Immediate(Immediate::I64(offset)),
         },
         Instruction::IntConvert {
-            from: MirType::i64(),
-            to: MirType::ptr(),
+            from: MirType::Scalar(ScalarType::I64),
+            to: MirType::Scalar(ScalarType::Ptr),
             signed: false,
             dst,
             src: Operand::Register(sum),
@@ -2527,13 +2529,16 @@ fn all_ones_immediate(ty: MirType, pointer: PointerWidth) -> Immediate {
 
 fn operand_type(operand: &Operand, types: &HashMap<Register, MirType>) -> MirType {
     match operand {
-        Operand::Register(register) => types.get(register).copied().unwrap_or(MirType::i64()),
+        Operand::Register(register) => types
+            .get(register)
+            .copied()
+            .unwrap_or(MirType::Scalar(ScalarType::I64)),
         Operand::Immediate(Immediate::I8(_)) => MirType::Scalar(ScalarType::I8),
         Operand::Immediate(Immediate::I16(_)) => MirType::Scalar(ScalarType::I16),
-        Operand::Immediate(Immediate::I32(_)) => MirType::i32(),
-        Operand::Immediate(Immediate::F32(_)) => MirType::f32(),
-        Operand::Immediate(Immediate::F64(_)) => MirType::f64(),
-        _ => MirType::i64(),
+        Operand::Immediate(Immediate::I32(_)) => MirType::Scalar(ScalarType::I32),
+        Operand::Immediate(Immediate::F32(_)) => MirType::Scalar(ScalarType::F32),
+        Operand::Immediate(Immediate::F64(_)) => MirType::Scalar(ScalarType::F64),
+        _ => MirType::Scalar(ScalarType::I64),
     }
 }
 

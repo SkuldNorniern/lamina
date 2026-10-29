@@ -286,7 +286,7 @@ impl Kernel {
                     )?;
                 }
                 IntBinOp::Mul => {
-                    let t = self.temporary(MirType::i32())?.start;
+                    let t = self.temporary(MirType::Scalar(ScalarType::I32))?.start;
                     writeln!(
                         self.body,
                         "    v_mul_hi_u32 v{}, v{l}, v{r}\n    v_mul_lo_u32 v{t}, v{l}, v{}\n    v_add_u32 v{}, v{}, v{t}\n    v_mul_lo_u32 v{t}, v{}, v{r}\n    v_add_u32 v{}, v{}, v{t}\n    v_mul_lo_u32 v{d}, v{l}, v{r}",
@@ -378,13 +378,13 @@ impl Kernel {
                         )
                     })
                     .ok_or_else(|| error("AMDGPU address calculation requires a global pointer"))?;
-                let dst = self.allocate(dst, MirType::ptr())?;
+                let dst = self.allocate(dst, MirType::Scalar(ScalarType::Ptr))?;
                 if *offset == 0 {
                     self.copy(dst, base)?;
                 } else {
                     let offset = self.operand(
                         &Operand::Immediate(Immediate::I64(i64::from(*offset))),
-                        MirType::i64(),
+                        MirType::Scalar(ScalarType::I64),
                     )?;
                     self.binary(IntBinOp::Add, dst, base, offset)?;
                 }
@@ -545,7 +545,7 @@ impl Kernel {
             } if args.is_empty() => {
                 let intrinsic = GpuIntrinsic::from_name(name)
                     .ok_or_else(|| error("unsupported AMDGPU call"))?;
-                let value = self.allocate(dst, MirType::i32())?;
+                let value = self.allocate(dst, MirType::Scalar(ScalarType::I32))?;
                 let axis_index = |axis| match axis {
                     GpuAxis::X => 0,
                     GpuAxis::Y => 1,
@@ -938,7 +938,7 @@ mod emission_tests {
         use crate::{
             mir::{
                 AddressMode, AddressSpace, FunctionBuilder, Instruction, KernelMetadata,
-                MemoryAttrs, MirType, Module, Register, VirtualReg,
+                MemoryAttrs, MirType, Module, Register, ScalarType, VirtualReg,
             },
             mir_codegen::amdgpu,
         };
@@ -953,7 +953,7 @@ mod emission_tests {
                 .param(base.clone(), MirType::ptr_in(AddressSpace::Global))
                 .block("entry")
                 .instr(Instruction::Load {
-                    ty: MirType::i32(),
+                    ty: MirType::Scalar(ScalarType::I32),
                     dst: Register::Virtual(VirtualReg::gpr(1)),
                     addr: AddressMode::BaseOffset {
                         base,

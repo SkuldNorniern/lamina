@@ -194,7 +194,7 @@ pub(super) fn emit<W: Write>(
     for (operand, binding) in operands.iter().zip(&bindings) {
         if let AsmOperand::Input { value, .. } = operand {
             load_copy_operand_into(
-                &MirType::i64(),
+                &MirType::Scalar(ScalarType::I64),
                 value,
                 binding.phys,
                 writer,

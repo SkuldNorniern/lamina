@@ -10,6 +10,7 @@ use crate::{
         wasm::generate_mir_wasm,
     },
 };
+use lamina_mir::ScalarType;
 use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use std::{
     error::Error,
@@ -68,9 +69,10 @@ fn operation(
 
 fn module(mut block: Block) -> Module {
     for instruction in &mut block.instructions {
-        instruction.normalize_integer_immediates(Some(MirType::i64()));
+        instruction.normalize_integer_immediates(Some(MirType::Scalar(ScalarType::I64)));
     }
-    let mut function = Function::new(Signature::new("main").with_return(MirType::i64()));
+    let mut function =
+        Function::new(Signature::new("main").with_return(MirType::Scalar(ScalarType::I64)));
     function.blocks.push(block);
     let mut module = Module::new("integer_semantics");
     module.add_function(function);
@@ -273,10 +275,10 @@ fn directory(name: &str) -> TempDir {
 #[test]
 fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult {
     for ty in [
-        MirType::i8(),
-        MirType::i16(),
-        MirType::i32(),
-        MirType::i64(),
+        MirType::Scalar(ScalarType::I8),
+        MirType::Scalar(ScalarType::I16),
+        MirType::Scalar(ScalarType::I32),
+        MirType::Scalar(ScalarType::I64),
     ] {
         let width = ty.size_bytes(PointerWidth::Bits64) * 8;
         let min = -(1i128 << (width - 1));
@@ -329,7 +331,7 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
                 let failed = reg(id + 1);
                 let accumulated = reg(id + 2);
                 id += 3;
-                if ty == MirType::i64() {
+                if ty == MirType::Scalar(ScalarType::I64) {
                     block.push(Instruction::Copy {
                         ty,
                         dst: wide.clone(),
@@ -338,7 +340,7 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
                 } else {
                     block.push(Instruction::IntConvert {
                         from: ty,
-                        to: MirType::i64(),
+                        to: MirType::Scalar(ScalarType::I64),
                         signed: true,
                         dst: wide.clone(),
                         src: Operand::Register(dst),
@@ -347,7 +349,7 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
 
                 block.push(Instruction::IntCmp {
                     op: IntCmpOp::Ne,
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: failed.clone(),
                     lhs: Operand::Register(wide),
                     rhs: imm(expected),
@@ -355,15 +357,15 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
                 let flag = reg(id);
                 id += 1;
                 block.push(Instruction::IntConvert {
-                    from: MirType::i1(),
-                    to: MirType::i64(),
+                    from: MirType::Scalar(ScalarType::I1),
+                    to: MirType::Scalar(ScalarType::I64),
                     signed: false,
                     dst: flag.clone(),
                     src: Operand::Register(failed),
                 });
                 block.push(Instruction::IntBinary {
                     op: IntBinOp::Or,
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: accumulated.clone(),
                     lhs: failures,
                     rhs: Operand::Register(flag),
@@ -410,10 +412,10 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
     let directory = guard.path();
     let targets = targets(false);
     for ty in [
-        MirType::i8(),
-        MirType::i16(),
-        MirType::i32(),
-        MirType::i64(),
+        MirType::Scalar(ScalarType::I8),
+        MirType::Scalar(ScalarType::I16),
+        MirType::Scalar(ScalarType::I32),
+        MirType::Scalar(ScalarType::I64),
     ] {
         let minimum = ty.signed_integer(
             1i64 << (ty.size_bytes(PointerWidth::Bits64) * 8 - 1),
@@ -468,7 +470,9 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
                                 "{} {ty} {op} {lhs} {rhs} constants={constants} optimize={optimize}: {output:?}",
                                 target.triple
                             );
-                            if target.arch == TargetArchitecture::X86_64 && ty == MirType::i64() {
+                            if target.arch == TargetArchitecture::X86_64
+                                && ty == MirType::Scalar(ScalarType::I64)
+                            {
                                 assert_eq!(signal, Some(8));
                             }
                         }
@@ -496,14 +500,14 @@ fn division_guards_skip_proven_safe_operands() -> TestResult {
             let mut block = Block::new("entry");
             for (id, value) in [(0, 7), (1, 2)] {
                 block.push(Instruction::Copy {
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: reg(id),
                     src: imm(value),
                 });
             }
             block.push(Instruction::IntBinary {
                 op: IntBinOp::SDiv,
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: reg(2),
                 lhs: left.map_or_else(|| Operand::Register(reg(0)), imm),
                 rhs: right.map_or_else(|| Operand::Register(reg(1)), imm),
@@ -537,7 +541,7 @@ fn division_traps_stay_inside_unentered_loops() -> TestResult {
     use crate::mir::transform::{LoopInvariantCodeMotion, Transform};
     let mut entry = Block::new("entry");
     entry.push(Instruction::Copy {
-        ty: MirType::i64(),
+        ty: MirType::Scalar(ScalarType::I64),
         dst: reg(0),
         src: imm(0),
     });
@@ -555,7 +559,7 @@ fn division_traps_stay_inside_unentered_loops() -> TestResult {
         &mut body,
         &mut 1,
         IntBinOp::SDiv,
-        MirType::i64(),
+        MirType::Scalar(ScalarType::I64),
         1,
         0,
         true,
@@ -567,7 +571,8 @@ fn division_traps_stay_inside_unentered_loops() -> TestResult {
     exit.push(Instruction::Ret {
         value: Some(imm(0)),
     });
-    let mut function = Function::new(Signature::new("main").with_return(MirType::i64()));
+    let mut function =
+        Function::new(Signature::new("main").with_return(MirType::Scalar(ScalarType::I64)));
     function.blocks = vec![entry, header, body, exit];
     assert_eq!(interpret_mir_function(&function, &[])?, Some(0));
     LoopInvariantCodeMotion
@@ -581,7 +586,11 @@ fn division_traps_stay_inside_unentered_loops() -> TestResult {
 fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
     let guard = directory("comparisons");
     let directory = guard.path();
-    for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
+    for ty in [
+        MirType::Scalar(ScalarType::I8),
+        MirType::Scalar(ScalarType::I16),
+        MirType::Scalar(ScalarType::I32),
+    ] {
         let width = ty.size_bytes(PointerWidth::Bits64) * 8;
         let modulus = 1i64 << width;
         let sign = modulus / 2;
@@ -633,7 +642,7 @@ fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
                             let dst = reg(id);
                             id += 1;
                             block.push(Instruction::IntConvert {
-                                from: MirType::i64(),
+                                from: MirType::Scalar(ScalarType::I64),
                                 to: ty,
                                 signed: false,
                                 dst: dst.clone(),
@@ -654,7 +663,7 @@ fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
                         });
                         block.push(Instruction::IntCmp {
                             op: IntCmpOp::Ne,
-                            ty: MirType::i1(),
+                            ty: MirType::Scalar(ScalarType::I1),
                             dst: failed.clone(),
                             lhs: Operand::Register(result),
                             rhs: imm(i64::from(expected)),
@@ -662,15 +671,15 @@ fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
                         let flag = reg(id);
                         id += 1;
                         block.push(Instruction::IntConvert {
-                            from: MirType::i1(),
-                            to: MirType::i64(),
+                            from: MirType::Scalar(ScalarType::I1),
+                            to: MirType::Scalar(ScalarType::I64),
                             signed: false,
                             dst: flag.clone(),
                             src: Operand::Register(failed),
                         });
                         block.push(Instruction::IntBinary {
                             op: IntBinOp::Or,
-                            ty: MirType::i64(),
+                            ty: MirType::Scalar(ScalarType::I64),
                             dst: accumulated.clone(),
                             lhs: failures,
                             rhs: Operand::Register(flag),
@@ -712,16 +721,16 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
     let mut id = 0;
     let mut failures = imm(0);
     for from in [
-        MirType::i8(),
-        MirType::i16(),
-        MirType::i32(),
-        MirType::i64(),
+        MirType::Scalar(ScalarType::I8),
+        MirType::Scalar(ScalarType::I16),
+        MirType::Scalar(ScalarType::I32),
+        MirType::Scalar(ScalarType::I64),
     ] {
         for to in [
-            MirType::i8(),
-            MirType::i16(),
-            MirType::i32(),
-            MirType::i64(),
+            MirType::Scalar(ScalarType::I8),
+            MirType::Scalar(ScalarType::I16),
+            MirType::Scalar(ScalarType::I32),
+            MirType::Scalar(ScalarType::I64),
         ] {
             if from == to {
                 continue;
@@ -766,7 +775,7 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
                         "{from} -> {to} signed={signed} value={value}"
                     );
                     block.push(instruction);
-                    block.push(if to == MirType::i64() {
+                    block.push(if to == MirType::Scalar(ScalarType::I64) {
                         Instruction::Copy {
                             ty: to,
                             dst: wide.clone(),
@@ -775,7 +784,7 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
                     } else {
                         Instruction::IntConvert {
                             from: to,
-                            to: MirType::i64(),
+                            to: MirType::Scalar(ScalarType::I64),
                             signed: true,
                             dst: wide.clone(),
                             src: Operand::Register(dst),
@@ -783,7 +792,7 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
                     });
                     block.push(Instruction::IntCmp {
                         op: IntCmpOp::Ne,
-                        ty: MirType::i64(),
+                        ty: MirType::Scalar(ScalarType::I64),
                         dst: failed.clone(),
                         lhs: Operand::Register(wide),
                         rhs: imm(expected),
@@ -791,15 +800,15 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
                     let flag = reg(id);
                     id += 1;
                     block.push(Instruction::IntConvert {
-                        from: MirType::i1(),
-                        to: MirType::i64(),
+                        from: MirType::Scalar(ScalarType::I1),
+                        to: MirType::Scalar(ScalarType::I64),
                         signed: false,
                         dst: flag.clone(),
                         src: Operand::Register(failed),
                     });
                     block.push(Instruction::IntBinary {
                         op: IntBinOp::Or,
-                        ty: MirType::i64(),
+                        ty: MirType::Scalar(ScalarType::I64),
                         dst: accumulated.clone(),
                         lhs: failures,
                         rhs: Operand::Register(flag),

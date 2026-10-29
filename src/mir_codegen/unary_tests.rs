@@ -5,6 +5,7 @@ use crate::mir::{
 };
 use crate::mir_codegen::simd_support::tool_available;
 use crate::test_support::TempDir;
+use lamina_mir::ScalarType;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{error::Error, fs, process::Command};
 
@@ -14,8 +15,8 @@ fn unary_module(register_inputs: bool) -> Module {
     let mut block = Block::new("entry");
     let mut id = 0;
     for (ty, value) in [
-        (MirType::f32(), Immediate::F32(4.0)),
-        (MirType::f64(), Immediate::F64(4.0)),
+        (MirType::Scalar(ScalarType::F32), Immediate::F32(4.0)),
+        (MirType::Scalar(ScalarType::F64), Immediate::F64(4.0)),
     ] {
         let src = if register_inputs {
             let reg = Register::Virtual(VirtualReg::fpr(100 + id));
@@ -35,8 +36,8 @@ fn unary_module(register_inputs: bool) -> Module {
         }
     }
     for (ty, value) in [
-        (MirType::f32(), Immediate::F32(4.0)),
-        (MirType::f64(), Immediate::F64(4.0)),
+        (MirType::Scalar(ScalarType::F32), Immediate::F32(4.0)),
+        (MirType::Scalar(ScalarType::F64), Immediate::F64(4.0)),
     ] {
         let src = if register_inputs {
             let reg = Register::Virtual(VirtualReg::fpr(100 + id));

@@ -141,6 +141,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::ScalarType;
     use crate::{
         function::FunctionBuilder,
         instruction::Operand,
@@ -156,7 +157,7 @@ mod tests {
 
     fn imm(dst: u32, value: i64) -> Instruction {
         Instruction::Copy {
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: gpr(dst),
             src: Operand::imm_i64(value),
         }
@@ -164,7 +165,7 @@ mod tests {
 
     fn mov(dst: u32, src: u32) -> Instruction {
         Instruction::Copy {
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: gpr(dst),
             src: Operand::v_gpr(src),
         }
@@ -224,8 +225,8 @@ mod tests {
 
     fn diamond() -> Function {
         FunctionBuilder::new("diamond")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(branch(0, "left", "right"))
             .block("left")
@@ -247,8 +248,8 @@ mod tests {
     #[test]
     fn loop_carried_value_round_trips_and_keeps_its_header_parameter() {
         let f = FunctionBuilder::new("carried")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 0))
             .instr(jump("head"))
@@ -269,8 +270,8 @@ mod tests {
     #[test]
     fn self_referential_parameter_is_pruned_and_round_trips() {
         let f = FunctionBuilder::new("spin")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 5))
             .instr(jump("head"))
@@ -290,8 +291,8 @@ mod tests {
     #[test]
     fn critical_edge_round_trips_without_a_trampoline() {
         let f = FunctionBuilder::new("critical")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 1))
             .instr(branch(0, "join", "body"))
@@ -307,8 +308,8 @@ mod tests {
     #[test]
     fn critical_edge_with_a_renamed_argument_gets_a_trampoline() {
         let f = FunctionBuilder::new("critical_renamed")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 1))
             .instr(imm(5, 7))
@@ -353,7 +354,7 @@ mod tests {
             tramp.instructions,
             vec![
                 Instruction::Copy {
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: gpr(1),
                     src: Operand::v_gpr(5),
                 },
@@ -374,8 +375,8 @@ mod tests {
     #[test]
     fn parallel_copy_cycle_is_sequenced_with_a_saved_register() {
         let f = FunctionBuilder::new("swap")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 1))
             .instr(imm(2, 2))
@@ -446,8 +447,8 @@ mod tests {
     #[test]
     fn identical_branch_arms_needing_copies_share_one_trampoline() {
         let f = FunctionBuilder::new("twin")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 1))
             .instr(imm(5, 7))
@@ -486,7 +487,7 @@ mod tests {
             tramp.instructions,
             vec![
                 Instruction::Copy {
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: gpr(1),
                     src: Operand::v_gpr(5),
                 },
@@ -504,8 +505,8 @@ mod tests {
     #[test]
     fn switch_edge_moves_run_on_their_own_edge() {
         let f = FunctionBuilder::new("dispatch")
-            .param(gpr(0), MirType::i64())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 1))
             .instr(imm(5, 7))
@@ -551,7 +552,7 @@ mod tests {
             tramp.instructions,
             vec![
                 Instruction::Copy {
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: gpr(1),
                     src: Operand::v_gpr(5),
                 },
@@ -577,10 +578,10 @@ mod tests {
     #[test]
     fn copies_owed_to_the_synthetic_entry_go_into_a_new_entry_block() {
         let f = FunctionBuilder::new("loop_entry")
-            .param(gpr(0), MirType::i1())
-            .param(gpr(1), MirType::i64())
-            .param(gpr(2), MirType::i64())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .param(gpr(1), MirType::Scalar(ScalarType::I64))
+            .param(gpr(2), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(mov(3, 1))
             .instr(branch(0, "body", "exit"))
@@ -617,7 +618,7 @@ mod tests {
             out.blocks[0].instructions,
             vec![
                 Instruction::Copy {
-                    ty: MirType::i64(),
+                    ty: MirType::Scalar(ScalarType::I64),
                     dst: gpr(1),
                     src: Operand::v_gpr(2),
                 },

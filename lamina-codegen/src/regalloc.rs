@@ -622,7 +622,7 @@ mod tests {
     fn nested_loop_weights_merge_latches_and_cap_depth() {
         let value = VirtualReg::gpr(0);
         let mut function = FunctionBuilder::new("nested")
-            .param(Register::Virtual(value), MirType::i64())
+            .param(Register::Virtual(value), MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Jmp {
                 target: "h0".into(),
@@ -798,7 +798,10 @@ mod tests {
         let invariant = VirtualReg::gpr(0);
         let temporary = VirtualReg::gpr(1);
         let mut function = FunctionBuilder::new("loop")
-            .param(Register::Virtual(invariant), MirType::i64())
+            .param(
+                Register::Virtual(invariant),
+                MirType::Scalar(ScalarType::I64),
+            )
             .block("entry")
             .instr(Instruction::Jmp {
                 target: "header".into(),
@@ -816,7 +819,7 @@ mod tests {
         function.add_block(exit);
         let mut body = Block::new("body");
         body.push(Instruction::Copy {
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: Register::Virtual(temporary),
             src: Operand::Immediate(Immediate::I64(42)),
         });

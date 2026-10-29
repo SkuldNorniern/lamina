@@ -137,7 +137,7 @@ impl Kernel {
                 if !is_pointer(ty) {
                     return Err(error("PTX address calculation requires a global pointer"));
                 }
-                let dst = self.allocate(dst, MirType::ptr())?;
+                let dst = self.allocate(dst, MirType::Scalar(ScalarType::Ptr))?;
                 writeln!(
                     self.body,
                     "    add.u64 {dst}, {base}, 0x{:016x};",
@@ -256,7 +256,7 @@ impl Kernel {
                     let dst = ret
                         .as_ref()
                         .ok_or_else(|| error("GPU ID calls require a result"))?;
-                    let dst = self.allocate(dst, MirType::i32())?;
+                    let dst = self.allocate(dst, MirType::Scalar(ScalarType::I32))?;
                     let (special, axis) = match intrinsic {
                         GpuIntrinsic::ThreadId(axis) => ("tid", Some(axis)),
                         GpuIntrinsic::BlockId(axis) => ("ctaid", Some(axis)),
@@ -577,7 +577,7 @@ mod emission_tests {
         use crate::{
             mir::{
                 AddressMode, AddressSpace, FunctionBuilder, Instruction, KernelMetadata,
-                MemoryAttrs, MirType, Module, Register, VirtualReg,
+                MemoryAttrs, MirType, Module, Register, ScalarType, VirtualReg,
             },
             mir_codegen::ptx,
         };
@@ -592,7 +592,7 @@ mod emission_tests {
                 .param(base.clone(), MirType::ptr_in(AddressSpace::Global))
                 .block("entry")
                 .instr(Instruction::Load {
-                    ty: MirType::i32(),
+                    ty: MirType::Scalar(ScalarType::I32),
                     dst: Register::Virtual(VirtualReg::gpr(1)),
                     addr: AddressMode::BaseOffset {
                         base,

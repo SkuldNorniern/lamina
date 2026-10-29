@@ -66,7 +66,7 @@ fn lea_offset_beyond_the_immediate_range_is_added_through_r0() -> Result<(), Box
     let slot = VirtualReg::gpr(1);
     let base = Register::Virtual(VirtualReg::gpr(0));
     let mut function = FunctionBuilder::new("element")
-        .returns(MirType::ptr())
+        .returns(MirType::Scalar(ScalarType::Ptr))
         .block("entry")
         .instr(MirInst::StackAddr {
             dst: base.clone(),
@@ -102,7 +102,7 @@ fn lea_offset_beyond_the_immediate_range_is_added_through_r0() -> Result<(), Box
 fn stack_reservation_is_reserved_in_the_prologue() -> Result<(), Box<dyn Error>> {
     let slot = VirtualReg::gpr(1);
     let mut function = FunctionBuilder::new("reserved")
-        .returns(MirType::ptr())
+        .returns(MirType::Scalar(ScalarType::Ptr))
         .block("entry")
         .instr(MirInst::StackAddr {
             dst: Register::Virtual(VirtualReg::gpr(0)),
@@ -156,7 +156,7 @@ fn stack_address_reserves_slot_without_register_use() {
     let mut module = MirModule::new("stack_address");
     module.add_function(
         FunctionBuilder::new("address")
-            .returns(MirType::ptr())
+            .returns(MirType::Scalar(ScalarType::Ptr))
             .block("entry")
             .instr(stack_addr)
             .instr(MirInst::Ret {
@@ -257,7 +257,7 @@ fn float_memory_transfers_use_fpr_bits() {
         let mut module = MirModule::new("float_memory");
         module.add_function(
             FunctionBuilder::new("transfer")
-                .param(base.clone(), MirType::ptr())
+                .param(base.clone(), MirType::Scalar(ScalarType::Ptr))
                 .block("entry")
                 .instr(MirInst::Load {
                     ty,

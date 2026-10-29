@@ -126,7 +126,7 @@ pub(crate) fn emit_instruction<W: Write>(
 
         MirInst::IntConvert { .. } => {
             if let Some(operations) =
-                integer_conversion_with_width(inst, MirType::i32(), POINTER_WIDTH)
+                integer_conversion_with_width(inst, MirType::Scalar(ScalarType::I32), POINTER_WIDTH)
             {
                 for operation in &operations {
                     emit_instruction(w, operation, ctx, scratch, None)?;

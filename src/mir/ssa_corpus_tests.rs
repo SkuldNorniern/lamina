@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used)]
 
 use lamina_mir::Located;
+use lamina_mir::ScalarType;
 use std::{fs, path::Path};
 
 use lamina_mir::{Module, ssa::SsaFunction};
@@ -113,7 +114,7 @@ fn destroy_copies_on_a_real_loop_edge_round_trip() {
                 defines: Some(copy),
                 uses: vec![arg],
                 instruction: Located::from(Instruction::Copy {
-                    ty: source_value.ty.unwrap_or_else(MirType::i64),
+                    ty: source_value.ty.unwrap_or(MirType::Scalar(ScalarType::I64)),
                     dst: copy_register,
                     src: Operand::Register(source_value.register.clone()),
                 }),

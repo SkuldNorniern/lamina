@@ -106,7 +106,7 @@ impl ArgKind {
     }
 
     pub(crate) fn pointer() -> Self {
-        Self::of(MirType::ptr(), None)
+        Self::of(MirType::Scalar(ScalarType::Ptr), None)
     }
 
     pub(crate) fn words(&self) -> usize {
@@ -216,9 +216,9 @@ fn promoted(arg: &Operand) -> MirType {
         _ => false,
     };
     if float {
-        MirType::f64()
+        MirType::Scalar(ScalarType::F64)
     } else {
-        MirType::i32()
+        MirType::Scalar(ScalarType::I32)
     }
 }
 

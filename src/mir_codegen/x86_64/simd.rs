@@ -541,7 +541,7 @@ mod tests {
         let mut f = Function::new(
             Signature::new(name).with_params(
                 (0..3)
-                    .map(|i| Parameter::new(reg(i), MirType::ptr()))
+                    .map(|i| Parameter::new(reg(i), MirType::Scalar(ScalarType::Ptr)))
                     .collect(),
             ),
         );
@@ -557,7 +557,7 @@ mod tests {
         if single {
             b.push(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::ptr(),
+                ty: MirType::Scalar(ScalarType::Ptr),
                 dst: reg(6),
                 lhs: Operand::reg(reg(1)),
                 rhs: Operand::imm_i64(1),
@@ -601,7 +601,7 @@ mod tests {
         if op == VectorOp::VExtractLane {
             b.push(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::ptr(),
+                ty: MirType::Scalar(ScalarType::Ptr),
                 dst: reg(7),
                 lhs: Operand::reg(reg(2)),
                 rhs: Operand::imm_i64(1),

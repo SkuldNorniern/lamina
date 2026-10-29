@@ -3,22 +3,23 @@ use crate::mir::codegen::from_ir_for_target;
 use crate::mir::{Aggregate, AggregateClass, MirType};
 use crate::parser::parse_module;
 use abi::{ArgKind, classify, stack_bytes};
+use lamina_mir::ScalarType;
 
 fn integer() -> ArgKind {
-    ArgKind::of(MirType::i32(), None)
+    ArgKind::of(MirType::Scalar(ScalarType::I32), None)
 }
 
 fn single() -> ArgKind {
-    ArgKind::of(MirType::f32(), None)
+    ArgKind::of(MirType::Scalar(ScalarType::F32), None)
 }
 
 fn double() -> ArgKind {
-    ArgKind::of(MirType::f64(), None)
+    ArgKind::of(MirType::Scalar(ScalarType::F64), None)
 }
 
 fn aggregate(size: usize, align: usize) -> ArgKind {
     ArgKind::of(
-        MirType::ptr(),
+        MirType::Scalar(ScalarType::Ptr),
         Some(Aggregate {
             size,
             align,
@@ -145,7 +146,7 @@ fn a_sixty_four_bit_integer_is_rejected_by_name() {
     let mut block = Block::new("entry");
     block.push(MirInst::IntBinary {
         op: IntBinOp::Mul,
-        ty: MirType::i64(),
+        ty: MirType::Scalar(ScalarType::I64),
         dst,
         lhs: Operand::Immediate(Immediate::I64(3)),
         rhs: Operand::Immediate(Immediate::I64(4)),
@@ -166,7 +167,7 @@ fn a_sixty_four_bit_integer_is_rejected_by_name() {
 
 #[test]
 fn a_double_is_two_words_wide() {
-    let kind = ArgKind::of(MirType::f64(), None);
+    let kind = ArgKind::of(MirType::Scalar(ScalarType::F64), None);
     assert!(kind.double);
     assert_eq!(kind.words(), 2);
     assert_eq!(kind.align, 8);

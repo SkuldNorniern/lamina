@@ -587,7 +587,7 @@ mod tests {
         let mut func = Function::new(
             Signature::new("narrow_cmp")
                 .with_params(vec![Parameter::new(param.clone(), ty)])
-                .with_return(MirType::i64()),
+                .with_return(MirType::Scalar(ScalarType::I64)),
         );
         let mut block = Block::new("entry");
         block.push(Instruction::IntCmp {

@@ -497,7 +497,7 @@ impl Peephole {
         // The folded value replaces the whole instruction; leaving the operation in
         // place would apply it a second time at run time.
         let ty = *ty;
-        let folded = if ty == MirType::f32() {
+        let folded = if ty == MirType::Scalar(ScalarType::F32) {
             Immediate::F32(result as f32)
         } else {
             Immediate::F64(result)
@@ -604,7 +604,7 @@ mod tests {
         let mut bb = Block::new("entry");
         bb.push(Instruction::FloatUnary {
             op: FloatUnOp::FSqrt,
-            ty: MirType::f64(),
+            ty: MirType::Scalar(ScalarType::F64),
             dst: Register::Virtual(VirtualReg::fpr(0)),
             src: Operand::Immediate(Immediate::F64(16.0)),
         });

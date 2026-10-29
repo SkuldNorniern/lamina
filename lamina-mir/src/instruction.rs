@@ -19,8 +19,8 @@ pub fn io_intrinsic_result_type(name: &str, pointer: PointerWidth) -> Option<Mir
         "lamina.write" | "lamina.read" | "lamina.writebyte" | "lamina.readbyte"
     )
     .then(|| match pointer {
-        PointerWidth::Bits32 => MirType::i32(),
-        PointerWidth::Bits64 => MirType::i64(),
+        PointerWidth::Bits32 => MirType::Scalar(ScalarType::I32),
+        PointerWidth::Bits64 => MirType::Scalar(ScalarType::I64),
     })
 }
 
@@ -1856,43 +1856,51 @@ mod tests {
     fn bit_unary_evaluates_within_operand_width() {
         let popcount =
             |ty: MirType, v: i64| IntUnOp::Popcount.evaluate(ty, v, PointerWidth::Bits64);
-        assert_eq!(popcount(MirType::i8(), -1), 8);
-        assert_eq!(popcount(MirType::i64(), -1), 64);
-        assert_eq!(popcount(MirType::i64(), 0), 0);
+        assert_eq!(popcount(MirType::Scalar(ScalarType::I8), -1), 8);
+        assert_eq!(popcount(MirType::Scalar(ScalarType::I64), -1), 64);
+        assert_eq!(popcount(MirType::Scalar(ScalarType::I64), 0), 0);
         assert_eq!(
-            IntUnOp::Ctlz.evaluate(MirType::i8(), 1, PointerWidth::Bits64),
+            IntUnOp::Ctlz.evaluate(MirType::Scalar(ScalarType::I8), 1, PointerWidth::Bits64),
             7
         );
         assert_eq!(
-            IntUnOp::Ctlz.evaluate(MirType::i8(), 0, PointerWidth::Bits64),
+            IntUnOp::Ctlz.evaluate(MirType::Scalar(ScalarType::I8), 0, PointerWidth::Bits64),
             8
         );
         assert_eq!(
-            IntUnOp::Ctlz.evaluate(MirType::i64(), 0, PointerWidth::Bits64),
+            IntUnOp::Ctlz.evaluate(MirType::Scalar(ScalarType::I64), 0, PointerWidth::Bits64),
             64
         );
         assert_eq!(
-            IntUnOp::Cttz.evaluate(MirType::i16(), 0, PointerWidth::Bits64),
+            IntUnOp::Cttz.evaluate(MirType::Scalar(ScalarType::I16), 0, PointerWidth::Bits64),
             16
         );
         assert_eq!(
-            IntUnOp::Cttz.evaluate(MirType::i64(), 0, PointerWidth::Bits64),
+            IntUnOp::Cttz.evaluate(MirType::Scalar(ScalarType::I64), 0, PointerWidth::Bits64),
             64
         );
         assert_eq!(
-            IntUnOp::Cttz.evaluate(MirType::i32(), 8, PointerWidth::Bits64),
+            IntUnOp::Cttz.evaluate(MirType::Scalar(ScalarType::I32), 8, PointerWidth::Bits64),
             3
         );
         assert_eq!(
-            IntUnOp::Bswap.evaluate(MirType::i16(), 0x1234, PointerWidth::Bits64),
+            IntUnOp::Bswap.evaluate(
+                MirType::Scalar(ScalarType::I16),
+                0x1234,
+                PointerWidth::Bits64
+            ),
             0x3412
         );
         assert_eq!(
-            IntUnOp::Bswap.evaluate(MirType::i32(), 0x0102_0304, PointerWidth::Bits64),
+            IntUnOp::Bswap.evaluate(
+                MirType::Scalar(ScalarType::I32),
+                0x0102_0304,
+                PointerWidth::Bits64
+            ),
             0x0403_0201
         );
         assert_eq!(
-            IntUnOp::Bswap.evaluate(MirType::i8(), -127, PointerWidth::Bits64),
+            IntUnOp::Bswap.evaluate(MirType::Scalar(ScalarType::I8), -127, PointerWidth::Bits64),
             -127
         );
     }
@@ -1903,13 +1911,16 @@ mod tests {
             |ty: MirType, v: i64, n: i64| IntRotOp::Rotl.evaluate(ty, v, n, PointerWidth::Bits64);
         let rotr =
             |ty: MirType, v: i64, n: i64| IntRotOp::Rotr.evaluate(ty, v, n, PointerWidth::Bits64);
-        assert_eq!(rotl(MirType::i8(), -127, 1), 3);
-        assert_eq!(rotr(MirType::i8(), -127, 1), -64);
-        assert_eq!(rotl(MirType::i32(), 0x8000_0001, 4), 0x18);
-        assert_eq!(rotl(MirType::i64(), 1, 63), i64::MIN);
-        assert_eq!(rotr(MirType::i64(), 1, 1), i64::MIN);
-        assert_eq!(rotl(MirType::i64(), 77, 64), 77);
-        assert_eq!(rotr(MirType::i16(), 1, 1), i64::from(i16::MIN));
-        assert_eq!(rotl(MirType::i8(), 5, 9), 10);
+        assert_eq!(rotl(MirType::Scalar(ScalarType::I8), -127, 1), 3);
+        assert_eq!(rotr(MirType::Scalar(ScalarType::I8), -127, 1), -64);
+        assert_eq!(rotl(MirType::Scalar(ScalarType::I32), 0x8000_0001, 4), 0x18);
+        assert_eq!(rotl(MirType::Scalar(ScalarType::I64), 1, 63), i64::MIN);
+        assert_eq!(rotr(MirType::Scalar(ScalarType::I64), 1, 1), i64::MIN);
+        assert_eq!(rotl(MirType::Scalar(ScalarType::I64), 77, 64), 77);
+        assert_eq!(
+            rotr(MirType::Scalar(ScalarType::I16), 1, 1),
+            i64::from(i16::MIN)
+        );
+        assert_eq!(rotl(MirType::Scalar(ScalarType::I8), 5, 9), 10);
     }
 }

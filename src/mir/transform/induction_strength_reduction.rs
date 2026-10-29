@@ -922,7 +922,7 @@ mod tests {
 
     #[test]
     fn reduces_induction_product_and_affine_expression() {
-        let mut func = example(MirType::i64(), 20);
+        let mut func = example(MirType::Scalar(ScalarType::I64), 20);
         let expected = execute(&func);
         assert!(InductionStrengthReduction.apply(&mut func).unwrap());
         let actual = execute(&func);
@@ -946,7 +946,11 @@ mod tests {
 
     #[test]
     fn recurrence_wraps_at_original_width() {
-        for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
+        for ty in [
+            MirType::Scalar(ScalarType::I8),
+            MirType::Scalar(ScalarType::I16),
+            MirType::Scalar(ScalarType::I32),
+        ] {
             let mut func = example(ty, 100);
             let expected = execute(&func);
             assert!(InductionStrengthReduction.apply(&mut func).unwrap());
@@ -957,7 +961,7 @@ mod tests {
 
     #[test]
     fn zero_trip_loop_skips_initial_products() {
-        let mut func = example(MirType::i64(), 0);
+        let mut func = example(MirType::Scalar(ScalarType::I64), 0);
         let expected = execute(&func);
         assert!(InductionStrengthReduction.apply(&mut func).unwrap());
         assert_eq!(execute(&func), expected);
@@ -966,13 +970,13 @@ mod tests {
 
     #[test]
     fn guarded_body_skips_products_and_undefined_induction_input() {
-        let mut func = example(MirType::i64(), 10);
+        let mut func = example(MirType::Scalar(ScalarType::I64), 10);
         func.get_block_mut("entry").unwrap().instructions.remove(0);
         func.get_block_mut("entry").unwrap().instructions.insert(
             0,
             Located::from(Instruction::Copy {
                 dst: reg(5),
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 src: constant(0),
             }),
         );
@@ -1002,13 +1006,13 @@ mod tests {
 
     #[test]
     fn invariant_register_multiplier_and_step() {
-        let mut func = example(MirType::i8(), 100);
+        let mut func = example(MirType::Scalar(ScalarType::I8), 100);
         for (id, value) in [(6, 7), (7, 3)] {
             func.get_block_mut("entry").unwrap().instructions.insert(
                 0,
                 Located::from(Instruction::Copy {
                     dst: reg(id),
-                    ty: MirType::i8(),
+                    ty: MirType::Scalar(ScalarType::I8),
                     src: constant(value),
                 }),
             );
@@ -1029,7 +1033,7 @@ mod tests {
 
     #[test]
     fn preserves_product_used_after_loop() {
-        let mut func = example(MirType::i64(), 10);
+        let mut func = example(MirType::Scalar(ScalarType::I64), 10);
         *func
             .get_block_mut("exit")
             .unwrap()
@@ -1045,7 +1049,7 @@ mod tests {
     }
 
     fn two_level(trips: i64, escapes: bool) -> Function {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = example(ty, trips);
         func.get_block_mut("entry").unwrap().instructions.insert(
             0,
@@ -1112,7 +1116,7 @@ mod tests {
     }
 
     fn two_level_blocks() -> Function {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = example(ty, 20);
         let body = func.get_block_mut("body").unwrap();
         let mut tail = body.instructions.split_off(2);
@@ -1192,28 +1196,35 @@ mod tests {
 
     #[test]
     fn rejects_multiple_induction_definitions() {
-        let mut func = example(MirType::i64(), 10);
+        let mut func = example(MirType::Scalar(ScalarType::I64), 10);
         func.get_block_mut("body").unwrap().instructions.insert(
             4,
-            binary(IntBinOp::Add, 0, MirType::i64(), operand(0), constant(1)).into(),
+            binary(
+                IntBinOp::Add,
+                0,
+                MirType::Scalar(ScalarType::I64),
+                operand(0),
+                constant(1),
+            )
+            .into(),
         );
         assert!(!InductionStrengthReduction.apply(&mut func).unwrap());
     }
 
     #[test]
     fn rejects_width_mismatch() {
-        let mut func = example(MirType::i8(), 10);
+        let mut func = example(MirType::Scalar(ScalarType::I8), 10);
         if let Instruction::IntBinary { ty, .. } =
             &mut func.get_block_mut("body").unwrap().instructions[3].instr
         {
-            *ty = MirType::i64();
+            *ty = MirType::Scalar(ScalarType::I64);
         }
         assert!(!InductionStrengthReduction.apply(&mut func).unwrap());
     }
 
     #[test]
     fn handles_multiple_back_edges_after_shared_update() {
-        let mut func = example(MirType::i64(), 10);
+        let mut func = example(MirType::Scalar(ScalarType::I64), 10);
         *func
             .get_block_mut("body")
             .unwrap()
@@ -1240,7 +1251,7 @@ mod tests {
 
     #[test]
     fn rejects_back_edge_bypassing_update() {
-        let mut func = example(MirType::i64(), 10);
+        let mut func = example(MirType::Scalar(ScalarType::I64), 10);
         func.get_block_mut("body").unwrap().instructions.truncate(3);
         func.get_block_mut("body")
             .unwrap()
@@ -1253,7 +1264,14 @@ mod tests {
         func.blocks.push(Block {
             label: "update".into(),
             instructions: vec![
-                binary(IntBinOp::Add, 0, MirType::i64(), operand(0), constant(1)).into(),
+                binary(
+                    IntBinOp::Add,
+                    0,
+                    MirType::Scalar(ScalarType::I64),
+                    operand(0),
+                    constant(1),
+                )
+                .into(),
                 Located::from(Instruction::Jmp {
                     target: "header".into(),
                 }),
@@ -1300,10 +1318,10 @@ mod tests {
     #[test]
     fn quadratic_differences_preserve_every_observed_sum_at_each_width() {
         for ty in [
-            MirType::i8(),
-            MirType::i16(),
-            MirType::i32(),
-            MirType::i64(),
+            MirType::Scalar(ScalarType::I8),
+            MirType::Scalar(ScalarType::I16),
+            MirType::Scalar(ScalarType::I32),
+            MirType::Scalar(ScalarType::I64),
         ] {
             for trips in [0, 1, 2, 19, 100] {
                 for (a, b) in [(1, 1), (-3, 7), (5, -2), (127, 65), (0, -1)] {
@@ -1337,7 +1355,7 @@ mod tests {
 
     #[test]
     fn quadratic_sums_offsets_and_invariant_steps_preserve_observations() {
-        let ty = MirType::i8();
+        let ty = MirType::Scalar(ScalarType::I8);
         let mut func = quadratic(ty, 45, -7, 11, false);
         let entry = func.get_block_mut("entry").unwrap();
         for (id, value) in [(12, -7), (13, 11), (14, 93)] {
@@ -1369,7 +1387,7 @@ mod tests {
     fn quadratic_rewrite_preserves_escaping_factors_and_product() {
         for trips in [0, 1, 2, 37] {
             for escaped in [0, 6, 4] {
-                let ty = MirType::i64();
+                let ty = MirType::Scalar(ScalarType::I64);
                 let mut func = quadratic(ty, trips, -3, 8, false);
                 func.get_block_mut("entry").unwrap().instructions.insert(
                     0,
@@ -1390,7 +1408,7 @@ mod tests {
 
     #[test]
     fn quadratic_rewrite_preserves_uses_before_and_after_factor_updates() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 27, 5, -3, false);
         let body = func.get_block_mut("body").unwrap();
         body.instructions.insert(
@@ -1410,7 +1428,7 @@ mod tests {
 
     #[test]
     fn quadratic_rewrite_removes_only_unused_factor_state() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let func = equivalent(quadratic(ty, 20, 3, 7, false), true);
         let body = func.get_block("body").unwrap();
         assert!(
@@ -1436,7 +1454,7 @@ mod tests {
 
     #[test]
     fn quadratic_guarded_entry_skips_uninitialized_factors() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 20, 3, 7, false);
         func.get_block_mut("entry")
             .unwrap()
@@ -1468,7 +1486,7 @@ mod tests {
 
     #[test]
     fn quadratic_shared_latches_require_both_updates() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 20, 3, 7, false);
         *func
             .get_block_mut("body")
@@ -1500,7 +1518,7 @@ mod tests {
 
     #[test]
     fn quadratic_discovery_rejects_ambiguous_definition_epochs() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 20, 3, 7, false);
         func.get_block_mut("body").unwrap().instructions.insert(
             4,
@@ -1516,7 +1534,7 @@ mod tests {
 
     #[test]
     fn polynomial_discovery_caps_degree_and_expansion() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 2, 3, 7, false);
         let body = func.get_block_mut("body").unwrap();
         body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(10), operand(6)).into();
@@ -1554,7 +1572,7 @@ mod tests {
     }
     #[test]
     fn quadratic_product_copies_preserve_observations_after_state_advance() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 20, 3, -7, false);
         let body = func.get_block_mut("body").unwrap();
         body.instructions
@@ -1573,7 +1591,7 @@ mod tests {
 
     #[test]
     fn quadratic_product_reuses_destination_when_every_use_precedes_update() {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 20, 3, -7, false);
         func.get_block_mut("body").unwrap().instructions.remove(1);
         let func = equivalent(func, true);
@@ -1588,7 +1606,7 @@ mod tests {
     }
 
     fn quadratic_separate_updates() -> Function {
-        let ty = MirType::i64();
+        let ty = MirType::Scalar(ScalarType::I64);
         let mut func = quadratic(ty, 20, 3, 7, false);
         let body = func.get_block_mut("body").unwrap();
         let mut tail = body.instructions.split_off(3);
@@ -1649,14 +1667,14 @@ mod tests {
 
     #[test]
     fn quadratic_rewrite_rejects_factor_width_mismatch_and_header_products() {
-        let mut func = quadratic(MirType::i64(), 20, 3, 7, false);
+        let mut func = quadratic(MirType::Scalar(ScalarType::I64), 20, 3, 7, false);
         if let Instruction::IntBinary { ty, .. } =
             &mut func.get_block_mut("body").unwrap().instructions[4].instr
         {
-            *ty = MirType::i32();
+            *ty = MirType::Scalar(ScalarType::I32);
         }
         equivalent(func, false);
-        let mut func = quadratic(MirType::i64(), 20, 3, 7, false);
+        let mut func = quadratic(MirType::Scalar(ScalarType::I64), 20, 3, 7, false);
         let product = func.get_block_mut("body").unwrap().instructions.remove(0);
         func.get_block_mut("header")
             .unwrap()
@@ -1667,9 +1685,9 @@ mod tests {
     #[test]
     fn quadratic_differences_may_wrap_when_observed_products_fit() {
         for (ty, step) in [
-            (MirType::i8(), 8),
-            (MirType::i16(), 128),
-            (MirType::i32(), 32768),
+            (MirType::Scalar(ScalarType::I8), 8),
+            (MirType::Scalar(ScalarType::I16), 128),
+            (MirType::Scalar(ScalarType::I32), 32768),
         ] {
             let mut func = quadratic(ty, 2, step, step + 1, false);
             for instruction in &mut func.get_block_mut("entry").unwrap().instructions {

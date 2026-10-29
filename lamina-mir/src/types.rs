@@ -182,49 +182,9 @@ impl MirType {
         matches!(self, MirType::Vector(_))
     }
 
-    /// Shorthand for `MirType::Scalar(ScalarType::I1)`.
-    pub fn i1() -> Self {
-        MirType::Scalar(ScalarType::I1)
-    }
-
-    /// Shorthand for `MirType::Scalar(ScalarType::I8)`.
-    pub fn i8() -> Self {
-        MirType::Scalar(ScalarType::I8)
-    }
-
-    /// Shorthand for `MirType::Scalar(ScalarType::I16)`.
-    pub fn i16() -> Self {
-        MirType::Scalar(ScalarType::I16)
-    }
-
-    /// Shorthand for `MirType::Scalar(ScalarType::I32)`.
-    pub fn i32() -> Self {
-        MirType::Scalar(ScalarType::I32)
-    }
-
-    /// Shorthand for `MirType::Scalar(ScalarType::I64)`.
-    pub fn i64() -> Self {
-        MirType::Scalar(ScalarType::I64)
-    }
-
-    /// Shorthand for `MirType::Scalar(ScalarType::F32)`.
-    pub fn f32() -> Self {
-        MirType::Scalar(ScalarType::F32)
-    }
-
-    /// Shorthand for `MirType::Scalar(ScalarType::F64)`.
-    pub fn f64() -> Self {
-        MirType::Scalar(ScalarType::F64)
-    }
-
     /// A pointer into `space`.
     pub fn ptr_in(space: AddressSpace) -> Self {
         Self::Scalar(ScalarType::PtrIn(space))
-    }
-
-    /// Shorthand for `MirType::Scalar(ScalarType::Ptr)`.
-    pub fn ptr() -> Self {
-        MirType::Scalar(ScalarType::Ptr)
     }
 }
 
@@ -293,11 +253,11 @@ mod tests {
             let ty = MirType::ptr_in(space);
             assert_eq!(
                 ty.size_bytes(PointerWidth::Bits64),
-                MirType::ptr().size_bytes(PointerWidth::Bits64)
+                MirType::Scalar(ScalarType::Ptr).size_bytes(PointerWidth::Bits64)
             );
             assert_eq!(
                 ty.alignment(PointerWidth::Bits64),
-                MirType::ptr().alignment(PointerWidth::Bits64)
+                MirType::Scalar(ScalarType::Ptr).alignment(PointerWidth::Bits64)
             );
         }
         assert_ne!(
@@ -316,14 +276,23 @@ mod tests {
 
     #[test]
     fn pointer_size_and_alignment_follow_pointer_width() {
-        for ty in [MirType::ptr(), MirType::ptr_in(AddressSpace::Local)] {
+        for ty in [
+            MirType::Scalar(ScalarType::Ptr),
+            MirType::ptr_in(AddressSpace::Local),
+        ] {
             assert_eq!(ty.size_bytes(PointerWidth::Bits32), 4);
             assert_eq!(ty.alignment(PointerWidth::Bits32), 4);
             assert_eq!(ty.size_bytes(PointerWidth::Bits64), 8);
             assert_eq!(ty.alignment(PointerWidth::Bits64), 8);
         }
-        assert_eq!(MirType::i64().size_bytes(PointerWidth::Bits32), 8);
-        assert_eq!(MirType::i64().alignment(PointerWidth::Bits32), 8);
+        assert_eq!(
+            MirType::Scalar(ScalarType::I64).size_bytes(PointerWidth::Bits32),
+            8
+        );
+        assert_eq!(
+            MirType::Scalar(ScalarType::I64).alignment(PointerWidth::Bits32),
+            8
+        );
     }
 
     #[test]

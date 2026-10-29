@@ -110,16 +110,16 @@ fn self_tail_loop_rotates_with_initial_condition_check() {
     let cond = VirtualReg::gpr(2);
     let next = VirtualReg::gpr(3);
     let func = FunctionBuilder::new("rotate")
-        .param(i.into(), MirType::i64())
-        .param(n.into(), MirType::i64())
-        .returns(MirType::i64())
+        .param(i.into(), MirType::Scalar(ScalarType::I64))
+        .param(n.into(), MirType::Scalar(ScalarType::I64))
+        .returns(MirType::Scalar(ScalarType::I64))
         .block("entry")
         .instr(MirInst::IntCmp {
             op: IntCmpOp::SGt,
             dst: cond.into(),
             lhs: Operand::Register(i.into()),
             rhs: Operand::Register(n.into()),
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
         })
         .instr(MirInst::Br {
             cond: cond.into(),
@@ -132,7 +132,7 @@ fn self_tail_loop_rotates_with_initial_condition_check() {
             dst: next.into(),
             lhs: Operand::Register(i.into()),
             rhs: Operand::Immediate(Immediate::I64(1)),
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
         })
         .instr(MirInst::TailCall {
             name: "rotate".into(),
@@ -188,7 +188,7 @@ fn lea_selection_respects_flags_uses_and_encoding() {
             dst: Register::Virtual(regs[dst]),
             lhs,
             rhs,
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
         })
     };
     let imm = |v| Operand::Immediate(Immediate::I64(v));
@@ -276,7 +276,7 @@ fn global_frame_keeps_only_dense_storage() {
     let mut func = FunctionBuilder::new("dense")
         .block("entry")
         .instr(MirInst::Copy {
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: Register::Virtual(spilled),
             src: Operand::Immediate(Immediate::I64(1)),
         })

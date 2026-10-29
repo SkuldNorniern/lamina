@@ -1,5 +1,6 @@
 use super::abi::{ArgPlace, classify, load_imm, outgoing_bytes};
 use crate::mir::MirType;
+use lamina_mir::ScalarType;
 
 /// Executes the `addi.d`, `lu12i.w`, `ori`, `lu32i.d` and `lu52i.d` lines `load_imm`
 /// writes, using the architectural definition of each.
@@ -54,7 +55,7 @@ fn load_imm_reconstructs_every_boundary_value() {
 
 #[test]
 fn integer_arguments_past_eight_go_to_the_stack() {
-    let types: Vec<MirType> = (0..10).map(|_| MirType::i64()).collect();
+    let types: Vec<MirType> = (0..10).map(|_| MirType::Scalar(ScalarType::I64)).collect();
     let places = classify(&types);
     assert_eq!(places[7], ArgPlace::Gpr(7));
     assert_eq!(places[8], ArgPlace::Stack(0));
@@ -65,10 +66,10 @@ fn integer_arguments_past_eight_go_to_the_stack() {
 #[test]
 fn floats_take_their_own_bank() {
     let types = [
-        MirType::i64(),
-        MirType::f64(),
-        MirType::i64(),
-        MirType::f32(),
+        MirType::Scalar(ScalarType::I64),
+        MirType::Scalar(ScalarType::F64),
+        MirType::Scalar(ScalarType::I64),
+        MirType::Scalar(ScalarType::F32),
     ];
     let places = classify(&types);
     assert_eq!(

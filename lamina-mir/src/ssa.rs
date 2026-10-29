@@ -912,6 +912,7 @@ pub fn round_trip_module(module: &mut Module) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ScalarType;
     use crate::{
         function::FunctionBuilder,
         instruction::{IntBinOp, Operand},
@@ -924,7 +925,7 @@ mod tests {
 
     fn imm(dst: u32, value: i64) -> Instruction {
         Instruction::Copy {
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: gpr(dst),
             src: Operand::imm_i64(value),
         }
@@ -932,7 +933,7 @@ mod tests {
 
     fn mov(dst: u32, src: u32) -> Instruction {
         Instruction::Copy {
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: gpr(dst),
             src: Operand::v_gpr(src),
         }
@@ -970,8 +971,8 @@ mod tests {
 
     fn diamond() -> Function {
         FunctionBuilder::new("diamond")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(branch(0, "a", "b"))
             .block("a")
@@ -1018,14 +1019,14 @@ mod tests {
     #[test]
     fn loop_carried_value_is_a_header_parameter() {
         let f = FunctionBuilder::new("count")
-            .param(gpr(0), MirType::i64())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(jump("loop"))
             .block("loop")
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: gpr(0),
                 lhs: Operand::v_gpr(0),
                 rhs: Operand::imm_i64(1),
@@ -1047,8 +1048,8 @@ mod tests {
     #[test]
     fn entry_backedge_does_not_stand_in_for_the_first_invocation() {
         let f = FunctionBuilder::new("spin")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(mov(1, 0))
             .instr(branch(0, "entry", "exit"))
@@ -1064,8 +1065,8 @@ mod tests {
     #[test]
     fn read_assigned_on_one_arm_only_is_rejected() {
         let f = FunctionBuilder::new("half")
-            .param(gpr(0), MirType::i1())
-            .returns(MirType::i64())
+            .param(gpr(0), MirType::Scalar(ScalarType::I1))
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(branch(0, "a", "b"))
             .block("a")
@@ -1090,7 +1091,7 @@ mod tests {
     #[test]
     fn read_of_a_non_parameter_at_entry_is_rejected() {
         let f = FunctionBuilder::new("early")
-            .returns(MirType::i64())
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(mov(1, 0))
             .instr(ret(1))
@@ -1101,7 +1102,7 @@ mod tests {
     #[test]
     fn unreachable_blocks_are_listed_and_excluded() {
         let f = FunctionBuilder::new("dead")
-            .returns(MirType::i64())
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(imm(1, 1))
             .instr(ret(1))
@@ -1127,7 +1128,7 @@ mod tests {
             .block("entry")
             .instr(imm(1, 1))
             .instr(Instruction::Copy {
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: gpr(1),
                 src: Operand::imm_f64(1.0),
             })
@@ -1211,7 +1212,7 @@ mod tests {
             .position(|x| x.label == "join")
             .expect("join");
         let param = graph.blocks[join].params[0];
-        graph.values[param.0 as usize].ty = Some(MirType::f64());
+        graph.values[param.0 as usize].ty = Some(MirType::Scalar(ScalarType::F64));
         let errs = graph.verify().unwrap_err();
         assert!(errs.iter().any(|e| e.rule == SsaRule::EdgeTypes));
     }

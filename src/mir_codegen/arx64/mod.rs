@@ -810,8 +810,8 @@ mod tests {
         let a = Register::Virtual(VirtualReg::gpr(0));
         let b = Register::Virtual(VirtualReg::gpr(1));
         let sig = Signature::new("swap").with_params(vec![
-            Parameter::new(a.clone(), MirType::i64()),
-            Parameter::new(b.clone(), MirType::i64()),
+            Parameter::new(a.clone(), MirType::Scalar(ScalarType::I64)),
+            Parameter::new(b.clone(), MirType::Scalar(ScalarType::I64)),
         ]);
         let mut func = Function::new(sig);
         let mut entry = Block::new("start");
@@ -854,7 +854,8 @@ mod tests {
     #[test]
     fn emits_minimal_integer_return_function() {
         let mut module = MirModule::new("arx64_test");
-        let mut func = Function::new(Signature::new("main").with_return(MirType::i64()));
+        let mut func =
+            Function::new(Signature::new("main").with_return(MirType::Scalar(ScalarType::I64)));
         let mut entry = Block::new("entry");
         entry.push(Instruction::Ret {
             value: Some(Operand::Immediate(Immediate::I64(7))),
@@ -875,7 +876,8 @@ mod tests {
     #[test]
     fn emits_arx64_writebyte_and_halt_builtins() {
         let mut module = MirModule::new("arx64_io_test");
-        let mut func = Function::new(Signature::new("main").with_return(MirType::i64()));
+        let mut func =
+            Function::new(Signature::new("main").with_return(MirType::Scalar(ScalarType::I64)));
         let mut entry = Block::new("entry");
         entry.push(Instruction::Call {
             name: "writebyte".to_string(),

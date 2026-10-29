@@ -153,13 +153,13 @@ mod tests {
             align: 8,
             class: AggregateClass::Integer,
         };
-        let parameter =
-            Parameter::new(Register::Virtual(slot), MirType::ptr()).with_aggregate(aggregate);
+        let parameter = Parameter::new(Register::Virtual(slot), MirType::Scalar(ScalarType::Ptr))
+            .with_aggregate(aggregate);
         let by_parameter = Signature::new("take")
             .with_params(vec![parameter])
-            .with_return(MirType::i64());
+            .with_return(MirType::Scalar(ScalarType::I64));
         let by_return = Signature::new("take")
-            .with_return(MirType::ptr())
+            .with_return(MirType::Scalar(ScalarType::Ptr))
             .with_return_aggregate(aggregate);
 
         let pointer = Operand::Register(Register::Virtual(VirtualReg::gpr(1)));
@@ -239,7 +239,8 @@ mod tests {
 
     #[test]
     fn rejects_frame_over_limit() {
-        let mut func = Function::new(Signature::new("big").with_return(MirType::i64()));
+        let mut func =
+            Function::new(Signature::new("big").with_return(MirType::Scalar(ScalarType::I64)));
         let mut entry = Block::new("entry");
         entry.push(Instruction::Ret { value: None });
         func.add_block(entry);

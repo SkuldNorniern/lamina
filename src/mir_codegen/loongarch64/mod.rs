@@ -102,7 +102,7 @@ impl Signatures {
 fn integer_past_fixed(types: &mut [MirType], fixed: usize) {
     for ty in types.iter_mut().skip(fixed) {
         if ty.is_float() {
-            *ty = MirType::i64();
+            *ty = MirType::Scalar(ScalarType::I64);
         }
     }
 }
@@ -495,7 +495,7 @@ fn emit_instruction<W: Write>(
     ctx: &mut EmitCtx<'_>,
 ) -> Result<(), LaminaError> {
     if let Some(operations) =
-        integer_conversion_with_width(inst, MirType::i64(), PointerWidth::Bits64)
+        integer_conversion_with_width(inst, MirType::Scalar(ScalarType::I64), PointerWidth::Bits64)
     {
         for operation in operations {
             emit_instruction(&operation, writer, slots, ctx)?;

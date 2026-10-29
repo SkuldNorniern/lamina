@@ -101,9 +101,9 @@ fn promoted(arg: &Operand) -> MirType {
         _ => false,
     };
     if float {
-        MirType::f64()
+        MirType::Scalar(ScalarType::F64)
     } else {
-        MirType::i32()
+        MirType::Scalar(ScalarType::I32)
     }
 }
 
@@ -606,7 +606,9 @@ fn emit_instruction<W: Write>(
     if let MirInst::IntConvert { from, to, .. } = inst {
         reject_wide(from, "integer conversion")?;
         reject_wide(to, "integer conversion")?;
-        if let Some(operations) = integer_conversion_with_width(inst, MirType::i32(), PTR) {
+        if let Some(operations) =
+            integer_conversion_with_width(inst, MirType::Scalar(ScalarType::I32), PTR)
+        {
             for operation in operations {
                 emit_instruction(&operation, writer, slots, ctx)?;
             }
@@ -788,7 +790,7 @@ fn emit_instruction<W: Write>(
             if let Some(fixed) = variadic_fixed {
                 for (index, ty) in types.iter_mut().enumerate() {
                     if index >= *fixed && is_single(ty) {
-                        *ty = MirType::f64();
+                        *ty = MirType::Scalar(ScalarType::F64);
                     }
                 }
             }

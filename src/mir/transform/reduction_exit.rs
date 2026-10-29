@@ -620,7 +620,11 @@ mod tests {
                 cases.push([j0, end, p, d, t]);
             }
         }
-        assert!(differential(MirType::i8(), &Variant::standard(), &cases));
+        assert!(differential(
+            MirType::Scalar(ScalarType::I8),
+            &Variant::standard(),
+            &cases
+        ));
     }
 
     #[test]
@@ -635,7 +639,11 @@ mod tests {
                 }
             }
         }
-        assert!(differential(MirType::i8(), &Variant::standard(), &cases));
+        assert!(differential(
+            MirType::Scalar(ScalarType::I8),
+            &Variant::standard(),
+            &cases
+        ));
     }
 
     #[test]
@@ -658,7 +666,7 @@ mod tests {
         })
         .collect();
         assert!(differential(
-            MirType::i16(),
+            MirType::Scalar(ScalarType::I16),
             &Variant::standard(),
             &i16_cases
         ));
@@ -680,7 +688,7 @@ mod tests {
         })
         .collect();
         assert!(differential(
-            MirType::i64(),
+            MirType::Scalar(ScalarType::I64),
             &Variant::standard(),
             &i64_cases
         ));
@@ -693,23 +701,40 @@ mod tests {
             ..Variant::standard()
         };
         let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3], [9, 9, 4, 4, 4]];
-        assert!(!differential(MirType::i64(), &variant, &cases));
+        assert!(!differential(
+            MirType::Scalar(ScalarType::I64),
+            &variant,
+            &cases
+        ));
         let variant = Variant {
             step: -1,
             ..Variant::standard()
         };
         let cases = [[5, 3, 1, 2, 3], [9, 9, 4, 4, 4]];
-        assert!(!differential(MirType::i64(), &variant, &cases));
+        assert!(!differential(
+            MirType::Scalar(ScalarType::I64),
+            &variant,
+            &cases
+        ));
     }
 
     #[test]
     fn refuses_when_body_observes_the_accumulator() {
         let variant = Variant {
-            extra_body: Some(add(&MirType::i64(), 11, op(4), immediate_operand(1))),
+            extra_body: Some(add(
+                &MirType::Scalar(ScalarType::I64),
+                11,
+                op(4),
+                immediate_operand(1),
+            )),
             ..Variant::standard()
         };
         let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3]];
-        assert!(!differential(MirType::i64(), &variant, &cases));
+        assert!(!differential(
+            MirType::Scalar(ScalarType::I64),
+            &variant,
+            &cases
+        ));
     }
 
     #[test]
@@ -717,7 +742,7 @@ mod tests {
         let variant = Variant {
             extra_body: Some(binary(
                 IntBinOp::UDiv,
-                &MirType::i64(),
+                &MirType::Scalar(ScalarType::I64),
                 &reg(11),
                 op(4),
                 op(3),
@@ -725,7 +750,11 @@ mod tests {
             ..Variant::standard()
         };
         let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3]];
-        assert!(!differential(MirType::i64(), &variant, &cases));
+        assert!(!differential(
+            MirType::Scalar(ScalarType::I64),
+            &variant,
+            &cases
+        ));
     }
 
     #[test]
@@ -735,7 +764,11 @@ mod tests {
             ..Variant::standard()
         };
         let cases = [[5, 3, -7, 13, 5], [0, 5, 1, 2, 3], [9, 9, 4, 4, 4]];
-        assert!(!differential(MirType::i64(), &variant, &cases));
+        assert!(!differential(
+            MirType::Scalar(ScalarType::I64),
+            &variant,
+            &cases
+        ));
     }
 
     #[test]
@@ -745,7 +778,11 @@ mod tests {
             ..Variant::standard()
         };
         let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3]];
-        assert!(!differential(MirType::i64(), &variant, &cases));
+        assert!(!differential(
+            MirType::Scalar(ScalarType::I64),
+            &variant,
+            &cases
+        ));
     }
 
     fn immediate_operand(value: i64) -> Operand {

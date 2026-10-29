@@ -302,14 +302,14 @@ mod tests {
             }],
             vec![Instruction::IntConvert {
                 from: ptr,
-                to: MirType::i64(),
+                to: MirType::Scalar(ScalarType::I64),
                 signed: false,
                 dst: reg(2),
                 src: operand(1),
             }],
             vec![Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: reg(2),
                 lhs: operand(1),
                 rhs: Operand::Immediate(Immediate::I64(8)),
@@ -361,7 +361,7 @@ mod tests {
                 let argument = if derivation.is_empty() { 1 } else { 2 };
                 let mut function = FunctionBuilder::new("caller")
                     .param(reg(0), ptr)
-                    .returns(MirType::i64())
+                    .returns(MirType::Scalar(ScalarType::I64))
                     .block("entry")
                     .instr(Instruction::StackAddr {
                         dst: reg(1),

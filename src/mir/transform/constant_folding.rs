@@ -174,10 +174,10 @@ mod tests {
     #[test]
     fn folds_wrapping_arithmetic_and_masked_shifts_preserving_traps() {
         for ty in [
-            MirType::i8(),
-            MirType::i16(),
-            MirType::i32(),
-            MirType::i64(),
+            MirType::Scalar(ScalarType::I8),
+            MirType::Scalar(ScalarType::I16),
+            MirType::Scalar(ScalarType::I32),
+            MirType::Scalar(ScalarType::I64),
         ] {
             let width = ty.size_bytes(PointerWidth::Bits64) * 8;
             let minimum = ty.signed_integer(1i64 << (width - 1), PointerWidth::Bits64);

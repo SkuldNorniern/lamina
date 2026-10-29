@@ -309,8 +309,8 @@ mod tests {
     fn aliasing_stores_and_mismatched_types_prevent_forwarding() {
         for (second_base, offset, load_ty, store_ty) in [
             (1, 0, i64(), i64()),
-            (0, 4, i64(), MirType::i32()),
-            (0, 0, MirType::i32(), i64()),
+            (0, 4, i64(), MirType::Scalar(ScalarType::I32)),
+            (0, 0, MirType::Scalar(ScalarType::I32), i64()),
         ] {
             let base: Register = VirtualReg::gpr(0).into();
             let mut func = FunctionBuilder::new("f")
@@ -354,7 +354,7 @@ mod tests {
                 attrs: non_volatile(),
             })
             .instr(Instruction::Load {
-                ty: MirType::i32(),
+                ty: MirType::Scalar(ScalarType::I32),
                 dst: VirtualReg::gpr(2).into(),
                 addr: base_offset(base, 0),
                 attrs: non_volatile(),

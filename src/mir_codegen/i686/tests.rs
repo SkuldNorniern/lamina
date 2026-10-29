@@ -1,13 +1,14 @@
 use super::abi::{ArgSlot, aggregate_bytes, classify, frame_bytes, outgoing_bytes, slot_offset};
 use crate::mir::MirType;
+use lamina_mir::ScalarType;
 
 #[test]
 fn every_argument_takes_a_word_on_the_stack() {
     let types = [
-        MirType::i32(),
-        MirType::i8(),
-        MirType::ptr(),
-        MirType::f64(),
+        MirType::Scalar(ScalarType::I32),
+        MirType::Scalar(ScalarType::I8),
+        MirType::Scalar(ScalarType::Ptr),
+        MirType::Scalar(ScalarType::F64),
     ];
     let places = classify(&types, &[None; 4], false);
     assert_eq!(
@@ -36,7 +37,7 @@ fn every_argument_takes_a_word_on_the_stack() {
 
 #[test]
 fn a_hidden_struct_pointer_takes_the_first_word() {
-    let types = [MirType::i32()];
+    let types = [MirType::Scalar(ScalarType::I32)];
     let places = classify(&types, &[None], true);
     assert_eq!(
         places,
@@ -50,7 +51,10 @@ fn a_hidden_struct_pointer_takes_the_first_word() {
 
 #[test]
 fn an_aggregate_argument_is_copied_by_value_rounded_to_a_word() {
-    let types = [MirType::ptr(), MirType::i32()];
+    let types = [
+        MirType::Scalar(ScalarType::Ptr),
+        MirType::Scalar(ScalarType::I32),
+    ];
     let places = classify(&types, &[Some(13), None], false);
     assert_eq!(
         places,

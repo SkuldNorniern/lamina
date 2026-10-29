@@ -88,7 +88,7 @@ pub fn declare_uses_as_params(f: &mut Function, vector_ty: &MirType, lane: Vecto
     for reg in missing {
         let ty = match reg.class() {
             RegisterClass::Vec => *vector_ty,
-            _ if bases.contains(&reg) => MirType::ptr(),
+            _ if bases.contains(&reg) => MirType::Scalar(ScalarType::Ptr),
             _ => scalar(lane),
         };
         f.sig.params.push(Parameter::new(reg, ty));
@@ -104,7 +104,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
     let mut f = Function::new(
         Signature::new(name).with_params(
             (0..3)
-                .map(|i| Parameter::new(reg(i), MirType::ptr()))
+                .map(|i| Parameter::new(reg(i), MirType::Scalar(ScalarType::Ptr)))
                 .collect(),
         ),
     );
@@ -120,7 +120,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
     if single {
         b.push(Instruction::IntBinary {
             op: IntBinOp::Add,
-            ty: MirType::ptr(),
+            ty: MirType::Scalar(ScalarType::Ptr),
             dst: reg(6),
             lhs: Operand::reg(reg(1)),
             rhs: Operand::imm_i64(1),
@@ -164,7 +164,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
     if op == VectorOp::VExtractLane {
         b.push(Instruction::IntBinary {
             op: IntBinOp::Add,
-            ty: MirType::ptr(),
+            ty: MirType::Scalar(ScalarType::Ptr),
             dst: reg(7),
             lhs: Operand::reg(reg(2)),
             rhs: Operand::imm_i64(1),

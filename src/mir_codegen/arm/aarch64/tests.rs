@@ -9,8 +9,11 @@ fn global_parameters_are_initialized_before_entry() -> Result<(), Box<dyn Error>
     let reg = Register::Virtual(VirtualReg::gpr(0));
     let mut func = Function::new(
         Signature::new("identity")
-            .with_params(vec![Parameter::new(reg.clone(), MirType::i64())])
-            .with_return(MirType::i64()),
+            .with_params(vec![Parameter::new(
+                reg.clone(),
+                MirType::Scalar(ScalarType::I64),
+            )])
+            .with_return(MirType::Scalar(ScalarType::I64)),
     );
     let mut block = Block::new("entry");
     block.push(MirInst::Ret {
@@ -54,9 +57,9 @@ fn global_parameters_are_initialized_before_entry() -> Result<(), Box<dyn Error>
 fn narrow_parameters_are_sign_extended_on_entry() -> Result<(), Box<dyn Error>> {
     use crate::mir::{Block, Parameter};
     for (ty, extend) in [
-        (MirType::i8(), "sxtb x0, w0"),
-        (MirType::i16(), "sxth x0, w0"),
-        (MirType::i32(), "sxtw x0, w0"),
+        (MirType::Scalar(ScalarType::I8), "sxtb x0, w0"),
+        (MirType::Scalar(ScalarType::I16), "sxth x0, w0"),
+        (MirType::Scalar(ScalarType::I32), "sxtw x0, w0"),
     ] {
         let reg = Register::Virtual(VirtualReg::gpr(0));
         let mut func = Function::new(
@@ -219,8 +222,11 @@ fn tail_call_releases_the_frame_the_prologue_reserved() -> Result<(), Box<dyn Er
     let x = Register::Virtual(VirtualReg::gpr(0));
     let mut func = Function::new(
         Signature::new("f")
-            .with_params(vec![Parameter::new(x.clone(), MirType::i64())])
-            .with_return(MirType::i64()),
+            .with_params(vec![Parameter::new(
+                x.clone(),
+                MirType::Scalar(ScalarType::I64),
+            )])
+            .with_return(MirType::Scalar(ScalarType::I64)),
     );
     let mut block = Block::new("entry");
     let mut prev = Operand::Register(x);
@@ -228,7 +234,7 @@ fn tail_call_releases_the_frame_the_prologue_reserved() -> Result<(), Box<dyn Er
         let dst = Register::Virtual(VirtualReg::gpr(id));
         block.push(MirInst::IntBinary {
             op: IntBinOp::Add,
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: dst.clone(),
             lhs: prev,
             rhs: Operand::Immediate(Immediate::I64(1)),
@@ -265,7 +271,7 @@ fn tail_call_releases_the_frame_the_prologue_reserved() -> Result<(), Box<dyn Er
 
 #[test]
 fn elf_frames_carry_cfi_and_mach_o_frames_do_not() -> Result<(), Box<dyn Error>> {
-    let mut func = Function::new(Signature::new("f").with_return(MirType::i64()));
+    let mut func = Function::new(Signature::new("f").with_return(MirType::Scalar(ScalarType::I64)));
     use crate::mir::Block;
     let mut block = Block::new("entry");
     block.push(MirInst::Ret {
@@ -681,7 +687,8 @@ fn register_named_functions_are_rejected() -> Result<(), Box<dyn Error>> {
     for name in ["x32", "x", "foo", "_x0", "xzr2", "main"] {
         assert!(!is_aarch64_register_name(name), "{name}");
     }
-    let mut func = Function::new(Signature::new("x0").with_return(MirType::i64()));
+    let mut func =
+        Function::new(Signature::new("x0").with_return(MirType::Scalar(ScalarType::I64)));
     let mut block = Block::new("entry");
     block.push(MirInst::Ret {
         value: Some(Operand::Immediate(Immediate::I64(7))),

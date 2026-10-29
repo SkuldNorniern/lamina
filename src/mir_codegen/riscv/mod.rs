@@ -181,7 +181,7 @@ fn compile_single_function_riscv(
         .blocks
         .iter()
         .flat_map(|b| &b.instructions)
-        .filter(|i| instruction_type(i).is_some_and(|ty| *ty == MirType::f64()))
+        .filter(|i| instruction_type(i).is_some_and(|ty| *ty == MirType::Scalar(ScalarType::F64)))
         .filter_map(|i| {
             i.def_reg().and_then(|r| match r {
                 Register::Virtual(v) => Some(*v),
@@ -1156,9 +1156,9 @@ fn emit_instruction_riscv<W: Write>(
     if let Some(operations) = integer_conversion_with_width(
         inst,
         if ctx.target.xlen == Xlen::Rv32 {
-            MirType::i32()
+            MirType::Scalar(ScalarType::I32)
         } else {
-            MirType::i64()
+            MirType::Scalar(ScalarType::I64)
         },
         pointer_width,
     ) {
@@ -1192,7 +1192,7 @@ fn emit_instruction_riscv<W: Write>(
         | MirInst::Bitcast {
             to: ty, dst, src, ..
         } => {
-            if ctx.target.xlen == Xlen::Rv32 && *ty == MirType::f64() {
+            if ctx.target.xlen == Xlen::Rv32 && *ty == MirType::Scalar(ScalarType::F64) {
                 load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", false)?;
                 let Register::Virtual(dst) = dst else {
                     return Err(LaminaError::ValidationError(
@@ -1521,7 +1521,7 @@ fn emit_instruction_riscv<W: Write>(
                             ));
                         }
                         if kind.float() {
-                            kind.ty = MirType::i64();
+                            kind.ty = MirType::Scalar(ScalarType::I64);
                         }
                     }
                 }
@@ -1635,7 +1635,7 @@ fn emit_instruction_riscv<W: Write>(
                 .collect();
             if let Some(fixed) = variadic_fixed {
                 for kind in kinds.iter_mut().skip(*fixed).filter(|kind| kind.float()) {
-                    kind.ty = MirType::i64();
+                    kind.ty = MirType::Scalar(ScalarType::I64);
                 }
             }
             let stack_space = pass_riscv_arguments(

@@ -117,7 +117,13 @@ fn bitcasts_preserve_source_bindings_and_define_distinct_results() {
     let Instruction::Bitcast { from, to, dst, src } = &instructions[0].instr else {
         panic!("expected bitcast")
     };
-    assert_eq!((*from, *to), (MirType::f64(), MirType::i64()));
+    assert_eq!(
+        (*from, *to),
+        (
+            MirType::Scalar(ScalarType::F64),
+            MirType::Scalar(ScalarType::I64)
+        )
+    );
     assert_eq!(src, &Operand::reg(function.sig.params[0].reg.clone()));
     assert_ne!(dst, &function.sig.params[0].reg);
     let Instruction::Bitcast { dst: back, .. } = &instructions[1].instr else {
@@ -200,7 +206,7 @@ fn constant_gep_preserves_pointer_width_offsets() {
                     ty,
                     rhs: Operand::Immediate(Immediate::I64(offset)),
                     ..
-                } if *ty == MirType::i64() => Some(*offset),
+                } if *ty == MirType::Scalar(ScalarType::I64) => Some(*offset),
                 _ => None,
             });
         assert_eq!(offset, Some(expected), "index {index}");
@@ -223,7 +229,7 @@ fn offsets_past_i32_reach_their_address() {
                 ty,
                 rhs: Operand::Immediate(Immediate::I64(offset)),
                 ..
-            } if *ty == MirType::i64() => Some(*offset),
+            } if *ty == MirType::Scalar(ScalarType::I64) => Some(*offset),
             _ => None,
         });
     assert_eq!(offset, Some(2_400_000_000));
@@ -294,7 +300,7 @@ fn integer_aggregate_parameter_arrives_as_pointer_to_its_own_slot() {
     let mir = from_ir(&ir, "sum").expect("lower aggregate parameter");
     let function = mir.get_function("sum").expect("sum function");
     let parameter = &function.sig.params[0];
-    assert_eq!(parameter.ty, MirType::ptr());
+    assert_eq!(parameter.ty, MirType::Scalar(ScalarType::Ptr));
     let aggregate = parameter.aggregate.expect("aggregate marker");
     assert_eq!(aggregate.size, 16);
     assert_eq!(aggregate.words(), 2);
@@ -369,7 +375,7 @@ fn integer_aggregate_return_lands_in_slot_the_caller_addresses() {
     let mir = from_ir(&ir, "returns").expect("lower aggregate return");
 
     let make = mir.get_function("make").expect("make function");
-    assert_eq!(make.sig.ret_ty, Some(MirType::ptr()));
+    assert_eq!(make.sig.ret_ty, Some(MirType::Scalar(ScalarType::Ptr)));
     let aggregate = make.sig.ret_aggregate.expect("return marker");
     assert_eq!(aggregate.words(), 2);
 
@@ -585,7 +591,7 @@ fn variadic_f32_argument_widens_to_f64() {
         matches!(
             &widened[0].instr,
             Instruction::FloatConvert { from, to, .. }
-                if *from == MirType::f32() && *to == MirType::f64()
+                if *from == MirType::Scalar(ScalarType::F32) && *to == MirType::Scalar(ScalarType::F64)
         ),
         "{widened:?}"
     );
@@ -606,7 +612,7 @@ fn variadic_callptr_widens_only_past_its_marker() {
         matches!(
             &widened[0].instr,
             Instruction::FloatConvert { from, to, .. }
-                if *from == MirType::f32() && *to == MirType::f64()
+                if *from == MirType::Scalar(ScalarType::F32) && *to == MirType::Scalar(ScalarType::F64)
         ),
         "{widened:?}"
     );

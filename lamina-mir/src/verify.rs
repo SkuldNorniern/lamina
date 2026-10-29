@@ -711,7 +711,7 @@ fn verify_instruction_types(
                 Instruction::SymbolAddress { dst, .. } => {
                     verify_destination(
                         dst,
-                        MirType::ptr(),
+                        MirType::Scalar(ScalarType::Ptr),
                         "SymbolAddress",
                         config,
                         &mut instruction_errors,
@@ -938,7 +938,7 @@ fn verify_instruction_types(
                     }
                     verify_destination(
                         dst,
-                        MirType::i1(),
+                        MirType::Scalar(ScalarType::I1),
                         "IntCmp",
                         config,
                         &mut instruction_errors,
@@ -970,7 +970,7 @@ fn verify_instruction_types(
                     }
                     verify_destination(
                         dst,
-                        MirType::i1(),
+                        MirType::Scalar(ScalarType::I1),
                         "FloatCmp",
                         config,
                         &mut instruction_errors,
@@ -1002,7 +1002,7 @@ fn verify_instruction_types(
                     verify_destination(dst, *ty, "Select", config, &mut instruction_errors);
                     verify_register(
                         cond,
-                        MirType::i1(),
+                        MirType::Scalar(ScalarType::I1),
                         "Select condition",
                         definitions,
                         config,
@@ -1028,7 +1028,7 @@ fn verify_instruction_types(
                 Instruction::Br { cond, .. } => {
                     verify_register(
                         cond,
-                        MirType::i1(),
+                        MirType::Scalar(ScalarType::I1),
                         "Branch condition",
                         definitions,
                         config,
@@ -1062,7 +1062,7 @@ fn verify_instruction_types(
                         let operand_ty = match (op, index) {
                             (VectorOp::VSplat, 0) | (VectorOp::VInsertLane, 1) => scalar,
                             (VectorOp::VExtractLane, 1) | (VectorOp::VInsertLane, 2) => {
-                                MirType::i64()
+                                MirType::Scalar(ScalarType::I64)
                             }
                             _ => *ty,
                         };
@@ -1086,7 +1086,7 @@ fn verify_instruction_types(
                 Instruction::VaStart { ap } | Instruction::VaEnd { ap } => {
                     verify_operand(
                         ap,
-                        MirType::ptr(),
+                        MirType::Scalar(ScalarType::Ptr),
                         "va_list address",
                         definitions,
                         config,
@@ -1097,7 +1097,7 @@ fn verify_instruction_types(
                     verify_destination(dst, *ty, "VaArg", config, &mut instruction_errors);
                     verify_operand(
                         ap,
-                        MirType::ptr(),
+                        MirType::Scalar(ScalarType::Ptr),
                         "va_list address",
                         definitions,
                         config,
@@ -1108,7 +1108,7 @@ fn verify_instruction_types(
                     for (operand, what) in [(dst, "va_copy destination"), (src, "va_copy source")] {
                         verify_operand(
                             operand,
-                            MirType::ptr(),
+                            MirType::Scalar(ScalarType::Ptr),
                             what,
                             definitions,
                             config,
@@ -1236,7 +1236,9 @@ pub(crate) fn instruction_definition_type(instruction: &Instruction) -> Option<M
             ..
         } => Some(vector_scalar(*ty)),
         Instruction::VectorOp { ty, .. } => Some(*ty),
-        Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => Some(MirType::i1()),
+        Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
+            Some(MirType::Scalar(ScalarType::I1))
+        }
         Instruction::IntConvert { to, .. }
         | Instruction::IntToFloat { to, .. }
         | Instruction::FloatToInt { to, .. }
@@ -1244,7 +1246,7 @@ pub(crate) fn instruction_definition_type(instruction: &Instruction) -> Option<M
         | Instruction::Bitcast { to, .. } => Some(*to),
         Instruction::Lea { .. }
         | Instruction::StackAddr { .. }
-        | Instruction::SymbolAddress { .. } => Some(MirType::ptr()),
+        | Instruction::SymbolAddress { .. } => Some(MirType::Scalar(ScalarType::Ptr)),
         _ => None,
     }
 }
@@ -1409,10 +1411,10 @@ mod tests {
     #[test]
     fn pre_phi_rejects_duplicate_definitions_and_non_dominating_uses() {
         let duplicate = FunctionBuilder::new("f")
-            .param(VirtualReg::gpr(0).into(), MirType::i64())
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::imm_i64(1),
             })
@@ -1426,12 +1428,12 @@ mod tests {
         let forward = FunctionBuilder::new("f")
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 src: Operand::v_gpr(0),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::imm_i64(1),
             })
@@ -1449,22 +1451,22 @@ mod tests {
         let function = FunctionBuilder::new("f")
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::imm_i64(0),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::imm_i64(1),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 src: Operand::imm_i64(2),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 src: Operand::imm_i64(3),
             })
@@ -1481,7 +1483,7 @@ mod tests {
     #[test]
     fn phi_inputs_are_checked_on_predecessor_edges() {
         let function = FunctionBuilder::new("f")
-            .returns(MirType::i64())
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Jmp {
                 target: "merge".into(),
@@ -1494,14 +1496,14 @@ mod tests {
         let mut phi = PhiVerification {
             block: "merge".into(),
             dst: VirtualReg::gpr(0).into(),
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             incoming: vec![("entry".into(), Operand::imm_i64(1))],
         };
         assert!(verify_before_phi_lowering(&function, &[phi], &HashSet::new()).is_ok());
         phi = PhiVerification {
             block: "merge".into(),
             dst: VirtualReg::gpr(0).into(),
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             incoming: vec![("entry".into(), Operand::v_gpr(0))],
         };
         let errors = verify_before_phi_lowering(&function, &[phi], &HashSet::new())
@@ -1522,7 +1524,7 @@ mod tests {
             FunctionBuilder::new("f")
                 .block("entry")
                 .instr(Instruction::Copy {
-                    ty: MirType::i8(),
+                    ty: MirType::Scalar(ScalarType::I8),
                     dst: VirtualReg::gpr(0).into(),
                     src: Operand::imm_i64(1),
                 })
@@ -1542,8 +1544,8 @@ mod tests {
             let mut module = Module::new("calls");
             module.add_function(
                 FunctionBuilder::new("callee")
-                    .param(VirtualReg::gpr(0).into(), MirType::i32())
-                    .returns(MirType::i32())
+                    .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I32))
+                    .returns(MirType::Scalar(ScalarType::I32))
                     .block("entry")
                     .instr(Instruction::Ret {
                         value: Some(Operand::v_gpr(0)),
@@ -1563,8 +1565,8 @@ mod tests {
                 }
             };
             let mut caller = FunctionBuilder::new("caller")
-                .param(VirtualReg::gpr(0).into(), MirType::i64())
-                .returns(MirType::i64())
+                .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+                .returns(MirType::Scalar(ScalarType::I64))
                 .block("entry")
                 .instr(call);
             if !tail {
@@ -1630,17 +1632,17 @@ mod tests {
         let function = FunctionBuilder::new("bad_widths")
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i32(),
+                ty: MirType::Scalar(ScalarType::I32),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::imm_i32(1),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::imm_i64(2),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 src: Operand::v_gpr(0),
             })
@@ -1660,13 +1662,13 @@ mod tests {
         let function = FunctionBuilder::new("float_storage")
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::f32(),
+                ty: MirType::Scalar(ScalarType::F32),
                 dst: VirtualReg::fpr(0).into(),
                 src: Operand::imm_f32(1.0),
             })
             .instr(Instruction::Bitcast {
-                from: MirType::f32(),
-                to: MirType::i32(),
+                from: MirType::Scalar(ScalarType::F32),
+                to: MirType::Scalar(ScalarType::I32),
                 dst: VirtualReg::gpr(1).into(),
                 src: Operand::Register(VirtualReg::fpr(0).into()),
             })
@@ -1685,7 +1687,7 @@ mod tests {
                 target: "exit".to_string(),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::Immediate(Immediate::I64(1)),
             })
@@ -1715,7 +1717,7 @@ mod tests {
         let function = FunctionBuilder::new("good_terminator")
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::Immediate(Immediate::I64(1)),
             })
@@ -1728,10 +1730,10 @@ mod tests {
     #[test]
     fn rejects_multiple_virtual_register_definitions() {
         let function = FunctionBuilder::new("bad_ssa")
-            .param(VirtualReg::gpr(0).into(), MirType::i64())
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::Immediate(Immediate::I64(1)),
             })
@@ -1749,10 +1751,10 @@ mod tests {
     #[test]
     fn accepts_single_virtual_register_definitions() {
         let function = FunctionBuilder::new("good_ssa")
-            .param(VirtualReg::gpr(0).into(), MirType::i64())
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 src: Operand::Register(VirtualReg::gpr(0).into()),
             })
@@ -1768,9 +1770,9 @@ mod tests {
             Signature::new("bad_dominance")
                 .with_params(vec![Parameter::new(
                     VirtualReg::gpr(0).into(),
-                    MirType::i1(),
+                    MirType::Scalar(ScalarType::I1),
                 )])
-                .with_return(MirType::i64()),
+                .with_return(MirType::Scalar(ScalarType::I64)),
         );
         let mut entry = Block::new("entry");
         entry.push(Instruction::Br {
@@ -1780,7 +1782,7 @@ mod tests {
         });
         let mut left = Block::new("left");
         left.push(Instruction::Copy {
-            ty: MirType::i64(),
+            ty: MirType::Scalar(ScalarType::I64),
             dst: VirtualReg::gpr(1).into(),
             src: Operand::Immediate(Immediate::I64(1)),
         });
@@ -1811,10 +1813,10 @@ mod tests {
     #[test]
     fn accepts_definition_that_dominates_use() {
         let function = FunctionBuilder::new("good_dominance")
-            .returns(MirType::i64())
+            .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::Immediate(Immediate::I64(1)),
             })
@@ -1836,39 +1838,39 @@ mod tests {
             .block("entry")
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::fpr(0).into(),
                 lhs: Operand::Immediate(Immediate::F64(1.0)),
                 rhs: Operand::Immediate(Immediate::F64(2.0)),
             })
             .instr(Instruction::FloatBinary {
                 op: FloatBinOp::FAdd,
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 lhs: Operand::Immediate(Immediate::I64(1)),
                 rhs: Operand::Immediate(Immediate::I64(2)),
             })
             .instr(Instruction::IntCmp {
                 op: IntCmpOp::Eq,
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::fpr(2).into(),
                 lhs: Operand::Immediate(Immediate::I64(1)),
                 rhs: Operand::Immediate(Immediate::I64(2)),
             })
             .instr(Instruction::FloatCmp {
                 op: FloatCmpOp::Eq,
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::fpr(3).into(),
                 lhs: Operand::Immediate(Immediate::F64(1.0)),
                 rhs: Operand::Immediate(Immediate::F64(2.0)),
             })
             .instr(Instruction::Copy {
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::fpr(4).into(),
                 src: Operand::Register(VirtualReg::gpr(1).into()),
             })
             .instr(Instruction::Select {
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::fpr(5).into(),
                 cond: VirtualReg::fpr(2).into(),
                 true_val: Operand::Register(VirtualReg::gpr(1).into()),
@@ -1900,7 +1902,7 @@ mod tests {
         let function = FunctionBuilder::new("bad_branch")
             .block("entry")
             .instr(Instruction::Copy {
-                ty: MirType::i8(),
+                ty: MirType::Scalar(ScalarType::I8),
                 dst: VirtualReg::gpr(0).into(),
                 src: Operand::Immediate(Immediate::I8(1)),
             })
@@ -1925,39 +1927,39 @@ mod tests {
             .block("entry")
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(0).into(),
                 lhs: Operand::Immediate(Immediate::I64(1)),
                 rhs: Operand::Immediate(Immediate::I64(2)),
             })
             .instr(Instruction::FloatBinary {
                 op: FloatBinOp::FAdd,
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::fpr(1).into(),
                 lhs: Operand::Immediate(Immediate::F64(1.0)),
                 rhs: Operand::Immediate(Immediate::F64(2.0)),
             })
             .instr(Instruction::IntCmp {
                 op: IntCmpOp::Eq,
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(2).into(),
                 lhs: Operand::Register(VirtualReg::gpr(0).into()),
                 rhs: Operand::Immediate(Immediate::I64(3)),
             })
             .instr(Instruction::FloatCmp {
                 op: FloatCmpOp::Eq,
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::gpr(3).into(),
                 lhs: Operand::Register(VirtualReg::fpr(1).into()),
                 rhs: Operand::Immediate(Immediate::F64(3.0)),
             })
             .instr(Instruction::Copy {
-                ty: MirType::i1(),
+                ty: MirType::Scalar(ScalarType::I1),
                 dst: VirtualReg::gpr(4).into(),
                 src: Operand::Register(VirtualReg::gpr(3).into()),
             })
             .instr(Instruction::Select {
-                ty: MirType::i64(),
+                ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(5).into(),
                 cond: VirtualReg::gpr(2).into(),
                 true_val: Operand::Register(VirtualReg::gpr(0).into()),
@@ -1975,7 +1977,7 @@ mod tests {
             .block("entry")
             .instr(Instruction::FloatBinary {
                 op: FloatBinOp::FAdd,
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::fpr(0).into(),
                 lhs: Operand::Immediate(Immediate::F64(1.0)),
                 rhs: Operand::Immediate(Immediate::I64(2)),
@@ -1999,7 +2001,7 @@ mod tests {
             .block("entry")
             .instr(Instruction::FloatBinary {
                 op: FloatBinOp::FAdd,
-                ty: MirType::f64(),
+                ty: MirType::Scalar(ScalarType::F64),
                 dst: VirtualReg::fpr(0).into(),
                 lhs: Operand::Immediate(Immediate::F64(1.0)),
                 rhs: Operand::Immediate(Immediate::F64(2.0)),
