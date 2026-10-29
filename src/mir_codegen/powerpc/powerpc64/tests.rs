@@ -652,6 +652,7 @@ fn emit_aggregate_module(ir: &str, name: &str) -> Result<String, Box<dyn Error>>
         TargetOperatingSystem::Linux,
         1,
         &MirCodegenSettings::default(),
+        Endianness::Little,
     )?;
     Ok(String::from_utf8(output)?)
 }
@@ -807,5 +808,154 @@ fn aggregate_result_of_two_words_comes_back_in_r3_and_r4() -> Result<(), Box<dyn
     let after = caller.split("bl make").nth(1).ok_or("missing call")?;
     let low = store_offset(after, "std 3, ")?;
     assert_eq!(store_offset(after, "std 4, ")?, low + 8, "{assembly}");
+    Ok(())
+}
+
+/// A narrow value written to a frame slot by `std` sits in the doubleword's low-order
+/// half, which is the slot's last bytes on a big-endian target. Reading it back at the
+/// slot's own offset would pick up the other end.
+#[test]
+fn a_narrow_value_is_read_from_the_low_order_half_of_its_slot() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "fn @main() -> i64 {\nentry:\n  %a = add.i8 10, 20\n  %b = bitcast.i8.u8 %a\n  %c = extend.u8.i64 %b\n  ret.i64 %c\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "narrow_slot").expect("lower narrow slot");
+    let mut big = Vec::new();
+    emit_ppc64_module(
+        &mir,
+        &mut big,
+        TargetOperatingSystem::Linux,
+        1,
+        &MirCodegenSettings::default(),
+        Endianness::Big,
+    )?;
+    let big = String::from_utf8(big)?;
+    let mut little = Vec::new();
+    emit_ppc64_module(
+        &mir,
+        &mut little,
+        TargetOperatingSystem::Linux,
+        1,
+        &MirCodegenSettings::default(),
+        Endianness::Little,
+    )?;
+    let little = String::from_utf8(little)?;
+
+    let slot = little
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("lbz 3, "))
+        .ok_or("no byte read on little-endian")?
+        .trim_end_matches("(1)")
+        .parse::<i32>()?;
+    assert!(
+        big.contains(&format!("    lbz 3, {}(1)\n", slot + 7)),
+        "{big}"
+    );
+    Ok(())
+}
+
+/// A single kept in a frame slot goes to the same half of it as a narrow integer, so a
+/// `bitcast` across the two register files reads the bytes the other wrote.
+#[test]
+fn a_single_shares_the_slot_half_a_narrow_integer_uses() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "fn @main() -> i64 {\nentry:\n  %f = inttofp.i8.f32 -128\n  %b = bitcast.f32.i32 %f\n  %w = extend.i32.i64 %b\n  ret.i64 %w\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "single_slot").expect("lower single slot");
+    for endianness in [Endianness::Little, Endianness::Big] {
+        let mut output = Vec::new();
+        emit_ppc64_module(
+            &mir,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+            endianness,
+        )?;
+        let assembly = String::from_utf8(output)?;
+        let stored: i32 = assembly
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("stfs 1, "))
+            .ok_or("no single stored")?
+            .trim_end_matches("(1)")
+            .parse()?;
+        assert!(
+            assembly.contains(&format!("    lwz 3, {stored}(1)\n")),
+            "{endianness:?} {assembly}"
+        );
+    }
+    Ok(())
+}
+
+/// ELFv2 carries a composite narrower than a doubleword right-justified in its
+/// register. A big-endian doubleword load of its memory image puts the bytes at the
+/// other end, so the two sides shift; little-endian needs no shift at all. Measured
+/// against `powerpc64-linux-gnu-gcc -mabi=elfv2 -mbig`, which passes
+/// `struct { char a, b, c; } = {1,2,3}` as `0x0000000000010203`.
+#[test]
+fn a_composite_under_a_doubleword_is_right_justified_on_big_endian() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ty = "struct { a: i8, b: i8, c: i8 }";
+    let ir = format!(
+        "fn @third({ty} %s) -> i64 {{\nentry:\n  %p = getfieldptr.{ty} %s, 2\n  %v = load.i8 %p\n  %w = extend.i8.i64 %v\n  ret.i64 %w\n}}\nfn @main() -> i64 {{\nentry:\n  %s = stackalloc.{ty}\n  %pa = getfieldptr.{ty} %s, 0\n  store.i8 %pa, 1\n  %r = call @third({ty} %s)\n  ret.i64 %r\n}}\n"
+    );
+    let module = parse_module(&ir)?;
+    let mir = from_ir(&module, "small_aggregate").expect("lower small aggregate");
+    let emit = |endianness| -> Result<String, Box<dyn Error>> {
+        let mut output = Vec::new();
+        emit_ppc64_module(
+            &mir,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+            endianness,
+        )?;
+        Ok(String::from_utf8(output)?)
+    };
+
+    let big = emit(Endianness::Big)?;
+    // Three bytes leave five to shift past: the caller right-justifies what it loaded
+    // and the callee puts it back where its own field offsets expect it.
+    assert!(big.contains("    srdi 3, 3, 40\n"), "{big}");
+    assert!(big.contains("    sldi 0, 3, 40\n"), "{big}");
+
+    let little = emit(Endianness::Little)?;
+    assert!(!little.contains("srdi 3, 3, 40"), "{little}");
+    assert!(!little.contains("sldi 0, 3, 40"), "{little}");
+    Ok(())
+}
+
+/// An aggregate that fills whole doublewords, and the trailing partial doubleword of a
+/// wider one, are left exactly as the memory image has them in both byte orders.
+#[test]
+fn a_composite_over_a_doubleword_keeps_its_memory_image() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ty = "struct { a: i64, b: i8 }";
+    let ir = format!(
+        "fn @tail({ty} %s) -> i64 {{\nentry:\n  %p = getfieldptr.{ty} %s, 1\n  %v = load.i8 %p\n  %w = extend.i8.i64 %v\n  ret.i64 %w\n}}\nfn @main() -> i64 {{\nentry:\n  %s = stackalloc.{ty}\n  %pa = getfieldptr.{ty} %s, 0\n  store.i64 %pa, 1\n  %r = call @tail({ty} %s)\n  ret.i64 %r\n}}\n"
+    );
+    let module = parse_module(&ir)?;
+    let mir = from_ir(&module, "wide_aggregate").expect("lower wide aggregate");
+    for endianness in [Endianness::Little, Endianness::Big] {
+        let mut output = Vec::new();
+        emit_ppc64_module(
+            &mir,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+            endianness,
+        )?;
+        let assembly = String::from_utf8(output)?;
+        assert!(
+            !assembly.contains("    srdi 3,"),
+            "{endianness:?} {assembly}"
+        );
+        assert!(
+            !assembly.contains("    sldi 0,"),
+            "{endianness:?} {assembly}"
+        );
+    }
     Ok(())
 }

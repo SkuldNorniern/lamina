@@ -10,6 +10,7 @@ pub mod i686;
 pub mod limits;
 pub mod link;
 pub mod loongarch64;
+pub mod mips64;
 pub mod ptx;
 pub mod s390x;
 pub mod settings;
@@ -313,6 +314,26 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 target_os,
                 codegen_units,
                 settings,
+            )?;
+        }
+        TargetArchitecture::Mips64 | TargetArchitecture::Mips64El => {
+            mips64::generate_mir_mips64_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+                target_arch,
+            )?;
+        }
+        TargetArchitecture::PowerPC64Be => {
+            powerpc::powerpc64::generate_mir_ppc64_for_arch(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+                target_arch,
             )?;
         }
         TargetArchitecture::PowerPC64 => {

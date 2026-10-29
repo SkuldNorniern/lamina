@@ -40,7 +40,7 @@
 use std::{collections::HashSet, fmt};
 
 use super::{
-    Codegen, arm, arm::aarch64::AArch64Codegen, arx64, i686, loongarch64,
+    Codegen, arm, arm::aarch64::AArch64Codegen, arx64, i686, loongarch64, mips64,
     powerpc::powerpc64::Ppc64Codegen, riscv::RiscVCodegen, s390x, wasm::WasmCodegen,
     x86_64::X86Codegen,
 };
@@ -275,7 +275,10 @@ impl CapabilitySet {
             TargetArchitecture::Arx64 => arx64::capabilities(),
             TargetArchitecture::LoongArch64 => loongarch64::capabilities(),
             TargetArchitecture::S390x => s390x::capabilities(),
-            TargetArchitecture::PowerPC64 => <Ppc64Codegen<'static> as Codegen>::capabilities(),
+            TargetArchitecture::Mips64 | TargetArchitecture::Mips64El => mips64::capabilities(),
+            TargetArchitecture::PowerPC64 | TargetArchitecture::PowerPC64Be => {
+                <Ppc64Codegen<'static> as Codegen>::capabilities()
+            }
             TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
                 <WasmCodegen<'static> as Codegen>::capabilities()
             }

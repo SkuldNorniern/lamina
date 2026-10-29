@@ -174,6 +174,9 @@ impl SimdCapabilities {
             | TargetArchitecture::Arx64
             | TargetArchitecture::PowerPC64
             | TargetArchitecture::LoongArch64
+            | TargetArchitecture::PowerPC64Be
+            | TargetArchitecture::Mips64
+            | TargetArchitecture::Mips64El
             | TargetArchitecture::S390x
             | TargetArchitecture::Nvptx64
             | TargetArchitecture::Amdgcn => Self::default(),

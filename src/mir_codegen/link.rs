@@ -304,6 +304,18 @@ fn build_arch_emulation_flags(
             args.push("-m".to_string());
             args.push("elf64_s390".to_string());
         }
+        TargetArchitecture::PowerPC64Be => {
+            args.push("-m".to_string());
+            args.push("elf64ppc".to_string());
+        }
+        TargetArchitecture::Mips64 => {
+            args.push("-m".to_string());
+            args.push("elf64btsmip".to_string());
+        }
+        TargetArchitecture::Mips64El => {
+            args.push("-m".to_string());
+            args.push("elf64ltsmip".to_string());
+        }
         TargetArchitecture::I686 => {
             args.push("-m".to_string());
             args.push("elf_i386".to_string());
@@ -385,6 +397,8 @@ fn build_dynamic_linker_arg(
         TargetArchitecture::Riscv64 => "/lib/ld-linux-riscv64-lp64d.so.1",
         TargetArchitecture::LoongArch64 => "/lib64/ld-linux-loongarch-lp64d.so.1",
         TargetArchitecture::S390x => "/lib/ld64.so.1",
+        TargetArchitecture::PowerPC64Be => "/lib64/ld64.so.1",
+        TargetArchitecture::Mips64 | TargetArchitecture::Mips64El => "/lib64/ld.so.1",
         TargetArchitecture::Thumbv6m
         | TargetArchitecture::Thumbv7m
         | TargetArchitecture::Arx64

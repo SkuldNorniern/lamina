@@ -1,7 +1,9 @@
 //! PowerPC64 ELFv2 code generator for MIR.
 //!
-//! Targets little-endian PowerPC64 (ppc64le) running Linux, using the
-//! ELFv2 ABI.  Assembly output is suitable for GNU `as` or LLVM `as`.
+//! Targets PowerPC64 running Linux in both byte orders, using the ELFv2 ABI in
+//! each: `ppc64le` and `ppc64`. ELFv1, the traditional big-endian ABI with `.opd`
+//! function descriptors, is a different ABI and is not emitted.  Assembly output is
+//! suitable for GNU `as` or LLVM `as`.
 //!
 //! ## Register conventions used internally
 //!
@@ -66,7 +68,7 @@ use lamina_codegen::{
         frame::{LINKAGE_SIZE, load_imm, r1_address, r1_mem},
     },
 };
-use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{Endianness, PointerWidth, TargetArchitecture, TargetOperatingSystem};
 
 pub struct Ppc64Codegen<'a> {
     base: CodegenBase<'a>,
@@ -248,6 +250,7 @@ fn ppc64_local_bytes(func: &Function, slots: &HashMap<VirtualReg, i32>) -> usize
         .map_or(0, |top| (top - base).max(0) as usize)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compile_single_function_ppc64(
     func_name: &str,
     func: &Function,
@@ -255,6 +258,7 @@ fn compile_single_function_ppc64(
     settings: &MirCodegenSettings,
     signatures: &CallSignatures,
     aggregates: &AggregateSignatures,
+    endianness: Endianness,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
     let abi = Ppc64Abi::new(target_os);
@@ -364,6 +368,7 @@ fn compile_single_function_ppc64(
         hidden_result_slot,
         &reg_alloc,
         &stack_slots,
+        endianness,
     )
     .map_err(lamina_to_codegen_error)?;
     for param in &func.sig.params {
@@ -388,6 +393,7 @@ fn compile_single_function_ppc64(
             || func.sig.params.iter().any(|p| p.aggregate.is_some()),
         ret_aggregate: func.sig.ret_aggregate,
         hidden_result_slot,
+        endianness,
     };
     let mut cmp_seq: u32 = 0;
     if plan
@@ -451,8 +457,33 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
-    validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
-    emit_ppc64_module(module, writer, target_os, codegen_units, settings)
+    generate_mir_ppc64_for_arch(
+        module,
+        writer,
+        target_os,
+        codegen_units,
+        settings,
+        TargetArchitecture::PowerPC64,
+    )
+}
+
+pub fn generate_mir_ppc64_for_arch<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+    arch: TargetArchitecture,
+) -> Result<(), LaminaError> {
+    validate_module_call_parameters(module, arch)?;
+    emit_ppc64_module(
+        module,
+        writer,
+        target_os,
+        codegen_units,
+        settings,
+        arch.endianness(),
+    )
 }
 
 fn emit_ppc64_module<W: Write>(
@@ -461,11 +492,17 @@ fn emit_ppc64_module<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
+    endianness: Endianness,
 ) -> Result<(), LaminaError> {
     reject_thread_local_globals(module, "PowerPC64")?;
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, ".abiversion 2")?;
+    if endianness == Endianness::Big {
+        // The little-endian assembler defaults to this level; the big-endian one
+        // defaults lower and would refuse `isel`.
+        writeln!(writer, ".machine power8")?;
+    }
     writeln!(writer, "{}", abi.get_data_section())?;
     writeln!(writer, "{}", abi.get_text_section())?;
     emit_debug_file(writer, settings)?;
@@ -491,6 +528,7 @@ fn emit_ppc64_module<W: Write>(
                 settings_arc.as_ref(),
                 signatures.as_ref(),
                 aggregates.as_ref(),
+                endianness,
             )
         })
         .map_err(parallel_codegen_error)?;
@@ -680,6 +718,7 @@ fn copy_from_save_area<W: Write>(
 
 /// Stores each incoming parameter into its frame slot, and keeps the hidden result pointer
 /// in the save slot it arrived with so the return can hand it back in r3.
+#[allow(clippy::too_many_arguments)]
 fn store_incoming_parameters<W: Write>(
     writer: &mut W,
     func: &Function,
@@ -687,6 +726,7 @@ fn store_incoming_parameters<W: Write>(
     hidden_result_slot: Option<i32>,
     reg_alloc: &Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    endianness: Endianness,
 ) -> Result<(), LaminaError> {
     let kinds: Vec<ArgKind> = func
         .sig
@@ -718,6 +758,7 @@ fn store_incoming_parameters<W: Write>(
                 reg_alloc,
                 stack_slots,
                 param.ty.size_bytes(func.pointer_width) == 4,
+                endianness,
             )?,
             PpcArgPlace::Gpr(bank) => {
                 let src = Ppc64Abi::ARG_REGISTERS[bank];
@@ -731,12 +772,16 @@ fn store_incoming_parameters<W: Write>(
             }
             PpcArgPlace::Words { first, words } => {
                 for word in 0..words {
-                    r1_mem(
-                        writer,
-                        "std",
-                        Ppc64Abi::ARG_REGISTERS[first + word],
-                        offset + 8 * word as i32,
-                    )?;
+                    let src = Ppc64Abi::ARG_REGISTERS[first + word];
+                    let shift = param
+                        .aggregate
+                        .map_or(0, |a| aggregate_justify_bits(&a, endianness));
+                    if shift == 0 {
+                        r1_mem(writer, "std", src, offset + 8 * word as i32)?;
+                    } else {
+                        writeln!(writer, "    sldi 0, {src}, {shift}")?;
+                        r1_mem(writer, "std", "0", offset + 8 * word as i32)?;
+                    }
                 }
             }
             PpcArgPlace::Split { first, words } => {
@@ -774,6 +819,7 @@ struct Ppc64Emit<'a> {
     /// Save slot holding the caller's hidden result pointer, when this function returns
     /// an aggregate through one.
     hidden_result_slot: Option<i32>,
+    endianness: Endianness,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -912,6 +958,7 @@ fn emit_instruction_ppc64<W: Write>(
         aggregate_flow,
         ret_aggregate,
         hidden_result_slot,
+        endianness,
     } = *emit;
     if settings.emit_asm_debug_lines
         && let Some(loc) = loc
@@ -948,7 +995,8 @@ fn emit_instruction_ppc64<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
                         writeln!(writer, "    mr 3, {physical}")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        r1_mem(writer, copy_load_mnemonic(ty, pointer_width), "3", *offset)?;
+                        let (mnemonic, within) = copy_load_mnemonic(ty, pointer_width, endianness);
+                        r1_mem(writer, mnemonic, "3", *offset + within)?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!("PowerPC64 Copy source {vreg:?} has no register or stack slot"),
@@ -1122,8 +1170,8 @@ fn emit_instruction_ppc64<W: Write>(
             // Double has no suffix on PowerPC; only single takes the s form.
             let suffix = if is_f32 { "s" } else { "" };
             // Load float operands from integer stack slots into FPRs via memory.
-            emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32)?;
-            emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
+            emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32, endianness)?;
+            emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32, endianness)?;
             match op {
                 FloatBinOp::FAdd => writeln!(writer, "    fadd{suffix} 1, 1, 2")?,
                 FloatBinOp::FSub => writeln!(writer, "    fsub{suffix} 1, 1, 2")?,
@@ -1131,7 +1179,15 @@ fn emit_instruction_ppc64<W: Write>(
                 FloatBinOp::FDiv => writeln!(writer, "    fdiv{suffix} 1, 1, 2")?,
             }
             if let Register::Virtual(vreg) = dst {
-                emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
+                emit_store_fp_result(
+                    "1",
+                    vreg,
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    is_f32,
+                    endianness,
+                )?;
             }
         }
         MirInst::FloatToInt {
@@ -1142,7 +1198,7 @@ fn emit_instruction_ppc64<W: Write>(
             src,
         } => {
             let is_f32 = from.size_bytes(pointer_width) == 4;
-            emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
+            emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32, endianness)?;
             // The convert saturates but turns NaN into the most negative integer, so
             // the unordered bit of a self-comparison picks zero instead.
             writeln!(writer, "    fcmpu 0, 1, 1")?;
@@ -1201,7 +1257,15 @@ fn emit_instruction_ppc64<W: Write>(
             };
             writeln!(writer, "    {convert} 1, 1")?;
             if let Register::Virtual(vreg) = dst {
-                emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
+                emit_store_fp_result(
+                    "1",
+                    vreg,
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    is_f32,
+                    endianness,
+                )?;
             }
         }
         MirInst::FloatConvert { from, to, dst, src } => {
@@ -1213,24 +1277,41 @@ fn emit_instruction_ppc64<W: Write>(
                 stack_slots,
                 "1",
                 from.size_bytes(pointer_width) == 4,
+                endianness,
             )?;
             if to_f32 {
                 writeln!(writer, "    frsp 1, 1")?;
             }
             if let Register::Virtual(vreg) = dst {
-                emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, to_f32)?;
+                emit_store_fp_result(
+                    "1",
+                    vreg,
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    to_f32,
+                    endianness,
+                )?;
             }
         }
         MirInst::FloatUnary { op, dst, src, ty } => {
             let is_f32 = ty.size_bytes(pointer_width) == 4;
             let suffix = if is_f32 { "s" } else { "" };
-            emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
+            emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32, endianness)?;
             match op {
                 FloatUnOp::FNeg => writeln!(writer, "    fneg 1, 1")?,
                 FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{suffix} 1, 1")?,
             }
             if let Register::Virtual(vreg) = dst {
-                emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
+                emit_store_fp_result(
+                    "1",
+                    vreg,
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    is_f32,
+                    endianness,
+                )?;
             }
         }
         MirInst::FloatCmp {
@@ -1241,8 +1322,8 @@ fn emit_instruction_ppc64<W: Write>(
             ty,
         } => {
             let is_f32 = ty.size_bytes(pointer_width) == 4;
-            emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32)?;
-            emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
+            emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32, endianness)?;
+            emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32, endianness)?;
             writeln!(writer, "    fcmpu 0, 1, 2")?;
             let branch = match op {
                 FloatCmpOp::Eq => "beq",
@@ -1430,6 +1511,7 @@ fn emit_instruction_ppc64<W: Write>(
                                 stack_slots,
                                 &bank.to_string(),
                                 kind.ty.size_bytes(pointer_width) == 4,
+                                endianness,
                             )?;
                             // ELFv2 hands a variadic callee its floats in both banks, and
                             // the callee reads whichever one its va_arg takes.
@@ -1440,13 +1522,15 @@ fn emit_instruction_ppc64<W: Write>(
                         }
                         PpcArgPlace::Words { first, words } => {
                             load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
+                            let shift = kind
+                                .aggregate
+                                .map_or(0, |a| aggregate_justify_bits(&a, endianness));
                             for word in 0..words {
-                                writeln!(
-                                    writer,
-                                    "    ld {}, {}(11)",
-                                    arg_regs[first + word],
-                                    word * 8
-                                )?;
+                                let dst = arg_regs[first + word];
+                                writeln!(writer, "    ld {dst}, {}(11)", word * 8)?;
+                                if shift != 0 {
+                                    writeln!(writer, "    srdi {dst}, {dst}, {shift}")?;
+                                }
                             }
                         }
                         PpcArgPlace::Split { first, .. } => {
@@ -1522,7 +1606,13 @@ fn emit_instruction_ppc64<W: Write>(
                                 "PowerPC64 aggregate result has no frame slot".to_string(),
                             ))
                         })?;
-                        r1_mem(writer, "std", "3", slot)?;
+                        let shift = aggregate_justify_bits(&aggregate, endianness);
+                        if shift == 0 {
+                            r1_mem(writer, "std", "3", slot)?;
+                        } else {
+                            writeln!(writer, "    sldi 0, 3, {shift}")?;
+                            r1_mem(writer, "std", "0", slot)?;
+                        }
                         if aggregate.words() > 1 {
                             r1_mem(writer, "std", "4", slot + 8)?;
                         }
@@ -1535,6 +1625,7 @@ fn emit_instruction_ppc64<W: Write>(
                             reg_alloc,
                             stack_slots,
                             ty.size_bytes(pointer_width) == 4,
+                            endianness,
                         )?,
                         None => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
                     },
@@ -1572,6 +1663,7 @@ fn emit_instruction_ppc64<W: Write>(
                             stack_slots,
                             &bank.to_string(),
                             ty.size_bytes(pointer_width) == 4,
+                            endianness,
                         )?;
                         if index >= fixed && gpr < arg_regs.len() {
                             writeln!(writer, "    stfd {bank}, -8(1)")?;
@@ -1611,6 +1703,7 @@ fn emit_instruction_ppc64<W: Write>(
                         reg_alloc,
                         stack_slots,
                         ty.size_bytes(pointer_width) == 4,
+                        endianness,
                     )?,
                     _ => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
                 }
@@ -1695,6 +1788,7 @@ fn emit_instruction_ppc64<W: Write>(
                                 reg_alloc,
                                 stack_slots,
                                 *ty == MirType::Scalar(ScalarType::F32),
+                                endianness,
                             )?;
                         } else {
                             store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -1736,6 +1830,7 @@ fn emit_instruction_ppc64<W: Write>(
                     stack_slots,
                     "3",
                     *ty == MirType::Scalar(ScalarType::F32),
+                    endianness,
                 )?;
             } else {
                 load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
@@ -1847,13 +1942,13 @@ fn emit_instruction_ppc64<W: Write>(
                     }
                     (Some(aggregate), None) => {
                         load_operand_to_register(val, writer, reg_alloc, stack_slots, "11")?;
+                        let shift = aggregate_justify_bits(&aggregate, endianness);
                         for word in 0..aggregate.words() {
-                            writeln!(
-                                writer,
-                                "    ld {}, {}(11)",
-                                Ppc64Abi::ARG_REGISTERS[word],
-                                word * 8
-                            )?;
+                            let dst = Ppc64Abi::ARG_REGISTERS[word];
+                            writeln!(writer, "    ld {dst}, {}(11)", word * 8)?;
+                            if shift != 0 {
+                                writeln!(writer, "    srdi {dst}, {dst}, {shift}")?;
+                            }
                         }
                     }
                     (None, _) => match ret_float {
@@ -1864,6 +1959,7 @@ fn emit_instruction_ppc64<W: Write>(
                             stack_slots,
                             "1",
                             ty.size_bytes(pointer_width) == 4,
+                            endianness,
                         )?,
                         None => load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?,
                     },
@@ -1938,13 +2034,27 @@ fn emit_instruction_ppc64<W: Write>(
     Ok(())
 }
 
-fn copy_load_mnemonic(ty: &MirType, pointer_width: PointerWidth) -> &'static str {
-    match ty.size_bytes(pointer_width) {
+/// How to read a value of this type back out of the doubleword frame slot a `std`
+/// wrote it into, and where in the slot its bytes are. A narrow value occupies the
+/// low-order end of the doubleword, which is the slot's last bytes on a big-endian
+/// target and its first on a little-endian one.
+fn copy_load_mnemonic(
+    ty: &MirType,
+    pointer_width: PointerWidth,
+    endianness: Endianness,
+) -> (&'static str, i32) {
+    let size = ty.size_bytes(pointer_width);
+    let mnemonic = match size {
         1 => "lbz",
         2 => "lhz",
         4 => "lwz",
         _ => "ld",
-    }
+    };
+    let within = match endianness {
+        Endianness::Big => 8 - size as i32,
+        Endianness::Little => 0,
+    };
+    (mnemonic, within)
 }
 
 /// Load a float operand (stored as integer bits in a stack slot) into FPR `fN`.
@@ -1958,23 +2068,26 @@ fn emit_load_fp_operand<W: Write>(
     stack_slots: &HashMap<VirtualReg, i32>,
     fpr: &str,
     is_f32: bool,
+    endianness: Endianness,
 ) -> Result<(), LaminaError> {
     let load_fp = if is_f32 { "lfs" } else { "lfd" };
+    let at = scratch_word_offset(is_f32, endianness);
+    let within = slot_word_offset(is_f32, endianness);
     match operand {
         Operand::Register(reg) => {
             match reg {
                 Register::Virtual(v) => {
                     if let Some(offset) = stack_slots.get(v) {
-                        r1_mem(writer, load_fp, fpr, *offset)?;
+                        r1_mem(writer, load_fp, fpr, *offset + within)?;
                     } else if let Some(phys) = reg_alloc.get_mapping_for(v) {
                         // Store to temp stack location then load as float
                         writeln!(writer, "    std {phys}, -8(1)")?;
-                        writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
+                        writeln!(writer, "    {load_fp} {fpr}, {at}(1)")?;
                     }
                 }
                 Register::Physical(p) => {
                     writeln!(writer, "    std {}, -8(1)", p.name)?;
-                    writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
+                    writeln!(writer, "    {load_fp} {fpr}, {at}(1)")?;
                 }
             }
         }
@@ -1992,7 +2105,7 @@ fn emit_load_fp_operand<W: Write>(
             };
             emit_load_imm64(writer, 11, bits)?;
             writeln!(writer, "    std 11, -8(1)")?;
-            writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
+            writeln!(writer, "    {load_fp} {fpr}, {at}(1)")?;
         }
     }
     Ok(())
@@ -2071,15 +2184,63 @@ fn emit_store_fp_result<W: Write>(
     reg_alloc: &Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     is_f32: bool,
+    endianness: Endianness,
 ) -> Result<(), LaminaError> {
     let store_fp = if is_f32 { "stfs" } else { "stfd" };
     if let Some(offset) = stack_slots.get(vreg) {
-        r1_mem(writer, store_fp, fpr, *offset)?;
+        r1_mem(
+            writer,
+            store_fp,
+            fpr,
+            *offset + slot_word_offset(is_f32, endianness),
+        )?;
     } else if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
-        writeln!(writer, "    {store_fp} {fpr}, -8(1)")?;
-        writeln!(writer, "    ld {phys}, -8(1)")?;
+        let at = scratch_word_offset(is_f32, endianness);
+        writeln!(writer, "    {store_fp} {fpr}, {at}(1)")?;
+        let read = if at == -8 { "ld" } else { "lwz" };
+        writeln!(writer, "    {read} {phys}, {at}(1)")?;
     }
     Ok(())
+}
+
+/// Bits a composite narrower than a doubleword is shifted by to move between its
+/// memory image and the register that carries it.
+///
+/// ELFv2 passes and returns such an aggregate right-justified in its register, in both
+/// byte orders. On little-endian that is already what a doubleword load of its memory
+/// image gives; on big-endian the bytes land at the other end, so they shift. An
+/// aggregate that fills one or more whole doublewords needs nothing, and neither does
+/// the trailing partial doubleword of a wider one, which ELFv2 leaves left-justified
+/// exactly as its memory image has it. Measured against
+/// `powerpc64-linux-gnu-gcc -mabi=elfv2 -mbig`: a three-byte struct arrives as
+/// `0x0000000000010203`, while the last register of a nine-byte one arrives as
+/// `0x0900000000000000`.
+fn aggregate_justify_bits(aggregate: &Aggregate, endianness: Endianness) -> u32 {
+    if endianness == Endianness::Little || !aggregate.is_composite() || aggregate.size >= 8 {
+        return 0;
+    }
+    (8 - aggregate.size as u32) * 8
+}
+
+/// Where a single-precision value sits inside its eight-byte frame slot. Everything
+/// else the backend keeps in a slot occupies the doubleword's low-order half, which is
+/// its last four bytes on a big-endian target, so a single goes there too and a
+/// `bitcast` between the two classes reads the bytes the other wrote.
+const fn slot_word_offset(is_f32: bool, endianness: Endianness) -> i32 {
+    match (is_f32, endianness) {
+        (true, Endianness::Big) => 4,
+        _ => 0,
+    }
+}
+
+/// Where a single-precision value sits inside the eight-byte scratch word at `-8(1)`.
+/// Its four bytes are the word's low-order half, which is the second half of the slot
+/// in memory on a big-endian target and the first on a little-endian one.
+const fn scratch_word_offset(is_f32: bool, endianness: Endianness) -> i32 {
+    match (is_f32, endianness) {
+        (true, Endianness::Big) => -4,
+        _ => -8,
+    }
 }
 
 fn extend_param(

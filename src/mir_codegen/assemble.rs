@@ -255,6 +255,15 @@ fn assemble_native(
                 (TargetArchitecture::S390x, TargetOperatingSystem::Linux) => {
                     "s390x-unknown-linux-gnu"
                 }
+                (TargetArchitecture::PowerPC64Be, TargetOperatingSystem::Linux) => {
+                    "powerpc64-unknown-linux-gnu"
+                }
+                (TargetArchitecture::Mips64, TargetOperatingSystem::Linux) => {
+                    "mips64-unknown-linux-gnuabi64"
+                }
+                (TargetArchitecture::Mips64El, TargetOperatingSystem::Linux) => {
+                    "mips64el-unknown-linux-gnuabi64"
+                }
                 _ => {
                     return Err(LaminaError::ValidationError(format!(
                         "Unsupported target combination for clang assembler: {target_arch:?} {target_os:?}"
@@ -428,6 +437,9 @@ fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
         TargetArchitecture::Riscv64 => Some("riscv64-linux-gnu"),
         TargetArchitecture::LoongArch64 => Some("loongarch64-linux-gnu"),
         TargetArchitecture::S390x => Some("s390x-linux-gnu"),
+        TargetArchitecture::PowerPC64Be => Some("powerpc64-linux-gnu"),
+        TargetArchitecture::Mips64 => Some("mips64-linux-gnuabi64"),
+        TargetArchitecture::Mips64El => Some("mips64el-linux-gnuabi64"),
         TargetArchitecture::PowerPC64 => Some("powerpc64le-linux-gnu"),
         TargetArchitecture::Armv7 => Some("arm-linux-gnueabihf"),
         TargetArchitecture::I686 => Some("i686-linux-gnu"),
@@ -453,6 +465,13 @@ pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
         TargetArchitecture::Riscv64 => cfg!(target_arch = "riscv64"),
         TargetArchitecture::LoongArch64 => cfg!(target_arch = "loongarch64"),
         TargetArchitecture::S390x => cfg!(target_arch = "s390x"),
+        TargetArchitecture::PowerPC64Be => {
+            cfg!(all(target_arch = "powerpc64", target_endian = "big"))
+        }
+        TargetArchitecture::Mips64 => cfg!(all(target_arch = "mips64", target_endian = "big")),
+        TargetArchitecture::Mips64El => {
+            cfg!(all(target_arch = "mips64", target_endian = "little"))
+        }
         TargetArchitecture::PowerPC64 => cfg!(target_arch = "powerpc64"),
         TargetArchitecture::Armv7 => cfg!(target_arch = "arm"),
         // An x86_64 host assembles and links i686 with its own binutils, given

@@ -206,6 +206,9 @@ pub enum TargetArchitecture {
     Wasm32,
     Wasm64,
     PowerPC64,
+    PowerPC64Be,
+    Mips64,
+    Mips64El,
     LoongArch64,
     S390x,
     Nvptx64,
@@ -225,6 +228,9 @@ impl TargetArchitecture {
             | Self::Arx64
             | Self::Riscv64
             | Self::PowerPC64
+            | Self::PowerPC64Be
+            | Self::Mips64
+            | Self::Mips64El
             | Self::LoongArch64
             | Self::S390x
             | Self::Wasm64
@@ -257,6 +263,9 @@ impl TargetArchitecture {
             | Self::Arx64
             | Self::Riscv64
             | Self::PowerPC64
+            | Self::PowerPC64Be
+            | Self::Mips64
+            | Self::Mips64El
             | Self::LoongArch64
             | Self::S390x
             | Self::Wasm32
@@ -301,11 +310,12 @@ impl TargetArchitecture {
             | Self::Wasm32
             | Self::Wasm64
             | Self::PowerPC64
+            | Self::Mips64El
             | Self::LoongArch64
             | Self::Nvptx64
             | Self::Amdgcn
             | Self::Unknown => Endianness::Little,
-            Self::S390x => Endianness::Big,
+            Self::S390x | Self::PowerPC64Be | Self::Mips64 => Endianness::Big,
             #[cfg(feature = "nightly")]
             Self::Riscv128 | Self::Lisa => Endianness::Little,
         }
@@ -323,6 +333,9 @@ impl TargetArchitecture {
             | Self::Riscv32
             | Self::Riscv64
             | Self::PowerPC64
+            | Self::PowerPC64Be
+            | Self::Mips64
+            | Self::Mips64El
             | Self::LoongArch64
             | Self::Unknown => 16,
             Self::Arm32 | Self::Thumbv6m | Self::Thumbv7m | Self::S390x => 8,
@@ -355,6 +368,9 @@ impl TargetArchitecture {
             | Self::Wasm32
             | Self::Wasm64
             | Self::PowerPC64
+            | Self::PowerPC64Be
+            | Self::Mips64
+            | Self::Mips64El
             | Self::LoongArch64
             | Self::S390x
             | Self::Nvptx64
@@ -380,6 +396,9 @@ impl TargetArchitecture {
             | Self::Riscv32
             | Self::Riscv64
             | Self::PowerPC64
+            | Self::PowerPC64Be
+            | Self::Mips64
+            | Self::Mips64El
             | Self::LoongArch64
             | Self::S390x
             | Self::Unknown => OutputArtifact::Executable,
@@ -408,7 +427,7 @@ impl TargetArchitecture {
             Self::Armv7 => ArchVariant::Armv7(Armv7Variant::cortex_a7()),
             Self::Thumbv7m => ArchVariant::Armv7(Armv7Variant::cortex_m3()),
             Self::Aarch64 => ArchVariant::Aarch64(Aarch64Level::V8_0),
-            Self::PowerPC64 => ArchVariant::PowerPC64(PowerLevel::Power8),
+            Self::PowerPC64 | Self::PowerPC64Be => ArchVariant::PowerPC64(PowerLevel::Power8),
             Self::X86_64
             | Self::Arx64
             | Self::Arm32
@@ -416,6 +435,8 @@ impl TargetArchitecture {
             | Self::I686
             | Self::Wasm32
             | Self::Wasm64
+            | Self::Mips64
+            | Self::Mips64El
             | Self::LoongArch64
             | Self::S390x
             | Self::Nvptx64
@@ -526,8 +547,14 @@ impl FromStr for TargetArchitecture {
             "wasm64" => Ok(Self::Wasm64),
             "wasm" => Ok(Self::Wasm32),
             "ppc64le" => Ok(Self::PowerPC64),
-            "ppc64" => Err(
-                "Architecture 'ppc64' was removed\n  Hint: lamina only supports little-endian POWER. Write 'ppc64le' (e.g. ppc64le_linux)",
+            "ppc64" | "powerpc64" => Ok(Self::PowerPC64Be),
+            "ppc64-elfv1" | "powerpc64-elfv1" => Err(
+                "Architecture 'ppc64-elfv1' is not supported\n  Hint: big-endian POWER here is ELFv2. ELFv1 calls through .opd function descriptors and is a different ABI. Write 'ppc64' (e.g. ppc64_linux)",
+            ),
+            "mips64" => Ok(Self::Mips64),
+            "mips64el" | "mips64le" => Ok(Self::Mips64El),
+            "mips" | "mipsel" | "mips32" | "mips32el" => Err(
+                "Architecture 'mips' is not supported\n  Hint: lamina implements the N64 ABI on 64-bit MIPS only, not O32. Write 'mips64' or 'mips64el' (e.g. mips64_linux)",
             ),
             "loongarch64" | "loong64" => Ok(Self::LoongArch64),
             "s390x" | "systemz" => Ok(Self::S390x),
@@ -632,6 +659,9 @@ impl fmt::Display for TargetArchitecture {
             Self::Wasm32 => "wasm32",
             Self::Wasm64 => "wasm64",
             Self::PowerPC64 => "ppc64le",
+            Self::PowerPC64Be => "ppc64",
+            Self::Mips64 => "mips64",
+            Self::Mips64El => "mips64el",
             Self::LoongArch64 => "loongarch64",
             Self::S390x => "s390x",
             #[cfg(feature = "nightly")]
@@ -719,6 +749,9 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "riscv64gc_linux",
     "ppc64le_linux",
     "ppc64le_unknown",
+    "ppc64_linux",
+    "mips64_linux",
+    "mips64el_linux",
     "loongarch64_linux",
     "s390x_linux",
     "i686_linux",
@@ -793,18 +826,40 @@ mod tests {
     }
 
     #[test]
-    fn rejects_big_endian_powerpc64_name() {
-        assert!(Target::from_str("powerpc64_linux").is_err());
+    fn big_endian_powerpc64_is_elfv2_and_elfv1_is_refused() {
+        for name in ["ppc64_linux", "powerpc64_linux"] {
+            assert_eq!(
+                Target::from_str(name).unwrap(),
+                Target::new(
+                    TargetArchitecture::PowerPC64Be,
+                    TargetOperatingSystem::Linux
+                )
+            );
+        }
         assert!(
-            Target::from_str("ppc64_linux")
+            Target::from_str("ppc64-elfv1_linux")
                 .unwrap_err()
-                .contains("ppc64le")
+                .contains("ELFv1")
         );
         assert_eq!(
             Target::from_str("ppc64le_linux").unwrap(),
             Target::new(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)
         );
         assert!(HOST_ARCH_LIST.contains(&"ppc64le_linux"));
+        assert!(HOST_ARCH_LIST.contains(&"ppc64_linux"));
+    }
+
+    #[test]
+    fn mips64_spells_both_byte_orders_and_refuses_o32() {
+        assert_eq!(
+            Target::from_str("mips64_linux").unwrap().endianness(),
+            Endianness::Big
+        );
+        assert_eq!(
+            Target::from_str("mips64el_linux").unwrap().endianness(),
+            Endianness::Little
+        );
+        assert!(Target::from_str("mips_linux").unwrap_err().contains("O32"));
     }
 
     #[test]
@@ -849,13 +904,14 @@ mod tests {
     }
 
     #[test]
-    fn s390x_is_the_only_big_endian_target() {
+    fn only_the_named_targets_are_big_endian() {
         for name in HOST_ARCH_LIST {
             let target: Target = name.parse().expect(name);
-            let expected = if target.architecture == TargetArchitecture::S390x {
-                Endianness::Big
-            } else {
-                Endianness::Little
+            let expected = match target.architecture {
+                TargetArchitecture::S390x
+                | TargetArchitecture::PowerPC64Be
+                | TargetArchitecture::Mips64 => Endianness::Big,
+                _ => Endianness::Little,
             };
             assert_eq!(target.endianness(), expected, "{name}");
         }
