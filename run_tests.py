@@ -204,13 +204,6 @@ def compile_and_run_test(test_path, use_mir=False):
     # Return output lines (filter out empty lines and debug text)
     output_lines = [line.strip() for line in stdout.split('\n') if line.strip()]
 
-    # Test-specific output filtering
-    if test_path.name == 'stdin.lamina' and 'Results:' in output_lines:
-        results_start = output_lines.index('Results:') + 1
-        output_lines = output_lines[results_start:]
-    elif test_path.name == 'io_buffer.lamina' and len(output_lines) >= 3:
-        output_lines = output_lines[-3:]
-
     return True, output_lines
 
 def run_tests(use_mir=False):
