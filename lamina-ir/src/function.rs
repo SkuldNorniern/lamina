@@ -1106,20 +1106,25 @@ impl fmt::Display for Function<'_> {
         for annotation in &self.annotations {
             writeln!(f, "{annotation}")?;
         }
+        if self.annotations.contains(&FunctionAnnotation::Extern) && self.basic_blocks.is_empty() {
+            return writeln!(f, "fn @{}{}", self.name, self.signature);
+        }
         writeln!(f, "fn @{}{} {{", self.name, self.signature)?;
 
-        // We need a consistent order for printing blocks. Let's try to print entry first.
         if let Some(entry) = self.basic_blocks.get(self.entry_block) {
             writeln!(f, "{}:", self.entry_block)?;
             write!(f, "{entry}")?;
         }
 
-        // Print remaining blocks (order might not be source order, but good enough for display)
-        for (label, block) in &self.basic_blocks {
-            if *label != self.entry_block {
-                writeln!(f, "{label}:")?;
-                write!(f, "{block}")?;
-            }
+        let mut labels: Vec<_> = self
+            .basic_blocks
+            .keys()
+            .filter(|label| **label != self.entry_block)
+            .collect();
+        labels.sort_unstable();
+        for label in labels {
+            writeln!(f, "{label}:")?;
+            write!(f, "{}", self.basic_blocks[label])?;
         }
 
         writeln!(f, "}}")

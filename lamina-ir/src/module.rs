@@ -507,6 +507,47 @@ impl fmt::Display for GlobalDeclaration<'_> {
     }
 }
 
+fn write_global(
+    f: &mut fmt::Formatter<'_>,
+    decl: &GlobalDeclaration<'_>,
+    types: &HashMap<Identifier<'_>, TypeDeclaration<'_>>,
+) -> fmt::Result {
+    if let Some(align) = decl.align {
+        writeln!(f, "@align({align})")?;
+    }
+    if decl.exported {
+        write!(f, "@export ")?;
+    }
+    write!(f, "global ${}: {}", decl.name, decl.ty)?;
+    match &decl.initializer {
+        None => Ok(()),
+        Some(GlobalInit::List(elements)) => {
+            let (open, close) = if is_struct_type(&decl.ty, types, 0) {
+                ('{', '}')
+            } else {
+                ('[', ']')
+            };
+            let items: Vec<String> = elements.iter().map(ToString::to_string).collect();
+            write!(f, " = {open}{}{close}", items.join(", "))
+        }
+        Some(init) => write!(f, " = {init}"),
+    }
+}
+
+fn is_struct_type(
+    ty: &Type<'_>,
+    types: &HashMap<Identifier<'_>, TypeDeclaration<'_>>,
+    depth: usize,
+) -> bool {
+    match ty {
+        Type::Struct { .. } => true,
+        Type::Named(name) if depth < 32 => types
+            .get(name)
+            .is_some_and(|decl| is_struct_type(&decl.ty, types, depth + 1)),
+        _ => false,
+    }
+}
+
 impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[cfg(feature = "nightly")]
@@ -529,7 +570,8 @@ impl fmt::Display for Module<'_> {
         let mut global_names: Vec<_> = self.global_declarations.keys().collect();
         global_names.sort();
         for name in &global_names {
-            writeln!(f, "{}", self.global_declarations[*name])?;
+            write_global(f, &self.global_declarations[*name], &self.type_declarations)?;
+            writeln!(f)?;
         }
         if !global_names.is_empty() {
             writeln!(f)?;
