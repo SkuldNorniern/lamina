@@ -170,6 +170,7 @@ impl SimdCapabilities {
             TargetArchitecture::Unknown => Self::default(),
             TargetArchitecture::Arx64
             | TargetArchitecture::PowerPC64
+            | TargetArchitecture::LoongArch64
             | TargetArchitecture::Nvptx64
             | TargetArchitecture::Amdgcn => Self::default(),
         }
