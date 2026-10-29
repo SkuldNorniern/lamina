@@ -256,7 +256,7 @@ fn arithmetic_optimizations_preserve_immediate_widths() {
 #[test]
 fn conversions_and_variable_addresses_verify() {
     let ir = parse_module(
-        "fn @convert(ptr %p, i32 %index, i8 %byte) -> ptr {\nentry:\n%wide = zext.i8.i64 %byte\n%signed = sext.i8.i64 %byte\n%narrow = trunc.i64.i32 %wide\n%address = ptrtoint.i64 %p\n%back = inttoptr.i64 %address\n%element = getelem.i32 %back, %index\nret.ptr %element\n}",
+        "fn @convert(ptr %p, i32 %index, i8 %byte) -> ptr {\nentry:\n%ubyte = bitcast.i8.u8 %byte\n%wide = extend.u8.i64 %ubyte\n%signed = extend.i8.i64 %byte\n%narrow = trunc.i64.i32 %wide\n%address = ptrtoint.i64 %p\n%back = inttoptr.i64 %address\n%element = getelem.i32 %back, %index\nret.ptr %element\n}",
     ).expect("parse conversions");
     let mir = from_ir(&ir, "conversions").expect("lower conversions");
     mir.validate().expect("conversion types match definitions");
@@ -393,21 +393,19 @@ fn integer_aggregate_return_lands_in_slot_the_caller_addresses() {
 
 #[test]
 fn width_conversions_reject_equal_widths_and_wrong_directions() {
-    for name in ["sext", "trunc", "zext"] {
+    for (name, expected) in [
+        ("extend", "keeps the width"),
+        ("trunc", "Source and target types must be different"),
+    ] {
         let source =
             format!("fn @same(i64 %x) -> i64 {{\nentry:\n%a = {name}.i64.i64 %x\nret.i64 %a\n}}");
         let error = parse_module(&source).expect_err("equal width conversion rejected");
-        assert!(
-            error
-                .to_string()
-                .contains("Source and target types must be different"),
-            "{name}: {error}"
-        );
+        assert!(error.to_string().contains(expected), "{name}: {error}");
     }
 
     // bool is one bit, so widening it to a byte is a real conversion.
     let boolean = parse_module(
-        "fn @flag(bool %b) -> i64 {\nentry:\n%a = zext.bool.i8 %b\n%w = zext.i8.i64 %a\nret.i64 %w\n}",
+        "fn @flag(bool %b) -> i64 {\nentry:\n%a = extend.bool.i8 %b\n%u = bitcast.i8.u8 %a\n%w = extend.u8.i64 %u\nret.i64 %w\n}",
     )
     .expect("parse bool widening");
     let mir = from_ir(&boolean, "flag").expect("lower bool widening");
@@ -421,12 +419,11 @@ fn width_conversions_reject_equal_widths_and_wrong_directions() {
         function.blocks[0].instructions[0]
     );
 
-    let narrowing =
-        parse_module("fn @narrow(i64 %x) -> i64 {\nentry:\n%a = zext.i64.i32 %x\nret.i64 0\n}")
-            .expect("parse narrowing zext");
-    let error = from_ir(&narrowing, "narrow").expect_err("narrowing zext rejected");
+    let error =
+        parse_module("fn @narrow(i64 %x) -> i64 {\nentry:\n%a = extend.i64.i32 %x\nret.i64 0\n}")
+            .expect_err("narrowing extend rejected");
     assert!(
-        error.to_string().contains("zext from i64 to i32 narrows"),
+        error.to_string().contains("extend from i64 to i32 narrows"),
         "{error}"
     );
 
@@ -814,4 +811,57 @@ fn callptr_with_a_wide_argument_is_rejected_by_name() {
     let ir = parse_module(source).expect("parse indirect call");
     let err = from_ir(&ir, "indirect").expect_err("indirect wide argument must not lower");
     assert!(err.to_string().contains("callptr"), "{err}");
+}
+
+#[test]
+fn io_result_is_i64_in_every_typed_position() {
+    for op in [
+        "%r = readbyte",
+        "%r = writebyte 65",
+        "%r = write %p, 3",
+        "%r = read %p, 3",
+    ] {
+        for body in [
+            "%c = add.i8 %r, 1\n ret.i64 0",
+            "store.i8 %p, %r\n ret.i64 0",
+        ] {
+            let narrow = format!("fn @f(ptr %p) -> i64 {{\nentry:\n {op}\n {body}\n}}");
+            let err = lowered_global_module(&narrow)
+                .err()
+                .unwrap_or_else(|| panic!("{op} / {body} must not lower at i8"))
+                .to_string();
+            assert!(
+                err.contains("to have type i8") && err.contains("defined as i64"),
+                "{op} / {body}: {err}"
+            );
+        }
+        let narrow_ret = format!("fn @f(ptr %p) -> i8 {{\nentry:\n {op}\n ret.i8 %r\n}}");
+        let err = lowered_global_module(&narrow_ret)
+            .err()
+            .unwrap_or_else(|| panic!("{op} returned at i8 must not lower"))
+            .to_string();
+        assert!(err.contains("defined as i64"), "{op} ret: {err}");
+        let wide =
+            format!("fn @f(ptr %p) -> i64 {{\nentry:\n {op}\n %c = add.i64 %r, 1\n ret.i64 %c\n}}");
+        lowered_global_module(&wide).expect("io result used at i64 must lower");
+    }
+}
+
+#[test]
+fn identical_branch_arms_with_phi_copies_share_one_trampoline() {
+    let module = lowered_global_module(
+        "fn @f(i64 %n) -> i64 {\nentry:\n %c = lt.i64 %n, 0\n br %c, join, join\njoin:\n %m = phi.i64 [7, entry]\n ret.i64 %m\n}",
+    )
+    .expect("lower identical branch with phi");
+    let entry = &module.functions["f"].blocks[0];
+    let Some(Instruction::Br {
+        true_target,
+        false_target,
+        ..
+    }) = entry.instructions.last()
+    else {
+        panic!("expected a branch, found {:?}", entry.instructions.last());
+    };
+    assert_eq!(true_target, false_target);
+    assert_ne!(true_target, "join");
 }

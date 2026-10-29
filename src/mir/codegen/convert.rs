@@ -39,6 +39,7 @@ use crate::{
             error::FromIRError,
             mapping::{classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of},
         },
+        io_intrinsic_result_type,
         verify::{PhiVerification, verify_before_phi_lowering},
     },
 };
@@ -912,7 +913,8 @@ fn convert_function<'a>(
                         Instruction::Call { name, .. } => module
                             .functions
                             .get(name.as_str())
-                            .and_then(|callee| map_ir_type(&callee.signature.return_type).ok()),
+                            .and_then(|callee| map_ir_type(&callee.signature.return_type).ok())
+                            .or_else(|| io_intrinsic_result_type(name)),
                         Instruction::Lea { .. } | Instruction::StackAddr { .. } => {
                             Some(MirType::ptr())
                         }

@@ -10,6 +10,15 @@ use crate::{
 };
 use std::fmt;
 
+/// Result type of the I/O intrinsics: a byte count, -1 at end of input, or -2 on error.
+pub fn io_intrinsic_result_type(name: &str) -> Option<MirType> {
+    matches!(
+        name,
+        "lamina.write" | "lamina.read" | "lamina.writebyte" | "lamina.readbyte"
+    )
+    .then(MirType::i64)
+}
+
 /// Integer binary operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntBinOp {

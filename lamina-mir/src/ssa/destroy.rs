@@ -28,7 +28,8 @@ impl fmt::Display for DestroyError {
 /// Lowers a graph back to MIR. Each block parameter becomes its register, and each edge
 /// copies its arguments into the target's parameter registers as one parallel copy. A value
 /// keeps the register it was built with, so construction emits no copies and the
-/// instructions come back verbatim.
+/// instructions come back verbatim. Copies owed to the synthetic entry go into a new entry
+/// block that jumps to the real one.
 pub fn destroy(graph: &SsaFunction) -> Result<Function, DestroyError> {
     let fail = |message: String| DestroyError {
         function: graph.name.clone(),
@@ -37,6 +38,7 @@ pub fn destroy(graph: &SsaFunction) -> Result<Function, DestroyError> {
 
     let mut placed: Vec<(usize, Block)> = graph.unreachable.clone();
     let mut edges: Vec<((String, String), Vec<Instruction>)> = Vec::new();
+    let mut entry_moves: Option<(String, Vec<Instruction>)> = None;
 
     for block in &graph.blocks {
         if let Some(source) = block.source {
@@ -78,24 +80,11 @@ pub fn destroy(graph: &SsaFunction) -> Result<Function, DestroyError> {
                 continue;
             }
             if block.source.is_none() {
-                return Err(fail(format!(
-                    "the parameters of the entry need copies into {}",
-                    target.label
-                )));
+                entry_moves = Some((target.label.clone(), moves));
+                continue;
             }
             let pred = block.label.clone();
             let succ = target.label.clone();
-            if let Some(Instruction::Br {
-                true_target,
-                false_target,
-                ..
-            }) = block.insts.last().map(|inst| &inst.instruction)
-                && true_target == false_target
-            {
-                return Err(fail(format!(
-                    "'{pred}' branches to '{succ}' on both arms, and the arms need copies"
-                )));
-            }
             if edges.iter().any(|((p, s), _)| *p == pred && *s == succ) {
                 continue;
             }
@@ -106,6 +95,20 @@ pub fn destroy(graph: &SsaFunction) -> Result<Function, DestroyError> {
     placed.sort_by_key(|(index, _)| *index);
     let mut func = graph.shell.clone();
     func.blocks = placed.into_iter().map(|(_, block)| block).collect();
+
+    if let Some((target, moves)) = entry_moves {
+        let mut label = format!("{target}_entry");
+        while func.blocks.iter().any(|block| block.label == label) {
+            label.push('_');
+        }
+        let mut entry = Block::new(label.clone());
+        entry.push(Instruction::Jmp {
+            target: target.clone(),
+        });
+        func.blocks.insert(0, entry);
+        func.entry = label.clone();
+        edges.push(((label, target), moves));
+    }
 
     if !edges.is_empty() {
         let mut vreg_alloc = VirtualRegAllocator::new();
@@ -140,6 +143,7 @@ mod tests {
         register::VirtualReg,
         ssa::{BlockId, SsaFunction, ValueId},
         types::MirType,
+        verify::verify_function_in_pipeline,
     };
 
     fn gpr(id: u32) -> Register {
@@ -422,5 +426,116 @@ mod tests {
         }
         assert_eq!(regs[&gpr(1)], 20);
         assert_eq!(regs[&gpr(2)], 10);
+    }
+
+    #[test]
+    fn identical_branch_arms_needing_copies_share_one_trampoline() {
+        let f = FunctionBuilder::new("twin")
+            .param(gpr(0), MirType::i1())
+            .returns(MirType::i64())
+            .block("entry")
+            .instr(imm(1, 1))
+            .instr(imm(5, 7))
+            .instr(branch(0, "twin", "other"))
+            .block("twin")
+            .instr(branch(0, "join", "join"))
+            .block("other")
+            .instr(imm(1, 2))
+            .instr(jump("join"))
+            .block("join")
+            .instr(ret(1))
+            .build();
+        let mut graph = graph_of(&f);
+        let seven = ValueId(
+            graph
+                .values
+                .iter()
+                .position(|v| v.register == gpr(5))
+                .expect("v5") as u32,
+        );
+        let twin = graph
+            .blocks
+            .iter()
+            .position(|b| b.label == "twin")
+            .expect("twin");
+        for edge in graph.blocks[twin].edges.iter_mut() {
+            edge.args[0] = seven;
+        }
+        let out = destroy(&graph).expect("destroy");
+        let tramp = out
+            .blocks
+            .iter()
+            .find(|b| b.label == "twin_to_join_phi1")
+            .expect("trampoline");
+        assert_eq!(
+            tramp.instructions,
+            vec![
+                Instruction::Copy {
+                    ty: MirType::i64(),
+                    dst: gpr(1),
+                    src: Operand::v_gpr(5),
+                },
+                jump("join"),
+            ]
+        );
+        let twin_block = out.blocks.iter().find(|b| b.label == "twin").expect("twin");
+        assert_eq!(
+            twin_block.instructions.last(),
+            Some(&branch(0, "twin_to_join_phi1", "twin_to_join_phi1"))
+        );
+        verify_function_in_pipeline(&out).expect("destroyed MIR verifies");
+    }
+
+    #[test]
+    fn copies_owed_to_the_synthetic_entry_go_into_a_new_entry_block() {
+        let f = FunctionBuilder::new("loop_entry")
+            .param(gpr(0), MirType::i1())
+            .param(gpr(1), MirType::i64())
+            .param(gpr(2), MirType::i64())
+            .returns(MirType::i64())
+            .block("entry")
+            .instr(mov(3, 1))
+            .instr(branch(0, "body", "exit"))
+            .block("body")
+            .instr(imm(1, 5))
+            .instr(jump("entry"))
+            .block("exit")
+            .instr(ret(3))
+            .build();
+        let mut graph = graph_of(&f);
+        let entry = graph
+            .blocks
+            .iter()
+            .position(|b| b.label == "entry")
+            .expect("entry");
+        let slot = graph.blocks[entry]
+            .params
+            .iter()
+            .position(|&p| graph.values[p.0 as usize].register == gpr(1))
+            .expect("entry parameter v1");
+        let other = ValueId(
+            graph
+                .values
+                .iter()
+                .position(|v| v.register == gpr(2))
+                .expect("v2") as u32,
+        );
+        graph.blocks[0].edges[0].args[slot] = other;
+
+        let out = destroy(&graph).expect("destroy");
+        assert_eq!(out.entry, "entry_entry");
+        assert_eq!(out.blocks[0].label, "entry_entry");
+        assert_eq!(
+            out.blocks[0].instructions,
+            vec![
+                Instruction::Copy {
+                    ty: MirType::i64(),
+                    dst: gpr(1),
+                    src: Operand::v_gpr(2),
+                },
+                jump("entry"),
+            ]
+        );
+        verify_function_in_pipeline(&out).expect("destroyed MIR verifies");
     }
 }

@@ -2,7 +2,7 @@
 
 use crate::{
     Function, Immediate, Instruction, MirType, Module, Operand, Register, RegisterClass,
-    ScalarType, VectorLane, VectorOp, VectorType,
+    ScalarType, VectorLane, VectorOp, VectorType, io_intrinsic_result_type,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -351,7 +351,8 @@ fn collect_definitions(
                         ty: match instruction {
                             Instruction::Call { name, .. } => module
                                 .and_then(|m| m.functions.get(name))
-                                .and_then(|callee| callee.sig.ret_ty),
+                                .and_then(|callee| callee.sig.ret_ty)
+                                .or_else(|| io_intrinsic_result_type(name)),
                             _ => instruction_definition_type(instruction),
                         },
                     });

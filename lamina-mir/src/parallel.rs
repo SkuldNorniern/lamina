@@ -44,15 +44,9 @@ pub fn insert_edge_moves(
                 true_target,
                 false_target,
             }) = term.as_ref()
+            && (true_target == &succ || false_target == &succ)
         {
-            let (arm_is_true, matches) = if true_target == &succ {
-                (true, true)
-            } else if false_target == &succ {
-                (false, true)
-            } else {
-                (true, false)
-            };
-            if matches {
+            {
                 trampoline_counter = trampoline_counter.saturating_add(1);
                 let tramp_label = format!(
                     "{}_to_{}_phi{}",
@@ -77,9 +71,10 @@ pub fn insert_edge_moves(
                         false_target: f,
                     } = last
                 {
-                    if arm_is_true {
+                    if *t == succ {
                         *t = tramp_label.clone();
-                    } else {
+                    }
+                    if *f == succ {
                         *f = tramp_label.clone();
                     }
                     handled = true;

@@ -40,7 +40,7 @@ pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
     IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,
 };
-pub use instruction::{AtomicBinOp, MemoryOrdering};
+pub use instruction::{AtomicBinOp, MemoryOrdering, io_intrinsic_result_type};
 pub use module::{Global, Module, ModuleBuilder, RelocationModel};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 #[cfg(feature = "nightly")]

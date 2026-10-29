@@ -9,6 +9,7 @@ use crate::{
     block::Block,
     function::Function,
     instruction::Instruction,
+    io_intrinsic_result_type,
     module::Module,
     register::Register,
     types::MirType,
@@ -171,7 +172,9 @@ fn result_type(
     callee_return: &dyn Fn(&str) -> Option<MirType>,
 ) -> Option<MirType> {
     match instruction {
-        Instruction::Call { name, .. } => callee_return(name),
+        Instruction::Call { name, .. } => {
+            callee_return(name).or_else(|| io_intrinsic_result_type(name))
+        }
         Instruction::CallIndirect { ret_ty, .. } => *ret_ty,
         Instruction::AtomicLoad { ty, .. }
         | Instruction::AtomicBinary { ty, .. }
