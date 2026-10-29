@@ -452,6 +452,17 @@ pub enum AllocType {
 ///
 /// # Precondition conventions
 ///
+/// One operand of an inline assembly instruction. `$n` placeholders in the template name
+/// operands by their position in the list.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AsmOperand<'a> {
+    /// `in(location) %value`: the value is placed in `location` before the template runs.
+    In { location: &'a str, value: Value<'a> },
+    /// `out(location)`: the template writes `location`. The instruction's result is read
+    /// from it.
+    Out { location: &'a str },
+}
+
 /// Operands must satisfy the documented types. Integer arithmetic wraps and
 /// invalid integer division traps; see [`crate::types`] for the value contract.
 #[derive(Debug, Clone, PartialEq)]
@@ -757,6 +768,13 @@ pub enum Instruction<'a> {
         // Memory fence/barrier
         ordering: MemoryOrdering,
     },
+    /// Inline assembly, always treated as side-effecting.
+    InlineAsm {
+        result: Option<(Identifier<'a>, PrimitiveType)>,
+        template: &'a str,
+        operands: Vec<AsmOperand<'a>>,
+        clobbers: Vec<&'a str>,
+    },
     // --- SIMD Operations ---
     #[cfg(feature = "nightly")]
     SimdBinary {
@@ -988,6 +1006,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "inttoptr",
         // Function calls (from Instruction::Call - can have result)
         "call",
+        "asm",
         // Edge merge (from Instruction::Phi)
         "phi",
         // I/O operations (from Instruction::Write, Instruction::Read, etc. - with result)
@@ -1099,6 +1118,8 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         // Atomic store and fence (from Instruction::AtomicStore, Instruction::Fence)
         "atomic_store",
         "fence",
+        // Inline assembly (from Instruction::InlineAsm)
+        "asm",
     ]
 }
 
@@ -1143,6 +1164,10 @@ impl<'a> Instruction<'a> {
             | Instruction::AtomicLoad { ty, .. }
             | Instruction::AtomicBinary { ty, .. } => Some(ty.clone()),
             Instruction::VaArg { ty, .. } => prim(ty),
+            Instruction::InlineAsm {
+                result: Some((_, ty)),
+                ..
+            } => prim(ty),
             _ => None,
         }
     }
@@ -1180,6 +1205,10 @@ impl<'a> Instruction<'a> {
             | Instruction::AtomicBinary { result, .. }
             | Instruction::AtomicCompareExchange { result, .. }
             | Instruction::VaArg { result, .. }
+            | Instruction::InlineAsm {
+                result: Some((result, _)),
+                ..
+            }
             | Instruction::Call {
                 result: Some(result),
                 ..
@@ -1224,6 +1253,13 @@ impl<'a> Instruction<'a> {
             Instruction::VaCopy { dst, src } => {
                 push_value(dst, &mut vars);
                 push_value(src, &mut vars);
+            }
+            Instruction::InlineAsm { operands, .. } => {
+                for operand in operands {
+                    if let AsmOperand::In { value, .. } = operand {
+                        push_value(value, &mut vars);
+                    }
+                }
             }
             Instruction::Br { condition, .. } => push_value(condition, &mut vars),
             Instruction::Ret { value: Some(v), .. } => push_value(v, &mut vars),
@@ -1680,6 +1716,29 @@ impl fmt::Display for Instruction<'_> {
             }
             Instruction::VaEnd { ap } => write!(f, "va_end {ap}"),
             Instruction::VaCopy { dst, src } => write!(f, "va_copy {dst}, {src}"),
+            Instruction::InlineAsm {
+                result,
+                template,
+                operands,
+                clobbers,
+            } => {
+                match result {
+                    Some((name, ty)) => write!(f, "%{name} = asm.{ty} \"{template}\"")?,
+                    None => write!(f, "asm.void \"{template}\"")?,
+                }
+                for operand in operands {
+                    match operand {
+                        AsmOperand::In { location, value } => {
+                            write!(f, ", in({location}) {value}")?
+                        }
+                        AsmOperand::Out { location } => write!(f, ", out({location})")?,
+                    }
+                }
+                if !clobbers.is_empty() {
+                    write!(f, ", clobber({})", clobbers.join(", "))?;
+                }
+                Ok(())
+            }
         }
     }
 }

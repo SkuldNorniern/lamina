@@ -5,6 +5,8 @@
 
 mod functions;
 mod globals;
+#[cfg(test)]
+mod inline_asm_tests;
 mod instructions;
 mod offsets;
 pub mod state;

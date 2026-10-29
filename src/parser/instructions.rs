@@ -1,10 +1,11 @@
 //! Instruction parsing for Lamina IR.
 
+use crate::mir::asm;
 use crate::{
     LaminaError,
     ir::{
         AllocType, AtomicBinOp, BinaryOp, CmpOp, Identifier, Instruction, MemoryOrdering,
-        PrimitiveType, Type, UnaryOp, Value,
+        PrimitiveType, Type, UnaryOp, Value, instruction::AsmOperand,
     },
     parser::{
         functions::alignment_from_bytes,
@@ -98,6 +99,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 "a struct in memory: 'stackalloc.<type>' then 'getfieldptr <ptr>, <index>'",
             )),
             "call" => parse_call(state, Some(result)),
+            "asm" => parse_asm(state, Some(result)),
             "funcaddr" => parse_func_addr(state, result),
             "callptr" => parse_call_indirect(state, Some(result)),
             "phi" => parse_phi(state, result),
@@ -172,6 +174,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 "'call @free(<ptr>)' after declaring '@extern fn @free(ptr %p) -> void'",
             )),
             "call" => parse_call(state, None),
+            "asm" => parse_asm(state, None),
             "callptr" => parse_call_indirect(state, None),
             "print" => Err(removed_opcode_error(
                 state,
@@ -337,6 +340,242 @@ fn parse_atomic_rmw<'a>(
         value,
         ordering,
     })
+}
+
+/// Parses `asm.T "template", operands...` (with a result) or `asm.void "template", operands...`.
+///
+/// Operands are `in(location) %value`, `out(location)` and `clobber(name, ...)`. The
+/// template is kept as written; `$n` names the n-th operand and `$$` is a literal dollar.
+fn parse_asm<'a>(
+    state: &mut ParserState<'a>,
+    result: Option<Identifier<'a>>,
+) -> Result<Instruction<'a>, LaminaError> {
+    state.expect_char('.')?;
+    let suffix = state.parse_identifier_str()?;
+    let result = match (result, suffix) {
+        (None, "void") => None,
+        (Some(name), "void") => {
+            return Err(state.error(format!(
+                "asm.void produces no value, so '%{name}' cannot be bound
+  Hint: Write '%{name} = asm.T' with an out(...) operand to produce a value"
+            )));
+        }
+        (None, other) => {
+            return Err(state.error(format!(
+                "asm.{other} needs a result
+  Hint: Write '%x = asm.{other} \"...\", out(reg)', or use asm.void when there is no result"
+            )));
+        }
+        (Some(name), other) => {
+            let ty = parse_primitive_from_ident(state, other)?;
+            if !matches!(
+                ty,
+                PrimitiveType::I8
+                    | PrimitiveType::I16
+                    | PrimitiveType::I32
+                    | PrimitiveType::I64
+                    | PrimitiveType::U8
+                    | PrimitiveType::U16
+                    | PrimitiveType::U32
+                    | PrimitiveType::U64
+                    | PrimitiveType::Ptr
+            ) {
+                return Err(state.error(
+                    "asm results must be an integer or ptr type\n  Hint: Floating-point and 128-bit asm results are not supported yet",
+                ));
+            }
+            Some((name, ty))
+        }
+    };
+
+    state.skip_inline_space();
+    let template = state.parse_string_literal()?;
+
+    let mut operands = Vec::new();
+    let mut clobbers = Vec::new();
+    loop {
+        state.skip_inline_space();
+        if state.current_char() != Some(',') {
+            break;
+        }
+        state.advance();
+        state.skip_inline_space();
+        let keyword = state.parse_identifier_str()?;
+        match keyword {
+            "in" => {
+                let location = parse_asm_group(state, "in")?;
+                state.skip_inline_space();
+                let value = parse_value(state)?;
+                if !matches!(value, Value::Variable(_)) {
+                    return Err(state
+                        .error("asm inputs must be values such as %x, not literals or globals"));
+                }
+                operands.push(AsmOperand::In { location, value });
+            }
+            "out" => {
+                let location = parse_asm_group(state, "out")?;
+                operands.push(AsmOperand::Out { location });
+            }
+            "clobber" => {
+                state.skip_inline_space();
+                state.expect_char('(')?;
+                loop {
+                    clobbers.push(state.parse_identifier_str()?);
+                    state.skip_inline_space();
+                    if state.current_char() == Some(',') {
+                        state.advance();
+                        continue;
+                    }
+                    state.expect_char(')')?;
+                    break;
+                }
+            }
+            other => {
+                return Err(state.error(format!(
+                    "Unknown asm operand '{other}'\n  Hint: Operands are in(location) %value, out(location) and clobber(names)"
+                )));
+            }
+        }
+    }
+
+    check_asm_template(state, template, operands.len())?;
+    check_asm_operands(state, result.is_some(), &operands, &clobbers)?;
+
+    Ok(Instruction::InlineAsm {
+        result,
+        template,
+        operands,
+        clobbers,
+    })
+}
+
+fn parse_asm_group<'a>(state: &mut ParserState<'a>, keyword: &str) -> Result<&'a str, LaminaError> {
+    state.skip_inline_space();
+    state.expect_char('(')?;
+    state.skip_inline_space();
+    let location = state.parse_identifier_str()?;
+    state.skip_inline_space();
+    if state.current_char() != Some(')') {
+        return Err(state.error(format!("{keyword}(...) takes a single location")));
+    }
+    state.advance();
+    Ok(location)
+}
+
+fn check_asm_template(
+    state: &ParserState<'_>,
+    template: &str,
+    operand_count: usize,
+) -> Result<(), LaminaError> {
+    let bytes = template.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'$' {
+            index += 1;
+            continue;
+        }
+        match bytes.get(index + 1) {
+            Some(b'$') => index += 2,
+            Some(digit) if digit.is_ascii_digit() => {
+                let mut end = index + 1;
+                let mut position = 0usize;
+                while let Some(&byte) = bytes.get(end)
+                    && byte.is_ascii_digit()
+                {
+                    position = position
+                        .saturating_mul(10)
+                        .saturating_add(usize::from(byte - b'0'));
+                    end += 1;
+                }
+                if position >= operand_count {
+                    return Err(state.error(format!(
+                        "asm template uses ${position}, but the instruction has {operand_count} operand(s)\n  Hint: Operands are numbered from $0 in declaration order; write $$ for a literal dollar sign"
+                    )));
+                }
+                index = end;
+            }
+            _ => {
+                return Err(state.error(
+                    "stray '$' in asm template\n  Hint: $0, $1, ... name operands; write $$ for a literal dollar sign",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_asm_operands(
+    state: &ParserState<'_>,
+    has_result: bool,
+    operands: &[AsmOperand<'_>],
+    clobbers: &[&str],
+) -> Result<(), LaminaError> {
+    let outputs = operands
+        .iter()
+        .filter(|operand| matches!(operand, AsmOperand::Out { .. }))
+        .count();
+    if has_result && outputs != 1 {
+        return Err(state.error(format!(
+            "asm.T needs exactly one out(...) operand to hold its result, found {outputs}\n  Hint: Registers written without a result belong in clobber(...)"
+        )));
+    }
+    if !has_result && outputs != 0 {
+        return Err(state.error(
+            "asm.void takes no out(...) operand\n  Hint: Use clobber(...) for registers the template writes, or asm.T for a result",
+        ));
+    }
+
+    let mut used: Vec<&str> = Vec::new();
+    for operand in operands {
+        let location = match operand {
+            AsmOperand::In { location, .. } | AsmOperand::Out { location } => *location,
+        };
+        if location == asm_class() {
+            continue;
+        }
+        if asm::is_frame_register(location) {
+            return Err(state.error(format!(
+                "cannot use the stack or frame pointer '{location}' as an asm operand"
+            )));
+        }
+        if matches!(location, "memory" | "flags") {
+            return Err(state.error(format!(
+                "'{location}' is a clobber, not an operand location\n  Hint: Write clobber({location})"
+            )));
+        }
+        let canonical = asm_canonical(location);
+        if used.contains(&canonical) {
+            return Err(state.error(format!(
+                "register '{location}' is used by two asm operands\n  Hint: Each operand needs its own register"
+            )));
+        }
+        used.push(canonical);
+    }
+
+    for &clobber in clobbers {
+        if asm::is_frame_register(clobber) {
+            return Err(state.error(format!(
+                "cannot clobber the stack or frame pointer '{clobber}'\n  Hint: The frame is not available to inline assembly"
+            )));
+        }
+        if matches!(clobber, "memory" | "flags") {
+            continue;
+        }
+        if used.contains(&asm_canonical(clobber)) {
+            return Err(state.error(format!(
+                "register '{clobber}' is both an asm operand and a clobber\n  Hint: Remove it from clobber(...); operands are already destroyed"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn asm_class() -> &'static str {
+    asm::GPR_CLASS
+}
+
+fn asm_canonical(name: &str) -> &str {
+    asm::x86_64_register(name).map_or(name, |(canonical, _)| canonical)
 }
 
 fn parse_fence<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {

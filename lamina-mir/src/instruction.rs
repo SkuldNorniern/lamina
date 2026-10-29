@@ -640,6 +640,17 @@ impl Default for MemoryAttrs {
 }
 
 /// LUMIR instruction
+/// One operand of an inline assembly instruction, in declaration order. `$n` in the template
+/// names the n-th operand.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AsmOperand {
+    /// `in(location) value`: the value is placed in `location` before the template runs.
+    Input { location: String, value: Operand },
+    /// `out(location)`: the template writes `location`. The instruction's result, when it has
+    /// one, is read from it afterwards.
+    Output { location: String },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     // Typed value copy
@@ -971,6 +982,19 @@ pub enum Instruction {
         ordering: MemoryOrdering,
     },
 
+    /// Inline assembly. The template is handed to the assembler after operand substitution.
+    /// It always has side effects and is never moved, duplicated or removed.
+    InlineAsm {
+        template: String,
+        operands: Vec<AsmOperand>,
+        /// Named registers the template destroys, excluding operands.
+        clobbers: Vec<String>,
+        /// `clobber(memory)`: a barrier for memory forwarding and reordering.
+        clobber_memory: bool,
+        /// The result, and its type, when the instruction is `asm.T`.
+        result: Option<(Register, MirType)>,
+    },
+
     /// Initialize the `va_list` at the address `ap` from the enclosing variadic
     /// function's register save area and stack arguments.
     VaStart {
@@ -1078,6 +1102,10 @@ impl Instruction {
             Instruction::AtomicLoad { dst, .. }
             | Instruction::AtomicBinary { dst, .. }
             | Instruction::AtomicCompareExchange { dst, .. } => Some(dst),
+            Instruction::InlineAsm {
+                result: Some((dst, _)),
+                ..
+            } => Some(dst),
             #[cfg(feature = "nightly")]
             Instruction::SimdBinary { dst, .. }
             | Instruction::SimdUnary { dst, .. }
@@ -1186,6 +1214,17 @@ impl Instruction {
             | Instruction::VaEnd { ap } => {
                 if let Operand::Register(r) = ap {
                     regs.push(r);
+                }
+            }
+            Instruction::InlineAsm { operands, .. } => {
+                for operand in operands {
+                    if let AsmOperand::Input {
+                        value: Operand::Register(r),
+                        ..
+                    } = operand
+                    {
+                        regs.push(r);
+                    }
                 }
             }
             Instruction::VaCopy { dst, src } => {
@@ -1666,6 +1705,37 @@ impl fmt::Display for Instruction {
                 "{dst} = atomic_cmpxchg.{ty} [{addr}] {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
             Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
+            Instruction::InlineAsm {
+                template,
+                operands,
+                clobbers,
+                clobber_memory,
+                result,
+            } => {
+                match result {
+                    Some((dst, ty)) => write!(f, "{dst} = asm.{ty} \"{template}\"")?,
+                    None => write!(f, "asm.void \"{template}\"")?,
+                }
+                for operand in operands {
+                    match operand {
+                        AsmOperand::Input { location, value } => {
+                            write!(f, ", in({location}) {value}")?
+                        }
+                        AsmOperand::Output { location } => write!(f, ", out({location})")?,
+                    }
+                }
+                if !clobbers.is_empty() || *clobber_memory {
+                    write!(f, ", clobber(")?;
+                    let names: Vec<&str> = clobbers.iter().map(String::as_str).collect();
+                    let mut all = names;
+                    if *clobber_memory {
+                        all.push("memory");
+                    }
+                    write!(f, "{}", all.join(", "))?;
+                    write!(f, ")")?;
+                }
+                Ok(())
+            }
             Instruction::VaStart { ap } => write!(f, "va_start {ap}"),
             Instruction::VaArg { ty, dst, ap } => write!(f, "{dst} = va_arg.{ty} {ap}"),
             Instruction::VaEnd { ap } => write!(f, "va_end {ap}"),
