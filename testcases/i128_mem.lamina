@@ -1,4 +1,4 @@
-# i128 in stack slots, through pointer parameters, in a phi loop, and in select.
+# i128 in stack slots, through pointer parameters, in a loop of copied carries, and in select.
 fn @store_through(ptr %p, i128 %v) -> void {
 entry:
   store.i128 %p, %v
@@ -7,10 +7,10 @@ entry:
 
 fn @loop_sum() -> i128 {
 entry:
+  %acc = copy.i128 0
+  %i = copy.i64 1
   jmp head
 head:
-  %acc = phi.i128 [0, entry], [%next, body]
-  %i = phi.i64 [1, entry], [%inext, body]
   %more = le.i64 %i, 40
   br %more, body, done
 body:
@@ -19,6 +19,8 @@ body:
   %ii = extend.u64.i128 %ii_bits
   %next = add.i128 %t, %ii
   %inext = add.i64 %i, 1
+  %acc = copy.i128 %next
+  %i = copy.i64 %inext
   jmp head
 done:
   ret.i128 %acc

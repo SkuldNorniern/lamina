@@ -69,6 +69,11 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
+    /// Creates a typed value copy (`%result = copy.<ty> <value>`).
+    pub fn copy(&mut self, result: &'a str, ty: Type<'a>, value: Value<'a>) -> &mut Self {
+        self.inst(Instruction::Copy { result, ty, value })
+    }
+
     /// Creates a phi node that merges values from incoming edges.
     pub fn phi(
         &mut self,

@@ -4,12 +4,13 @@ entry:
   %p = stackalloc.i64
   %zero = add.i64 0, 0
   store.i64 %p, %zero
+  %i = copy.i64 0
   jmp loop
 loop:
-  %i = phi.i64 [0, entry], [%n, loop]
   %old = asm.i64 "movq ($0), $1\naddq $$1, ($0)", in(reg) %p, out(reg), clobber(memory, flags)
   %n = add.i64 %i, 1
   %done = eq.i64 %n, 10
+  %i = copy.i64 %n
   br %done, after, loop
 after:
   %m = load.i64 %p

@@ -396,12 +396,12 @@ fn element_list_bytes(
             stride: sizeof_type(element_type).ok_or(FromIRError::UnsupportedType)? as usize,
             count: usize::try_from(*size).map_err(|_| FromIRError::UnsupportedType)?,
         },
-        IRType::Struct(fields) => Slots::Fixed(
+        IRType::Struct { fields, packed } => Slots::Fixed(
             fields
                 .iter()
                 .enumerate()
                 .map(|(index, field)| {
-                    let at = struct_field_byte_offset(fields, index)
+                    let at = struct_field_byte_offset(fields, *packed, index)
                         .ok_or(FromIRError::UnsupportedType)? as usize;
                     let width =
                         sizeof_type(&field.ty).ok_or(FromIRError::UnsupportedType)? as usize;
@@ -1101,7 +1101,11 @@ fn convert_function<'a>(
             &phis,
             &reassigned_names
                 .iter()
-                .filter_map(|name| var_to_reg.get(name).cloned())
+                .flat_map(|name| {
+                    let scalar = var_to_reg.get(name).cloned();
+                    let pair = var_to_reg.wide.get(name).cloned();
+                    scalar.into_iter().chain(pair.into_iter().flatten())
+                })
                 .collect(),
         )
         .map_err(FromIRError::InvalidMir)?;
@@ -1240,6 +1244,18 @@ fn convert_instruction<'a>(
         IRInst::Phi { result, .. } => {
             resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![])
+        }
+        IRInst::Copy { result, ty, value } => {
+            let mir_ty = map_ir_type(ty)?;
+            let src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            let mut mov = Instruction::Copy {
+                ty: mir_ty,
+                dst,
+                src,
+            };
+            mov.normalize_integer_immediates(None);
+            Ok(vec![mov])
         }
         IRInst::Unary {
             op,
@@ -1910,12 +1926,12 @@ fn convert_instruction<'a>(
             struct_type,
             field_index,
         } => {
-            let IRType::Struct(fields) = struct_type else {
+            let IRType::Struct { fields, packed } = struct_type else {
                 return Err(FromIRError::UnsupportedType);
             };
             let base = pointer_base(struct_ptr, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
-            let offset = struct_field_byte_offset(fields, *field_index)
+            let offset = struct_field_byte_offset(fields, *packed, *field_index)
                 .and_then(|bytes| i64::try_from(bytes).ok())
                 .ok_or(FromIRError::UnsupportedType)?;
             Ok(displace_pointer(dst, base, offset, vreg_alloc))
@@ -2436,7 +2452,8 @@ fn value_register_classes<'a>(
                 | IRInst::Load { result, ty, .. }
                 | IRInst::AtomicLoad { result, ty, .. }
                 | IRInst::AtomicBinary { result, ty, .. }
-                | IRInst::Phi { result, ty, .. } => (*result, class_of_type(ty)),
+                | IRInst::Phi { result, ty, .. }
+                | IRInst::Copy { result, ty, .. } => (*result, class_of_type(ty)),
                 IRInst::VaArg { result, ty, .. } => (*result, reg_class_for_prim(*ty)),
                 IRInst::Bitcast {
                     result,

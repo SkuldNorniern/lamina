@@ -575,42 +575,32 @@ pub unsafe extern "C" fn lia_builder_call(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_phi(
+    _builder: *mut LaminaBuilder,
+    _result: *const c_char,
+    _ty: *const LaminaType,
+    _values: *const *const LaminaValue,
+    _labels: *const *const c_char,
+    _count: usize,
+) -> LaminaStatus {
+    set_error(
+        "phi was removed from Lamina IR; assign the value with lia_builder_copy in each predecessor",
+    );
+    LaminaStatus::ErrorInvalidArgument
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_copy(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
-    values: *const *const LaminaValue,
-    labels: *const *const c_char,
-    count: usize,
+    value: *const LaminaValue,
 ) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         let b = require_mut!(builder, "builder");
         let result = require_str!(result, "result");
         let t = require_ref!(ty, "ty");
-        if count > 0 && (values.is_null() || labels.is_null()) {
-            set_error("phi values/labels pointer is null");
-            return LaminaStatus::ErrorInvalidArgument;
-        }
-        let mut incoming = Vec::with_capacity(count);
-        for i in 0..count {
-            let val_ptr = *values.add(i);
-            let lbl_ptr = *labels.add(i);
-            let val = match val_ptr.as_ref() {
-                Some(v) => v,
-                None => {
-                    set_error("phi value pointer is null");
-                    return LaminaStatus::ErrorInvalidArgument;
-                }
-            };
-            let lbl = match cstr_to_str(lbl_ptr) {
-                Some(s) => s,
-                None => {
-                    set_error("phi label pointer is null");
-                    return LaminaStatus::ErrorInvalidArgument;
-                }
-            };
-            incoming.push((val.0.clone(), lbl.to_string()));
-        }
-        b.0.phi(result, &t.0, &incoming);
+        let v = require_ref!(value, "value");
+        b.0.copy(result, &t.0, &v.0);
         clear_error();
         LaminaStatus::Ok
     }))

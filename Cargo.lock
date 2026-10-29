@@ -24,10 +24,16 @@ dependencies = [
 [[package]]
 name = "lamina-ir"
 version = "0.2.0"
+dependencies = [
+ "lamina-platform",
+]
 
 [[package]]
 name = "lamina-mir"
 version = "0.2.0"
+dependencies = [
+ "lamina-platform",
+]
 
 [[package]]
 name = "lamina-platform"

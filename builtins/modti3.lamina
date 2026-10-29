@@ -30,12 +30,13 @@ go:
   br %nneg, neg, pos
 
 pos:
+  %res = copy.i128 %r
   jmp done
 
 neg:
+  %res = copy.i128 %rn
   jmp done
 
 done:
-  %res = phi.i128 [%r, pos], [%rn, neg]
   ret.i128 %res
 }

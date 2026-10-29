@@ -1,5 +1,5 @@
-# f64 travels through a phi. lowering used IntBinary Add 0 for the edge move,
-# which is not a copy for floats. bitcast the result back to i64 and print the
+# f64 is assigned in each predecessor and read after the join. The copy must keep
+# the float register class. bitcast the result back to i64 and print the
 # bit pattern, so any corruption shows up exactly.
 fn @main() -> i64 {
   entry:
@@ -7,13 +7,14 @@ fn @main() -> i64 {
     br %c, take, skip
 
   take:
+    %f = copy.f64 2.5
     jmp join
 
   skip:
+    %f = copy.f64 7.5
     jmp join
 
   join:
-    %f = phi.f64 [2.5, take], [7.5, skip]
     %bits = bitcast.f64.i64 %f
     %dummy = call @print_number(%bits)
     %nl = writebyte 10

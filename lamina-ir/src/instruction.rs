@@ -28,8 +28,8 @@
 //! ## Values
 //!
 //! Values are named and typed. A name may be assigned again, but not with a
-//! different type. Control flow is explicit through blocks; `phi` merges values
-//! from incoming edges and is optional.
+//! different type. Control flow is explicit through blocks; a value that joins
+//! from several edges is assigned with `copy` in each predecessor.
 //!
 //! ## Example
 //!
@@ -888,6 +888,12 @@ pub enum Instruction<'a> {
         // Pairs of (value, predecessor_label)
         incoming: Vec<(Value<'a>, Label<'a>)>,
     },
+    // --- Typed value copy: `%r = copy.<ty> <value>` moves one first-class scalar ---
+    Copy {
+        result: Identifier<'a>,
+        ty: Type<'a>,
+        value: Value<'a>,
+    },
     // --- I/O Operations ---
     Write {
         buffer: Value<'a>,      // Pointer to buffer to write
@@ -1006,7 +1012,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "call",
         "asm",
         // Edge merge (from Instruction::Phi)
-        "phi",
+        "copy",
         // I/O operations (from Instruction::Write, Instruction::Read, etc. - with result)
         "write",
         "read",
@@ -1075,7 +1081,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "ptrtoint",
         "inttoptr",
         "call",
-        "phi",
+        "copy",
         "write",
         "read",
         "writebyte",
@@ -1160,6 +1166,7 @@ impl<'a> Instruction<'a> {
             Instruction::Select { ty, .. }
             | Instruction::Load { ty, .. }
             | Instruction::Phi { ty, .. }
+            | Instruction::Copy { ty, .. }
             | Instruction::AtomicLoad { ty, .. }
             | Instruction::AtomicBinary { ty, .. } => Some(ty.clone()),
             Instruction::VaArg { ty, .. } => prim(ty),
@@ -1198,6 +1205,7 @@ impl<'a> Instruction<'a> {
             | Instruction::Write { result, .. }
             | Instruction::Read { result, .. }
             | Instruction::Phi { result, .. }
+            | Instruction::Copy { result, .. }
             | Instruction::PtrToInt { result, .. }
             | Instruction::IntToPtr { result, .. }
             | Instruction::AtomicLoad { result, .. }
@@ -1330,6 +1338,7 @@ impl<'a> Instruction<'a> {
                     push_value(v, &mut vars);
                 }
             }
+            Instruction::Copy { value, .. } => push_value(value, &mut vars),
             #[cfg(feature = "nightly")]
             Instruction::SimdBinary { lhs, rhs, .. } => {
                 push_value(lhs, &mut vars);
@@ -1697,6 +1706,9 @@ impl fmt::Display for Instruction<'_> {
                 }
                 Ok(())
             }
+            Instruction::Copy { result, ty, value } => {
+                write!(f, "%{result} = copy.{ty} {value}")
+            }
             Instruction::Write {
                 buffer,
                 size,
@@ -1930,6 +1942,14 @@ mod tests {
             format!("{}", instr15),
             "%merged_val = phi.i32 [%val1, label1], [10, label2]"
         );
+
+        let copy = Instruction::Copy {
+            result: "x",
+            ty: Type::Primitive(PrimitiveType::I64),
+            value: Value::Constant(Literal::I64(7)),
+        };
+        assert_eq!(format!("{}", copy), "%x = copy.i64 7");
+        assert_eq!(copy.defined_var(), Some("x"));
 
         // ZeroExtend
         let instr17 = Instruction::ZeroExtend {

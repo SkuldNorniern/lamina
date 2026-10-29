@@ -1426,43 +1426,45 @@ fn @inner(i64 %x) -> i64 {
     }
 
     #[test]
-    fn test_parse_phi_complex() -> Result<(), LaminaError> {
+    fn test_parse_copy_complex() -> Result<(), LaminaError> {
         let source = r#"
-fn @test_phi_complex(i64 %cond1, i64 %cond2) -> i64 {
+fn @test_copy_complex(i64 %cond1, i64 %cond2) -> i64 {
   entry:
     %is_true1 = ne.i64 %cond1, 0
     br %is_true1, block_a, block_b
 
   block_a:
     %val_a = add.i64 %cond2, 10
+    %intermediate = copy.i64 %val_a
     jmp merge1
 
   block_b:
     %val_b = mul.i64 %cond2, 2
+    %intermediate = copy.i64 %val_b
     jmp merge1
 
   merge1:
-    %intermediate = phi.i64 [%val_a, block_a], [%val_b, block_b]
     %is_true2 = gt.i64 %intermediate, 5
     br %is_true2, block_c, block_d
 
   block_c:
     %final_c = add.i64 %intermediate, 100
+    %result = copy.i64 %final_c
     jmp merge2
 
   block_d:
     %final_d = sub.i64 %intermediate, 50
+    %result = copy.i64 %final_d
     jmp merge2
 
   merge2:
-    %result = phi.i64 [%final_c, block_c], [%final_d, block_d]
     ret.i64 %result
 }
 "#;
         let module = parse_module(source)?;
 
         assert_eq!(module.functions.len(), 1);
-        let func = module.functions.get("test_phi_complex").unwrap();
+        let func = module.functions.get("test_copy_complex").unwrap();
 
         // Should have 7 basic blocks
         assert_eq!(func.basic_blocks.len(), 7);
@@ -1476,6 +1478,43 @@ fn @test_phi_complex(i64 %cond1, i64 %cond2) -> i64 {
         assert!(func.basic_blocks.contains_key("block_d"));
         assert!(func.basic_blocks.contains_key("merge2"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_phi_is_removed_in_favor_of_copy() {
+        let source = "fn @f(i64 %c) -> i64 {\nentry:\n  br %c, a, b\na:\n  jmp j\nb:\n  jmp j\nj:\n  %x = phi.i64 [1, a], [2, b]\n  ret.i64 %x\n}\n";
+        let err = parse_module(source).expect_err("phi must not parse");
+        let message = format!("{err}");
+        assert!(message.contains("'phi'"), "{message}");
+        assert!(message.contains("copy."), "{message}");
+        assert!(message.contains("predecessor"), "{message}");
+    }
+
+    #[test]
+    fn test_parse_copy_scalar_types() -> Result<(), LaminaError> {
+        let source = r#"
+fn @f(i64 %n, ptr %p) -> i64 {
+entry:
+  %a = copy.i64 %n
+  %b = copy.f64 2.5
+  %c = copy.ptr %p
+  %d = copy.bool true
+  %e = copy.i128 -170141183460469231731687303715884105000
+  %g = copy.u128 340282366920938463463374607431768211455
+  ret.i64 %a
+}
+"#;
+        let module = parse_module(source)?;
+        let func = module.functions.get("f").unwrap();
+        let instructions = &func.basic_blocks["entry"].instructions;
+        assert_eq!(instructions.len(), 7);
+        for instruction in &instructions[..6] {
+            assert!(
+                matches!(instruction, Instruction::Copy { .. }),
+                "{instruction:?}"
+            );
+        }
         Ok(())
     }
 
@@ -2265,18 +2304,12 @@ entry:
         )
         .branch(&var("lt"), "then", "other")
         .block("then")
+        .copy("m", &i64t, &var("sum"))
         .jump("merge")
         .block("other")
+        .copy("m", &i64t, &OwnedValue::I64(0))
         .jump("merge")
         .block("merge")
-        .phi(
-            "m",
-            &i64t,
-            &[
-                (var("sum"), "then".to_string()),
-                (OwnedValue::I64(0), "other".to_string()),
-            ],
-        )
         .stackalloc("s", &i64t)
         .stackalloc("ps", &pair)
         .stackalloc(

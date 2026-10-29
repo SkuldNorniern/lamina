@@ -91,7 +91,7 @@ Lamina directly generates machine code for multiple target architectures without
 
 ### Working Features
 - **Basic Arithmetic**: All arithmetic operations (add, sub, mul, div, rem, bitwise ops)
-- **Control Flow**: Conditionals, loops, branching, and optional phi nodes for merging values
+- **Control Flow**: Conditionals, loops, branching, and `copy` assignments in each predecessor for merging values
 - **Function Calls**: Recursive and non-recursive function calls with proper ABI
 - **Memory Operations**: Stack and heap allocations, load/store operations
 - **Type System**: Primitives, arrays, structs, and pointers

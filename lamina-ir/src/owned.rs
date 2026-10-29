@@ -579,19 +579,14 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends a phi node.
-    pub fn phi(
+    /// Appends a typed value copy (`%result = copy.<ty> <value>`).
+    pub fn copy(
         &mut self,
         result: impl AsRef<str>,
         ty: &OwnedType,
-        incoming: &[(OwnedValue, String)],
+        value: &OwnedValue,
     ) -> &mut Self {
-        let pairs = incoming
-            .iter()
-            .map(|(v, l)| format!("[{v}, {l}]"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let t = format!("%{} = phi.{} {}", result.as_ref(), ty, pairs);
+        let t = format!("%{} = copy.{} {}", result.as_ref(), ty, value);
         self.push(t);
         self
     }

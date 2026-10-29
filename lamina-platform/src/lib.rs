@@ -21,7 +21,7 @@ pub mod simd;
 // Re-export main types
 pub use cpu_level::X86CpuLevel;
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
-pub use target::{HOST_ARCH_LIST, Target, TargetArchitecture, TargetOperatingSystem};
+pub use target::{HOST_ARCH_LIST, PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
 
 #[cfg(feature = "nightly")]
 pub use simd::{ArmSimdExtension, RiscvSimdExtension, SimdCapabilities, X86SimdExtension};

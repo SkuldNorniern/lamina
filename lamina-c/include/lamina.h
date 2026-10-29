@@ -137,6 +137,8 @@ lia_status_t lia_builder_call(lia_builder_t *b, const char *result,
 lia_status_t lia_builder_phi(lia_builder_t *b, const char *result,
     const lia_type_t *ty, const lia_value_t *const *vals,
     const char *const *labels, size_t n);
+lia_status_t lia_builder_copy(lia_builder_t *b, const char *result,
+    const lia_type_t *ty, const lia_value_t *val);
 lia_status_t lia_builder_return(lia_builder_t *b,
     const lia_type_t *ty, const lia_value_t *val);
 lia_status_t lia_builder_return_void(lia_builder_t *b);

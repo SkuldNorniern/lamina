@@ -102,7 +102,12 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "asm" => parse_asm(state, Some(result)),
             "funcaddr" => parse_func_addr(state, result),
             "callptr" => parse_call_indirect(state, Some(result)),
-            "phi" => parse_phi(state, result),
+            "copy" => parse_copy(state, result),
+            "phi" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'%x = copy.<type> <value>' in each predecessor block, assigning the same %x on every incoming edge",
+            )),
             "write" => parse_write_assignment(state, result),
             "read" => parse_read_assignment(state, result),
             "writebyte" => parse_writebyte_assignment(state, result),
@@ -1154,38 +1159,18 @@ fn untyped_call_indirect_error(state: &ParserState<'_>) -> LaminaError {
     )
 }
 
-fn parse_phi<'a>(
+fn parse_copy<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
     let ty = parse_type_suffix(state)?;
-    let mut incoming = Vec::new();
-    loop {
-        state.skip_whitespace_and_comments();
-        if state.current_char() != Some('[') {
-            break; // End of incoming values
-        }
-        state.expect_char('[')?;
-        let value = parse_typed_operand(state, &ty)?;
-        state.expect_char(',')?;
-        let label = state.parse_label_identifier()?;
-        state.expect_char(']')?;
-        incoming.push((value, label));
-
-        state.skip_whitespace_and_comments();
-        if state.current_char() != Some(',') {
-            break;
-        }
-        state.expect_char(',')?;
+    if !matches!(ty, Type::Primitive(_)) {
+        return Err(state.error(format!(
+            "copy moves one scalar value, found {ty}\n  Hint: Copy an aggregate through memory one scalar at a time with 'getfieldptr' and 'load'/'store'"
+        )));
     }
-    if incoming.is_empty() {
-        return Err(state.error("phi instruction requires at least one incoming value"));
-    }
-    Ok(Instruction::Phi {
-        result,
-        ty,
-        incoming,
-    })
+    let value = parse_typed_operand(state, &ty)?;
+    Ok(Instruction::Copy { result, ty, value })
 }
 
 fn parse_br<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {

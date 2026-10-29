@@ -11,7 +11,14 @@ entry:
   %nlo = trunc.u128.u64 %n
   %wide = or.u64 %nhi, %dhi
   %small = eq.u64 %wide, 0
-  br %small, fast, loop
+  br %small, fast, init
+
+init:
+  %nn = copy.u128 %n
+  %qv = copy.u128 0
+  %rv = copy.u128 0
+  %kv = copy.u64 128
+  jmp loop
 
 fast:
   %q64 = div.u64 %nlo, %dlo
@@ -19,10 +26,6 @@ fast:
   ret.u128 %q
 
 loop:
-  %nn = phi.u128 [%n, entry], [%nn2, next]
-  %qv = phi.u128 [0, entry], [%q2, next]
-  %rv = phi.u128 [0, entry], [%r3, next]
-  %kv = phi.u64 [128, entry], [%k2, next]
   %done = eq.u64 %kv, 0
   br %done, exit, body
 
@@ -43,16 +46,22 @@ take:
   %rt = sub.u128 %r2, %d
   %qs = shl.u128 %qv, 1
   %qt = or.u128 %qs, 1
+  %r3 = copy.u128 %rt
+  %q2 = copy.u128 %qt
   jmp next
 
 keep:
   %qk = shl.u128 %qv, 1
+  %r3 = copy.u128 %r2
+  %q2 = copy.u128 %qk
   jmp next
 
 next:
-  %r3 = phi.u128 [%rt, take], [%r2, keep]
-  %q2 = phi.u128 [%qt, take], [%qk, keep]
   %k2 = sub.u64 %kv, 1
+  %nn = copy.u128 %nn2
+  %qv = copy.u128 %q2
+  %rv = copy.u128 %r3
+  %kv = copy.u64 %k2
   jmp loop
 
 exit:

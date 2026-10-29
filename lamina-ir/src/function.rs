@@ -1922,6 +1922,60 @@ mod tests {
     }
 
     #[test]
+    fn test_definite_assignment_copy_in_each_predecessor() {
+        let copy = |value: Value<'static>| Instruction::Copy {
+            result: "p",
+            ty: Type::Primitive(PrimitiveType::I32),
+            value,
+        };
+        let f = da_func(vec![
+            ("entry", vec![da_branch("a", "b")]),
+            (
+                "a",
+                vec![
+                    da_add("x", Value::Constant(Literal::I32(1))),
+                    copy(Value::Variable("x")),
+                    da_jump("j"),
+                ],
+            ),
+            (
+                "b",
+                vec![
+                    da_add("z", Value::Constant(Literal::I32(2))),
+                    copy(Value::Variable("z")),
+                    da_jump("j"),
+                ],
+            ),
+            ("j", vec![da_ret(Value::Variable("p"))]),
+        ]);
+        assert_eq!(f.validate(), Ok(()));
+    }
+
+    #[test]
+    fn test_definite_assignment_copy_operand_must_be_assigned_on_its_edge() {
+        let f = da_func(vec![
+            ("entry", vec![da_branch("a", "b")]),
+            (
+                "a",
+                vec![
+                    Instruction::Copy {
+                        result: "p",
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        value: Value::Variable("z"),
+                    },
+                    da_jump("j"),
+                ],
+            ),
+            (
+                "b",
+                vec![da_add("z", Value::Constant(Literal::I32(2))), da_jump("j")],
+            ),
+            ("j", vec![da_ret(Value::Variable("p"))]),
+        ]);
+        assert!(f.validate().is_err());
+    }
+
+    #[test]
     fn test_definite_assignment_phi_operand_must_be_assigned_on_its_edge() {
         let phi = |incoming: Vec<(Value<'static>, &'static str)>| Instruction::Phi {
             result: "p",

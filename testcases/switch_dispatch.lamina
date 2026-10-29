@@ -3,18 +3,21 @@ entry:
   switch.i32 %k, other, [0, zero], [3, three], [7, seven]
 zero:
   %a = add.i64 100, 0
+  %out = copy.i64 %a
   jmp done
 three:
   %b = add.i64 300, 0
+  %out = copy.i64 %b
   jmp done
 seven:
   %c = add.i64 700, 0
+  %out = copy.i64 %c
   jmp done
 other:
   %d = sub.i64 0, 1
+  %out = copy.i64 %d
   jmp done
 done:
-  %out = phi.i64 [%a, zero], [%b, three], [%c, seven], [%d, other]
   ret.i64 %out
 }
 
@@ -22,16 +25,18 @@ fn @main() -> i64 {
 entry:
   %i0 = add.i64 0, 0
   %acc0 = add.i64 0, 0
+  %i = copy.i64 %i0
+  %acc = copy.i64 %acc0
   jmp loop
 loop:
-  %i = phi.i64 [%i0, entry], [%inext, loop]
-  %acc = phi.i64 [%acc0, entry], [%accnext, loop]
   %k = trunc.i64.i32 %i
   %got = call @pick(%k)
   call @print_i64(%got)
   %accnext = add.i64 %acc, %got
   %inext = add.i64 %i, 1
   %more = lt.i64 %inext, 9
+  %i = copy.i64 %inext
+  %acc = copy.i64 %accnext
   br %more, loop, after
 after:
   call @print_i64(%accnext)
