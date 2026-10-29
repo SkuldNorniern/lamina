@@ -290,6 +290,8 @@ fn build_arch_emulation_flags(
         TargetArchitecture::PowerPC64
         | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
+        | TargetArchitecture::Armv7
+        | TargetArchitecture::I686
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Nvptx64
@@ -341,6 +343,8 @@ fn build_dynamic_linker_arg(
         TargetArchitecture::X86_64 => "/lib64/ld-linux-x86-64.so.2",
         TargetArchitecture::Aarch64 => "/lib/ld-linux-aarch64.so.1",
         TargetArchitecture::Riscv32 => "/lib/ld-linux-riscv32-ilp32d.so.1",
+        TargetArchitecture::Armv7 => "/lib/ld-linux-armhf.so.3",
+        TargetArchitecture::I686 => "/lib/ld-linux.so.2",
         TargetArchitecture::Riscv64 => "/lib/ld-linux-riscv64-lp64d.so.1",
         TargetArchitecture::LoongArch64 => "/lib64/ld-linux-loongarch-lp64d.so.1",
         TargetArchitecture::Arx64

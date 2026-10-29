@@ -435,6 +435,8 @@ fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
         TargetArchitecture::Riscv64 => Some("riscv64-linux-gnu"),
         TargetArchitecture::LoongArch64 => Some("loongarch64-linux-gnu"),
         TargetArchitecture::PowerPC64 => Some("powerpc64le-linux-gnu"),
+        TargetArchitecture::Armv7 => Some("arm-linux-gnueabihf"),
+        TargetArchitecture::I686 => Some("i686-linux-gnu"),
         TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Wasm32
@@ -454,6 +456,8 @@ pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
         TargetArchitecture::Riscv64 => cfg!(target_arch = "riscv64"),
         TargetArchitecture::LoongArch64 => cfg!(target_arch = "loongarch64"),
         TargetArchitecture::PowerPC64 => cfg!(target_arch = "powerpc64"),
+        TargetArchitecture::Armv7 => cfg!(target_arch = "arm"),
+        TargetArchitecture::I686 => cfg!(target_arch = "x86"),
         TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Riscv32

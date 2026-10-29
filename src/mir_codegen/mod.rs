@@ -286,7 +286,9 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 settings,
             )?;
         }
-        TargetArchitecture::Arm32 => return Err(not_implemented(target_arch, target_os)),
+        TargetArchitecture::Arm32 | TargetArchitecture::Armv7 | TargetArchitecture::I686 => {
+            return Err(not_implemented(target_arch, target_os));
+        }
         #[cfg(feature = "nightly")]
         TargetArchitecture::Lisa => return Err(not_implemented(target_arch, target_os)),
         TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn | TargetArchitecture::Unknown => {

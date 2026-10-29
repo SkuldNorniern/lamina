@@ -104,6 +104,8 @@ pub enum TargetArchitecture {
     Aarch64,
     Arx64,
     Arm32,
+    Armv7,
+    I686,
     Riscv32,
     Riscv64,
     #[cfg(feature = "nightly")]
@@ -134,7 +136,9 @@ impl TargetArchitecture {
             | Self::Nvptx64
             | Self::Amdgcn
             | Self::Unknown => PointerWidth::Bits64,
-            Self::Arm32 | Self::Riscv32 | Self::Wasm32 => PointerWidth::Bits32,
+            Self::Arm32 | Self::Armv7 | Self::I686 | Self::Riscv32 | Self::Wasm32 => {
+                PointerWidth::Bits32
+            }
             #[cfg(feature = "nightly")]
             Self::Riscv128 | Self::Lisa => PointerWidth::Bits64,
         }
@@ -152,6 +156,8 @@ impl FromStr for TargetArchitecture {
             "aarch64" => Ok(Self::Aarch64),
             "arx64" => Ok(Self::Arx64),
             "arm32" => Ok(Self::Arm32),
+            "armv7" | "armv7a" | "armv7hf" => Ok(Self::Armv7),
+            "i686" | "i386" | "x86" => Ok(Self::I686),
             "riscv32" => Ok(Self::Riscv32),
             "riscv64" | "riscv64gc" => Ok(Self::Riscv64),
             #[cfg(feature = "nightly")]
@@ -242,6 +248,8 @@ impl fmt::Display for TargetArchitecture {
             Self::Aarch64 => "aarch64",
             Self::Arx64 => "arx64",
             Self::Arm32 => "arm32",
+            Self::Armv7 => "armv7",
+            Self::I686 => "i686",
             Self::Riscv32 => "riscv32",
             Self::Riscv64 => "riscv64",
             #[cfg(feature = "nightly")]

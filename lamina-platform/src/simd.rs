@@ -160,7 +160,7 @@ impl SimdCapabilities {
         match target.architecture {
             TargetArchitecture::X86_64 => Self::detect_x86_64(),
             TargetArchitecture::Aarch64 => Self::detect_aarch64(),
-            TargetArchitecture::Arm32 => Self::detect_arm32(),
+            TargetArchitecture::Arm32 | TargetArchitecture::Armv7 => Self::detect_arm32(),
             TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => Self::detect_wasm(),
             TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => Self::detect_riscv(),
             #[cfg(feature = "nightly")]
@@ -168,7 +168,8 @@ impl SimdCapabilities {
             #[cfg(feature = "nightly")]
             TargetArchitecture::Lisa => Self::detect_lisa(),
             TargetArchitecture::Unknown => Self::default(),
-            TargetArchitecture::Arx64
+            TargetArchitecture::I686
+            | TargetArchitecture::Arx64
             | TargetArchitecture::PowerPC64
             | TargetArchitecture::LoongArch64
             | TargetArchitecture::Nvptx64

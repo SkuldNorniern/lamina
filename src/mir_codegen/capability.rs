@@ -290,7 +290,10 @@ impl CapabilitySet {
             TargetArchitecture::Amdgcn => Self::gpu()
                 .with(CodegenCapability::IntegerArithmetic)
                 .with(CodegenCapability::MemoryOperations),
-            TargetArchitecture::Arm32 | TargetArchitecture::Unknown => Self::new(),
+            TargetArchitecture::Arm32
+            | TargetArchitecture::Armv7
+            | TargetArchitecture::I686
+            | TargetArchitecture::Unknown => Self::new(),
             #[cfg(feature = "nightly")]
             TargetArchitecture::Lisa => Self::new(),
         }
