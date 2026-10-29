@@ -86,7 +86,7 @@ impl FromStr for Target {
             return Err("Invalid target format: expected 'architecture_os'");
         }
         Ok(Self::new(
-            TargetArchitecture::from_str(parts[1]).map_err(|_| "Invalid architecture")?,
+            TargetArchitecture::from_str(parts[1])?,
             TargetOperatingSystem::from_str(parts[0]).map_err(|_| "Invalid operating system")?,
         ))
     }
@@ -140,7 +140,11 @@ impl TargetArchitecture {
                 PointerWidth::Bits32
             }
             #[cfg(feature = "nightly")]
-            Self::Riscv128 | Self::Lisa => PointerWidth::Bits64,
+            Self::Riscv128 => {
+                panic!("rv128 needs 16-byte pointers, and PointerWidth has no 128-bit variant yet")
+            }
+            #[cfg(feature = "nightly")]
+            Self::Lisa => PointerWidth::Bits64,
         }
     }
 }
@@ -165,7 +169,10 @@ impl FromStr for TargetArchitecture {
             "wasm32" => Ok(Self::Wasm32),
             "wasm64" => Ok(Self::Wasm64),
             "wasm" => Ok(Self::Wasm32),
-            "ppc64" | "ppc64le" => Ok(Self::PowerPC64),
+            "ppc64le" => Ok(Self::PowerPC64),
+            "ppc64" => Err(
+                "Architecture 'ppc64' was removed\n  Hint: lamina only supports little-endian POWER. Write 'ppc64le' (e.g. ppc64le_linux)",
+            ),
             "loongarch64" | "loong64" => Ok(Self::LoongArch64),
             #[cfg(feature = "nightly")]
             "lisa" => Ok(Self::Lisa),
@@ -336,13 +343,15 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "wasm64_unknown",
     "wasm32_wasi",
     "riscv32_unknown",
+    "riscv32_linux",
     "riscv64_linux",
     "riscv64_unknown",
     "riscv64gc_linux",
-    "ppc64_linux",
     "ppc64le_linux",
-    "ppc64_unknown",
+    "ppc64le_unknown",
     "loongarch64_linux",
+    "i686_linux",
+    "armv7_linux",
     #[cfg(feature = "nightly")]
     "riscv128_unknown",
 ];
@@ -383,6 +392,11 @@ mod tests {
     #[test]
     fn rejects_big_endian_powerpc64_name() {
         assert!(Target::from_str("powerpc64_linux").is_err());
+        assert!(
+            Target::from_str("ppc64_linux")
+                .unwrap_err()
+                .contains("ppc64le")
+        );
         assert_eq!(
             Target::from_str("ppc64le_linux").unwrap(),
             Target::new(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)

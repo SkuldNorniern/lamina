@@ -6,7 +6,7 @@ use crate::mir_codegen::{
     MirCodegenSettings, RegallocStrategy, amdgpu::AmdGpuTarget, assemble::AssemblerBackend,
     link::LinkerBackend,
 };
-use lamina_platform::{HOST_ARCH_LIST, TargetOperatingSystem, X86CpuLevel};
+use lamina_platform::{HOST_ARCH_LIST, Target, TargetOperatingSystem, X86CpuLevel};
 use ras::ObjectWriteOptions;
 
 pub struct CompileOptions {
@@ -214,8 +214,12 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                         .iter()
                         .any(|&supported| supported == requested_target)
                 {
+                    let reason = requested_target
+                        .parse::<Target>()
+                        .err()
+                        .map_or_else(String::new, |e| format!(": {e}"));
                     return Err(format!(
-                        "Unsupported target '{}'. Supported values:\n{}",
+                        "Unsupported target '{}'{reason}. Supported values:\n{}",
                         requested_target,
                         HOST_ARCH_LIST.join(", ")
                     ));
