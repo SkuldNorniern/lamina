@@ -858,3 +858,81 @@ mod tests {
         );
     }
 }
+
+/// Which of the two vector shifts `shl`/`shr` names, decided by the count operand's
+/// type: a scalar count shifts every lane by the same amount, a count vector of the
+/// same shape shifts each lane by its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VectorShiftForm {
+    Uniform,
+    PerLane,
+}
+
+/// The form `rhs` names as the count of a `<lanes x element_type>` shift, or why it
+/// names neither. The returned message is the reason alone; the caller says where.
+pub fn classify_vector_shift<'a>(
+    element_type: PrimitiveType,
+    lanes: u32,
+    rhs: &Value<'a>,
+    env: &HashMap<Identifier<'a>, Type<'a>>,
+) -> Result<VectorShiftForm, String> {
+    if !is_integer_lane(element_type) {
+        return Err(format!(
+            "shifts {element_type} lanes\n  Hint: a shift is an integer operation; there is no vector shift of float lanes on any target here"
+        ));
+    }
+    let hint = format!(
+        "\n  Hint: a scalar count shifts every lane by the same amount; a <{lanes} x {element_type}> count shifts each lane by its own"
+    );
+    let name = match rhs {
+        Value::Constant(literal) => {
+            return if literal.as_integer().is_some() {
+                Ok(VectorShiftForm::Uniform)
+            } else {
+                Err(format!("takes a {literal} as its shift count{hint}"))
+            };
+        }
+        Value::Global(name) => {
+            return Err(format!(
+                "takes the address of the global ${name} as its shift count{hint}"
+            ));
+        }
+        Value::Variable(name) => name,
+    };
+    match env.get(name) {
+        Some(Type::Vector {
+            element_type: count_element,
+            lanes: count_lanes,
+        }) => {
+            if *count_lanes == lanes
+                && is_integer_lane(*count_element)
+                && vector_lane_bits(*count_element) == vector_lane_bits(element_type)
+            {
+                Ok(VectorShiftForm::PerLane)
+            } else {
+                Err(format!(
+                    "shifts <{lanes} x {element_type}> by a <{count_lanes} x {count_element}> count{hint}"
+                ))
+            }
+        }
+        Some(Type::Primitive(count)) if is_integer_lane(*count) => Ok(VectorShiftForm::Uniform),
+        Some(ty) => Err(format!("takes a {ty} as its shift count{hint}")),
+        None => Err(format!(
+            "takes %{name} as its shift count, whose type is not stated here{hint}"
+        )),
+    }
+}
+
+fn is_integer_lane(ty: PrimitiveType) -> bool {
+    matches!(
+        ty,
+        PrimitiveType::I8
+            | PrimitiveType::I16
+            | PrimitiveType::I32
+            | PrimitiveType::I64
+            | PrimitiveType::U8
+            | PrimitiveType::U16
+            | PrimitiveType::U32
+            | PrimitiveType::U64
+    )
+}

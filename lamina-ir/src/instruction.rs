@@ -1141,6 +1141,30 @@ impl<'a> Instruction<'a> {
             | Instruction::AtomicLoad { ty, .. }
             | Instruction::AtomicBinary { ty, .. } => Some(ty.clone()),
             Instruction::VaArg { ty, .. } => prim(ty),
+            Instruction::VectorBinary {
+                element_type,
+                lanes,
+                ..
+            }
+            | Instruction::VectorSplat {
+                element_type,
+                lanes,
+                ..
+            }
+            | Instruction::VectorInsertLane {
+                element_type,
+                lanes,
+                ..
+            }
+            | Instruction::VectorShuffle {
+                element_type,
+                lanes,
+                ..
+            } => Some(Type::Vector {
+                element_type: *element_type,
+                lanes: *lanes,
+            }),
+            Instruction::VectorExtractLane { element_type, .. } => prim(element_type),
             Instruction::InlineAsm {
                 result: Some((_, ty)),
                 ..

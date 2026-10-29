@@ -138,11 +138,12 @@ use std::{
 };
 
 use crate::{
-    calls::validate_calls,
+    calls::{validate_calls, value_types},
     function::Function,
     instruction::{BinaryOp, Instruction},
     types::{
-        Identifier, Literal, PrimitiveType, Type, Value, check_vector_shape, resolve_type_names,
+        Identifier, Literal, PrimitiveType, Type, Value, check_vector_shape, classify_vector_shift,
+        resolve_type_names,
     },
 };
 
@@ -439,9 +440,10 @@ impl<'a> Module<'a> {
         }
 
         for func in self.functions.values() {
+            let env = value_types(self, func);
             for block in func.basic_blocks.values() {
                 for instr in &block.instructions {
-                    self.validate_vector_instruction(func.name, instr, errors);
+                    self.validate_vector_instruction(func.name, instr, &env, errors);
                 }
             }
         }
@@ -450,7 +452,8 @@ impl<'a> Module<'a> {
     fn validate_vector_instruction(
         &self,
         func: &str,
-        instr: &Instruction<'_>,
+        instr: &Instruction<'a>,
+        env: &HashMap<Identifier<'a>, Type<'a>>,
         errors: &mut Vec<String>,
     ) {
         let where_ = |what: &str| format!("{what} in '@{func}'");
@@ -486,6 +489,7 @@ impl<'a> Module<'a> {
                 op,
                 element_type,
                 lanes,
+                rhs,
                 ..
             } => {
                 if !shape(*element_type, *lanes, "vector operation") {
@@ -498,10 +502,16 @@ impl<'a> Module<'a> {
                     | BinaryOp::And
                     | BinaryOp::Or
                     | BinaryOp::Xor => {}
-                    BinaryOp::Shl | BinaryOp::Shr => errors.push(format!(
-                        "{} has no vector form\n  Hint: the vector shift every backend here implements takes one count for all lanes, read out of the low 64 bits of its second operand, so '{op}.<{lanes} x {element_type}>' would read as a per-lane shift and mean something else. Extract the lanes and shift them as scalars",
-                        where_(&format!("'{op}.<{lanes} x {element_type}>'"))
-                    )),
+                    BinaryOp::Shl | BinaryOp::Shr => {
+                        if let Err(reason) =
+                            classify_vector_shift(*element_type, *lanes, rhs, env)
+                        {
+                            errors.push(format!(
+                                "{} {reason}",
+                                where_(&format!("'{op}.<{lanes} x {element_type}>'"))
+                            ));
+                        }
+                    }
                     BinaryOp::Div | BinaryOp::Rem | BinaryOp::Rotl | BinaryOp::Rotr => errors
                         .push(format!(
                             "{} has no vector form\n  Hint: extract the lanes, operate on them as scalars and insert the results",

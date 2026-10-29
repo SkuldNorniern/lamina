@@ -86,9 +86,18 @@ pub(super) fn emit(
             };
             let float = matches!(lane, VectorLane::F32 | VectorLane::F64);
             if (*op == VMul && lane == VectorLane::I8)
-                || (float && matches!(op, VShl | VLShr | VAShr))
+                || (float
+                    && matches!(
+                        op,
+                        VShl | VLShr | VAShr | VShlLanes | VLShrLanes | VAShrLanes
+                    ))
             {
                 return Err(unsupported(format!("WASM unsupported {op:?} for {lane:?}")));
+            }
+            if matches!(op, VShlLanes | VLShrLanes | VAShrLanes) {
+                return Err(unsupported(format!(
+                    "WASM unsupported {op:?} for {lane:?}: a per-lane vector shift has no WASM SIMD form, which has only {prefix}.shl, {prefix}.shr_u and {prefix}.shr_s, one count for all lanes\n  Hint: splat the count and write the scalar form, 'shl.<N x T> %a, %n' with a scalar %n"
+                )));
             }
             if matches!(op, VExtractLane | VInsertLane) {
                 let i = index(*op, lane, operands)?;
@@ -122,7 +131,7 @@ pub(super) fn emit(
                     load_operand_wasm(&operands[1], w, locals)?;
                     writeln!(
                         w,
-                        "    i64x2.extract_lane 0\n    i64.const {bits}\n    i64.ge_u\n    if (result v128)"
+                        "    i64.const {bits}\n    i64.ge_u\n    if (result v128)"
                     )?;
                     if *op == VAShr {
                         load_operand_wasm(&operands[0], w, locals)?;
@@ -133,7 +142,7 @@ pub(super) fn emit(
                     writeln!(w, "    else")?;
                     load_operand_wasm(&operands[0], w, locals)?;
                     load_operand_wasm(&operands[1], w, locals)?;
-                    writeln!(w, "    i64x2.extract_lane 0\n    i32.wrap_i64")?;
+                    writeln!(w, "    i32.wrap_i64")?;
                     let mnemonic = match op {
                         VShl => "shl",
                         VLShr => "shr_u",

@@ -1,27 +1,118 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use super::*;
+use crate::error::LaminaError;
 use crate::{
     mir::{Module, codegen::from_ir},
     mir_codegen::MirCodegenSettings,
     parser::parse_module,
 };
+use lamina_platform::X86CpuLevel;
 
 fn lower(source: &str) -> Module {
     from_ir(&parse_module(source).expect("parse"), "vector").expect("lower")
 }
 
 fn assembly(module: &Module) -> String {
+    assembly_at(module, X86CpuLevel::default()).expect("emit")
+}
+
+fn assembly_at(module: &Module, level: X86CpuLevel) -> Result<String, LaminaError> {
     let mut out = Vec::new();
     generate_mir_x86_64_with_units_and_settings(
         module,
         &mut out,
         TargetOperatingSystem::Linux,
         1,
-        &MirCodegenSettings::default(),
+        &MirCodegenSettings {
+            x86_cpu_level: level,
+            ..MirCodegenSettings::default()
+        },
+    )?;
+    Ok(String::from_utf8(out).expect("utf8"))
+}
+
+fn shift_source(ty: &str, op: &str, count: &str) -> String {
+    format!(
+        "fn @f(ptr %p, i64 %n) -> i64 {{\n\
+         entry:\n\
+         \x20 %a = load.{ty} %p\n\
+         \x20 %b = load.{ty} %p\n\
+         \x20 %c = {op}.{ty} %a, {count}\n\
+         \x20 store.{ty} %p, %c\n\
+         \x20 ret.i64 0\n\
+         }}\n"
     )
-    .expect("emit");
-    String::from_utf8(out).expect("utf8")
+}
+
+/// A scalar count is one count for every lane and reaches the SSE2 shift; a count
+/// vector of the same shape is one count per lane and reaches the AVX2 shift.
+#[test]
+fn the_count_operand_chooses_the_shift() {
+    for (ty, op, uniform, per_lane) in [
+        ("<4 x i32>", "shl", "pslld", "vpsllvd"),
+        ("<4 x u32>", "shr", "psrld", "vpsrlvd"),
+        ("<4 x i32>", "shr", "psrad", "vpsravd"),
+        ("<2 x i64>", "shl", "psllq", "vpsllvq"),
+        ("<2 x u64>", "shr", "psrlq", "vpsrlvq"),
+        ("<8 x i16>", "shl", "psllw", ""),
+        ("<8 x u16>", "shr", "psrlw", ""),
+        ("<8 x i16>", "shr", "psraw", ""),
+    ] {
+        let asm = assembly(&lower(&shift_source(ty, op, "%n")));
+        assert!(asm.contains(uniform), "{ty} {op} by a scalar:\n{asm}");
+        if per_lane.is_empty() {
+            continue;
+        }
+        let asm =
+            assembly_at(&lower(&shift_source(ty, op, "%b")), X86CpuLevel::V3).expect("emit at v3");
+        assert!(asm.contains(per_lane), "{ty} {op} by a vector:\n{asm}");
+    }
+}
+
+#[test]
+fn a_literal_count_is_one_count_for_every_lane() {
+    let asm = assembly(&lower(&shift_source("<4 x i32>", "shl", "3")));
+    assert!(asm.contains("pslld"), "{asm}");
+    assert!(!asm.contains("vpsllvd"), "{asm}");
+}
+
+#[test]
+fn a_per_lane_shift_is_refused_by_name_below_avx2() {
+    for (ty, op) in [
+        ("<4 x i32>", "shl"),
+        ("<4 x u32>", "shr"),
+        ("<4 x i32>", "shr"),
+        ("<2 x i64>", "shl"),
+    ] {
+        for level in [X86CpuLevel::V1, X86CpuLevel::V2] {
+            let error = assembly_at(&lower(&shift_source(ty, op, "%b")), level)
+                .expect_err("per-lane below AVX2")
+                .to_string();
+            assert!(error.contains("per-lane vector shift"), "{error}");
+            assert!(error.contains("AVX2"), "{error}");
+            assert!(error.contains("splat"), "{error}");
+        }
+    }
+}
+
+/// x86_64 has no packed byte shift, with either count, and no packed arithmetic
+/// shift of 64-bit lanes below AVX-512.
+#[test]
+fn a_lane_width_with_no_packed_shift_is_refused_for_both_counts() {
+    for (ty, op, count) in [
+        ("<16 x i8>", "shl", "%n"),
+        ("<16 x i8>", "shl", "%b"),
+        ("<16 x u8>", "shr", "%n"),
+        ("<2 x i64>", "shr", "%n"),
+        ("<2 x i64>", "shr", "%b"),
+        ("<8 x i16>", "shl", "%b"),
+    ] {
+        let error = assembly_at(&lower(&shift_source(ty, op, count)), X86CpuLevel::V3)
+            .expect_err("no packed form")
+            .to_string();
+        assert!(error.contains("Unsupported feature"), "{ty} {op}: {error}");
+    }
 }
 
 #[cfg(feature = "nightly")]
@@ -177,7 +268,7 @@ fn splat_extract_and_insert_reach_their_instructions() {
 #[test]
 fn vectorizer_and_surface_paths_agree() {
     use crate::mir::transform::{TransformPipeline, VectorUnit};
-    use lamina_platform::X86CpuLevel;
+    use X86CpuLevel;
 
     let mut vectorized = lower(
         "fn @f() -> i64 {

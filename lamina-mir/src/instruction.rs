@@ -343,7 +343,11 @@ impl fmt::Display for FloatCmpOp {
     }
 }
 
-/// Vector operations
+/// Vector operations.
+///
+/// `VShl`, `VLShr` and `VAShr` take one count for every lane, as a scalar `I64` second
+/// operand. `VShlLanes`, `VLShrLanes` and `VAShrLanes` take one count per lane, as a
+/// vector second operand of the same shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VectorOp {
     VAdd,
@@ -355,6 +359,9 @@ pub enum VectorOp {
     VShl,
     VLShr,
     VAShr,
+    VShlLanes,
+    VLShrLanes,
+    VAShrLanes,
     VSplat,
     VExtractLane,
     VInsertLane,
@@ -372,6 +379,9 @@ impl fmt::Display for VectorOp {
             VectorOp::VShl => "vshl",
             VectorOp::VLShr => "vlshr",
             VectorOp::VAShr => "vashr",
+            VectorOp::VShlLanes => "vshl_lanes",
+            VectorOp::VLShrLanes => "vlshr_lanes",
+            VectorOp::VAShrLanes => "vashr_lanes",
             VectorOp::VSplat => "vsplat",
             VectorOp::VExtractLane => "vextractlane",
             VectorOp::VInsertLane => "vinsertlane",

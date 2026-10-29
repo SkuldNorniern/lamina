@@ -182,13 +182,40 @@ fn operations_with_no_vector_form_are_refused_by_name() {
 }
 
 #[test]
-fn a_vector_shift_is_refused_because_its_count_is_not_per_lane() {
+fn a_vector_shift_reads_its_form_from_the_count() {
+    for op in ["shl", "shr"] {
+        let uniform = format!(
+            "fn @f(ptr %p, i64 %n) -> i64 {{\nentry:\n  %a = load.<4 x i32> %p\n  %c = {op}.<4 x i32> %a, %n\n  store.<4 x i32> %p, %c\n  ret.i64 0\n}}\n"
+        );
+        parse_module(&uniform).unwrap_or_else(|e| panic!("{op} by a scalar: {e}"));
+        let per_lane = format!(
+            "fn @f(ptr %p) -> i64 {{\nentry:\n  %a = load.<4 x i32> %p\n  %b = load.<4 x i32> %p\n  %c = {op}.<4 x i32> %a, %b\n  store.<4 x i32> %p, %c\n  ret.i64 0\n}}\n"
+        );
+        parse_module(&per_lane).unwrap_or_else(|e| panic!("{op} by a vector: {e}"));
+        let literal = format!(
+            "fn @f(ptr %p) -> i64 {{\nentry:\n  %a = load.<4 x i32> %p\n  %c = {op}.<4 x i32> %a, 3\n  store.<4 x i32> %p, %c\n  ret.i64 0\n}}\n"
+        );
+        parse_module(&literal).unwrap_or_else(|e| panic!("{op} by a literal: {e}"));
+    }
+}
+
+#[test]
+fn a_vector_shift_by_something_that_is_neither_is_refused_by_name() {
     for op in ["shl", "shr"] {
         let message = refusal(&format!("  %c = {op}.<4 x i32> %p, %p"));
-        assert!(message.contains("has no vector form"), "{op}: {message}");
         assert!(
-            message.contains("one count for all lanes"),
-            "{op}: {message}"
+            message.contains("takes a ptr as its shift count"),
+            "{message}"
+        );
+        let shape = match parse_module(&format!(
+            "fn @f(ptr %p) -> i64 {{\nentry:\n  %a = load.<4 x i32> %p\n  %b = load.<2 x i64> %p\n  %c = {op}.<4 x i32> %a, %b\n  ret.i64 0\n}}\n"
+        )) {
+            Ok(_) => panic!("accepted a count of another shape"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            shape.contains("shifts <4 x i32> by a <2 x i64> count"),
+            "{shape}"
         );
     }
 }

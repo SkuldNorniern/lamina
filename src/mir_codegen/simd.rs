@@ -19,13 +19,14 @@ pub(super) fn vector_slots(func: &Function) -> Vec<(VirtualReg, usize)> {
                 } else {
                     operands
                         .iter()
-                        .take(
-                            if *op == VectorOp::VInsertLane || *op == VectorOp::VExtractLane {
-                                1
-                            } else {
-                                2
-                            },
-                        )
+                        .take(match op {
+                            VectorOp::VInsertLane
+                            | VectorOp::VExtractLane
+                            | VectorOp::VShl
+                            | VectorOp::VLShr
+                            | VectorOp::VAShr => 1,
+                            _ => 2,
+                        })
                         .collect()
                 },
             ),

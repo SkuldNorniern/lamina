@@ -19,7 +19,7 @@ pub const LANES: [VectorLane; 6] = [
     VectorLane::F32,
     VectorLane::F64,
 ];
-pub const BINARY: [VectorOp; 9] = [
+pub const BINARY: [VectorOp; 12] = [
     VectorOp::VAdd,
     VectorOp::VSub,
     VectorOp::VMul,
@@ -29,7 +29,23 @@ pub const BINARY: [VectorOp; 9] = [
     VectorOp::VShl,
     VectorOp::VLShr,
     VectorOp::VAShr,
+    VectorOp::VShlLanes,
+    VectorOp::VLShrLanes,
+    VectorOp::VAShrLanes,
 ];
+
+/// One count for every lane, taken from a scalar second operand.
+pub fn uniform_shift(op: VectorOp) -> bool {
+    matches!(op, VectorOp::VShl | VectorOp::VLShr | VectorOp::VAShr)
+}
+
+/// One count per lane, taken from a vector second operand.
+pub fn per_lane_shift(op: VectorOp) -> bool {
+    matches!(
+        op,
+        VectorOp::VShlLanes | VectorOp::VLShrLanes | VectorOp::VAShrLanes
+    )
+}
 
 pub fn scalar(lane: VectorLane) -> MirType {
     MirType::Scalar(match lane {
@@ -68,8 +84,15 @@ pub fn declare_uses_as_params(f: &mut Function, vector_ty: &MirType, lane: Vecto
     let mut defined: Vec<Register> = f.sig.params.iter().map(|p| p.reg.clone()).collect();
     let mut missing: Vec<Register> = Vec::new();
     let mut bases: Vec<Register> = Vec::new();
+    let mut counts: Vec<Register> = Vec::new();
     for block in &f.blocks {
         for inst in &block.instructions {
+            if let Instruction::VectorOp { op, operands, .. } = &inst.instr
+                && uniform_shift(*op)
+                && let Some(Operand::Register(count)) = operands.get(1)
+            {
+                counts.push(count.clone());
+            }
             if let Instruction::Load { addr, .. } | Instruction::Store { addr, .. } = &inst.instr
                 && let AddressMode::BaseOffset { base, .. } = addr
             {
@@ -89,6 +112,7 @@ pub fn declare_uses_as_params(f: &mut Function, vector_ty: &MirType, lane: Vecto
         let ty = match reg.class() {
             RegisterClass::Vec => *vector_ty,
             _ if bases.contains(&reg) => MirType::Scalar(ScalarType::Ptr),
+            _ if counts.contains(&reg) => MirType::Scalar(ScalarType::I64),
             _ => scalar(lane),
         };
         f.sig.params.push(Parameter::new(reg, ty));
@@ -117,7 +141,8 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
         attrs: MemoryAttrs::default(),
     });
     let single = matches!(op, VectorOp::VSplat | VectorOp::VInsertLane);
-    if single {
+    let uniform = uniform_shift(op);
+    if single || uniform {
         b.push(Instruction::IntBinary {
             op: IntBinOp::Add,
             ty: MirType::Scalar(ScalarType::Ptr),
@@ -127,9 +152,21 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
         });
     }
     b.push(Instruction::Load {
-        ty: if single { st } else { ty },
-        dst: if single { sreg(4) } else { vector(4) },
-        addr: if single {
+        ty: if single {
+            st
+        } else if uniform {
+            MirType::Scalar(ScalarType::I64)
+        } else {
+            ty
+        },
+        dst: if single {
+            sreg(4)
+        } else if uniform {
+            reg(4)
+        } else {
+            vector(4)
+        },
+        addr: if single || uniform {
             AddressMode::BaseOffset {
                 address_space: AddressSpace::Generic,
                 base: reg(6),
@@ -148,6 +185,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
             Operand::reg(sreg(4)),
             Operand::imm_i64(index),
         ],
+        _ if uniform => vec![Operand::reg(vector(3)), Operand::reg(reg(4))],
         _ => vec![Operand::reg(vector(3)), Operand::reg(vector(4))],
     };
     let dst = if op == VectorOp::VExtractLane {
@@ -244,6 +282,24 @@ pub fn expected(
                     let signed = ((x << (64 - n)) as i64) >> (64 - n);
                     (signed >> shift.min(n as u64 - 1)) as u64
                 }
+                VShlLanes => {
+                    if y >= n as u64 {
+                        0
+                    } else {
+                        x << y
+                    }
+                }
+                VLShrLanes => {
+                    if y >= n as u64 {
+                        0
+                    } else {
+                        x >> y
+                    }
+                }
+                VAShrLanes => {
+                    let signed = ((x << (64 - n)) as i64) >> (64 - n);
+                    (signed >> y.min(n as u64 - 1)) as u64
+                }
                 _ if lane == VectorLane::F32 => {
                     let x = f32::from_bits(x as u32);
                     let y = f32::from_bits(y as u32);
@@ -324,7 +380,15 @@ pub enum Backend {
 pub fn supported(backend: Backend, op: VectorOp, lane: VectorLane) -> bool {
     use VectorLane::*;
     use VectorOp::*;
-    if matches!(lane, F32 | F64) && matches!(op, VShl | VLShr | VAShr) {
+    if matches!(lane, F32 | F64)
+        && matches!(
+            op,
+            VShl | VLShr | VAShr | VShlLanes | VLShrLanes | VAShrLanes
+        )
+    {
+        return false;
+    }
+    if matches!(backend, Backend::Wasm) && per_lane_shift(op) {
         return false;
     }
     !matches!(
@@ -422,6 +486,13 @@ pub fn negative(backend: Backend, pointer_width: PointerWidth) {
                         && error.contains(&format!("{lane:?}")),
                     "{error}"
                 );
+                if matches!(backend, Backend::Wasm)
+                    && per_lane_shift(op)
+                    && !matches!(lane, VectorLane::F32 | VectorLane::F64)
+                {
+                    assert!(error.contains("one count for all lanes"), "{error}");
+                    assert!(error.contains("splat"), "{error}");
+                }
             }
             if matches!(backend, Backend::Rvv) {
                 let error = emit(&m, backend, RegallocStrategy::Incremental, false)

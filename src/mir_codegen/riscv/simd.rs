@@ -82,7 +82,12 @@ pub(super) fn emit(
         } => {
             use VectorOp::*;
             let float = matches!(lane, VectorLane::F32 | VectorLane::F64);
-            if float && matches!(op, VShl | VLShr | VAShr) {
+            if float
+                && matches!(
+                    op,
+                    VShl | VLShr | VAShr | VShlLanes | VLShrLanes | VAShrLanes
+                )
+            {
                 return Err(unsupported(format!(
                     "RISC-V unsupported {op:?} for {lane:?}"
                 )));
@@ -130,12 +135,28 @@ pub(super) fn emit(
                     return Err(unsupported(format!("{op:?} requires two operands")));
                 }
                 load_vector(w, &operands[0], "v0", slots, bits)?;
-                if matches!(op, VShl | VLShr | VAShr) {
-                    address(w, operand_slot(&operands[1], slots)?)?;
-                    writeln!(
-                        w,
-                        "    ld t0, 0(a1)\n    li a1, {bits}\n    bltu t0, a1, 1f"
-                    )?;
+                if matches!(op, VShlLanes | VLShrLanes | VAShrLanes) {
+                    load_vector(w, &operands[1], "v1", slots, bits)?;
+                    if *op == VAShrLanes {
+                        writeln!(
+                            w,
+                            "    li t0, {}\n    vminu.vx v1, v1, t0\n    vsra.vv v0, v0, v1",
+                            bits - 1
+                        )?;
+                    } else {
+                        let mnemonic = if *op == VShlLanes {
+                            "vsll.vv"
+                        } else {
+                            "vsrl.vv"
+                        };
+                        writeln!(
+                            w,
+                            "    vmv.v.v v2, v0\n    li t0, {bits}\n    vmsltu.vx v0, v1, t0\n    {mnemonic} v2, v2, v1\n    vmv.v.i v3, 0\n    vmerge.vvm v2, v3, v2, v0\n    vmv.v.v v0, v2"
+                        )?;
+                    }
+                } else if matches!(op, VShl | VLShr | VAShr) {
+                    load_operand_to_register(&scalar_bits(&operands[1]), w, ra, slots, "t0")?;
+                    writeln!(w, "    li a1, {bits}\n    bltu t0, a1, 1f")?;
                     if *op == VAShr {
                         writeln!(w, "    li t0, {}", bits - 1)?;
                     } else {
@@ -227,6 +248,9 @@ mod tests {
                             _ => "sra",
                         }
                     ),
+                    VShlLanes => "vsll.vv v2, v2, v1".into(),
+                    VLShrLanes => "vsrl.vv v2, v2, v1".into(),
+                    VAShrLanes => "vsra.vv v0, v0, v1".into(),
                     VSplat => "vmv.v.x v0, t0".into(),
                     VExtractLane => format!("vslidedown.vi v1, v0, {index}"),
                     VInsertLane => format!("vslideup.vi v0, v1, {index}"),

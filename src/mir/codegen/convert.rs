@@ -29,8 +29,10 @@ use crate::{
         module::{GlobalInit, TlsModel as IRTlsModel},
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
-            align_of_type, resolve_type_names, sizeof_type, struct_field_byte_offset,
+            VectorShiftForm, align_of_type, classify_vector_shift, resolve_type_names, sizeof_type,
+            struct_field_byte_offset,
         },
+        value_types,
     },
     mir::{
         AddressMode, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
@@ -687,6 +689,9 @@ fn relocation_model(annotations: &[ModuleAnnotation]) -> RelocationModel {
 /// type of each register.
 struct ValueFacts<'t, 'a> {
     types: &'t HashMap<Register, MirType>,
+    /// The IR type of each named value, which says whether a vector shift's count is
+    /// one count for every lane or one per lane.
+    ir_types: &'t HashMap<&'a str, IRType<'a>>,
     /// Named parameter count of each variadic callee, which says where its default
     /// argument promotions begin.
     variadic_fixed: &'t HashMap<&'a str, usize>,
@@ -1136,6 +1141,7 @@ fn convert_function<'a>(
         ..Default::default()
     };
     let mut register_types = HashMap::new();
+    let ir_types = value_types(module, f);
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut alignments: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
@@ -1259,6 +1265,7 @@ fn convert_function<'a>(
                 &mut alignments,
                 &ValueFacts {
                     types: &register_types,
+                    ir_types: &ir_types,
                     variadic_fixed: &variadic_fixed,
                     module,
                     pointer_aligns: &pointer_aligns,
@@ -2498,6 +2505,38 @@ fn convert_instruction<'a>(
             rhs,
         } => {
             let ty = map_ir_vector(*element_type, *lanes)?;
+            let unsigned = matches!(
+                element_type,
+                IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64
+            );
+            if matches!(op, IRBin::Shl | IRBin::Shr) {
+                let form = classify_vector_shift(*element_type, *lanes, rhs, facts.ir_types)
+                    .map_err(|_| FromIRError::UnsupportedInstruction)?;
+                let per_lane = form == VectorShiftForm::PerLane;
+                let op = match (op, per_lane, unsigned) {
+                    (IRBin::Shl, false, _) => VectorOp::VShl,
+                    (IRBin::Shl, true, _) => VectorOp::VShlLanes,
+                    (_, false, true) => VectorOp::VLShr,
+                    (_, false, false) => VectorOp::VAShr,
+                    (_, true, true) => VectorOp::VLShrLanes,
+                    (_, true, false) => VectorOp::VAShrLanes,
+                };
+                let lhs = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
+                let mut out = Vec::new();
+                let count = if per_lane {
+                    resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?
+                } else {
+                    uniform_shift_count(rhs, facts, vreg_alloc, var_to_reg, globals, &mut out)?
+                };
+                let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+                out.push(Instruction::VectorOp {
+                    op,
+                    ty,
+                    dst,
+                    operands: vec![lhs, count],
+                });
+                return Ok(out);
+            }
             let op = match op {
                 IRBin::Add => VectorOp::VAdd,
                 IRBin::Sub => VectorOp::VSub,
@@ -2897,6 +2936,40 @@ fn reg_class_for_prim(ty: IRPrim) -> RegisterClass {
 /// Register class of every value a function defines, keyed by IR name. Lowering reads
 /// an operand before the instruction defining it in the single pass over a block, so the
 /// class cannot be deduced from the binding that already exists.
+/// The count of a one-count-for-every-lane shift, as a scalar `I64` operand. A narrower
+/// count is widened without sign, so a count that was negative stays out of range.
+fn uniform_shift_count<'a>(
+    rhs: &IRVal<'a>,
+    facts: &ValueFacts<'_, 'a>,
+    vreg_alloc: &mut VirtualRegAllocator,
+    var_to_reg: &mut VarBindings<'a>,
+    globals: &mut GlobalAddresses<'a>,
+    out: &mut Vec<Instruction>,
+) -> Result<Operand, FromIRError> {
+    let mut operand = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
+    let i64_ty = MirType::Scalar(ScalarType::I64);
+    let IRVal::Variable(name) = rhs else {
+        normalize_lowered_literal(&mut operand, i64_ty);
+        return Ok(operand);
+    };
+    let Some(IRType::Primitive(prim)) = facts.ir_types.get(name) else {
+        return Err(FromIRError::UnsupportedInstruction);
+    };
+    let from = map_ir_prim(*prim)?;
+    if from == i64_ty {
+        return Ok(operand);
+    }
+    let dst = Register::Virtual(vreg_alloc.allocate_gpr());
+    out.push(Instruction::IntConvert {
+        from,
+        to: i64_ty,
+        signed: false,
+        dst: dst.clone(),
+        src: operand,
+    });
+    Ok(Operand::reg(dst))
+}
+
 fn value_register_classes<'a>(
     f: &IRFunction<'a>,
     module: &IRModule<'a>,

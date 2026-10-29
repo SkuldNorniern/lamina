@@ -18,7 +18,7 @@
 //!   Target assembly / binary
 //! ```
 pub mod builder;
-mod calls;
+pub(crate) mod calls;
 pub mod function;
 pub mod instruction;
 pub mod module;
@@ -26,6 +26,7 @@ pub mod owned;
 pub mod types;
 
 pub use builder::IRBuilder;
+pub use calls::value_types;
 pub use function::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, SourceLoc,
 };
@@ -40,5 +41,5 @@ pub use module::{GlobalDeclaration, GlobalInit, Module, TlsModel, TypeDeclaratio
 pub use owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
 pub use types::{
     Identifier, Literal, PrimitiveType, StructField, Type, VECTOR_REGISTER_BITS, Value,
-    check_vector_shape, vector_lane_bits,
+    VectorShiftForm, check_vector_shape, classify_vector_shift, vector_lane_bits,
 };

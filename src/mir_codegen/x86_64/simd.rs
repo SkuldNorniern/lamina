@@ -249,6 +249,11 @@ fn binary_mnemonic(op: VectorOp, lane: VectorLane) -> Result<&'static str, Lamin
         (VLShr, I64) => "psrlq",
         (VAShr, I16) => "psraw",
         (VAShr, I32) => "psrad",
+        (VShlLanes, I32) => "vpsllvd",
+        (VShlLanes, I64) => "vpsllvq",
+        (VLShrLanes, I32) => "vpsrlvd",
+        (VLShrLanes, I64) => "vpsrlvq",
+        (VAShrLanes, I32) => "vpsravd",
         _ => {
             return Err(unsupported(format!(
                 "x86_64 unsupported {op:?} for {lane:?}"
@@ -331,7 +336,28 @@ pub(super) fn operation<W: Write>(
         return Err(unsupported(format!("{op:?} requires two operands")));
     }
     let a = source(&operands[0], SCRATCH_SRC0, writer, ra, slots)?;
+    if matches!(op, VectorOp::VShl | VectorOp::VLShr | VectorOp::VAShr) {
+        let mnemonic = binary_mnemonic(op, lane)?;
+        let work = xmm_of(dst, ra).unwrap_or(SCRATCH_A);
+        if a != work {
+            writeln!(writer, "    movdqa %{a}, %{work}")?;
+        }
+        load_scalar(&operands[1], writer, ra, slots)?;
+        writeln!(writer, "    movq %rax, %{SCRATCH_SRC1}")?;
+        writeln!(writer, "    {mnemonic} %{SCRATCH_SRC1}, %{work}")?;
+        return sink(dst, work, writer, ra, slots);
+    }
     let b = source(&operands[1], SCRATCH_SRC1, writer, ra, slots)?;
+    if matches!(
+        op,
+        VectorOp::VShlLanes | VectorOp::VLShrLanes | VectorOp::VAShrLanes
+    ) {
+        let mnemonic = binary_mnemonic(op, lane)?;
+        require_avx2(op, lane, cpu_level)?;
+        let work = xmm_of(dst, ra).unwrap_or(SCRATCH_A);
+        writeln!(writer, "    {mnemonic} %{b}, %{a}, %{work}")?;
+        return sink(dst, work, writer, ra, slots);
+    }
     if op == VectorOp::VMul && lane == VectorLane::I64 {
         if cpu_level >= X86CpuLevel::V4 {
             writeln!(writer, "    vpmullq %{b}, %{a}, %xmm1")?;
@@ -373,6 +399,16 @@ fn load_scalar<W: Write>(
         load_operand_to_rax(operand, writer, ra, slots)?;
     }
     Ok(())
+}
+
+/// Per-lane counts are AVX2; SSE2 shifts every lane by one count and nothing else.
+fn require_avx2(op: VectorOp, lane: VectorLane, cpu_level: X86CpuLevel) -> Result<(), LaminaError> {
+    if cpu_level >= X86CpuLevel::V3 {
+        return Ok(());
+    }
+    Err(unsupported(format!(
+        "x86_64 {op:?} for {lane:?} is a per-lane vector shift, which x86_64 has only with AVX2 (x86-64-v3); {cpu_level} has one count for all lanes and nothing else\n  Hint: splat the count and write the scalar form, 'shl.<N x T> %a, %n' with a scalar %n, or build for x86-64-v3"
+    )))
 }
 
 fn require_sse41(
@@ -457,49 +493,17 @@ fn lane_access<W: Write>(
 mod tests {
     use crate::test_support::TempDir;
 
-    use crate::mir_codegen::simd_support::{declare_uses_as_params, run, tools_available};
+    use crate::mir_codegen::simd_support::{
+        BINARY, Case, LANES, bits, declare_uses_as_params, expected, function, per_lane_shift, reg,
+        run, scalar, tools_available, uniform_shift,
+    };
 
     use crate::{
-        mir::{
-            AddressMode, AddressSpace, Block, Function, Immediate, Instruction, IntBinOp,
-            MemoryAttrs, MirType, Module, Operand, Parameter, Register, ScalarType, Signature,
-            VectorLane, VectorOp, VectorType, VirtualReg,
-        },
+        mir::{Immediate, Instruction, MirType, Module, Operand, VectorLane, VectorOp, VectorType},
         mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
     };
-    use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
+    use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
     use std::{array, fmt::Write as _, fs, path::Path, process::Command};
-
-    const LANES: [VectorLane; 6] = [
-        VectorLane::I8,
-        VectorLane::I16,
-        VectorLane::I32,
-        VectorLane::I64,
-        VectorLane::F32,
-        VectorLane::F64,
-    ];
-    const BINARY: [VectorOp; 9] = [
-        VectorOp::VAdd,
-        VectorOp::VSub,
-        VectorOp::VMul,
-        VectorOp::VAnd,
-        VectorOp::VOr,
-        VectorOp::VXor,
-        VectorOp::VShl,
-        VectorOp::VLShr,
-        VectorOp::VAShr,
-    ];
-
-    fn scalar(lane: VectorLane) -> MirType {
-        MirType::Scalar(match lane {
-            VectorLane::I8 => ScalarType::I8,
-            VectorLane::I16 => ScalarType::I16,
-            VectorLane::I32 => ScalarType::I32,
-            VectorLane::I64 => ScalarType::I64,
-            VectorLane::F32 => ScalarType::F32,
-            VectorLane::F64 => ScalarType::F64,
-        })
-    }
 
     fn supported(op: VectorOp, lane: VectorLane) -> bool {
         use VectorLane::*;
@@ -508,125 +512,21 @@ mod tests {
             VMul => !matches!(lane, I8),
             VShl | VLShr => matches!(lane, I16 | I32 | I64),
             VAShr => matches!(lane, I16 | I32),
+            VShlLanes | VLShrLanes => matches!(lane, I32 | I64),
+            VAShrLanes => matches!(lane, I32),
             _ => true,
         }
     }
 
-    fn reg(id: u32) -> Register {
-        Register::Virtual(VirtualReg::gpr(id))
-    }
-    fn vector(id: u32) -> Register {
-        Register::Virtual(VirtualReg::vec(id))
-    }
-    fn scalar_reg(lane: VectorLane, id: u32) -> Register {
-        match lane {
-            VectorLane::F32 | VectorLane::F64 => Register::Virtual(VirtualReg::fpr(id)),
-            _ => reg(id),
-        }
-    }
-    fn addr(id: u32) -> AddressMode {
-        AddressMode::BaseOffset {
-            address_space: AddressSpace::Generic,
-            base: reg(id),
-            offset: 1,
-        }
-    }
-
-    fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
-        let MirType::Vector(v) = ty else {
-            panic!("vector type required")
-        };
-        let (VectorType::V128(lane) | VectorType::V256(lane)) = v;
-        let st = scalar(lane);
-        let mut f = Function::new(
-            Signature::new(name).with_params(
-                (0..3)
-                    .map(|i| Parameter::new(reg(i), MirType::Scalar(ScalarType::Ptr)))
-                    .collect(),
-            ),
-        );
-        let sreg = |id| scalar_reg(lane, id);
-        let mut b = Block::new("entry");
-        b.push(Instruction::Load {
-            ty,
-            dst: vector(3),
-            addr: addr(0),
-            attrs: MemoryAttrs::default(),
-        });
-        let single = matches!(op, VectorOp::VSplat | VectorOp::VInsertLane);
-        if single {
-            b.push(Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ty: MirType::Scalar(ScalarType::Ptr),
-                dst: reg(6),
-                lhs: Operand::reg(reg(1)),
-                rhs: Operand::imm_i64(1),
-            });
-        }
-        b.push(Instruction::Load {
-            ty: if single { st } else { ty },
-            dst: if single { sreg(4) } else { vector(4) },
-            addr: if single {
-                AddressMode::BaseOffset {
-                    address_space: AddressSpace::Generic,
-                    base: reg(6),
-                    offset: 0,
-                }
-            } else {
-                addr(1)
-            },
-            attrs: MemoryAttrs::default(),
-        });
-        let operands = match op {
-            VectorOp::VSplat => vec![Operand::reg(sreg(4))],
-            VectorOp::VExtractLane => vec![Operand::reg(vector(3)), Operand::imm_i64(index)],
-            VectorOp::VInsertLane => vec![
-                Operand::reg(vector(3)),
-                Operand::reg(sreg(4)),
-                Operand::imm_i64(index),
-            ],
-            _ => vec![Operand::reg(vector(3)), Operand::reg(vector(4))],
-        };
-        let dst = if op == VectorOp::VExtractLane {
-            sreg(5)
-        } else {
-            vector(5)
-        };
-        b.push(Instruction::VectorOp {
-            op,
-            ty,
-            dst: dst.clone(),
-            operands,
-        });
-        if op == VectorOp::VExtractLane {
-            b.push(Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ty: MirType::Scalar(ScalarType::Ptr),
-                dst: reg(7),
-                lhs: Operand::reg(reg(2)),
-                rhs: Operand::imm_i64(1),
-            });
-        }
-        b.push(Instruction::Store {
-            ty: if op == VectorOp::VExtractLane { st } else { ty },
-            src: Operand::reg(dst),
-            addr: if op == VectorOp::VExtractLane {
-                AddressMode::BaseOffset {
-                    address_space: AddressSpace::Generic,
-                    base: reg(7),
-                    offset: 0,
-                }
-            } else {
-                addr(2)
-            },
-            attrs: MemoryAttrs::default(),
-        });
-        b.push(Instruction::Ret { value: None });
-        f.add_block(b);
-        f
-    }
-
     fn emit(module: &Module, strategy: RegallocStrategy) -> Result<Vec<u8>, String> {
+        emit_at(module, strategy, X86CpuLevel::default())
+    }
+
+    fn emit_at(
+        module: &Module,
+        strategy: RegallocStrategy,
+        level: X86CpuLevel,
+    ) -> Result<Vec<u8>, String> {
         let mut asm = Vec::new();
         generate_mir_to_target_with_settings(
             module,
@@ -636,108 +536,12 @@ mod tests {
             1,
             &MirCodegenSettings {
                 regalloc: strategy,
+                x86_cpu_level: level,
                 ..Default::default()
             },
         )
         .map_err(|e| format!("{e:?}"))?;
         Ok(asm)
-    }
-
-    fn bits(bytes: &[u8]) -> u64 {
-        let mut buf = [0; 8];
-        buf[..bytes.len()].copy_from_slice(bytes);
-        u64::from_le_bytes(buf)
-    }
-
-    fn expected(
-        op: VectorOp,
-        lane: VectorLane,
-        a: &[u8; 16],
-        b: &[u8; 16],
-        index: usize,
-        pointer_width: PointerWidth,
-    ) -> Vec<u8> {
-        use VectorOp::*;
-        let width = scalar(lane).size_bytes(pointer_width);
-        match op {
-            VSplat => return b[..width].repeat(16 / width),
-            VExtractLane => return a[index * width..(index + 1) * width].to_vec(),
-            VInsertLane => {
-                let mut out = *a;
-                out[index * width..(index + 1) * width].copy_from_slice(&b[..width]);
-                return out.to_vec();
-            }
-            _ => (),
-        }
-        let shift = bits(&b[..8]);
-        a.chunks_exact(width)
-            .zip(b.chunks_exact(width))
-            .flat_map(|(a, b)| {
-                let x = bits(a);
-                let y = bits(b);
-                let n = width * 8;
-                let value = match op {
-                    VAnd => x & y,
-                    VOr => x | y,
-                    VXor => x ^ y,
-                    VShl => {
-                        if shift >= n as u64 {
-                            0
-                        } else {
-                            x << shift
-                        }
-                    }
-                    VLShr => {
-                        if shift >= n as u64 {
-                            0
-                        } else {
-                            x >> shift
-                        }
-                    }
-                    VAShr => {
-                        let signed = ((x << (64 - n)) as i64) >> (64 - n);
-                        (signed >> shift.min(n as u64 - 1)) as u64
-                    }
-                    _ if lane == VectorLane::F32 => {
-                        let x = f32::from_bits(x as u32);
-                        let y = f32::from_bits(y as u32);
-                        u64::from(
-                            match op {
-                                VAdd => x + y,
-                                VSub => x - y,
-                                VMul => x * y,
-                                _ => unreachable!(),
-                            }
-                            .to_bits(),
-                        )
-                    }
-                    _ if lane == VectorLane::F64 => {
-                        let x = f64::from_bits(x);
-                        let y = f64::from_bits(y);
-                        match op {
-                            VAdd => x + y,
-                            VSub => x - y,
-                            VMul => x * y,
-                            _ => unreachable!(),
-                        }
-                        .to_bits()
-                    }
-                    VAdd => x.wrapping_add(y),
-                    VSub => x.wrapping_sub(y),
-                    VMul => x.wrapping_mul(y),
-                    _ => unreachable!(),
-                };
-                value.to_le_bytes()[..width].to_vec()
-            })
-            .collect()
-    }
-
-    struct Case {
-        op: VectorOp,
-        lane: VectorLane,
-        index: usize,
-        a: [u8; 16],
-        b: [u8; 16],
     }
 
     fn execute(
@@ -746,6 +550,7 @@ mod tests {
         dir: &Path,
         immediate: bool,
         pointer_width: PointerWidth,
+        level: X86CpuLevel,
     ) {
         let mut module = Module::new("simd");
         let mut harness = String::from("#include <stdio.h>\n#include <string.h>\n");
@@ -791,13 +596,16 @@ mod tests {
                         match op {
                             VectorOp::VSplat => operands[0] = value.clone(),
                             VectorOp::VInsertLane => operands[1] = value.clone(),
+                            op if uniform_shift(*op) => {
+                                operands[1] = Operand::imm_i64(bits(&c.b[..8]) as i64);
+                            }
                             _ => (),
                         }
                     }
                 }
             }
         }
-        let mut asm = emit(&module, strategy).expect("emit SIMD assembly");
+        let mut asm = emit_at(&module, strategy, level).expect("emit SIMD assembly");
         for i in 0..cases.len() {
             asm.extend_from_slice(format!("\n.globl simd_{i}\n").as_bytes());
         }
@@ -840,6 +648,7 @@ mod tests {
             return;
         }
         let mut cases = Vec::new();
+        let mut per_lane = Vec::new();
         for lane in LANES {
             let width = scalar(lane).size_bytes(PointerWidth::Bits64);
             for pattern in 0..3 {
@@ -866,7 +675,27 @@ mod tests {
                     if !supported(op, lane) {
                         continue;
                     }
-                    if matches!(op, VectorOp::VShl | VectorOp::VLShr | VectorOp::VAShr) {
+                    if per_lane_shift(op) {
+                        let n = width as u64 * 8;
+                        let interesting = [0, 1, 3, 5, n - 1, n, n + 1, u64::MAX];
+                        for rotation in 0..interesting.len() {
+                            let mut counts = [0; 16];
+                            for i in 0..16 / width {
+                                let count = interesting[(i + rotation) % interesting.len()];
+                                counts[i * width..(i + 1) * width]
+                                    .copy_from_slice(&count.to_le_bytes()[..width]);
+                            }
+                            per_lane.push(Case {
+                                op,
+                                lane,
+                                index: 0,
+                                a,
+                                b: counts,
+                            });
+                        }
+                        continue;
+                    }
+                    if uniform_shift(op) {
                         for count in [
                             0,
                             3,
@@ -924,7 +753,24 @@ mod tests {
             RegallocStrategy::GraphColorGlobal,
         ] {
             for immediate in [false, true] {
-                execute(&cases, strategy, dir, immediate, PointerWidth::Bits64);
+                execute(
+                    &cases,
+                    strategy,
+                    dir,
+                    immediate,
+                    PointerWidth::Bits64,
+                    X86CpuLevel::default(),
+                );
+            }
+            if std::arch::is_x86_feature_detected!("avx2") {
+                execute(
+                    &per_lane,
+                    strategy,
+                    dir,
+                    false,
+                    PointerWidth::Bits64,
+                    X86CpuLevel::V3,
+                );
             }
         }
     }

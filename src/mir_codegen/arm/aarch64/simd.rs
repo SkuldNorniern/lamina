@@ -80,7 +80,11 @@ fn emit_inner(
             };
             let float = matches!(lane, VectorLane::F32 | VectorLane::F64);
             if (*op == VMul && lane == VectorLane::I64)
-                || (float && matches!(op, VShl | VLShr | VAShr))
+                || (float
+                    && matches!(
+                        op,
+                        VShl | VLShr | VAShr | VShlLanes | VLShrLanes | VAShrLanes
+                    ))
             {
                 return Err(unsupported(format!(
                     "AArch64 unsupported {op:?} for {lane:?}"
@@ -107,10 +111,29 @@ fn emit_inner(
                     return Err(unsupported(format!("{op:?} requires two operands")));
                 }
                 load_vector(w, &operands[0], "q0", frame, a)?;
-                load_vector(w, &operands[1], "q1", frame, a)?;
+                if !matches!(op, VShl | VLShr | VAShr) {
+                    load_vector(w, &operands[1], "q1", frame, a)?;
+                }
                 match op {
+                    VShlLanes | VLShrLanes | VAShrLanes => {
+                        writeln!(w, "    mov {t}, #{}", bits - 1)?;
+                        writeln!(w, "    dup v2.{arr}, {scalar}")?;
+                        writeln!(w, "    cmhs v3.{arr}, v2.{arr}, v1.{arr}")?;
+                        if *op == VAShrLanes {
+                            writeln!(w, "    bsl v3.16b, v1.16b, v2.16b")?;
+                            writeln!(w, "    neg v3.{arr}, v3.{arr}")?;
+                            writeln!(w, "    sshl v0.{arr}, v0.{arr}, v3.{arr}")?;
+                        } else {
+                            writeln!(w, "    and v1.16b, v1.16b, v3.16b")?;
+                            if *op == VLShrLanes {
+                                writeln!(w, "    neg v1.{arr}, v1.{arr}")?;
+                            }
+                            writeln!(w, "    ushl v0.{arr}, v0.{arr}, v1.{arr}")?;
+                            writeln!(w, "    and v0.16b, v0.16b, v3.16b")?;
+                        }
+                    }
                     VShl | VLShr | VAShr => {
-                        writeln!(w, "    umov {t}, v1.d[0]")?;
+                        emit_materialize_operand(w, &scalar_bits(&operands[1]), t, frame, ra)?;
                         writeln!(w, "    mov {a}, #{bits}")?;
                         writeln!(w, "    cmp {t}, {a}")?;
                         writeln!(w, "    csel {t}, {t}, {a}, lo")?;
@@ -201,10 +224,11 @@ mod tests {
                             _ => "eor",
                         }
                     ),
-                    VShl | VLShr | VAShr => format!(
+                    VShl | VLShr | VAShr | VShlLanes | VLShrLanes => format!(
                         "{} v0.{arr}, v0.{arr}, v1.{arr}",
                         if op == VAShr { "sshl" } else { "ushl" }
                     ),
+                    VAShrLanes => format!("sshl v0.{arr}, v0.{arr}, v3.{arr}"),
                     VSplat => format!("dup v0.{arr},"),
                     VExtractLane => format!("v0.{elem}[{index}]"),
                     VInsertLane => format!("ins v0.{elem}[{index}],"),

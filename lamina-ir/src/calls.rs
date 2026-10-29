@@ -270,7 +270,7 @@ fn is_aggregate_resolved(ty: &Type<'_>) -> bool {
 
 /// The type of every named value in `func`, taken from the parameters and from each
 /// defining instruction. A value whose type the instruction does not state is absent.
-fn value_types<'a>(module: &Module<'a>, func: &Function<'a>) -> HashMap<&'a str, Type<'a>> {
+pub fn value_types<'a>(module: &Module<'a>, func: &Function<'a>) -> HashMap<&'a str, Type<'a>> {
     let mut env: HashMap<&'a str, Type<'a>> = func
         .signature
         .params

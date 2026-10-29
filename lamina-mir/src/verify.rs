@@ -985,7 +985,9 @@ fn verify_instruction_types(
                     for (index, operand) in operands.iter().enumerate() {
                         let operand_ty = match (op, index) {
                             (VectorOp::VSplat, 0) | (VectorOp::VInsertLane, 1) => scalar,
-                            (VectorOp::VExtractLane, 1) | (VectorOp::VInsertLane, 2) => {
+                            (VectorOp::VExtractLane, 1)
+                            | (VectorOp::VInsertLane, 2)
+                            | (VectorOp::VShl | VectorOp::VLShr | VectorOp::VAShr, 1) => {
                                 MirType::Scalar(ScalarType::I64)
                             }
                             _ => *ty,
