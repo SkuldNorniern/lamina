@@ -137,8 +137,7 @@ fn has_text_form(annotation: &FunctionAnnotation) -> bool {
         | FunctionAnnotation::Hidden
         | FunctionAnnotation::Protected
         | FunctionAnnotation::Weak
-        | FunctionAnnotation::Naked
-        | FunctionAnnotation::NoRedZone => true,
+        | FunctionAnnotation::Naked => true,
         _ => false,
     }
 }

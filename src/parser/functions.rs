@@ -89,7 +89,11 @@ pub fn parse_annotations(
                 }
                 "align" => FunctionAnnotation::Align(parse_alignment_argument(state)?),
                 "naked" => FunctionAnnotation::Naked,
-                "no_red_zone" => FunctionAnnotation::NoRedZone,
+                "no_red_zone" => {
+                    return Err(state.error(
+                        "@no_red_zone was removed\n  Hint: Delete it. Nothing replaces it: the x86_64 backend never uses the red zone, and other targets have none",
+                    ));
+                }
                 _ => {
                     let hint = unknown_annotation_hint(name, super::get_annotation_names());
                     return Err(state.error(format!(
@@ -458,12 +462,20 @@ mod tests {
     }
 
     #[test]
-    fn naked_and_no_red_zone_parse_with_asm_body() {
-        let source = "@naked\n@no_red_zone\nfn @isr() -> void {\nentry:\n    asm.void \"cli; hlt\"\n    unreachable\n}\n";
-        assert_eq!(
-            annotations_of(source),
-            vec![FunctionAnnotation::Naked, FunctionAnnotation::NoRedZone]
-        );
+    fn naked_with_asm_body_parses() {
+        let source =
+            "@naked\nfn @isr() -> void {\nentry:\n    asm.void \"cli; hlt\"\n    unreachable\n}\n";
+        assert_eq!(annotations_of(source), vec![FunctionAnnotation::Naked]);
+    }
+
+    #[test]
+    fn no_red_zone_is_removed_with_no_replacement() {
+        let source = "@no_red_zone\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n";
+        let err = parse_module(source)
+            .expect_err("@no_red_zone should be rejected")
+            .to_string();
+        assert!(err.contains("@no_red_zone was removed"), "{err}");
+        assert!(err.contains("Nothing replaces it"), "{err}");
     }
 
     #[test]

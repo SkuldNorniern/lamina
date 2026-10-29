@@ -180,7 +180,6 @@ pub fn get_annotation_names() -> &'static [&'static str] {
         "section",
         "align",
         "naked",
-        "no_red_zone",
     ]
 }
 
