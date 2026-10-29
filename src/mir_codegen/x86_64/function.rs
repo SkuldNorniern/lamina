@@ -566,7 +566,12 @@ pub(super) fn compile_single_function_x86_64(
                 sret_slot,
                 va_area.as_ref(),
             )
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(|e| match e {
+                LaminaError::CodegenError(refusal @ CodegenError::CpuLevelRequired { .. }) => {
+                    refusal
+                }
+                other => CodegenError::InvalidCodegenOptions(other.to_string()),
+            })?;
         }
         output.rax_value = None;
     }

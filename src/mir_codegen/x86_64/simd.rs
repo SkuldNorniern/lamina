@@ -13,6 +13,7 @@ use crate::{
     mir_codegen::CodegenError,
 };
 use lamina_codegen::x86_64::X64RegAlloc;
+use lamina_platform::X86CpuLevel;
 use std::{
     collections::{HashMap, HashSet},
     io::Write,
@@ -278,6 +279,7 @@ fn emit_mul_i64<W: Write>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn operation<W: Write>(
     op: VectorOp,
     ty: MirType,
@@ -286,10 +288,11 @@ pub(super) fn operation<W: Write>(
     writer: &mut RaxTrackingWriter<W>,
     ra: &X64RegAlloc,
     slots: &HashMap<VirtualReg, i32>,
+    cpu_level: X86CpuLevel,
 ) -> Result<(), LaminaError> {
     let lane = lane(ty)?;
     if matches!(op, VectorOp::VExtractLane | VectorOp::VInsertLane) {
-        return lane_access(op, lane, dst, operands, writer, ra, slots);
+        return lane_access(op, lane, dst, operands, writer, ra, slots, cpu_level);
     }
     if op == VectorOp::VSplat {
         if operands.len() != 1 {
@@ -334,6 +337,9 @@ pub(super) fn operation<W: Write>(
         return sink(dst, SCRATCH_B, writer, ra, slots);
     }
     let mnemonic = binary_mnemonic(op, lane)?;
+    if mnemonic == "pmulld" {
+        require_sse41(mnemonic, cpu_level)?;
+    }
     let work = match xmm_of(dst, ra) {
         Some(xmm) if xmm != b => xmm,
         _ => SCRATCH_A,
@@ -365,6 +371,22 @@ fn load_scalar<W: Write>(
     Ok(())
 }
 
+fn require_sse41(
+    instruction: impl Into<String>,
+    cpu_level: X86CpuLevel,
+) -> Result<(), LaminaError> {
+    let required = X86CpuLevel::V2;
+    if cpu_level >= required {
+        return Ok(());
+    }
+    Err(LaminaError::CodegenError(CodegenError::CpuLevelRequired {
+        instruction: instruction.into(),
+        required,
+        selected: cpu_level,
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn lane_access<W: Write>(
     op: VectorOp,
     lane: VectorLane,
@@ -373,6 +395,7 @@ fn lane_access<W: Write>(
     writer: &mut RaxTrackingWriter<W>,
     ra: &X64RegAlloc,
     slots: &HashMap<VirtualReg, i32>,
+    cpu_level: X86CpuLevel,
 ) -> Result<(), LaminaError> {
     use crate::mir::Immediate;
     let extract = op == VectorOp::VExtractLane;
@@ -401,6 +424,10 @@ fn lane_access<W: Write>(
         return Err(unsupported(format!(
             "{op:?} {lane:?} lane index {index} out of range"
         )));
+    }
+    if suffix != "w" {
+        let direction = if extract { "pextr" } else { "pinsr" };
+        require_sse41(format!("{direction}{suffix}"), cpu_level)?;
     }
     if extract {
         let src = source(&operands[0], SCRATCH_SRC0, writer, ra, slots)?;

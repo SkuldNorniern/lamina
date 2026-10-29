@@ -32,7 +32,7 @@ use lamina_codegen::{
     abi::{BuiltinLibrary, RuntimeSymbol},
     riscv::{RiscVTarget, Xlen},
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
 pub fn generate_mir_to_target<W: Write>(
@@ -371,6 +371,11 @@ pub enum CodegenError {
     InvalidGlobals(Vec<String>),
     InvalidFuncs(Vec<String>),
     InvalidMir(Vec<String>),
+    CpuLevelRequired {
+        instruction: String,
+        required: X86CpuLevel,
+        selected: X86CpuLevel,
+    },
 }
 
 impl fmt::Display for CodegenError {
@@ -379,6 +384,14 @@ impl fmt::Display for CodegenError {
             CodegenError::UnsupportedFeature(message) => {
                 write!(f, "Unsupported feature: {message}")
             }
+            CodegenError::CpuLevelRequired {
+                instruction,
+                required,
+                selected,
+            } => write!(
+                f,
+                "instruction `{instruction}` requires {required}, but the selected CPU level is {selected} (raise it with --cpu-level)"
+            ),
             CodegenError::InvalidCodegenOptions(message) => {
                 write!(f, "Invalid codegen options: {message}")
             }

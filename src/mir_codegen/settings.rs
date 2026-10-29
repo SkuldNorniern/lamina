@@ -1,5 +1,6 @@
 //! Cross-backend MIR codegen settings (register allocation policy, basic debug emission).
 
+use lamina_platform::X86CpuLevel;
 #[cfg(feature = "nightly")]
 use lamina_platform::{SimdCapabilities, Target};
 
@@ -30,6 +31,9 @@ impl RegallocStrategy {
 pub struct MirCodegenSettings {
     pub amdgpu_target: super::amdgpu::AmdGpuTarget,
     pub regalloc: RegallocStrategy,
+    /// Highest x86-64 level the emitted code may use. Instructions above it are
+    /// replaced by a documented fallback or refused with [`CodegenError::CpuLevelRequired`].
+    pub x86_cpu_level: X86CpuLevel,
     /// When true, emit GNU assembler `.file` / `.loc` directives (requires
     /// [`crate::mir_codegen::CodegenCapability::DebugInfo`] on the target).
     pub emit_asm_debug_lines: bool,
@@ -46,6 +50,7 @@ impl Default for MirCodegenSettings {
         Self {
             amdgpu_target: Default::default(),
             regalloc: RegallocStrategy::Incremental,
+            x86_cpu_level: X86CpuLevel::default(),
             emit_asm_debug_lines: false,
             debug_file_tag: "lamina".to_string(),
             #[cfg(feature = "nightly")]

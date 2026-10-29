@@ -225,6 +225,24 @@ The following results are from our 256×256 2D matrix multiplication benchmark (
 - `wasm64_unknown`: WebAssembly 64-bit
 
 
+### x86-64 CPU Levels
+
+`--cpu-level <v1|v2|v3|v4>` sets the highest x86-64 microarchitecture level the generated code may use. The levels are the psABI ones (`x86-64-v1` to `x86-64-v4`; the `x86-64-` prefix is optional). The default is **v2**, which is what the x86-64 backend already emitted before the flag existed, so the default output is unchanged.
+
+| Level | Features | Gated instructions the backend emits at this level |
+|---|---|---|
+| v1 | SSE2 (x86-64 baseline) | none |
+| v2 | SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT, CMPXCHG16B | `popcntq`; `pinsrb/d/q` and `pextrb/d/q`; `pmulld` |
+| v3 | v2 + AVX, AVX2, BMI1, BMI2, F16C, FMA, LZCNT, MOVBE | none yet, so output matches v2 |
+| v4 | v3 + AVX-512F, BW, CD, DQ, VL | none yet, so output matches v2 |
+
+At v1:
+- `popcount` is lowered to the classic SWAR sequence instead of `popcntq`. This is a deliberate fallback. The sequence saves and restores `%rcx` and `%rdx`.
+- The SSE4.1 lane forms and `pmulld` are refused with a named error, for example ``instruction `pmulld` requires x86-64-v2, but the selected CPU level is x86-64-v1 (raise it with --cpu-level)``. These come from the nightly SIMD vector path.
+- 16-bit lane access and `pmullw` are SSE2 and are still emitted.
+
+`--cpu-level` applies only to x86_64 targets and is rejected for others. `--jit` runs the code on the host, so pick a level the host supports.
+
 ## Lamina IR Syntax
 
 Lamina IR files consist of type declarations, global definitions, and function declarations:

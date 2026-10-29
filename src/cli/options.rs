@@ -6,7 +6,7 @@ use crate::mir_codegen::{
     MirCodegenSettings, RegallocStrategy, amdgpu::AmdGpuTarget, assemble::AssemblerBackend,
     link::LinkerBackend,
 };
-use lamina_platform::{HOST_ARCH_LIST, TargetOperatingSystem};
+use lamina_platform::{HOST_ARCH_LIST, TargetOperatingSystem, X86CpuLevel};
 use ras::ObjectWriteOptions;
 
 pub struct CompileOptions {
@@ -98,6 +98,9 @@ pub fn print_usage() {
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
     eprintln!("  --mcpu <gpu>            AMDGPU processor: gfx900 | gfx1200 (default: gfx1200)");
     eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
+    eprintln!(
+        "  --cpu-level <v>         x86-64 level the output may use: v1 | v2 | v3 | v4 (default: v2, x86_64 targets only)"
+    );
     eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
     eprintln!(
         "  --opt-level <n>         EXPERIMENTAL(mir only): Set optimization level (0-3, default: 1)"
@@ -148,6 +151,7 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
     };
 
     let mut regalloc_explicit = false;
+    let mut cpu_level_explicit = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -217,6 +221,16 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                     ));
                 }
                 options.target_arch = Some(requested_target);
+                i += 2;
+            }
+            "--cpu-level" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for --cpu-level".to_string());
+                }
+                options.mir_codegen_settings.x86_cpu_level = args[i + 1]
+                    .parse::<X86CpuLevel>()
+                    .map_err(|e| format!("--cpu-level: {e}"))?;
+                cpu_level_explicit = true;
                 i += 2;
             }
             "--opt-level" => {
@@ -329,8 +343,51 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
         options.mir_codegen_settings.debug_file_tag =
             options.input_file.to_string_lossy().into_owned();
     }
+    if cpu_level_explicit && !x86_64 {
+        return Err("--cpu-level applies only to x86_64 targets".to_string());
+    }
     if !regalloc_explicit && x86_64 {
         options.mir_codegen_settings.regalloc = RegallocStrategy::for_opt_level(options.opt_level);
     }
     Ok(options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<CompileOptions, String> {
+        let mut all = vec!["lamina".to_string(), "prog.lamina".to_string()];
+        all.extend(args.iter().map(ToString::to_string));
+        parse_args_from(all)
+    }
+
+    #[test]
+    fn cpu_level_defaults_to_v2() {
+        let options = parse(&[]).expect("default arguments parse");
+        assert_eq!(options.mir_codegen_settings.x86_cpu_level, X86CpuLevel::V2);
+    }
+
+    #[test]
+    fn cpu_level_flag_selects_the_level() {
+        let options =
+            parse(&["--cpu-level", "v1", "--target", "x86_64_linux"]).expect("v1 parses on x86_64");
+        assert_eq!(options.mir_codegen_settings.x86_cpu_level, X86CpuLevel::V1);
+    }
+
+    #[test]
+    fn cpu_level_rejects_unknown_values() {
+        let error = parse(&["--cpu-level", "native"])
+            .err()
+            .expect("native is not a level");
+        assert!(error.contains("native"), "{error}");
+    }
+
+    #[test]
+    fn cpu_level_is_rejected_off_x86_64() {
+        let error = parse(&["--cpu-level", "v1", "--target", "aarch64_linux"])
+            .err()
+            .expect("cpu level is x86_64 only");
+        assert!(error.contains("x86_64"), "{error}");
+    }
 }

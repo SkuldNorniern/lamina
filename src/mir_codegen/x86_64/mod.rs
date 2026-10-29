@@ -5,6 +5,8 @@
 
 mod atomic;
 pub mod constants;
+#[cfg(test)]
+mod cpu_level_tests;
 mod function;
 mod inline_asm;
 #[cfg(test)]
@@ -51,7 +53,7 @@ use crate::{
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LiveInterval,
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
 use std::{collections::hash_map::Entry, sync::Arc};
 
 use crate::mir_codegen::common::external_names;
@@ -212,7 +214,10 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
                 abi_extensions.as_ref(),
             )
         })
-        .map_err(parallel_codegen_error)?;
+        .map_err(|e| match e {
+            refusal @ CodegenError::CpuLevelRequired { .. } => LaminaError::CodegenError(refusal),
+            other => parallel_codegen_error(other),
+        })?;
 
     for result in results {
         writer.write_all(&result.assembly)?;

@@ -7,9 +7,11 @@
 //! ## Modules
 //!
 //! - [`target`] - Target architecture and operating system definitions
+//! - [`cpu_level`] - x86-64 microarchitecture levels (v1 to v4)
 //! - [`detection`] - Host system detection functions
 //! - [`simd`] - SIMD capabilities detection (nightly feature)
 
+pub mod cpu_level;
 pub mod detection;
 pub mod target;
 
@@ -17,6 +19,7 @@ pub mod target;
 pub mod simd;
 
 // Re-export main types
+pub use cpu_level::X86CpuLevel;
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
 pub use target::{HOST_ARCH_LIST, Target, TargetArchitecture, TargetOperatingSystem};
 

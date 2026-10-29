@@ -359,6 +359,7 @@ fn emit_int_divide<W: Write>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_int_unary<W: Write>(
     op: IntUnOp,
     ty: &MirType,
@@ -367,13 +368,17 @@ fn emit_int_unary<W: Write>(
     writer: &mut RaxTrackingWriter<W>,
     reg_alloc: &X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
+    cpu_level: X86CpuLevel,
 ) -> Result<(), LaminaError> {
     let bytes = ty.size_bytes();
     let bits = bytes * 8;
     load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
     extend_integer(writer, "rax", bytes, false)?;
     match op {
-        IntUnOp::Popcount => writeln!(writer, "    popcntq %rax, %rax")?,
+        IntUnOp::Popcount if cpu_level >= X86CpuLevel::V2 => {
+            writeln!(writer, "    popcntq %rax, %rax")?;
+        }
+        IntUnOp::Popcount => emit_popcount_swar(writer)?,
         IntUnOp::Ctlz => {
             writeln!(writer, "    movq $-1, %rcx")?;
             writeln!(writer, "    bsrq %rax, %rax")?;
@@ -395,6 +400,36 @@ fn emit_int_unary<W: Write>(
     }
     canonicalize_integer(writer, "rax", ty)?;
     store_integer_result(dst, writer, reg_alloc, stack_slots)
+}
+
+/// Population count of the zero-extended value in `%rax` without POPCNT (x86-64-v1).
+/// The classic SWAR reduction. `%rcx` and `%rdx` may hold live values, so they are
+/// saved on the stack around the sequence rather than treated as scratch.
+fn emit_popcount_swar<W: Write>(writer: &mut RaxTrackingWriter<W>) -> Result<(), LaminaError> {
+    writeln!(writer, "    pushq %rcx")?;
+    writeln!(writer, "    pushq %rdx")?;
+    writeln!(writer, "    movq %rax, %rcx")?;
+    writeln!(writer, "    shrq $1, %rcx")?;
+    writeln!(writer, "    movabsq $0x5555555555555555, %rdx")?;
+    writeln!(writer, "    andq %rdx, %rcx")?;
+    writeln!(writer, "    subq %rcx, %rax")?;
+    writeln!(writer, "    movabsq $0x3333333333333333, %rdx")?;
+    writeln!(writer, "    movq %rax, %rcx")?;
+    writeln!(writer, "    andq %rdx, %rax")?;
+    writeln!(writer, "    shrq $2, %rcx")?;
+    writeln!(writer, "    andq %rdx, %rcx")?;
+    writeln!(writer, "    addq %rcx, %rax")?;
+    writeln!(writer, "    movq %rax, %rcx")?;
+    writeln!(writer, "    shrq $4, %rcx")?;
+    writeln!(writer, "    addq %rcx, %rax")?;
+    writeln!(writer, "    movabsq $0x0f0f0f0f0f0f0f0f, %rdx")?;
+    writeln!(writer, "    andq %rdx, %rax")?;
+    writeln!(writer, "    movabsq $0x0101010101010101, %rdx")?;
+    writeln!(writer, "    imulq %rdx, %rax")?;
+    writeln!(writer, "    shrq $56, %rax")?;
+    writeln!(writer, "    popq %rdx")?;
+    writeln!(writer, "    popq %rcx")?;
+    Ok(())
 }
 
 /// Rotation of `lhs` by `rhs` modulo the bit width. Bits of `rdx` above the width are
@@ -1535,7 +1570,16 @@ pub(super) fn emit_instruction_x86_64(
             dst,
             operands,
         } => {
-            simd::operation(*op, *ty, dst, operands, writer, reg_alloc, stack_slots)?;
+            simd::operation(
+                *op,
+                *ty,
+                dst,
+                operands,
+                writer,
+                reg_alloc,
+                stack_slots,
+                settings.x86_cpu_level,
+            )?;
         }
         MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
             simd::memory(inst, writer, reg_alloc, stack_slots)?;
@@ -2252,7 +2296,16 @@ pub(super) fn emit_instruction_x86_64(
             writeln!(writer, "    ud2")?;
         }
         MirInst::IntUnary { op, ty, dst, src } => {
-            emit_int_unary(*op, ty, dst, src, writer, reg_alloc, stack_slots)?;
+            emit_int_unary(
+                *op,
+                ty,
+                dst,
+                src,
+                writer,
+                reg_alloc,
+                stack_slots,
+                settings.x86_cpu_level,
+            )?;
         }
         MirInst::IntRotate {
             op,
