@@ -8,7 +8,7 @@
 use crate::error::LaminaError;
 use lamina_codegen::os_uses_macho;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
+use ras::{ObjectWriteOptions, Ras, is_assembly_target_supported, is_object_file_supported};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -177,6 +177,7 @@ fn assemble_native(
     verbose: bool,
     ras_object_write_options: ObjectWriteOptions,
 ) -> Result<AssembleResult, LaminaError> {
+    let defaulted = backend.is_none();
     let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
     let backend = validate_assembler_backend_for_target(backend, target_arch, target_os)?;
 
@@ -205,8 +206,14 @@ fn assemble_native(
                 .map_err(|e| {
                     LaminaError::ValidationError(format!("Failed to create ras assembler: {e}"))
                 })?;
-        ras.assemble_file(input_path, output_path)
-            .map_err(|e| LaminaError::ValidationError(format!("ras assembly failed: {e}")))?;
+        ras.assemble_file(input_path, output_path).map_err(|e| {
+            let hint = if defaulted {
+                "; ras is the default assembler and cannot encode this input, so re-run with --assembler gas (or -c gnu)"
+            } else {
+                ""
+            };
+            LaminaError::ValidationError(format!("ras assembly failed: {e}{hint}"))
+        })?;
         return Ok(AssembleResult {
             output_path: output_path.to_path_buf(),
             needs_linking: true,
@@ -298,40 +305,14 @@ fn assemble_native(
     })
 }
 
-/// Detect available assembler backend for the given target.
-///
-/// Prefers a system assembler (gas/clang) when one is installed, because ras
-/// cannot yet assemble programs that reference data symbols or external calls
-/// (e.g. `printf`). ras is used only as a fallback when no system
-/// assembler is present; select it explicitly with `--assembler ras` or
-/// `-c lamina` for the standalone, no-toolchain path.
+/// The assembler used when none is named: ras, linked in-process, so no host
+/// tool is needed. Targets ras cannot encode are refused by
+/// `validate_assembler_backend_for_target`; they are never sent to a host assembler.
 pub fn detect_assembler_backend(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    _target_arch: TargetArchitecture,
+    _target_os: TargetOperatingSystem,
 ) -> AssemblerBackend {
-    if target_os == TargetOperatingSystem::Windows
-        && Command::new("clang").arg("--version").output().is_ok()
-    {
-        return AssemblerBackend::Lld;
-    }
-
-    if Command::new("as").arg("--version").output().is_ok() {
-        return AssemblerBackend::Gas;
-    }
-
-    if Command::new("clang").arg("--version").output().is_ok() {
-        return AssemblerBackend::Lld;
-    }
-
-    if matches!(
-        target_arch,
-        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
-    ) && is_object_file_supported(target_arch, target_os)
-    {
-        return AssemblerBackend::Ras;
-    }
-
-    AssemblerBackend::Gas
+    AssemblerBackend::Ras
 }
 
 /// Get the appropriate file extension for assembly output
@@ -416,19 +397,17 @@ fn validate_assembler_backend_for_target(
             }
         }
         AssemblerBackend::Ras => {
-            if !matches!(
-                target_arch,
-                TargetArchitecture::X86_64
-                    | TargetArchitecture::Aarch64
-                    | TargetArchitecture::Arx64
-            ) {
-                return Err(LaminaError::ValidationError(format!(
-                    "Ras assembler supports x86_64, AArch64, and ARX64 only, not {target_arch:?}"
-                )));
+            if matches!(target_arch, TargetArchitecture::PowerPC64) {
+                return Err(LaminaError::ValidationError(
+                    "ras has no PowerPC encoder; select another toolchain with -c gnu or -c clang"
+                        .to_string(),
+                ));
             }
-            if !is_object_file_supported(target_arch, target_os) {
+            if !is_assembly_target_supported(target_arch, target_os)
+                || !is_object_file_supported(target_arch, target_os)
+            {
                 return Err(LaminaError::ValidationError(format!(
-                    "Ras assembler does not support object output for {target_arch:?} {target_os:?}"
+                    "ras cannot assemble {target_arch:?} {target_os:?} yet; select another toolchain with -c gnu or -c clang"
                 )));
             }
             Ok(backend)

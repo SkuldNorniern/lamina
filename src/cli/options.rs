@@ -90,9 +90,9 @@ pub fn print_usage() {
     eprintln!("  -o, --output <file>     Specify output executable name");
     eprintln!("  -v, --verbose           Enable verbose output");
     eprintln!(
-        "  -c, --compiler <n>      Toolchain: gnu | clang | msvc | lamina. Or linker only: ld, lld, mold, weld, link, cl"
+        "  -c, --compiler <n>      Toolchain: lamina (default: ras + weld) | gnu | clang | msvc. Or linker only: ld, lld, mold, weld, link, cl"
     );
-    eprintln!("  --assembler <n>         Override assembler: ras, gas, clang");
+    eprintln!("  --assembler <n>         Override assembler: ras (default), gas, clang");
     eprintln!("  -Wl,<flag>              Pass flag(s) to linker (GCC/Clang compatible)");
     eprintln!("  -Wa,<flag>              Pass flag(s) to assembler (GCC/Clang compatible)");
     eprintln!("  --emit-asm              Only emit assembly file without compiling");

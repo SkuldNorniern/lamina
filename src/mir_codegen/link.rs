@@ -1,7 +1,7 @@
 //! Linking backends for creating final executables or binaries.
 //!
 //! Supports multiple linkers:
-//! - **Weld**: Lamina's custom linker; drop-in replacement for ld/lld. Use `-c weld` when available.
+//! - **Weld**: Lamina's own linker, run as a sibling binary. The default.
 //! - GNU ld (binutils)
 //! - LLVM lld
 //! - Mold (faster alternative)
@@ -12,7 +12,7 @@ use crate::error::LaminaError;
 use lamina_codegen::os_uses_macho;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{
-    env, fs,
+    env, fs, io,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -240,10 +240,6 @@ fn resolve_msvc_link_cmd(target_arch: TargetArchitecture) -> Option<String> {
         }
     }
     None
-}
-
-fn has_msvc_link(target_arch: TargetArchitecture) -> bool {
-    resolve_msvc_link_cmd(target_arch).is_some()
 }
 
 fn build_arch_emulation_flags(
@@ -494,6 +490,7 @@ pub fn link(
         )));
     }
 
+    let defaulted = backend.is_none();
     let backend = backend.unwrap_or_else(|| detect_linker_backend(target_arch, target_os));
     let backend = validate_linker_backend_for_target(backend, target_arch, target_os)?;
 
@@ -569,7 +566,29 @@ pub fn link(
         }
         LinkerBackend::Weld => {
             let args = build_weld_linker_args(input_path, output_path, target_os, additional_flags);
-            return run_linker(&resolve_sibling_command("weld"), args, verbose);
+            match run_weld(&args, verbose)? {
+                WeldRun::Linked => return Ok(()),
+                WeldRun::UndefinedSymbol(symbol) if defaulted => {
+                    eprintln!(
+                        "[WARN] weld cannot resolve `{symbol}` (a compiler runtime helper); linking this program with GNU ld instead"
+                    );
+                    (
+                        "ld",
+                        build_unix_linker_args(
+                            input_path,
+                            output_path,
+                            target_arch,
+                            target_os,
+                            additional_flags,
+                        ),
+                    )
+                }
+                WeldRun::UndefinedSymbol(symbol) => {
+                    return Err(LaminaError::ValidationError(format!(
+                        "weld cannot resolve `{symbol}` (a compiler runtime helper); select another toolchain with -c gnu"
+                    )));
+                }
+            }
         }
         LinkerBackend::Msvc => {
             if target_os != TargetOperatingSystem::Windows {
@@ -579,7 +598,7 @@ pub fn link(
             }
             let link_cmd = resolve_msvc_link_cmd(target_arch).ok_or_else(|| {
                 LaminaError::ValidationError(
-                    "MSVC link.exe not found; install Visual Studio C++ tools or use -c weld"
+                    "MSVC link.exe not found; install Visual Studio C++ tools or use -c clang"
                         .to_string(),
                 )
             })?;
@@ -632,16 +651,59 @@ pub fn link(
     Ok(())
 }
 
-/// Prefer a binary sitting next to the current executable (the bundled lamina
-/// toolchain), falling back to the bare name resolved via PATH.
-fn resolve_sibling_command(name: &str) -> String {
+/// Outcome of running the weld binary.
+enum WeldRun {
+    Linked,
+    UndefinedSymbol(String),
+}
+
+/// Run the weld binary, found beside the lamina executable or on PATH.
+fn run_weld(args: &[String], verbose: bool) -> Result<WeldRun, LaminaError> {
+    let cmd = resolve_toolchain_command("weld");
+    if verbose {
+        println!("[VERBOSE] Linking with {cmd}: {args:?}");
+    }
+    let output = Command::new(&cmd).args(args).output().map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            LaminaError::ValidationError(
+                "weld not found beside the lamina executable or on PATH. ras, weld and lamina install together as one toolchain; install weld next to lamina".to_string(),
+            )
+        } else {
+            LaminaError::ValidationError(format!("Failed to spawn linker '{cmd}': {e}"))
+        }
+    })?;
+    if output.status.success() {
+        return Ok(WeldRun::Linked);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if let Some(rest) = stderr.split("undefined symbol ").nth(1) {
+        let symbol = rest.split_whitespace().next().unwrap_or("").to_string();
+        return Ok(WeldRun::UndefinedSymbol(symbol));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Err(LaminaError::ValidationError(format!(
+        "Linker 'weld' failed:\nstdout: {stdout}\nstderr: {stderr}"
+    )))
+}
+
+/// Find a toolchain binary beside the current executable, falling back to PATH.
+/// Test binaries live in `deps/`, so that directory's parent is checked too.
+fn resolve_toolchain_command(name: &str) -> String {
+    let suffix = if cfg!(windows) { ".exe" } else { "" };
     if let Ok(current_exe) = env::current_exe()
         && let Some(dir) = current_exe.parent()
     {
-        let suffix = if cfg!(windows) { ".exe" } else { "" };
-        let candidate = dir.join(format!("{name}{suffix}"));
-        if candidate.is_file() {
-            return candidate.to_string_lossy().to_string();
+        let mut dirs = vec![dir.to_path_buf()];
+        if dir.file_name().is_some_and(|n| n == "deps")
+            && let Some(parent) = dir.parent()
+        {
+            dirs.push(parent.to_path_buf());
+        }
+        for dir in dirs {
+            let candidate = dir.join(format!("{name}{suffix}"));
+            if candidate.is_file() {
+                return candidate.to_string_lossy().to_string();
+            }
         }
     }
     name.to_string()
@@ -667,68 +729,23 @@ fn run_linker(cmd: &str, args: Vec<String>, verbose: bool) -> Result<(), LaminaE
     Ok(())
 }
 
-/// Detect available linker backend for the given target.
-/// Tool availability is checked on the host; routing uses target OS/arch.
+/// The linker used when none is named: weld, linked in-process, so no host
+/// tool is needed. Whether weld can handle the target is checked by
+/// `validate_linker_backend_for_target`.
 pub fn detect_linker_backend(
     _target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    _target_os: TargetOperatingSystem,
 ) -> LinkerBackend {
-    // Check for weld in the same directory as the current executable (bundled toolchain).
-    let weld_cmd = resolve_sibling_command("weld");
-    let has_weld =
-        Path::new(&weld_cmd).is_file() || Command::new(&weld_cmd).arg("--version").output().is_ok();
+    LinkerBackend::Weld
+}
 
-    match target_os {
-        TargetOperatingSystem::Windows => {
-            if Command::new("clang").arg("--version").output().is_ok() {
-                return LinkerBackend::Lld;
-            }
-            if has_msvc_link(_target_arch) {
-                return LinkerBackend::Msvc;
-            }
-            // Weld can link Windows COFF objects to PE executables.
-            if has_weld {
-                return LinkerBackend::Weld;
-            }
-            LinkerBackend::Msvc // Last resort — will fail gracefully if not found
-        }
-        os if os_uses_macho(os) => {
-            if Command::new("mold").arg("--version").output().is_ok() {
-                return LinkerBackend::Mold;
-            }
-            if Command::new("ld").arg("-v").output().is_ok()
-                || Command::new("ld").arg("--version").output().is_ok()
-            {
-                return LinkerBackend::Ld;
-            }
-            if Command::new("ld64.lld").arg("-v").output().is_ok() {
-                return LinkerBackend::Lld;
-            }
-            if has_weld {
-                return LinkerBackend::Weld;
-            }
-            LinkerBackend::Ld
-        }
-        _ => {
-            if Command::new("mold").arg("--version").output().is_ok() {
-                return LinkerBackend::Mold;
-            }
-            if Command::new("ld.lld").arg("-v").output().is_ok()
-                || Command::new("lld").arg("-v").output().is_ok()
-            {
-                return LinkerBackend::Lld;
-            }
-            if Command::new("ld").arg("--version").output().is_ok()
-                || Command::new("ld").arg("-v").output().is_ok()
-            {
-                return LinkerBackend::Ld;
-            }
-            if has_weld {
-                return LinkerBackend::Weld;
-            }
-            LinkerBackend::Ld
-        }
-    }
+/// Targets weld has been verified to link. Anything else is refused by name
+/// rather than handed to a host linker.
+fn weld_supports(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> bool {
+    matches!(
+        (target_arch, target_os),
+        (TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+    )
 }
 
 fn validate_linker_backend_for_target(
@@ -737,7 +754,16 @@ fn validate_linker_backend_for_target(
     target_os: TargetOperatingSystem,
 ) -> Result<LinkerBackend, LaminaError> {
     match (backend, target_os) {
-        (LinkerBackend::Msvc | LinkerBackend::Weld, TargetOperatingSystem::Windows) => Ok(backend),
+        (LinkerBackend::Weld, _) => {
+            if weld_supports(target_arch, target_os) {
+                Ok(backend)
+            } else {
+                Err(LaminaError::ValidationError(format!(
+                    "weld cannot link {target_arch:?} {target_os:?} yet; use -c gnu or -c clang"
+                )))
+            }
+        }
+        (LinkerBackend::Msvc, TargetOperatingSystem::Windows) => Ok(backend),
         (LinkerBackend::Msvc, _) => Err(LaminaError::ValidationError(format!(
             "MSVC link is only supported for Windows targets, not {target_os:?}"
         ))),
@@ -849,14 +875,22 @@ mod tests {
     }
 
     #[test]
-    fn weld_accepted_for_windows_target() {
-        // weld now supports Windows PE linking (COFF→PE with import table).
-        validate_linker_backend_for_target(
+    fn weld_refused_for_windows_target() {
+        let error = validate_linker_backend_for_target(
             LinkerBackend::Weld,
             TargetArchitecture::X86_64,
             TargetOperatingSystem::Windows,
         )
-        .expect("weld should be accepted for Windows targets");
+        .expect_err("weld has no PE writer yet");
+        assert!(error.to_string().contains("weld cannot link"));
+    }
+
+    #[test]
+    fn weld_is_the_default_linker() {
+        assert_eq!(
+            detect_linker_backend(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
+            LinkerBackend::Weld
+        );
     }
 
     #[test]
