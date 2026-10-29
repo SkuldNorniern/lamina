@@ -6,6 +6,8 @@ use crate::mir_codegen::common::{
     emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
+mod atomic;
+mod bit;
 mod simd;
 use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
@@ -2059,16 +2061,23 @@ fn emit_instruction_riscv<W: Write>(
             // No-op in AOT path.
         }
         MirInst::VectorOp { .. } => simd::emit(inst, writer, reg_alloc, stack_slots, ctx.target)?,
-        MirInst::IntUnary { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "RISC-V backend does not support integer bit intrinsics yet".to_string(),
-            )));
+        MirInst::IntUnary { op, ty, dst, src } => {
+            bit::emit_int_unary(writer, *op, ty, dst, src, reg_alloc, stack_slots)?;
         }
-        MirInst::IntRotate { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "RISC-V backend does not support integer rotates yet".to_string(),
-            )));
+        MirInst::IntRotate {
+            op,
+            ty,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            bit::emit_int_rotate(writer, *op, ty, dst, (lhs, rhs), reg_alloc, stack_slots)?;
         }
+        MirInst::AtomicLoad { .. }
+        | MirInst::AtomicStore { .. }
+        | MirInst::AtomicBinary { .. }
+        | MirInst::AtomicCompareExchange { .. }
+        | MirInst::Fence { .. } => atomic::emit(inst, writer, reg_alloc, stack_slots)?,
         MirInst::InlineAsm { .. } => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 "inline assembly is not supported by the RISC-V backend; it is x86_64 Linux only"

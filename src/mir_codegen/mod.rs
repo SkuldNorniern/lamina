@@ -652,34 +652,17 @@ mod atomic_target_tests {
     use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
     #[test]
-    fn non_x86_backends_report_atomics_as_clean_errors() {
+    fn wasm_reports_atomics_as_a_clean_error() {
         let ir = parse_module(
             "fn @f(ptr %p) -> i64 {\nentry:\n %old = atomic_add.i64 %p, 1, seqcst\n ret.i64 %old\n}",
         )
         .expect("parse atomic add");
         let mir = codegen::from_ir(&ir, "atomics").expect("lower atomic add");
-        for (arch, os, backend) in [
-            (
-                TargetArchitecture::Aarch64,
-                TargetOperatingSystem::Linux,
-                "AArch64",
-            ),
-            (
-                TargetArchitecture::Riscv64,
-                TargetOperatingSystem::Linux,
-                "RISC-V",
-            ),
-            (
-                TargetArchitecture::PowerPC64,
-                TargetOperatingSystem::Linux,
-                "PowerPC64",
-            ),
-            (
-                TargetArchitecture::Wasm32,
-                TargetOperatingSystem::Wasi,
-                "WASM",
-            ),
-        ] {
+        for (arch, os, backend) in [(
+            TargetArchitecture::Wasm32,
+            TargetOperatingSystem::Wasi,
+            "WASM",
+        )] {
             let mut output = Vec::new();
             let err = generate_mir_to_target(&mir, &mut output, arch, os, 1)
                 .expect_err("atomics must not reach a non-x86 encoder");

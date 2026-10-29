@@ -14,6 +14,8 @@
 //! - TOC: `r2` (never clobbered)
 //! - Link register saved/restored in prologue/epilogue
 
+mod atomic;
+mod bit;
 mod util;
 
 use crate::mir::register::PhysicalReg;
@@ -1836,13 +1838,7 @@ fn emit_instruction_ppc64<W: Write>(
         | MirInst::AtomicStore { .. }
         | MirInst::AtomicBinary { .. }
         | MirInst::AtomicCompareExchange { .. }
-        | MirInst::Fence { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                format!(
-                    "atomic instruction `{inst}` is not yet supported by the PowerPC64 backend"
-                ),
-            )));
-        }
+        | MirInst::Fence { .. } => atomic::emit(inst, writer, reg_alloc, stack_slots)?,
         MirInst::InlineAsm { .. } => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 "inline assembly is not supported by the PowerPC64 backend; it is x86_64 Linux only".to_string(),
@@ -1856,15 +1852,17 @@ fn emit_instruction_ppc64<W: Write>(
                 "PowerPC64 backend does not support variadic arguments yet".to_string(),
             )));
         }
-        MirInst::IntUnary { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "PowerPC64 backend does not support integer bit intrinsics yet".to_string(),
-            )));
+        MirInst::IntUnary { op, ty, dst, src } => {
+            bit::emit_int_unary(writer, *op, ty, dst, src, reg_alloc, stack_slots)?;
         }
-        MirInst::IntRotate { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "PowerPC64 backend does not support integer rotates yet".to_string(),
-            )));
+        MirInst::IntRotate {
+            op,
+            ty,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            bit::emit_int_rotate(writer, *op, ty, dst, (lhs, rhs), reg_alloc, stack_slots)?;
         }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(

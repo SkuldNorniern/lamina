@@ -3,6 +3,8 @@
 //! Code generation from MIR to AArch64 assembly,
 //! following the AAPCS64 calling convention.
 
+mod atomic;
+mod bit;
 mod simd;
 mod util;
 
@@ -1148,15 +1150,17 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_r);
                 ra.free_scratch(s_d);
             }
-            MirInst::IntUnary { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "AArch64 backend does not support integer bit intrinsics yet".to_string(),
-                )));
+            MirInst::IntUnary { op, ty, dst, src } => {
+                bit::emit_int_unary(w, *op, ty, dst, src, frame, ra)?;
             }
-            MirInst::IntRotate { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "AArch64 backend does not support integer rotates yet".to_string(),
-                )));
+            MirInst::IntRotate {
+                op,
+                ty,
+                dst,
+                lhs,
+                rhs,
+            } => {
+                bit::emit_int_rotate(w, *op, ty, dst, (lhs, rhs), frame, ra)?;
             }
             MirInst::FloatUnary { op, src, dst, ty } => {
                 let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
@@ -1897,13 +1901,7 @@ fn emit_block<W: Write>(
             | MirInst::AtomicStore { .. }
             | MirInst::AtomicBinary { .. }
             | MirInst::AtomicCompareExchange { .. }
-            | MirInst::Fence { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    format!(
-                        "atomic instruction `{inst}` is not yet supported by the AArch64 backend"
-                    ),
-                )));
-            }
+            | MirInst::Fence { .. } => atomic::emit(inst, w, frame, ra)?,
             MirInst::InlineAsm { .. } => {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "inline assembly is not yet supported by the AArch64 backend; it is x86_64 Linux only".to_owned(),
