@@ -373,7 +373,7 @@ pub fn emit(
     if result.is_err() {
         assert!(asm.is_empty(), "failed lowering emitted partial assembly");
     }
-    result.map_err(|e| format!("{e:?}"))?;
+    result.map_err(|e| e.to_string())?;
     Ok(String::from_utf8(asm).expect("UTF8"))
 }
 
@@ -415,7 +415,7 @@ pub fn negative(backend: Backend) {
                 let error = emit(&m, backend, RegallocStrategy::Incremental, true)
                     .expect_err("unsupported");
                 assert!(
-                    error.contains("UnsupportedFeature")
+                    error.contains("Unsupported feature")
                         && error.contains(&format!("{op:?}"))
                         && error.contains(&format!("{lane:?}")),
                     "{error}"

@@ -2,6 +2,7 @@ mod simd;
 pub mod util;
 
 use crate::mir_codegen::common::external_names;
+use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::reject_function_placement;
 use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
 use crate::mir_codegen::simd::vector_slots;
@@ -24,7 +25,7 @@ use crate::{
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, assemble,
-        capability::CapabilitySet,
+        capability::{CapabilitySet, CodegenCapability},
         common::{CodegenBase, compile_functions_parallel, parallel_codegen_error},
         validate_module_call_parameters,
     },
@@ -129,7 +130,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn capabilities() -> CapabilitySet {
-        CapabilitySet::wasm()
+        CapabilitySet::wasm().with(CodegenCapability::IndirectCalls)
     }
 
     fn prepare(
@@ -284,7 +285,7 @@ fn compile_single_function_wasm(
         writeln!(output, "    local.get $p{i}")
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         store_to_register_wasm(&param.reg, &mut output, &vreg_to_local)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(lamina_to_codegen_error)?;
     }
     if frame.size > 0 {
         let size = frame.size;
@@ -296,7 +297,7 @@ fn compile_single_function_wasm(
         .map_err(io_codegen_error)?;
         memory
             .widen(&mut output, "    ")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(lamina_to_codegen_error)?;
         writeln!(output, "    local.set $fp").map_err(io_codegen_error)?;
     }
     let entry_idx = block_labels.get(func.entry.as_str()).copied().unwrap_or(0);
@@ -330,7 +331,7 @@ fn compile_single_function_wasm(
                 &frame,
                 addresses,
             )
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(lamina_to_codegen_error)?;
         }
         writeln!(output, "      br $dispatch_loop").map_err(io_codegen_error)?;
     }

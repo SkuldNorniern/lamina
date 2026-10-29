@@ -5,6 +5,7 @@
 //! scalar GPR operations, base+offset loads/stores, calls, branches, and returns.
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
+use crate::mir_codegen::capability::{CapabilitySet, CodegenCapability};
 use crate::mir_codegen::common::reject_function_placement;
 use crate::mir_codegen::common::{
     CopyLocation, emit_global_directives, integer_conversion, self_tail_arguments,
@@ -50,6 +51,11 @@ pub fn generate_mir_arx64<W: Write>(
         1,
         &MirCodegenSettings::default(),
     )
+}
+
+/// Capabilities declared by this backend; see `CapabilitySet::for_architecture`.
+pub(crate) fn capabilities() -> CapabilitySet {
+    CapabilitySet::standard_native().with(CodegenCapability::GlobalRegisterAllocation)
 }
 
 pub fn generate_mir_arx64_with_units_and_settings<W: Write>(

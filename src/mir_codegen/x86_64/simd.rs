@@ -956,7 +956,7 @@ mod tests {
                 let error =
                     emit(&m, RegallocStrategy::Incremental).expect_err("unsupported combination");
                 assert!(
-                    error.contains("UnsupportedFeature")
+                    error.contains("Unsupported feature")
                         && error.contains(&format!("{op:?}"))
                         && error.contains(&format!("{lane:?}")),
                     "{error}"

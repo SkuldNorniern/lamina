@@ -181,26 +181,9 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             "emit_asm_debug_lines requires DebugInfo capability on this target".to_string(),
         ));
     }
-    let global_regalloc_supported = matches!(
-        target_arch,
-        TargetArchitecture::X86_64
-            | TargetArchitecture::Aarch64
-            | TargetArchitecture::Arx64
-            | TargetArchitecture::Riscv32
-            | TargetArchitecture::Riscv64
-            | TargetArchitecture::PowerPC64
-    ) || {
-        #[cfg(feature = "nightly")]
-        {
-            matches!(target_arch, TargetArchitecture::Riscv128)
-        }
-        #[cfg(not(feature = "nightly"))]
-        {
-            false
-        }
-    };
-
-    if settings.regalloc != RegallocStrategy::Incremental && !global_regalloc_supported {
+    if settings.regalloc != RegallocStrategy::Incremental
+        && !effective_caps.supports(&CodegenCapability::GlobalRegisterAllocation)
+    {
         return Err(LaminaError::ValidationError(
             "global register allocation (LinearScanGlobal / GraphColorGlobal) is not implemented for this target"
                 .to_string(),
@@ -304,7 +287,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         TargetArchitecture::Arm32 => return Err(not_implemented(target_arch, target_os)),
         #[cfg(feature = "nightly")]
         TargetArchitecture::Lisa => return Err(not_implemented(target_arch, target_os)),
-        _ => {
+        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn | TargetArchitecture::Unknown => {
             return Err(LaminaError::ValidationError(format!(
                 "Unsupported target architecture: {target_arch:?}"
             )));
@@ -341,14 +324,10 @@ pub trait Codegen {
     /// The max bit width of the target architecture
     const MAX_BIT_WIDTH: u8;
 
-    /// Returns the capabilities supported by this backend
+    /// Capabilities this backend declares. Required, so a backend cannot inherit a default.
     fn capabilities() -> CapabilitySet
     where
-        Self: Sized,
-    {
-        // Default: core capabilities only
-        CapabilitySet::core()
-    }
+        Self: Sized;
 
     /// Check if a specific capability is supported
     fn supports(cap: &CodegenCapability) -> bool

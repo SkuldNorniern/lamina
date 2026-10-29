@@ -1597,24 +1597,40 @@ fn emit_instruction_riscv<W: Write>(
                 )));
             }
             let arg_regs = RiscVAbi::ARG_REGISTERS;
-            let num_reg_args = args.len().min(arg_regs.len());
-            let num_stack_args = args.len().saturating_sub(arg_regs.len());
-            for i in 0..num_reg_args {
-                let arg = &args[i];
-                let dest_reg = arg_regs[i];
-                load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
-            }
-            if num_stack_args > 0 {
-                for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
-                    RiscVFrame::fp_store(
+            let kinds = ctx.signatures.arguments(name, args);
+            let places = classify_riscv_arguments(&kinds, 0);
+            for ((arg, kind), place) in args.iter().zip(&kinds).zip(&places) {
+                match *place {
+                    RiscVArgPlace::Gpr(bank) => load_operand_to_register(
+                        arg,
                         writer,
-                        ctx.target.store_word(),
-                        "t0",
-                        j as i32 * ctx.target.word_bytes(),
-                        "t0",
-                    )?;
+                        reg_alloc,
+                        stack_slots,
+                        arg_regs[bank],
+                    )?,
+                    RiscVArgPlace::Fpr(bank) => load_fp_operand_to_register(
+                        arg,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        &format!("fa{bank}"),
+                        kind.ty.size_bytes() == 4,
+                    )?,
+                    _ => {}
                 }
+            }
+            for (arg, place) in args.iter().zip(&places) {
+                let RiscVArgPlace::Stack(slot) = *place else {
+                    continue;
+                };
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+                RiscVFrame::fp_store(
+                    writer,
+                    ctx.target.store_word(),
+                    "t0",
+                    slot as i32 * ctx.target.word_bytes(),
+                    "t0",
+                )?;
             }
             let target_sym = if let Some(stub) = abi.call_stub(name) {
                 stub

@@ -11,6 +11,7 @@ mod util;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::external_names;
+use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::unsupported_io;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
@@ -36,7 +37,7 @@ use crate::{
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-        capability::CapabilitySet,
+        capability::{CapabilitySet, CodegenCapability},
         common::{CodegenBase, compile_functions_parallel, parallel_codegen_error},
         validate_module_call_parameters,
     },
@@ -482,11 +483,10 @@ fn compile_single_function_aarch64_with(
     frame.frame_size = adjusted_frame_size;
     if adjusted_frame_size > 0 {
         emit_sp_adjust(&mut output, "sub", adjusted_frame_size as u64)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(lamina_to_codegen_error)?;
     }
     if let Some(offset) = sret_slot {
-        emit_frame_slot_store(&mut output, "x8", offset)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        emit_frame_slot_store(&mut output, "x8", offset).map_err(lamina_to_codegen_error)?;
     }
 
     let param_kinds: Vec<ArgKind> = func
@@ -499,8 +499,7 @@ fn compile_single_function_aarch64_with(
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
-            emit_frame_slot_address(&mut output, addr, off)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            emit_frame_slot_address(&mut output, addr, off).map_err(lamina_to_codegen_error)?;
 
             match *place {
                 ArgPlace::Fpr { index } => {
@@ -620,8 +619,7 @@ fn compile_single_function_aarch64_with(
                     }
                     Ok(())
                 };
-                initialize(&mut output)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                initialize(&mut output).map_err(lamina_to_codegen_error)?;
             }
         }
     }
@@ -753,8 +751,7 @@ fn compile_single_function_aarch64_with(
             }
             Ok(())
         };
-        emit(&mut output, &mut ra, &mut debug_line)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        emit(&mut output, &mut ra, &mut debug_line).map_err(lamina_to_codegen_error)?;
     }
 
     writeln!(output, "{epilogue_label}:")
@@ -764,7 +761,7 @@ fn compile_single_function_aarch64_with(
     }
     if adjusted_frame_size > 0 {
         emit_sp_adjust(&mut output, "add", adjusted_frame_size as u64)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(lamina_to_codegen_error)?;
     }
     writeln!(output, "    ldp x29, x30, [sp], #16").map_err(io_error)?;
     if unwind {
@@ -2335,6 +2332,9 @@ impl<'a> Codegen for AArch64Codegen<'a> {
 
     fn capabilities() -> CapabilitySet {
         CapabilitySet::extended_native()
+            .with(CodegenCapability::AggregateArguments)
+            .with(CodegenCapability::IndirectCalls)
+            .with(CodegenCapability::GlobalRegisterAllocation)
     }
 
     fn prepare(

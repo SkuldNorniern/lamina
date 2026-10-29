@@ -5,6 +5,7 @@ use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::argument_types;
 use crate::mir_codegen::common::claim_stack_slot;
 use crate::mir_codegen::common::io_codegen_error;
+use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::{ClobberIndex, FunctionEmissionPlan};
 
 pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
@@ -138,8 +139,7 @@ pub(super) fn compile_single_function_x86_64(
     };
     let abi = X86ABI::new(target_os);
 
-    ensure_signature_support(&func.sig)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    ensure_signature_support(&func.sig).map_err(lamina_to_codegen_error)?;
 
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{label}:").map_err(io_codegen_error)?;
@@ -418,8 +418,7 @@ pub(super) fn compile_single_function_x86_64(
                     Some((source, destination))
                 })
                 .collect();
-            emit_parallel_copy(&pairs, &mut output)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            emit_parallel_copy(&pairs, &mut output).map_err(lamina_to_codegen_error)?;
             for (index, param) in func.sig.params.iter().enumerate() {
                 let (ArgLocation::Xmm(xmm), Register::Virtual(vreg)) =
                     (locations[index], &param.reg)
@@ -522,16 +521,14 @@ pub(super) fn compile_single_function_x86_64(
             {
                 let scratch =
                     emit_int_compare(op, ty, lhs, rhs, &mut output, &mut reg_alloc, &stack_slots)
-                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                let suffix = cmp_suffix(op)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                        .map_err(lamina_to_codegen_error)?;
+                let suffix = cmp_suffix(op).map_err(lamina_to_codegen_error)?;
                 if true_target == next_label
                     || rotations
                         .get(&block_index)
                         .is_some_and(|&body| func.blocks[body].label == *false_target)
                 {
-                    let inverted = inverted_cmp_suffix(op)
-                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                    let inverted = inverted_cmp_suffix(op).map_err(lamina_to_codegen_error)?;
                     writeln!(output, "    j{inverted} .L_{func_name}.{false_target}")
                         .map_err(io_codegen_error)?;
                     if true_target != next_label {

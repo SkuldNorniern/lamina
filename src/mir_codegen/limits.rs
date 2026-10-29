@@ -8,7 +8,7 @@
 use crate::{
     error::LaminaError,
     mir::{Instruction, Module},
-    mir_codegen::CodegenError,
+    mir_codegen::{CapabilitySet, CodegenCapability, CodegenError},
 };
 use lamina_platform::TargetArchitecture;
 
@@ -25,16 +25,10 @@ pub const MAX_MIR_CALL_PARAMETERS: usize = 256;
 /// rejected rather than silently miscompiled.
 pub const MAX_MIR_FRAME_BYTES: usize = i32::MAX as usize;
 
-/// Architectures with an aggregate classification. The others reject a module that
+/// Whether the backend classifies aggregates. Backends that do not reject a module that
 /// passes an aggregate by value rather than guess at an ABI for it.
 fn classifies_aggregates(target_arch: TargetArchitecture) -> bool {
-    matches!(
-        target_arch,
-        TargetArchitecture::X86_64
-            | TargetArchitecture::Aarch64
-            | TargetArchitecture::Riscv64
-            | TargetArchitecture::PowerPC64
-    )
+    CapabilitySet::for_architecture(target_arch).supports(&CodegenCapability::AggregateArguments)
 }
 
 /// Rejects modules whose signatures or call sites exceed [`MAX_MIR_CALL_PARAMETERS`],
@@ -60,16 +54,7 @@ pub fn validate_module_call_parameters(
             )));
         }
     }
-    if !matches!(
-        target_arch,
-        TargetArchitecture::X86_64
-            | TargetArchitecture::Aarch64
-            | TargetArchitecture::Riscv64
-            | TargetArchitecture::LoongArch64
-            | TargetArchitecture::PowerPC64
-            | TargetArchitecture::Wasm32
-            | TargetArchitecture::Wasm64
-    ) {
+    if !CapabilitySet::for_architecture(target_arch).supports(&CodegenCapability::IndirectCalls) {
         let mut names: Vec<&String> = module
             .functions
             .iter()
@@ -197,20 +182,27 @@ mod tests {
             for arch in [
                 TargetArchitecture::X86_64,
                 TargetArchitecture::Aarch64,
+                TargetArchitecture::Riscv32,
                 TargetArchitecture::Riscv64,
+                TargetArchitecture::Arx64,
+                TargetArchitecture::LoongArch64,
                 TargetArchitecture::PowerPC64,
+                TargetArchitecture::Wasm32,
+                TargetArchitecture::Wasm64,
             ] {
-                validate_module_call_parameters(&module, arch).expect("classifying backend");
+                let classifies = CapabilitySet::for_architecture(arch)
+                    .supports(&CodegenCapability::AggregateArguments);
+                match (classifies, validate_module_call_parameters(&module, arch)) {
+                    (true, Ok(())) => {}
+                    (false, Err(error)) => assert!(
+                        error
+                            .to_string()
+                            .contains("does not yet pass aggregates by value"),
+                        "{arch:?}: {error}"
+                    ),
+                    (expected, result) => panic!("{arch:?} classifies={expected}: {result:?}"),
+                }
             }
-            let arch = TargetArchitecture::Wasm64;
-            let error = validate_module_call_parameters(&module, arch)
-                .expect_err("backend without classification");
-            assert!(
-                error
-                    .to_string()
-                    .contains("does not yet pass aggregates by value"),
-                "{arch:?}: {error}"
-            );
         }
     }
 

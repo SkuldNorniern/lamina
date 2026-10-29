@@ -65,11 +65,11 @@ impl RiscVRegAlloc {
     /// Excluded and why:
     ///   a0-a7 (x10-x17)  arguments and return values, and the emitter names a0/a1
     ///   t0     (x5)      the emitter's own scratch
+    ///   t1-t3  (x6, x7, x28)  scratch in the float-to-integer clamp and the indirect call
     ///   s0/fp  (x8)      the frame pointer
     ///   ra, sp, gp, tp, zero     reserved
     const AVAILABLE_REGISTERS: &'static [&'static str] = &[
-        "t1", "t2", "t3", "t4", "t5", "t6", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9",
-        "s10", "s11",
+        "t4", "t5", "t6", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11",
     ];
 
     pub fn new(target_os: TargetOperatingSystem) -> Self {
@@ -141,7 +141,7 @@ impl RiscVRegAlloc {
 
     /// Set conservative mode (limit to fewer registers)
     pub fn set_conservative_mode(&mut self) {
-        self.available_gprs = vec!["t1", "t2"];
+        self.available_gprs = vec!["t4", "t5"];
     }
 
     /// Get stack slot for a virtual register
@@ -262,7 +262,8 @@ mod tests {
 
     /// Registers the RISC-V emitter writes by name, plus those the ABI reserves.
     const OFF_LIMITS: &[&str] = &[
-        "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "ra", "sp", "gp", "tp", "zero", "fp",
+        "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "t1", "t2", "t3", "ra", "sp", "gp",
+        "tp", "zero", "fp",
     ];
 
     #[test]
@@ -270,8 +271,8 @@ mod tests {
         let first = VirtualReg::gpr(0);
         let second = VirtualReg::gpr(1);
         let plan = HashMap::from([
-            (first, Allocation::Register("t1")),
-            (second, Allocation::Register("t1")),
+            (first, Allocation::Register("t4")),
+            (second, Allocation::Register("t4")),
         ]);
         let allocator = RiscVRegAlloc::from_global_plan(
             TargetOperatingSystem::Linux,
@@ -279,8 +280,8 @@ mod tests {
             &plan,
             &HashMap::new(),
         );
-        assert_eq!(allocator.get_mapping(&first), Some("t1"));
-        assert_eq!(allocator.get_mapping(&second), Some("t1"));
+        assert_eq!(allocator.get_mapping(&first), Some("t4"));
+        assert_eq!(allocator.get_mapping(&second), Some("t4"));
     }
 
     #[test]

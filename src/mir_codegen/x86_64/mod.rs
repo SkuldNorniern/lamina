@@ -46,7 +46,8 @@ use crate::{
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-        capability::CapabilitySet, validate_module_call_parameters,
+        capability::{CapabilitySet, CodegenCapability},
+        validate_module_call_parameters,
     },
 };
 
@@ -108,6 +109,9 @@ impl<'a> Codegen for X86Codegen<'a> {
 
     fn capabilities() -> CapabilitySet {
         CapabilitySet::standard_native()
+            .with(CodegenCapability::AggregateArguments)
+            .with(CodegenCapability::IndirectCalls)
+            .with(CodegenCapability::GlobalRegisterAllocation)
     }
 
     fn prepare(
@@ -214,10 +218,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
                 abi_extensions.as_ref(),
             )
         })
-        .map_err(|e| match e {
-            refusal @ CodegenError::CpuLevelRequired { .. } => LaminaError::CodegenError(refusal),
-            other => parallel_codegen_error(other),
-        })?;
+        .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;

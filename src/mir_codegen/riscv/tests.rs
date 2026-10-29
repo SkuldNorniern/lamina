@@ -597,11 +597,11 @@ fn caller_saved_value_live_across_call_is_spilled_and_reloaded() -> Result<(), B
     let before_call = &caller_body[..call_position];
     let after_call = &caller_body[call_position..];
     assert!(
-        before_call.contains("sd t1,"),
+        before_call.contains("sd t4,"),
         "missing spill:\n{caller_body}"
     );
     assert!(
-        after_call.contains("ld t1,"),
+        after_call.contains("ld t4,"),
         "missing reload:\n{caller_body}"
     );
     Ok(())

@@ -21,6 +21,7 @@ mod util;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::integer_conversion;
+use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::{CallSignatures, emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::{
     ClobberIndex, CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
@@ -47,7 +48,7 @@ use crate::{
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-        capability::CapabilitySet,
+        capability::{CapabilitySet, CodegenCapability},
         common::{CodegenBase, compile_functions_parallel, parallel_codegen_error},
         validate_module_call_parameters,
     },
@@ -108,6 +109,9 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
 
     fn capabilities() -> CapabilitySet {
         CapabilitySet::standard_native()
+            .with(CodegenCapability::AggregateArguments)
+            .with(CodegenCapability::IndirectCalls)
+            .with(CodegenCapability::GlobalRegisterAllocation)
     }
 
     fn prepare(
@@ -356,7 +360,7 @@ fn compile_single_function_ppc64(
         &reg_alloc,
         &stack_slots,
     )
-    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    .map_err(lamina_to_codegen_error)?;
     for param in &func.sig.params {
         if let Register::Virtual(vreg) = &param.reg
             && let Some(reg) = reg_alloc.get_mapping_for(vreg)
@@ -408,7 +412,7 @@ fn compile_single_function_ppc64(
             &mut debug_line,
             &mut cmp_seq,
         )
-        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        .map_err(lamina_to_codegen_error)?;
     }
 
     Ok(output)

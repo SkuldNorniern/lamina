@@ -10,6 +10,7 @@ mod operand;
 #[cfg(test)]
 mod tests;
 
+use crate::mir_codegen::capability::{CapabilitySet, CodegenCapability};
 use crate::mir_codegen::common::{
     FunctionEmissionPlan, assign_stack_slots, compile_functions_parallel, emit_debug_file,
     emit_global_data, emit_global_directives, emit_gnu_stack_note, emit_symbol_visibility,
@@ -128,6 +129,11 @@ impl EmitCtx<'_> {
     fn block_label(&self, block: &str) -> String {
         format!(".L_{}.{block}", self.func_name)
     }
+}
+
+/// Capabilities declared by this backend; see `CapabilitySet::for_architecture`.
+pub(crate) fn capabilities() -> CapabilitySet {
+    CapabilitySet::standard_native().with(CodegenCapability::IndirectCalls)
 }
 
 pub fn generate_mir_loongarch64_with_units_and_settings<W: Write>(

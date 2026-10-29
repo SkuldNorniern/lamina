@@ -435,7 +435,15 @@ fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
         TargetArchitecture::Riscv64 => Some("riscv64-linux-gnu"),
         TargetArchitecture::LoongArch64 => Some("loongarch64-linux-gnu"),
         TargetArchitecture::PowerPC64 => Some("powerpc64le-linux-gnu"),
-        _ => None,
+        TargetArchitecture::Arx64
+        | TargetArchitecture::Arm32
+        | TargetArchitecture::Wasm32
+        | TargetArchitecture::Wasm64
+        | TargetArchitecture::Nvptx64
+        | TargetArchitecture::Amdgcn
+        | TargetArchitecture::Unknown => None,
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => None,
     }
 }
 
@@ -446,7 +454,16 @@ pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
         TargetArchitecture::Riscv64 => cfg!(target_arch = "riscv64"),
         TargetArchitecture::LoongArch64 => cfg!(target_arch = "loongarch64"),
         TargetArchitecture::PowerPC64 => cfg!(target_arch = "powerpc64"),
-        _ => false,
+        TargetArchitecture::Arx64
+        | TargetArchitecture::Arm32
+        | TargetArchitecture::Riscv32
+        | TargetArchitecture::Wasm32
+        | TargetArchitecture::Wasm64
+        | TargetArchitecture::Nvptx64
+        | TargetArchitecture::Amdgcn
+        | TargetArchitecture::Unknown => false,
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => false,
     }
 }
 

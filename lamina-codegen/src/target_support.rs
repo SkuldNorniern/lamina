@@ -33,7 +33,11 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
                 TargetOperatingSystem::Unknown | TargetOperatingSystem::Linux
             )
         }
-        _ => false,
+        TargetArchitecture::PowerPC64 | TargetArchitecture::Arm32 | TargetArchitecture::Unknown => {
+            false
+        }
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => false,
     }
 }
 

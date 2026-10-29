@@ -28,10 +28,8 @@ pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError
     )))
 }
 
-pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {
-    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "Parallel compilation error: {error:?}"
-    )))
+pub fn parallel_codegen_error(error: CodegenError) -> LaminaError {
+    LaminaError::CodegenError(error)
 }
 
 /// Assign one stack slot per virtual register defined or used in `func`.
@@ -896,7 +894,7 @@ pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
         LaminaError::InternalError(msg) => {
             CodegenError::InvalidCodegenOptions(format!("Internal error: {msg}"))
         }
-        LaminaError::CodegenError(inner) => CodegenError::InvalidCodegenOptions(inner.to_string()),
+        LaminaError::CodegenError(inner) => inner,
         LaminaError::ParsingError(msg)
         | LaminaError::ValidationError(msg)
         | LaminaError::MirError(msg)

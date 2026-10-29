@@ -39,6 +39,10 @@
 
 use std::{collections::HashSet, fmt};
 
+use super::{
+    Codegen, arm::aarch64::AArch64Codegen, arx64, loongarch64, powerpc::powerpc64::Ppc64Codegen,
+    riscv::RiscVCodegen, wasm::WasmCodegen, x86_64::X86Codegen,
+};
 #[cfg(feature = "nightly")]
 use lamina_platform::SimdCapabilities;
 use lamina_platform::TargetArchitecture;
@@ -99,6 +103,15 @@ pub enum CodegenCapability {
 
     /// Tail call optimization
     TailCallOptimization,
+
+    /// Aggregates passed or returned by value, classified into the platform ABI
+    AggregateArguments,
+
+    /// Calls through a function pointer
+    IndirectCalls,
+
+    /// Global register allocation (linear scan or graph coloring across blocks)
+    GlobalRegisterAllocation,
 }
 
 impl CodegenCapability {
@@ -123,6 +136,9 @@ impl CodegenCapability {
             Self::ForeignFunctionInterface => "Foreign function interface (FFI)",
             Self::DebugInfo => "Debug information generation",
             Self::TailCallOptimization => "Tail call optimization",
+            Self::AggregateArguments => "Aggregates passed or returned by value",
+            Self::IndirectCalls => "Calls through function pointers",
+            Self::GlobalRegisterAllocation => "Global register allocation",
         }
     }
 
@@ -165,6 +181,12 @@ impl CapabilitySet {
     /// Add a capability to the set
     pub fn add(&mut self, cap: CodegenCapability) {
         self.capabilities.insert(cap);
+    }
+
+    /// Builder form of [`add`](Self::add), for declaring a set in one expression
+    pub fn with(mut self, cap: CodegenCapability) -> Self {
+        self.add(cap);
+        self
     }
 
     /// Remove a capability from the set
@@ -240,27 +262,37 @@ impl CapabilitySet {
         caps
     }
 
-    /// Capability set advertised for a target architecture (used for gating flags such as debug assembly).
+    /// Capability set a backend declares for a target architecture.
+    ///
+    /// The match has no wildcard arm, so adding a `TargetArchitecture` fails to compile
+    /// until it has an explicit declaration here. Backends with a `Codegen` impl declare
+    /// their set in `Codegen::capabilities`; the rest declare it in their module.
     pub fn for_architecture(arch: TargetArchitecture) -> Self {
         match arch {
-            TargetArchitecture::X86_64
-            | TargetArchitecture::Aarch64
-            | TargetArchitecture::Arx64
-            | TargetArchitecture::Riscv32
-            | TargetArchitecture::Riscv64
-            | TargetArchitecture::LoongArch64 => Self::standard_native(),
-            #[cfg(feature = "nightly")]
-            TargetArchitecture::Riscv128 => Self::standard_native(),
-            TargetArchitecture::PowerPC64 => Self::standard_native(),
-            TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => Self::wasm(),
-            TargetArchitecture::Nvptx64 => Self::gpu(),
-            TargetArchitecture::Amdgcn => {
-                let mut capabilities = Self::gpu();
-                capabilities.add(CodegenCapability::IntegerArithmetic);
-                capabilities.add(CodegenCapability::MemoryOperations);
-                capabilities
+            TargetArchitecture::X86_64 => <X86Codegen<'static> as Codegen>::capabilities(),
+            TargetArchitecture::Aarch64 => <AArch64Codegen<'static> as Codegen>::capabilities(),
+            TargetArchitecture::Arx64 => arx64::capabilities(),
+            TargetArchitecture::LoongArch64 => loongarch64::capabilities(),
+            TargetArchitecture::PowerPC64 => <Ppc64Codegen<'static> as Codegen>::capabilities(),
+            TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
+                <WasmCodegen<'static> as Codegen>::capabilities()
             }
-            _ => Self::core(),
+            TargetArchitecture::Riscv32 => <RiscVCodegen<'static> as Codegen>::capabilities()
+                .with(CodegenCapability::GlobalRegisterAllocation),
+            TargetArchitecture::Riscv64 => <RiscVCodegen<'static> as Codegen>::capabilities()
+                .with(CodegenCapability::AggregateArguments)
+                .with(CodegenCapability::IndirectCalls)
+                .with(CodegenCapability::GlobalRegisterAllocation),
+            #[cfg(feature = "nightly")]
+            TargetArchitecture::Riscv128 => <RiscVCodegen<'static> as Codegen>::capabilities()
+                .with(CodegenCapability::GlobalRegisterAllocation),
+            TargetArchitecture::Nvptx64 => Self::gpu(),
+            TargetArchitecture::Amdgcn => Self::gpu()
+                .with(CodegenCapability::IntegerArithmetic)
+                .with(CodegenCapability::MemoryOperations),
+            TargetArchitecture::Arm32 | TargetArchitecture::Unknown => Self::new(),
+            #[cfg(feature = "nightly")]
+            TargetArchitecture::Lisa => Self::new(),
         }
     }
 

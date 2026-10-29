@@ -287,7 +287,16 @@ fn build_arch_emulation_flags(
             args.push("-m".to_string());
             args.push("elf64loongarch".to_string());
         }
-        _ => {}
+        TargetArchitecture::PowerPC64
+        | TargetArchitecture::Arx64
+        | TargetArchitecture::Arm32
+        | TargetArchitecture::Wasm32
+        | TargetArchitecture::Wasm64
+        | TargetArchitecture::Nvptx64
+        | TargetArchitecture::Amdgcn
+        | TargetArchitecture::Unknown => {}
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {}
     }
 
     args
@@ -334,7 +343,16 @@ fn build_dynamic_linker_arg(
         TargetArchitecture::Riscv32 => "/lib/ld-linux-riscv32-ilp32d.so.1",
         TargetArchitecture::Riscv64 => "/lib/ld-linux-riscv64-lp64d.so.1",
         TargetArchitecture::LoongArch64 => "/lib64/ld-linux-loongarch-lp64d.so.1",
-        _ => return Vec::new(),
+        TargetArchitecture::Arx64
+        | TargetArchitecture::Arm32
+        | TargetArchitecture::Wasm32
+        | TargetArchitecture::Wasm64
+        | TargetArchitecture::PowerPC64
+        | TargetArchitecture::Nvptx64
+        | TargetArchitecture::Amdgcn
+        | TargetArchitecture::Unknown => return Vec::new(),
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => return Vec::new(),
     };
 
     vec!["--dynamic-linker".to_string(), interpreter.to_string()]
