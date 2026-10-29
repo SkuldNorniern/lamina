@@ -8887,6 +8887,150 @@ frame print_i64 32
 frame print_u64 16
 frame put_u64 32
 
+[inline_asm_clobber O0]
+insns 109
+spills 24
+calls 1
+branches 1
+frame clobber 16
+frame main 96
+
+[inline_asm_clobber O1]
+insns 104
+spills 15
+calls 1
+branches 1
+frame clobber 16
+frame main 16
+
+[inline_asm_clobber O2]
+insns 102
+spills 15
+calls 1
+branches 1
+frame clobber 16
+frame main 16
+
+[inline_asm_clobber O3]
+insns 99
+spills 12
+calls 1
+branches 1
+frame clobber 16
+frame main 16
+
+[inline_asm_loop O0]
+insns 103
+spills 22
+calls 0
+branches 3
+frame main 112
+
+[inline_asm_loop O1]
+insns 101
+spills 14
+calls 0
+branches 3
+frame main 32
+
+[inline_asm_loop O2]
+insns 100
+spills 14
+calls 0
+branches 3
+frame main 32
+
+[inline_asm_loop O3]
+insns 100
+spills 14
+calls 0
+branches 3
+frame main 32
+
+[inline_asm_pressure O0]
+insns 123
+spills 30
+calls 0
+branches 2
+frame main 128
+
+[inline_asm_pressure O1]
+insns 113
+spills 11
+calls 0
+branches 2
+frame main 16
+
+[inline_asm_pressure O2]
+insns 106
+spills 8
+calls 0
+branches 2
+frame main 16
+
+[inline_asm_pressure O3]
+insns 106
+spills 8
+calls 0
+branches 2
+frame main 16
+
+[inline_asm_rdtsc O0]
+insns 92
+spills 15
+calls 0
+branches 1
+frame main 80
+
+[inline_asm_rdtsc O1]
+insns 93
+spills 8
+calls 0
+branches 1
+frame main 16
+
+[inline_asm_rdtsc O2]
+insns 93
+spills 8
+calls 0
+branches 1
+frame main 16
+
+[inline_asm_rdtsc O3]
+insns 93
+spills 8
+calls 0
+branches 1
+frame main 16
+
+[inline_asm_unused O0]
+insns 93
+spills 17
+calls 0
+branches 1
+frame main 96
+
+[inline_asm_unused O1]
+insns 90
+spills 8
+calls 0
+branches 1
+frame main 16
+
+[inline_asm_unused O2]
+insns 89
+spills 8
+calls 0
+branches 1
+frame main 16
+
+[inline_asm_unused O3]
+insns 89
+spills 8
+calls 0
+branches 1
+frame main 16
+
 [inttofp_signed O0]
 insns 841
 spills 364
