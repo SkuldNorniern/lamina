@@ -147,6 +147,7 @@ impl MemoryOptimization {
                     | Instruction::VaArg { .. }
                     | Instruction::VaEnd { .. }
                     | Instruction::VaCopy { .. }
+                    | Instruction::InlineAsm { .. }
                     | Instruction::Fence { .. } => {
                         last_store.clear();
                         last_load.clear();

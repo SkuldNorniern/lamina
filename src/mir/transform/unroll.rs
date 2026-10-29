@@ -27,6 +27,14 @@ impl Transform for LoopUnrolling {
         TransformLevel::Experimental
     }
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
+        if func
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .any(|i| matches!(i, Instruction::InlineAsm { .. }))
+        {
+            return Ok(false);
+        }
         if !func.blocks.iter().any(|b| {
             matches!(
                 b.instructions.last(),

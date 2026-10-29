@@ -13,6 +13,8 @@ mod cse;
 mod deadcode;
 mod induction_strength_reduction;
 mod inline;
+#[cfg(test)]
+mod inline_asm_tests;
 mod loop_opt;
 mod loop_rotation;
 mod mem2reg;

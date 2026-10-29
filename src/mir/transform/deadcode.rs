@@ -274,6 +274,8 @@ impl DeadCodeElimination {
             | Instruction::AtomicCompareExchange { .. }
             | Instruction::Fence { .. } => false,
 
+            Instruction::InlineAsm { .. } => false,
+
             // Variadic argument access writes through its va_list
             Instruction::VaStart { .. }
             | Instruction::VaArg { .. }

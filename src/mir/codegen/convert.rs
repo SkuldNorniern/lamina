@@ -31,9 +31,9 @@ use crate::{
         },
     },
     mir::{
-        AddressMode, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
-        Immediate, Instruction, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MemoryAttrs, MirType,
-        Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature,
+        AddressMode, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
+        Global, Immediate, Instruction, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MemoryAttrs,
+        MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature,
         SymbolVisibility, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
@@ -48,7 +48,9 @@ use crate::{
 use crate::ir::ModuleAnnotation;
 #[cfg(feature = "nightly")]
 use crate::ir::instruction::SimdOp as IRSimdOp;
-use crate::ir::instruction::{AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRMemOrd};
+use crate::ir::instruction::{
+    AsmOperand as IRAsmOperand, AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRMemOrd,
+};
 #[cfg(feature = "nightly")]
 use crate::mir::RelocationModel;
 #[cfg(feature = "nightly")]
@@ -2223,6 +2225,43 @@ fn convert_instruction<'a>(
         IRInst::Fence { ordering } => Ok(vec![Instruction::Fence {
             ordering: ir_ordering_to_mir(ordering),
         }]),
+        IRInst::InlineAsm {
+            result,
+            template,
+            operands,
+            clobbers,
+        } => {
+            let mut mir_operands = Vec::with_capacity(operands.len());
+            for operand in operands {
+                mir_operands.push(match operand {
+                    IRAsmOperand::In { location, value } => AsmOperand::Input {
+                        location: (*location).to_owned(),
+                        value: resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
+                    },
+                    IRAsmOperand::Out { location } => AsmOperand::Output {
+                        location: (*location).to_owned(),
+                    },
+                });
+            }
+            let result = match result {
+                Some((name, ty)) => Some((
+                    resolve_or_alloc(name, vreg_alloc, var_to_reg),
+                    map_ir_prim(*ty)?,
+                )),
+                None => None,
+            };
+            Ok(vec![Instruction::InlineAsm {
+                template: (*template).to_owned(),
+                operands: mir_operands,
+                clobbers: clobbers
+                    .iter()
+                    .filter(|name| !matches!(**name, "memory" | "flags"))
+                    .map(|name| (*name).to_owned())
+                    .collect(),
+                clobber_memory: clobbers.contains(&"memory"),
+                result,
+            }])
+        }
         IRInst::AtomicCompareExchange { .. } => Err(FromIRError::UnsupportedInstruction),
         #[cfg(feature = "nightly")]
         IRInst::SimdTernary { .. }

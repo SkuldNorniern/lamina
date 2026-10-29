@@ -1,7 +1,7 @@
 //! Function inlining transforms for MIR.
 
 use crate::mir::{
-    AddressMode, Block, Function, Instruction, Module, Operand, Register, VirtualReg,
+    AddressMode, AsmOperand, Block, Function, Instruction, Module, Operand, Register, VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use std::{
@@ -71,6 +71,11 @@ impl ModuleInlining {
                             && function.sig.kernel.is_none()
                             && !function.sig.no_inline
                             && !function.sig.variadic
+                            && !function
+                                .blocks
+                                .iter()
+                                .flat_map(|b| &b.instructions)
+                                .any(|i| matches!(i, Instruction::InlineAsm { .. }))
                             && function.instruction_count() <= Self::callee_size_limit(function)
                             && function.sig.params.len() == args.len()
                             && function.sig.ret_aggregate.is_none()
@@ -420,6 +425,18 @@ impl ModuleInlining {
             Instruction::VaCopy { dst, src } => {
                 operand(dst, map);
                 operand(src, map);
+            }
+            Instruction::InlineAsm {
+                operands, result, ..
+            } => {
+                for operand_ref in operands {
+                    if let AsmOperand::Input { value, .. } = operand_ref {
+                        operand(value, map);
+                    }
+                }
+                if let Some((dst, _)) = result {
+                    *dst = map(dst);
+                }
             }
             Instruction::Call { args, ret, .. } => {
                 for value in args {

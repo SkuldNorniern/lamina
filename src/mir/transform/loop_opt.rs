@@ -476,6 +476,7 @@ impl LoopInvariantCodeMotion {
                     | Instruction::AtomicBinary { .. }
                     | Instruction::AtomicCompareExchange { .. }
                     | Instruction::Fence { .. }
+                    | Instruction::InlineAsm { .. }
                     | Instruction::VaStart { .. }
                     | Instruction::VaArg { .. }
                     | Instruction::VaEnd { .. }

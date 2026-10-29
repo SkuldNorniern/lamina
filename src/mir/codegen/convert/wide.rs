@@ -12,7 +12,7 @@
 //! [`RuntimeSymbol`] seam, with the same aggregate convention.
 
 use super::*;
-use crate::ir::instruction::UnaryOp;
+use crate::ir::instruction::{AsmOperand as IRAsmOperand, UnaryOp};
 use crate::ir::types::Literal;
 use crate::mir::codegen::mapping::wide_aggregate;
 use lamina_codegen::abi::BuiltinLibrary;
@@ -682,6 +682,14 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
         | IRInst::AtomicBinary { ty, .. }
         | IRInst::AtomicCompareExchange { ty, .. } => is_wide_type(ty),
         IRInst::VaArg { ty, .. } => is_wide_prim(*ty),
+        IRInst::InlineAsm {
+            result, operands, ..
+        } => {
+            result.as_ref().is_some_and(|(_, ty)| is_wide_prim(*ty))
+                || operands.iter().any(|operand| {
+                    matches!(operand, IRAsmOperand::In { value, .. } if is_wide_value(value, vars))
+                })
+        }
         IRInst::CallIndirect {
             args, return_type, ..
         } => is_wide_type(return_type) || args.iter().any(|(ty, _)| is_wide_type(ty)),
@@ -1120,7 +1128,8 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::VaStart { .. }
         | IRInst::VaArg { .. }
         | IRInst::VaEnd { .. }
-        | IRInst::VaCopy { .. } => return Err(FromIRError::UnsupportedInstruction),
+        | IRInst::VaCopy { .. }
+        | IRInst::InlineAsm { .. } => return Err(FromIRError::UnsupportedInstruction),
         #[cfg(feature = "nightly")]
         IRInst::SimdBinary { .. }
         | IRInst::SimdUnary { .. }

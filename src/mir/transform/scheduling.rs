@@ -88,8 +88,20 @@ impl InstructionScheduling {
         // - Stores depend on previous Stores (WAW) and Loads (WAR)
         // For simplicity in this pass, we chain all memory ops to preserve relative order.
         let mut last_memory_op: Option<usize> = None;
+        let mut last_asm: Option<usize> = None;
 
         for (idx, instr) in instructions.iter().enumerate() {
+            // Inline assembly is a full barrier: nothing crosses it, in either direction.
+            if let Some(asm_idx) = last_asm {
+                graph.add_edge(asm_idx, idx);
+            }
+            if matches!(instr, Instruction::InlineAsm { .. }) {
+                for prev in 0..idx {
+                    graph.add_edge(prev, idx);
+                }
+                last_asm = Some(idx);
+            }
+
             // 1. Data Dependencies (Register RAW)
             for use_reg in instr.use_regs() {
                 if let Some(&def_idx) = reg_defs.get(use_reg) {

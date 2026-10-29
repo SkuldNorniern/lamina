@@ -30,6 +30,14 @@ impl Transform for ReductionExit {
 
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
+        if func
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .any(|i| matches!(i, Instruction::InlineAsm { .. }))
+        {
+            return Ok(changed);
+        }
         loop {
             let shape = LoopInvariantCodeMotion
                 .find_loops(func)

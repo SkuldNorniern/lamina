@@ -1,7 +1,7 @@
 //! Copy propagation transform for MIR.
 
 use crate::mir::{
-    AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
+    AddressMode, AsmOperand, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use std::collections::HashMap;
@@ -237,6 +237,13 @@ impl CopyPropagation {
             Instruction::VaCopy { dst, src } => {
                 changed |= self.replace_operand(dst, value_map);
                 changed |= self.replace_operand(src, value_map);
+            }
+            Instruction::InlineAsm { operands, .. } => {
+                for operand in operands {
+                    if let AsmOperand::Input { value, .. } = operand {
+                        changed |= self.replace_operand(value, value_map);
+                    }
+                }
             }
             _ => {}
         }
