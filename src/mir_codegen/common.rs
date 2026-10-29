@@ -1917,7 +1917,7 @@ mod backend_plan_tests {
                 TargetArchitecture::PowerPC64,
                 "mr 0, 3",
                 "mr 3, 0",
-                "ble .L_swap.body",
+                "b .L_swap.body",
                 "cmp0.true",
                 "b swap",
             ),

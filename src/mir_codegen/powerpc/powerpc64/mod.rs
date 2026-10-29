@@ -850,7 +850,9 @@ fn emit_planned_block_ppc64<W: Write>(
                     (IntCmpOp::SGe | IntCmpOp::UGe, false)
                     | (IntCmpOp::SLt | IntCmpOp::ULt, true) => "bge",
                 };
-                writeln!(writer, "    {mnemonic} {prefix}{taken}")?;
+                writeln!(writer, "    {} 1f", negate_branch(mnemonic))?;
+                writeln!(writer, "    b {prefix}{taken}")?;
+                writeln!(writer, "1:")?;
                 if let Some(other) = other {
                     writeln!(writer, "    b {prefix}{other}")?;
                 }
@@ -1271,7 +1273,9 @@ fn emit_instruction_ppc64<W: Write>(
             }
             for (case_val, case_label) in cases {
                 writeln!(writer, "    cmpdi 3, {case_val}")?;
-                writeln!(writer, "    beq {block_prefix}{case_label}")?;
+                writeln!(writer, "    bne 1f")?;
+                writeln!(writer, "    b {block_prefix}{case_label}")?;
+                writeln!(writer, "1:")?;
             }
             writeln!(writer, "    b {block_prefix}{default}")?;
         }
@@ -1785,7 +1789,9 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             writeln!(writer, "    cmpdi 3, 0")?;
-            writeln!(writer, "    bne {block_prefix}{true_target}")?;
+            writeln!(writer, "    beq 1f")?;
+            writeln!(writer, "    b {block_prefix}{true_target}")?;
+            writeln!(writer, "1:")?;
             writeln!(writer, "    b {block_prefix}{false_target}")?;
         }
         MirInst::Ret { value } => {
@@ -1956,6 +1962,20 @@ fn outgoing_frame_size(dwords: usize) -> Result<Option<usize>, LaminaError> {
         )));
     }
     Ok(Some(frame))
+}
+
+/// The conditional branch that skips over an unconditional `b`. A bare conditional
+/// branch reaches only 32 KB, so taken edges go through `b` instead.
+fn negate_branch(mnemonic: &str) -> &'static str {
+    match mnemonic {
+        "beq" => "bne",
+        "bne" => "beq",
+        "blt" => "bge",
+        "bge" => "blt",
+        "ble" => "bgt",
+        "bgt" => "ble",
+        _ => unreachable!("not a conditional branch mnemonic: {mnemonic}"),
+    }
 }
 
 /// Frame slot offsets seen from an r1 that has moved down by `frame`.

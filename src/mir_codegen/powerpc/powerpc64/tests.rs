@@ -505,7 +505,7 @@ fn test_generate_jmp_br() {
     let mut output = Vec::new();
     generate_mir_ppc64(&m, &mut output, TargetOperatingSystem::Linux).unwrap();
     let s = String::from_utf8(output).unwrap();
-    assert!(s.contains("bne"), "Expected bne in output: {s}");
+    assert!(s.contains("beq 1f"), "Expected beq 1f in output: {s}");
     assert!(
         s.contains(".L_cf_fn.then:"),
         "Expected function-qualified .L_cf_fn.then in output: {s}"
