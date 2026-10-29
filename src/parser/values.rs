@@ -9,40 +9,9 @@ use crate::{
 /// Inclusive bounds of an integer type, or `None` for a type that is not an integer.
 ///
 /// Literals are read as `i128`, so these bounds cover `u128` only up to `i128::MAX`.
-/// Full-range `u128` literals are read by the typed-operand parser instead.
+/// The inclusive range an integer type holds, or `None` when it is not an integer.
 pub fn integer_bounds(ty: PrimitiveType) -> Option<(i128, i128)> {
-    Some(match ty {
-        PrimitiveType::I8 => (i8::MIN.into(), i8::MAX.into()),
-        PrimitiveType::I16 => (i16::MIN.into(), i16::MAX.into()),
-        PrimitiveType::I32 => (i32::MIN.into(), i32::MAX.into()),
-        PrimitiveType::I64 => (i64::MIN.into(), i64::MAX.into()),
-        PrimitiveType::U8 => (0, u8::MAX.into()),
-        PrimitiveType::U16 => (0, u16::MAX.into()),
-        PrimitiveType::U32 => (0, u32::MAX.into()),
-        PrimitiveType::U64 => (0, u64::MAX.into()),
-        PrimitiveType::I128 => (i128::MIN, i128::MAX),
-        PrimitiveType::U128 => (0, i128::MAX),
-        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Ptr => {
-            return None;
-        }
-    })
-}
-
-/// The value of an integer literal, or `None` for any other literal.
-pub fn literal_integer(literal: &Literal<'_>) -> Option<i128> {
-    Some(match *literal {
-        Literal::I8(v) => v.into(),
-        Literal::I16(v) => v.into(),
-        Literal::I32(v) => v.into(),
-        Literal::I64(v) => v.into(),
-        Literal::U8(v) => v.into(),
-        Literal::U16(v) => v.into(),
-        Literal::U32(v) => v.into(),
-        Literal::U64(v) => v.into(),
-        Literal::I128(v) => v,
-        Literal::U128(v) => return i128::try_from(v).ok(),
-        Literal::F32(_) | Literal::F64(_) | Literal::Bool(_) | Literal::String(_) => return None,
-    })
+    ty.integer_bounds()
 }
 
 /// The literal of integer type `ty` holding `value`. `Ok(None)` when `ty` is not an

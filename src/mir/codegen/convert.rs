@@ -1643,7 +1643,7 @@ fn convert_instruction<'a>(
             args,
         } => {
             let mut mir_args = Vec::new();
-            for a in args {
+            for (_, a) in args {
                 mir_args.push(resolve_operand(a, vreg_alloc, var_to_reg, globals)?);
             }
             // C widens a variadic f32 to double before the call, and every ABI's

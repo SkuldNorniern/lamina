@@ -81,12 +81,28 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::Copy { result, ty, value })
     }
 
-    /// Creates a function call instruction
+    /// Creates a function call whose arguments are typed by the callee's signature.
     pub fn call(
         &mut self,
         result: Option<&'a str>,
         func_name: &'a str,
         args: Vec<Value<'a>>,
+    ) -> &mut Self {
+        self.call_typed(
+            result,
+            func_name,
+            args.into_iter().map(|value| (None, value)).collect(),
+        )
+    }
+
+    /// Creates a function call whose arguments state their own types.
+    ///
+    /// An argument bound to an aggregate parameter must state that aggregate type.
+    pub fn call_typed(
+        &mut self,
+        result: Option<&'a str>,
+        func_name: &'a str,
+        args: Vec<(Option<Type<'a>>, Value<'a>)>,
     ) -> &mut Self {
         self.inst(Instruction::Call {
             result,

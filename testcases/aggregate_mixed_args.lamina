@@ -52,7 +52,7 @@ entry:
   store.i64 %qc, 3
   %qd = getfieldptr.!Quad %q, 3
   store.i64 %qd, 4
-  %r = call @big(1, 2, 1.5, %pr, 3, 4, 2.5, %q, 5, 6, 7)
+  %r = call @big(1, 2, 1.5, !Pair %pr, 3, 4, 2.5, !Quad %q, 5, 6, 7)
   %r0 = getfieldptr.!Quad %r, 0
   %v0 = load.i64 %r0
   call @print_i64(%v0)

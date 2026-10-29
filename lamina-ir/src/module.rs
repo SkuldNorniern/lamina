@@ -138,6 +138,7 @@ use std::{
 };
 
 use crate::{
+    calls::validate_calls,
     function::Function,
     instruction::Instruction,
     types::{Identifier, Literal, Type, Value, resolve_type_names},
@@ -350,6 +351,7 @@ impl<'a> Module<'a> {
         }
         self.validate_named_types(&mut all_errors);
         self.validate_field_pointers(&mut all_errors);
+        validate_calls(self, &mut all_errors);
         if all_errors.is_empty() {
             Ok(())
         } else {

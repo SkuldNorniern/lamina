@@ -860,7 +860,7 @@ fn touches_wide(
             module.functions.get(func_name).is_some_and(|callee| {
                 is_wide_type(&callee.signature.return_type, int64_regs)
                     || callee.signature.params.iter().any(|p| is_wide_type(&p.ty, int64_regs))
-            }) || args.iter().any(|arg| is_wide_value(arg, vars, int64_regs))
+            }) || args.iter().any(|(_, arg)| is_wide_value(arg, vars, int64_regs))
         }
         IRInst::Write { .. }
         | IRInst::Read { .. }
@@ -1243,7 +1243,7 @@ pub(super) fn lower_instruction<'a>(
         } => {
             let callee = cx.module.functions.get(func_name);
             let mut mir_args = Vec::with_capacity(args.len());
-            for (index, arg) in args.iter().enumerate() {
+            for (index, (_, arg)) in args.iter().enumerate() {
                 let param_wide = callee
                     .and_then(|f| f.signature.params.get(index))
                     .is_some_and(|p| is_wide_type(&p.ty, cx.int64_regs));

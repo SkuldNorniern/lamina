@@ -124,7 +124,7 @@ fn integer_literal_is_rejected_in_every_bool_position() {
         assert!(err.contains("bool type"), "{line}: {err}");
     }
     let err = rejected(&with_callee("bool %a", "%r = call @g(1)"));
-    assert!(err.contains("bool parameter"), "{err}");
+    assert!(err.contains("a bool takes 'true' or 'false'"), "{err}");
 
     accepted(&body("store.bool %p, true"));
     accepted(&with_callee("bool %a", "%r = call @g(true)"));
@@ -133,4 +133,112 @@ fn integer_literal_is_rejected_in_every_bool_position() {
 #[test]
 fn gpu_intrinsic_calls_are_not_undefined_functions() {
     accepted(&body("%r = call @__lamina_gpu_lane_id()"));
+}
+
+fn aggregate_module(call: &str) -> String {
+    format!(
+        "type !Pair = struct {{ a: i64, b: i64 }}\n\
+         type !Trio = struct {{ a: i64, b: i64, c: i64 }}\n\
+         fn @take_pair(!Pair %p) -> i64 {{\nentry:\n    ret.i64 0\n}}\n\
+         fn @take_ptr(ptr %p) -> i64 {{\nentry:\n    ret.i64 0\n}}\n\
+         fn @main() -> i64 {{\nentry:\n    \
+         %q = stackalloc.!Pair\n    %t = stackalloc.!Trio\n    {call}\n    ret.i64 0\n}}\n"
+    )
+}
+
+#[test]
+fn pointer_passed_where_an_aggregate_is_declared_is_rejected() {
+    let err = rejected(&aggregate_module("%r = call @take_pair(%q)"));
+    assert!(err.contains("must be !Pair for parameter '%p'"), "{err}");
+    assert!(err.contains("%q is a plain ptr"), "{err}");
+    assert!(err.contains("write '!Pair %q'"), "{err}");
+}
+
+#[test]
+fn aggregate_argument_that_names_its_type_is_accepted() {
+    accepted(&aggregate_module("%r = call @take_pair(!Pair %q)"));
+}
+
+#[test]
+fn aggregate_argument_of_the_wrong_type_is_rejected() {
+    let err = rejected(&aggregate_module("%r = call @take_pair(!Trio %t)"));
+    assert!(
+        err.contains("is declared !Trio, but parameter '%p' of '@take_pair' has type !Pair"),
+        "{err}"
+    );
+}
+
+#[test]
+fn aggregate_passed_where_a_pointer_is_declared_is_rejected() {
+    let err = rejected(&aggregate_module("%r = call @take_ptr(!Pair %q)"));
+    assert!(
+        err.contains("is declared !Pair, but parameter '%p' of '@take_ptr' has type ptr"),
+        "{err}"
+    );
+}
+
+#[test]
+fn narrow_integer_passed_where_a_wider_one_is_declared_is_rejected() {
+    let source = "fn @g(i64 %a) -> i64 {\nentry:\n    ret.i64 0\n}\n\
+                  fn @main(i32 %n) -> i64 {\nentry:\n    %r = call @g(%n)\n    ret.i64 0\n}\n";
+    let err = rejected(source);
+    assert!(err.contains("must be i64 for parameter '%a'"), "{err}");
+    assert!(err.contains("%n has type i32"), "{err}");
+}
+
+#[test]
+fn float_passed_where_an_integer_is_declared_is_rejected() {
+    let err = rejected(&with_callee("i64 %a", "%r = call @g(1.5)"));
+    assert!(err.contains("1.5 is a float literal"), "{err}");
+
+    let source = "fn @g(i64 %a) -> i64 {\nentry:\n    ret.i64 0\n}\n\
+                  fn @main(f64 %d) -> i64 {\nentry:\n    %r = call @g(%d)\n    ret.i64 0\n}\n";
+    let err = rejected(source);
+    assert!(err.contains("%d has type f64"), "{err}");
+}
+
+#[test]
+fn a_variadic_call_checks_its_fixed_arguments_and_leaves_the_tail_free() {
+    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\
+                  fn @main(i64 %x) -> i64 {\nentry:\n    %r = call @printf(%x, 1, 2.5)\n    ret.i64 0\n}\n";
+    let err = rejected(source);
+    assert!(err.contains("must be ptr for parameter '%fmt'"), "{err}");
+
+    accepted(
+        "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\
+         fn @main(ptr %fmt) -> i64 {\nentry:\n    %r = call @printf(%fmt, 1, 2.5)\n    ret.i64 0\n}\n",
+    );
+}
+
+#[test]
+fn an_indirect_call_checks_each_argument_against_the_type_it_states() {
+    let source = "fn @main(i64 %x) -> i64 {\nentry:\n    \
+                  %f = funcaddr @main\n    %r = callptr.i64 %f(f64 %x)\n    ret.i64 0\n}\n";
+    let err = rejected(source);
+    assert!(
+        err.contains("argument 1 of the indirect call in '@main'"),
+        "{err}"
+    );
+    assert!(
+        err.contains("is declared f64, but %x has type i64"),
+        "{err}"
+    );
+
+    accepted(
+        "fn @main(i64 %x) -> i64 {\nentry:\n    \
+         %f = funcaddr @main\n    %r = callptr.i64 %f(i64 %x)\n    ret.i64 0\n}\n",
+    );
+}
+
+#[test]
+fn a_call_with_the_wrong_argument_count_names_the_signature() {
+    let err = rejected(&with_callee("i64 %a", "%r = call @g(1, 2)"));
+    assert!(
+        err.contains("passes 2 arguments, but '@g' declares 1"),
+        "{err}"
+    );
+    assert!(
+        err.contains("Match the signature '(i64 %a) -> i64'"),
+        "{err}"
+    );
 }

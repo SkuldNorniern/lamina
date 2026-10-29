@@ -121,7 +121,7 @@ entry:
   %gi_bw = extend.i32.i64 %gi_bv
   call @print_i64(%gi_bw)
 
-  %passed = call @read_word(%bw)
+  %passed = call @read_word(!Byte_Word %bw)
   call @print_i64(%passed)
   ret.i64 0
 }

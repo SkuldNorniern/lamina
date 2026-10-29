@@ -17,26 +17,26 @@ entry:
     %e3 = getelem.i64 %arr, 3
     store.i64 %e3, 44
 
-    %ta8 = ptrtoint.i64 %a8
-    %ta16 = ptrtoint.i64 %a16
-    %tarr = ptrtoint.i64 %arr
-    %ta16c = ptrtoint.i64 %a16c
-    %tg = ptrtoint.i64 $arena
-    %m8 = and.i64 %ta8, 7
-    %m16 = and.i64 %ta16, 15
-    %marr = and.i64 %tarr, 15
-    %m16c = and.i64 %ta16c, 15
-    %mg = and.i64 %tg, 63
+    %ta8 = ptrtoint.u64 %a8
+    %ta16 = ptrtoint.u64 %a16
+    %tarr = ptrtoint.u64 %arr
+    %ta16c = ptrtoint.u64 %a16c
+    %tg = ptrtoint.u64 $arena
+    %m8 = and.u64 %ta8, 7
+    %m16 = and.u64 %ta16, 15
+    %marr = and.u64 %tarr, 15
+    %m16c = and.u64 %ta16c, 15
+    %mg = and.u64 %tg, 63
     call @print_u64(%m8)
     call @print_u64(%m16)
     call @print_u64(%marr)
     call @print_u64(%m16c)
     call @print_u64(%mg)
 
-    %v8 = load.i64 %a8
-    %v16 = load.i64 %a16
-    %v16c = load.i64 %a16c
-    %v44 = load.i64 %e3
+    %v8 = load.u64 %a8
+    %v16 = load.u64 %a16
+    %v16c = load.u64 %a16c
+    %v44 = load.u64 %e3
     call @print_u64(%v8)
     call @print_u64(%v16)
     call @print_u64(%v16c)
@@ -47,13 +47,13 @@ entry:
     ret.i64 0
 }
 
-fn @aligned_low_bits(i64 %v) -> i64 {
+fn @aligned_low_bits(i64 %v) -> u64 {
 entry:
     %slot = stackalloc.i64 align 16
     store.i64 %slot, %v
-    %t = ptrtoint.i64 %slot
-    %m = and.i64 %t, 15
-    ret.i64 %m
+    %t = ptrtoint.u64 %slot
+    %m = and.u64 %t, 15
+    ret.u64 %m
 }
 
 fn @put_u64(u64 %n) -> void {

@@ -1064,7 +1064,7 @@ fn fp_offset(text: &str, store: &str) -> Result<i64, Box<dyn Error>> {
 
 #[test]
 fn aggregate_argument_of_two_words_takes_two_registers() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @pick(i64 %x, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %pb = getfieldptr.struct { a: i64, b: i64 } %p, 1\n  %b = load.i64 %pb\n  ret.i64 %b\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64 }\n  %r = call @pick(1, %q)\n  ret.i64 %r\n}\n";
+    let ir = "fn @pick(i64 %x, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %pb = getfieldptr.struct { a: i64, b: i64 } %p, 1\n  %b = load.i64 %pb\n  ret.i64 %b\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64 }\n  %r = call @pick(1, struct { a: i64, b: i64 } %q)\n  ret.i64 %r\n}\n";
     let assembly = emit_aggregate_module(ir, "pair")?;
 
     let caller = function_body(&assembly, "main")?;
@@ -1085,7 +1085,7 @@ fn aggregate_argument_of_two_words_takes_two_registers() -> Result<(), Box<dyn E
 
 #[test]
 fn aggregate_argument_past_two_words_is_passed_by_reference() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @sum(struct { a: i64, b: i64, c: i64, d: i64 } %p) -> i64 {\nentry:\n  %pd = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %p, 3\n  %d = load.i64 %pd\n  ret.i64 %d\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @sum(%q)\n  ret.i64 %r\n}\n";
+    let ir = "fn @sum(struct { a: i64, b: i64, c: i64, d: i64 } %p) -> i64 {\nentry:\n  %pd = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %p, 3\n  %d = load.i64 %pd\n  ret.i64 %d\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @sum(struct { a: i64, b: i64, c: i64, d: i64 } %q)\n  ret.i64 %r\n}\n";
     let assembly = emit_aggregate_module(ir, "by_reference")?;
 
     let caller = function_body(&assembly, "main")?;
@@ -1111,7 +1111,7 @@ fn aggregate_argument_past_two_words_is_passed_by_reference() -> Result<(), Box<
 
 #[test]
 fn aggregate_split_between_last_register_and_stack() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @wide(i64 %a0, i64 %a1, i64 %a2, i64 %a3, i64 %a4, i64 %a5, i64 %a6, struct { a: i64, b: i64 } %p, i64 %z) -> i64 {\nentry:\n  %pb = getfieldptr.struct { a: i64, b: i64 } %p, 1\n  %b = load.i64 %pb\n  %s = add.i64 %b, %z\n  ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64 }\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, %q, 8)\n  ret.i64 %r\n}\n";
+    let ir = "fn @wide(i64 %a0, i64 %a1, i64 %a2, i64 %a3, i64 %a4, i64 %a5, i64 %a6, struct { a: i64, b: i64 } %p, i64 %z) -> i64 {\nentry:\n  %pb = getfieldptr.struct { a: i64, b: i64 } %p, 1\n  %b = load.i64 %pb\n  %s = add.i64 %b, %z\n  ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64 }\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, struct { a: i64, b: i64 } %q, 8)\n  ret.i64 %r\n}\n";
     let assembly = emit_aggregate_module(ir, "split_pair")?;
 
     let caller = function_body(&assembly, "main")?;

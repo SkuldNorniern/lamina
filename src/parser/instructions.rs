@@ -10,7 +10,7 @@ use crate::{
     parser::{
         functions::alignment_from_bytes,
         globals::parse_value_with_type_hint,
-        state::{CallSite, ParserState, TypedCallArg, UntypedCallLiteral},
+        state::{CallSite, ParserState},
         types::{parse_type, removed_char_error},
         values::parse_value,
     },
@@ -1027,33 +1027,16 @@ fn parse_call<'a>(
             state.advance();
             break;
         }
-        let index = args.len();
         if starts_untyped_value(state) {
-            let position = state.position();
-            let value = parse_value(state)?;
-            if let Value::Constant(literal) = &value {
-                state.untyped_call_literals.push(UntypedCallLiteral {
-                    callee: func_name,
-                    index,
-                    value: literal.clone(),
-                    position,
-                });
-            }
-            args.push(value);
+            args.push((None, parse_value(state)?));
         } else {
-            let position = state.position();
             let ty = parse_type(state).map_err(|_| untyped_call_error(state))?;
             state.skip_whitespace_and_comments();
             if matches!(state.current_char(), None | Some(')') | Some(',')) {
                 return Err(untyped_call_error(state));
             }
-            args.push(parse_typed_operand(state, &ty)?);
-            state.typed_call_args.push(TypedCallArg {
-                callee: func_name,
-                index,
-                ty,
-                position,
-            });
+            let value = parse_typed_operand(state, &ty)?;
+            args.push((Some(ty), value));
         }
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {

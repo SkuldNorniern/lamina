@@ -26,11 +26,7 @@ use self::{
 use crate::ir::ModuleAnnotation;
 use crate::{
     LaminaError,
-    ir::{
-        AllocType, Module, PrimitiveType, Type, assignment_opcode_names,
-        non_assignment_opcode_names,
-    },
-    parser::values::{integer_literal, literal_integer},
+    ir::{AllocType, Module, PrimitiveType, assignment_opcode_names, non_assignment_opcode_names},
 };
 
 /// Calculates the Levenshtein edit distance between two strings.
@@ -367,66 +363,6 @@ fn check_call_sites(state: &mut ParserState<'_>, module: &Module<'_>) -> Result<
     Ok(())
 }
 
-fn check_untyped_call_literals(
-    state: &mut ParserState<'_>,
-    module: &Module<'_>,
-) -> Result<(), LaminaError> {
-    for arg in mem::take(&mut state.untyped_call_literals) {
-        let Some(func) = module.functions.get(arg.callee) else {
-            continue;
-        };
-        let Some(param) = func.signature.params.get(arg.index) else {
-            continue;
-        };
-        let Type::Primitive(param_ty) = param.ty else {
-            continue;
-        };
-        let Some(value) = literal_integer(&arg.value) else {
-            continue;
-        };
-        let message = if param_ty == PrimitiveType::Bool {
-            "Integer literal cannot be passed to a bool parameter\n  Hint: Write 'true' or 'false'"
-                .to_string()
-        } else {
-            match integer_literal(value, param_ty) {
-                Ok(_) => continue,
-                Err(message) => message,
-            }
-        };
-        state.set_position(arg.position);
-        return Err(state.error(message));
-    }
-    Ok(())
-}
-
-fn check_typed_call_args(
-    state: &mut ParserState<'_>,
-    module: &Module<'_>,
-) -> Result<(), LaminaError> {
-    for call in mem::take(&mut state.typed_call_args) {
-        let Some(func) = module.functions.get(call.callee) else {
-            continue;
-        };
-        let Some(param) = func.signature.params.get(call.index) else {
-            continue;
-        };
-        if param.ty != call.ty {
-            let message = format!(
-                "Argument {} of call to @{} has type {}, but parameter %{} is declared {}\n  Hint: Write '{} <value>' to match the parameter, or drop the type",
-                call.index + 1,
-                call.callee,
-                call.ty,
-                param.name,
-                param.ty,
-                param.ty
-            );
-            state.set_position(call.position);
-            return Err(state.error(message));
-        }
-    }
-    Ok(())
-}
-
 /// Parses a string containing Lamina IR text into a Module.
 pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
@@ -490,8 +426,6 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     }
 
     check_call_sites(&mut state, &module)?;
-    check_typed_call_args(&mut state, &module)?;
-    check_untyped_call_literals(&mut state, &module)?;
     module
         .validate()
         .map_err(|errors| LaminaError::ValidationError(errors.join("\n")))?;
@@ -1056,8 +990,8 @@ mod tests {
                 assert_eq!(result_str, "result");
                 assert_eq!(func_str, "callee");
                 assert_eq!(args.len(), 2);
-                assert_eq!(args[0], Value::Constant(Literal::I32(5)));
-                assert_eq!(args[1], Value::Constant(Literal::I32(10)));
+                assert_eq!(args[0].1, Value::Constant(Literal::I32(5)));
+                assert_eq!(args[1].1, Value::Constant(Literal::I32(10)));
             }
             _ => panic!("Expected call instruction"),
         }
@@ -1971,14 +1905,25 @@ ret.i64 0
     }
 
     #[test]
-    fn typed_call_argument_parses_like_untyped() {
+    fn typed_call_argument_keeps_its_stated_type() {
         let body = "fn @f(i32 %x) -> i32 {\nentry:\n  ret.i32 %x\n}\n\
                     fn @main() -> i32 {\nentry:\n  %v = call @f({arg})\n  ret.i32 %v\n}\n";
         let typed_source = body.replace("{arg}", "i32 7");
         let untyped_source = body.replace("{arg}", "7");
         let typed = parse_module(&typed_source).expect("typed call");
         let untyped = parse_module(&untyped_source).expect("untyped call");
-        assert_eq!(typed, untyped);
+        let Instruction::Call { args, .. } =
+            &typed.functions["main"].basic_blocks["entry"].instructions[0]
+        else {
+            panic!("expected a call");
+        };
+        assert_eq!(args[0].0, Some(Type::Primitive(PrimitiveType::I32)));
+        let Instruction::Call { args, .. } =
+            &untyped.functions["main"].basic_blocks["entry"].instructions[0]
+        else {
+            panic!("expected a call");
+        };
+        assert_eq!(args[0].0, None);
     }
 
     #[test]
@@ -1987,23 +1932,29 @@ ret.i64 0
         let Instruction::Call { args, .. } = &entry_call(&source) else {
             panic!("expected a call");
         };
-        assert_eq!(args[0], Value::Constant(Literal::I64(7)));
+        assert_eq!(args[0].1, Value::Constant(Literal::I64(7)));
     }
 
     #[test]
     fn typed_and_untyped_arguments_mix_in_one_call() {
-        let source_mixed = call_module("call @g(7, i64 %p)");
-        let mixed = parse_module(&source_mixed).expect("mixed call");
-        let source_untyped = call_module("call @g(7, %p)");
-        let untyped = parse_module(&source_untyped).expect("untyped call");
-        assert_eq!(mixed, untyped);
+        let source = call_module("call @g(7, i64 %p)");
+        let mixed = parse_module(&source).expect("mixed call");
+        let Instruction::Call { args, .. } =
+            &mixed.functions["main"].basic_blocks["entry"].instructions[0]
+        else {
+            panic!("expected a call");
+        };
+        assert_eq!(args[0].0, None);
+        assert_eq!(args[1].0, Some(Type::Primitive(PrimitiveType::I64)));
     }
 
     #[test]
     fn typed_call_argument_is_checked_against_declared_parameter() {
         let err = call_error("call @f(i32 7)");
         assert!(
-            err.contains("Argument 1 of call to @f has type i32, but parameter %x is declared i64"),
+            err.contains(
+                "argument 1 of call to '@f' in '@main' (block 'entry' instruction 1) is declared i32, but parameter '%x' of '@f' has type i64"
+            ),
             "{err}"
         );
         assert!(err.contains("Write 'i64 <value>'"), "{err}");
@@ -2013,7 +1964,7 @@ ret.i64 0
     fn typed_call_argument_checks_position_past_the_first() {
         let err = call_error("call @g(i64 1, i32 2)");
         assert!(
-            err.contains("Argument 2 of call to @g has type i32, but parameter %b is declared i64"),
+            err.contains("argument 2 of call to '@g' in '@main' (block 'entry' instruction 1) is declared i32, but parameter '%b' of '@g' has type i64"),
             "{err}"
         );
     }
@@ -2025,7 +1976,7 @@ ret.i64 0
         let err = parse_module(source).expect_err("bool for i64 must be rejected");
         assert!(
             err.to_string()
-                .contains("has type bool, but parameter %x is declared i64"),
+                .contains("is declared bool, but parameter '%x' of '@later' has type i64"),
             "{err}"
         );
     }
@@ -2039,22 +1990,26 @@ ret.i64 0
         let err = call_error("call @printf(i32 7, i64 1)");
         assert!(
             err.contains(
-                "Argument 1 of call to @printf has type i32, but parameter %fmt is declared ptr"
+                "argument 1 of call to '@printf' in '@main' (block 'entry' instruction 1) is declared i32, but parameter '%fmt' of '@printf' has type ptr"
             ),
             "{err}"
         );
     }
 
     #[test]
-    fn typed_call_arguments_display_in_canonical_untyped_form() {
+    fn typed_call_arguments_print_the_types_they_were_given() {
         let typed_source = call_module("call @g(i64 7, i64 %p)");
         let untyped_source = call_module("call @g(7, %p)");
         let typed = parse_module(&typed_source).expect("typed call");
         let untyped = parse_module(&untyped_source).expect("untyped call");
-        let typed_text = typed.to_string();
-        assert_eq!(typed_text, untyped.to_string());
-        assert!(typed_text.contains("%v = call @g(7, %p)"), "{typed_text}");
-        assert!(!typed_text.contains("i64 7"), "{typed_text}");
+        assert!(
+            typed.to_string().contains("%v = call @g(i64 7, i64 %p)"),
+            "{typed}"
+        );
+        assert!(
+            untyped.to_string().contains("%v = call @g(7, %p)"),
+            "{untyped}"
+        );
     }
 
     #[test]
@@ -2572,7 +2527,7 @@ entry:
                 None,
                 Type::Void,
                 var("k"),
-                vec![(ptr_ty.clone(), var("fmt")), (f64_ty.clone(), var("x"))],
+                vec![(ptr_ty.clone(), var("fmt")), (f64_ty.clone(), var("a"))],
                 Some(1),
             )
             .callptr(

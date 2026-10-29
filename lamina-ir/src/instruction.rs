@@ -872,11 +872,19 @@ pub enum Instruction<'a> {
         target_type: PrimitiveType, // The pointer type (usually ptr)
     },
     // --- Function Calls ---
+    /// Call a function by name.
+    ///
+    /// An argument may carry the type the call site declares for it, written like a
+    /// function signature: `call @f(i64 %n)`. `None` leaves the type to be inferred
+    /// from the operand's definition. An argument whose parameter is an aggregate
+    /// must state the aggregate type, because the operand itself is the address.
+    ///
+    /// # Preconditions
+    /// - The argument count and each argument's type match the callee's signature.
     Call {
-        result: Option<Identifier<'a>>, // None if function returns void
-        func_name: Identifier<'a>,      // Name of the function to call (e.g., "@add")
-        args: Vec<Value<'a>>,
-        // Return type needs to be known from function signature context
+        result: Option<Identifier<'a>>,
+        func_name: Identifier<'a>,
+        args: Vec<(Option<Type<'a>>, Value<'a>)>,
     },
     // --- Typed value copy: `%r = copy.<ty> <value>` moves one first-class scalar ---
     Copy {
@@ -1147,9 +1155,9 @@ impl<'a> Instruction<'a> {
             | Instruction::IntToFloat { target_type, .. }
             | Instruction::FloatToInt { target_type, .. }
             | Instruction::FloatConvert { target_type, .. }
-            | Instruction::PtrToInt { target_type, .. }
-            | Instruction::IntToPtr { target_type, .. } => prim(target_type),
-            Instruction::Alloc { .. }
+            | Instruction::PtrToInt { target_type, .. } => prim(target_type),
+            Instruction::IntToPtr { .. }
+            | Instruction::Alloc { .. }
             | Instruction::GetElemPtr { .. }
             | Instruction::GetFieldPtr { .. } => prim(&PrimitiveType::Ptr),
             Instruction::Select { ty, .. }
@@ -1277,7 +1285,7 @@ impl<'a> Instruction<'a> {
                 }
             }
             Instruction::Call { args, .. } => {
-                for arg in args {
+                for (_, arg) in args {
                     push_value(arg, &mut vars);
                 }
             }
@@ -1666,9 +1674,12 @@ impl fmt::Display for Instruction<'_> {
                 } else {
                     write!(f, "call @{func_name}(")?;
                 }
-                for (i, arg) in args.iter().enumerate() {
+                for (i, (ty, arg)) in args.iter().enumerate() {
+                    if let Some(ty) = ty {
+                        write!(f, "{ty} ")?;
+                    }
                     write!(f, "{arg}")?;
-                    if i < args.len() - 1 {
+                    if i + 1 < args.len() {
                         write!(f, ", ")?;
                     }
                 }
@@ -1885,7 +1896,7 @@ mod tests {
         let instr13 = Instruction::Call {
             result: None,
             func_name: "print_message",
-            args: vec![Value::Constant(Literal::String("test"))],
+            args: vec![(None, Value::Constant(Literal::String("test")))],
         };
         assert_eq!(format!("{}", instr13), "call @print_message(\"test\")"); // Escaped quotes
 
@@ -1893,7 +1904,7 @@ mod tests {
         let instr14 = Instruction::Call {
             result: Some("sum"),
             func_name: "calculate",
-            args: vec![Value::Variable("x"), Value::Variable("y")],
+            args: vec![(None, Value::Variable("x")), (None, Value::Variable("y"))],
         };
         assert_eq!(format!("{}", instr14), "%sum = call @calculate(%x, %y)");
 

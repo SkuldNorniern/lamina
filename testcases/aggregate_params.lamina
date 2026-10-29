@@ -85,7 +85,7 @@ fn @main() -> i64 {
     %pair_b = getfieldptr.!Pair %pair, 1
     store.i64 %pair_a, 17
     store.i64 %pair_b, 25
-    %sum = call @sum_pair(%pair)
+    %sum = call @sum_pair(!Pair %pair)
     call @print_i64(%sum)
 
     %small = stackalloc.!Small
@@ -93,7 +93,7 @@ fn @main() -> i64 {
     %small_b = getfieldptr.!Small %small, 1
     store.i32 %small_a, 3
     store.i32 %small_b, 4
-    %packed = call @sum_small(%small)
+    %packed = call @sum_small(!Small %small)
     call @print_i64(%packed)
 
     %three = stackalloc.!Three
@@ -103,10 +103,10 @@ fn @main() -> i64 {
     store.i32 %three_a, 1
     store.i32 %three_b, 2
     store.i32 %three_c, 3
-    %padded = call @sum_three(%three)
+    %padded = call @sum_three(!Three %three)
     call @print_i64(%padded)
 
-    %spill = call @spilled(1, 2, 3, 4, 5, 6, %pair)
+    %spill = call @spilled(1, 2, 3, 4, 5, 6, !Pair %pair)
     call @print_i64(%spill)
 
     %made = call @make_pair(41)

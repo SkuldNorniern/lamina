@@ -1,28 +1,6 @@
 //! Parser state management for Lamina IR parsing.
 
-use crate::{
-    Identifier, Label, LaminaError,
-    ir::{Literal, SourceLoc, Type},
-};
-
-/// A type written before a `call` argument, checked once the callee's signature is known.
-#[derive(Debug, Clone)]
-pub struct TypedCallArg<'a> {
-    pub callee: Identifier<'a>,
-    pub index: usize,
-    pub ty: Type<'a>,
-    pub position: usize,
-}
-
-/// A bare literal `call` argument. Its width is the callee's parameter type, which
-/// is only known once the whole module is parsed.
-#[derive(Debug, Clone)]
-pub struct UntypedCallLiteral<'a> {
-    pub callee: Identifier<'a>,
-    pub index: usize,
-    pub value: Literal<'a>,
-    pub position: usize,
-}
+use crate::{Identifier, Label, LaminaError, ir::SourceLoc};
 
 /// A direct `call`, checked once the module's functions are known.
 #[derive(Debug, Clone)]
@@ -38,8 +16,6 @@ pub struct ParserState<'a> {
     bytes: &'a [u8],
     position: usize,
     type_depth: usize,
-    pub typed_call_args: Vec<TypedCallArg<'a>>,
-    pub untyped_call_literals: Vec<UntypedCallLiteral<'a>>,
     pub call_sites: Vec<CallSite<'a>>,
 }
 
@@ -53,8 +29,6 @@ impl<'a> ParserState<'a> {
             bytes: input.as_bytes(),
             position: 0,
             type_depth: 0,
-            typed_call_args: Vec::new(),
-            untyped_call_literals: Vec::new(),
             call_sites: Vec::new(),
         }
     }
