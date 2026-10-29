@@ -94,3 +94,59 @@ fn frame_slots_descend_from_the_frame_pointer_in_eight_byte_steps() {
     assert_eq!(slot_offset(1), -16);
     assert_eq!(slot_offset(7), -64);
 }
+
+#[test]
+#[allow(clippy::expect_used)]
+fn debug_lines_follow_source_locations_and_skip_synthesized_instructions() {
+    use crate::{mir::Module, mir::codegen, mir_codegen::MirCodegenSettings, parser};
+    use lamina_platform::TargetOperatingSystem;
+
+    const SOURCE: &str = "fn @main() -> i32 {\n  entry:\n    %a = add.i32 10, 20\n    %b = mul.i32 %a, 3\n    %c = sub.i32 %b, 7\n    jmp tail\n\n  tail:\n    ret.i32 %c\n}\n";
+
+    let ir = parser::parse_module(SOURCE).expect("parse");
+    let mut module = codegen::from_ir(&ir, "runtime_symbols").expect("lower");
+    let settings = MirCodegenSettings {
+        emit_asm_debug_lines: true,
+        ..Default::default()
+    };
+    let lines = |module: &Module| -> Vec<String> {
+        let mut out = Vec::new();
+        super::generate_mir_i686_with_units_and_settings(
+            module,
+            &mut out,
+            TargetOperatingSystem::Linux,
+            1,
+            &settings,
+        )
+        .expect("emit");
+        String::from_utf8(out)
+            .expect("utf8")
+            .lines()
+            .filter(|line| line.contains(".loc "))
+            .map(str::to_string)
+            .collect()
+    };
+    assert_eq!(
+        lines(&module),
+        [
+            "    .loc 1 3 5",
+            "    .loc 1 4 5",
+            "    .loc 1 5 5",
+            "    .loc 1 9 5",
+        ]
+    );
+
+    for function in module.functions.values_mut() {
+        for block in &mut function.blocks {
+            for inst in &mut block.instructions {
+                if inst.loc.map(|loc| loc.line()) == Some(4) {
+                    inst.loc = None;
+                }
+            }
+        }
+    }
+    assert_eq!(
+        lines(&module),
+        ["    .loc 1 3 5", "    .loc 1 5 5", "    .loc 1 9 5"]
+    );
+}

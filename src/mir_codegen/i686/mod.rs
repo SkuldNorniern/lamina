@@ -21,9 +21,10 @@ mod tests;
 
 use crate::mir_codegen::capability::{CapabilitySet, CodegenCapability};
 use crate::mir_codegen::common::{
-    FunctionEmissionPlan, assign_stack_slots, compile_functions_parallel, emit_debug_file,
-    emit_global_data, emit_global_directives, emit_gnu_stack_note, emit_symbol_visibility,
-    external_names, integer_conversion_with_width, lamina_to_codegen_error, parallel_codegen_error,
+    FunctionEmissionPlan, assign_stack_slots_framed, compile_functions_parallel, emit_debug_file,
+    emit_global_data, emit_global_directives, emit_gnu_stack_note, emit_source_loc,
+    emit_symbol_visibility, external_names, integer_conversion_with_width, lamina_to_codegen_error,
+    parallel_codegen_error,
 };
 use crate::{
     error::LaminaError,
@@ -39,6 +40,7 @@ use crate::{
 };
 use abi::{INCOMING_BASE, PTR, WORD};
 use lamina_codegen::abi::common_call_stub;
+use lamina_mir::SourceLoc;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use operand::{
     EAX, ECX, EDX, Slots, byte_reg, is_single, load_operand, pop_float, push_float, slot,
@@ -204,7 +206,6 @@ struct EmitCtx<'a> {
     func_name: &'a str,
     target_os: TargetOperatingSystem,
     settings: &'a MirCodegenSettings,
-    debug_line: u32,
     label_seq: u32,
     signatures: &'a Signatures,
     ret_float: Option<MirType>,
@@ -294,7 +295,8 @@ fn compile_function(
     let mut output = Vec::new();
     writeln!(output, "{func_name}:").map_err(io)?;
 
-    let (slots, _, mut total) = assign_stack_slots(func, abi::slot_offset);
+    let (slots, _, mut total) =
+        assign_stack_slots_framed(func, abi::slot_offset, |_| true, abi::FRAME_RESIDUE);
     let sret = match func.sig.ret_aggregate {
         Some(aggregate) => {
             reject_wide_integer_return(aggregate, func_name).map_err(lamina_to_codegen_error)?;
@@ -312,7 +314,6 @@ fn compile_function(
         func_name,
         target_os,
         settings,
-        debug_line: 0,
         label_seq: 0,
         signatures,
         ret_float: func.sig.ret_ty.filter(MirType::is_float),
@@ -488,6 +489,7 @@ fn emit_block<W: Write>(
                 },
             ) = (&inst.instr, &block.instructions[position + 1].instr)
         {
+            emit_source_loc(writer, ctx.settings, inst.loc)?;
             emit_compare(op, ty, lhs, rhs, writer, slots)?;
             let (invert, taken, other) = plan.branch(func, index, next, true_target, false_target);
             let suffix = if invert {
@@ -503,7 +505,7 @@ fn emit_block<W: Write>(
             continue;
         }
         if !matches!(&inst.instr, MirInst::Jmp { target } if target == next) {
-            emit_instruction(&inst.instr, writer, slots, ctx)?;
+            emit_instruction(&inst.instr, inst.loc, writer, slots, ctx)?;
         }
         position += 1;
     }
@@ -599,10 +601,12 @@ fn call_target(name: &str, target_os: TargetOperatingSystem) -> String {
 
 fn emit_instruction<W: Write>(
     inst: &MirInst,
+    loc: Option<SourceLoc>,
     writer: &mut W,
     slots: &Slots,
     ctx: &mut EmitCtx<'_>,
 ) -> Result<(), LaminaError> {
+    emit_source_loc(writer, ctx.settings, loc)?;
     if let MirInst::IntConvert { from, to, .. } = inst {
         reject_wide(from, "integer conversion")?;
         reject_wide(to, "integer conversion")?;
@@ -610,14 +614,10 @@ fn emit_instruction<W: Write>(
             integer_conversion_with_width(inst, MirType::Scalar(ScalarType::I32), PTR)
         {
             for operation in operations {
-                emit_instruction(&operation, writer, slots, ctx)?;
+                emit_instruction(&operation, None, writer, slots, ctx)?;
             }
             return Ok(());
         }
-    }
-    if ctx.settings.emit_asm_debug_lines {
-        ctx.debug_line = ctx.debug_line.saturating_add(1);
-        writeln!(writer, "    .loc 1 {} 0", ctx.debug_line)?;
     }
     match inst {
         MirInst::Copy { ty, dst, src }

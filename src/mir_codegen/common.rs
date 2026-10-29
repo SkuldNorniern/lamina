@@ -55,6 +55,18 @@ pub(super) fn assign_stack_slots_where(
     offset_for_slot: impl Fn(usize) -> i32,
     needs_slot: impl Fn(&VirtualReg) -> bool,
 ) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
+    assign_stack_slots_framed(func, offset_for_slot, needs_slot, 0)
+}
+
+/// `frame_residue` is the address of the frame base modulo the alignment that
+/// `stackalloc` asks for, so an offset `o` is aligned when `frame_residue + o` is a
+/// multiple of it.
+pub(super) fn assign_stack_slots_framed(
+    func: &Function,
+    offset_for_slot: impl Fn(usize) -> i32,
+    needs_slot: impl Fn(&VirtualReg) -> bool,
+    frame_residue: i64,
+) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
     let mut def_regs: BTreeSet<VirtualReg> = BTreeSet::new();
     let mut used_regs: BTreeSet<VirtualReg> = BTreeSet::new();
     for block in &func.blocks {
@@ -78,7 +90,7 @@ pub(super) fn assign_stack_slots_where(
     let claim = |vreg: &VirtualReg, slots: &mut HashMap<VirtualReg, i32>, next: &mut usize| {
         let extra = func.stack_reservations.get(vreg).copied().unwrap_or(0);
         let align = func.stack_alignments.get(vreg).copied();
-        let index = claim_stack_slot(next, extra, align, &offset_for_slot);
+        let index = claim_stack_slot_framed(next, extra, align, &offset_for_slot, frame_residue);
         slots.insert(*vreg, offset_for_slot(index));
     };
     for vreg in &def_regs {
@@ -105,10 +117,20 @@ pub(super) fn claim_stack_slot(
     align: Option<usize>,
     offset_for_slot: &impl Fn(usize) -> i32,
 ) -> usize {
+    claim_stack_slot_framed(next, extra, align, offset_for_slot, 0)
+}
+
+pub(super) fn claim_stack_slot_framed(
+    next: &mut usize,
+    extra: usize,
+    align: Option<usize>,
+    offset_for_slot: &impl Fn(usize) -> i32,
+    frame_residue: i64,
+) -> usize {
     let mut index = *next + extra;
     if let Some(align) = align {
         let limit = index + align;
-        while i64::from(offset_for_slot(index)) % align as i64 != 0 {
+        while (i64::from(offset_for_slot(index)) + frame_residue) % align as i64 != 0 {
             index += 1;
             assert!(
                 index < limit,

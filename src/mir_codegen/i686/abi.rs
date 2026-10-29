@@ -13,6 +13,9 @@ pub(super) const WORD: usize = 4;
 /// so a slot is eight bytes here too and a 32-bit value uses its low half.
 pub(super) const SLOT: i32 = 8;
 
+/// `%ebp` is `8 mod 16`, so a slot at offset `o` has address `8 + o` modulo 16.
+pub(super) const FRAME_RESIDUE: i64 = 8;
+
 /// Offset of local slot `index` from `%ebp`.
 pub(super) fn slot_offset(index: usize) -> i32 {
     -((index as i32 + 1) * SLOT)
