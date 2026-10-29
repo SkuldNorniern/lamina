@@ -10,12 +10,32 @@ pub struct Target {
     pub operating_system: TargetOperatingSystem,
 }
 
+/// Width of a data pointer. Pointer size and alignment derive from it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PointerWidth {
+    Bits32,
+    Bits64,
+}
+
+impl PointerWidth {
+    pub const fn bytes(self) -> usize {
+        match self {
+            Self::Bits32 => 4,
+            Self::Bits64 => 8,
+        }
+    }
+}
+
 impl Target {
     pub fn new(architecture: TargetArchitecture, operating_system: TargetOperatingSystem) -> Self {
         Self {
             architecture,
             operating_system,
         }
+    }
+
+    pub fn pointer_width(&self) -> PointerWidth {
+        self.architecture.pointer_width()
     }
 
     pub fn gpu_triple(&self) -> Option<&'static str> {
@@ -57,6 +77,10 @@ impl FromStr for Target {
     type Err = &'static str;
 
     fn from_str(target: &str) -> Result<Self, Self::Err> {
+        let target = TARGET_ALIASES
+            .iter()
+            .find(|(alias, _)| *alias == target)
+            .map_or(target, |(_, canonical)| canonical);
         let parts: Vec<&str> = target.rsplitn(2, '_').collect();
         if parts.len() != 2 {
             return Err("Invalid target format: expected 'architecture_os'");
@@ -93,6 +117,28 @@ pub enum TargetArchitecture {
     #[cfg(feature = "nightly")]
     Lisa,
     Unknown,
+}
+
+impl TargetArchitecture {
+    /// Exhaustive on purpose: a new architecture does not compile until its pointer
+    /// width is chosen.
+    pub const fn pointer_width(self) -> PointerWidth {
+        match self {
+            Self::X86_64
+            | Self::Aarch64
+            | Self::Arx64
+            | Self::Riscv64
+            | Self::PowerPC64
+            | Self::LoongArch64
+            | Self::Wasm64
+            | Self::Nvptx64
+            | Self::Amdgcn
+            | Self::Unknown => PointerWidth::Bits64,
+            Self::Arm32 | Self::Riscv32 | Self::Wasm32 => PointerWidth::Bits32,
+            #[cfg(feature = "nightly")]
+            Self::Riscv128 | Self::Lisa => PointerWidth::Bits64,
+        }
+    }
 }
 
 impl FromStr for TargetArchitecture {
@@ -245,6 +291,11 @@ impl fmt::Display for TargetOperatingSystem {
     }
 }
 
+const TARGET_ALIASES: &[(&str, &str)] = &[
+    ("riscv64_unknown", "riscv64_linux"),
+    ("riscv64gc_linux", "riscv64_linux"),
+];
+
 pub const HOST_ARCH_LIST: &[&str] = &[
     "nvptx64_cuda",
     "amdgcn_amdhsa",
@@ -277,6 +328,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "wasm64_unknown",
     "wasm32_wasi",
     "riscv32_unknown",
+    "riscv64_linux",
     "riscv64_unknown",
     "riscv64gc_linux",
     "ppc64_linux",
@@ -347,12 +399,13 @@ mod tests {
     }
 
     #[test]
-    fn riscv64gc_is_an_alias_for_riscv64() {
-        let target: Target = "riscv64gc_linux".parse().unwrap();
-        assert_eq!(
-            target,
-            Target::new(TargetArchitecture::Riscv64, TargetOperatingSystem::Linux)
-        );
-        assert_eq!(target.to_string(), "riscv64_linux");
+    fn riscv64_aliases_resolve_to_riscv64_linux() {
+        let linux = Target::new(TargetArchitecture::Riscv64, TargetOperatingSystem::Linux);
+        for name in ["riscv64_linux", "riscv64_unknown", "riscv64gc_linux"] {
+            let target: Target = name.parse().unwrap();
+            assert_eq!(target, linux);
+            assert!(HOST_ARCH_LIST.contains(&name));
+        }
+        assert_eq!(linux.to_string(), "riscv64_linux");
     }
 }
