@@ -7,11 +7,14 @@
 
 mod abi;
 mod operand;
+#[cfg(test)]
+mod tests;
 
 use crate::mir_codegen::common::{
     FunctionEmissionPlan, assign_stack_slots, compile_functions_parallel, emit_debug_file,
     emit_global_data, emit_global_directives, emit_gnu_stack_note, emit_symbol_visibility,
-    external_names, integer_conversion_with_width, parallel_codegen_error, promoted_argument_type,
+    external_names, integer_conversion_with_width, lamina_to_codegen_error, parallel_codegen_error,
+    promoted_argument_type,
 };
 use crate::{
     error::LaminaError,
@@ -28,7 +31,11 @@ use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use operand::{
     Slots, load_float_operand, load_operand, phys, slot, store_float, store_register, unsupported,
 };
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+    sync::Arc,
+};
 
 use lamina_codegen::abi::common_call_stub;
 
@@ -141,8 +148,8 @@ pub fn generate_mir_loongarch64_with_units_and_settings<W: Write>(
         ));
     }
     validate_module_call_parameters(module, TargetArchitecture::LoongArch64)?;
-    let signatures = std::sync::Arc::new(Signatures::from_module(module));
-    let settings_arc = std::sync::Arc::new(settings.clone());
+    let signatures = Arc::new(Signatures::from_module(module));
+    let settings_arc = Arc::new(settings.clone());
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_function(name, func, os, settings_arc.as_ref(), signatures.as_ref())
@@ -173,7 +180,7 @@ fn compile_function(
     signatures: &Signatures,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
-    let io = |e: std::io::Error| CodegenError::InvalidCodegenOptions(format!("IO error: {e}"));
+    let io = |e: io::Error| CodegenError::InvalidCodegenOptions(format!("IO error: {e}"));
     writeln!(output, "{func_name}:").map_err(io)?;
 
     let (slots, _, _) = assign_stack_slots(func, abi::slot_offset);
@@ -216,7 +223,7 @@ fn compile_function(
 }
 
 fn lamina_to_codegen(error: LaminaError) -> CodegenError {
-    crate::mir_codegen::common::lamina_to_codegen_error(error)
+    lamina_to_codegen_error(error)
 }
 
 /// Stores each incoming argument into its frame slot.
@@ -725,7 +732,7 @@ fn emit_instruction<W: Write>(
         } => {
             load_operand(&Operand::Register(value.clone()), writer, slots, "$a0")?;
             for (case_val, case_label) in cases {
-                abi::load_imm(writer, "$t0", *case_val as i64)?;
+                abi::load_imm(writer, "$t0", *case_val)?;
                 writeln!(writer, "    beq $a0, $t0, {}", ctx.block_label(case_label))?;
             }
             writeln!(writer, "    b {}", ctx.block_label(default))?;
