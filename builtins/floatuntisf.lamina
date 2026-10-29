@@ -1,0 +1,26 @@
+@export
+fn @__floatuntisf(u128 %x) -> f32 {
+entry:
+  %z = eq.u128 %x, 0
+  br %z, zero, nz
+
+zero:
+  ret.f32 0.0
+
+nz:
+  %sh = ctlz.u128 %x
+  %y = shl.u128 %x, %sh
+  %yh = shr.u128 %y, 64
+  %hi = trunc.u128.u64 %yh
+  %lo = trunc.u128.u64 %y
+  %lnz = ne.u64 %lo, 0
+  %st = select.u64 %lnz, 1, 0
+  %t = or.u64 %hi, %st
+  %f = inttofp.u64.f32 %t
+  %sh32 = trunc.u128.u32 %sh
+  %bias = sub.u32 191, %sh32
+  %bits = shl.u32 %bias, 23
+  %p = bitcast.u32.f32 %bits
+  %r = mul.f32 %f, %p
+  ret.f32 %r
+}

@@ -1,0 +1,26 @@
+@export
+fn @__floatuntidf(u128 %x) -> f64 {
+entry:
+  %z = eq.u128 %x, 0
+  br %z, zero, nz
+
+zero:
+  ret.f64 0.0
+
+nz:
+  %sh = ctlz.u128 %x
+  %y = shl.u128 %x, %sh
+  %yh = shr.u128 %y, 64
+  %hi = trunc.u128.u64 %yh
+  %lo = trunc.u128.u64 %y
+  %lnz = ne.u64 %lo, 0
+  %st = select.u64 %lnz, 1, 0
+  %t = or.u64 %hi, %st
+  %f = inttofp.u64.f64 %t
+  %sh32 = trunc.u128.u64 %sh
+  %bias = sub.u64 1087, %sh32
+  %bits = shl.u64 %bias, 52
+  %p = bitcast.u64.f64 %bits
+  %r = mul.f64 %f, %p
+  ret.f64 %r
+}

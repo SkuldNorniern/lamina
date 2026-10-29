@@ -1,0 +1,53 @@
+@export
+fn @__fixunsdfti(f64 %x) -> u128 {
+entry:
+  %b = bitcast.f64.u64 %x
+  %sb = shr.u64 %b, 63
+  %neg = ne.u64 %sb, 0
+  br %neg, zero, pos
+
+zero:
+  ret.u128 0
+
+pos:
+  %ab = and.u64 %b, 9223372036854775807
+  %nan = gt.u64 %ab, 9218868437227405312
+  br %nan, zero, chk
+
+chk:
+  %inf = eq.u64 %ab, 9218868437227405312
+  br %inf, max, fin
+
+fin:
+  %e = shr.u64 %ab, 52
+  %small = lt.u64 %e, 1023
+  br %small, zero, big
+
+big:
+  %k = sub.u64 %e, 1023
+  %over = ge.u64 %k, 128
+  br %over, max, conv
+
+conv:
+  %m = and.u64 %b, 4503599627370495
+  %mi = or.u64 %m, 4503599627370496
+  %mm = extend.u64.u128 %mi
+  %le = le.u64 %k, 52
+  br %le, rsh, lsh
+
+rsh:
+  %rc = sub.u64 52, %k
+  %rw = extend.u64.u128 %rc
+  %rv = shr.u128 %mm, %rw
+  ret.u128 %rv
+
+lsh:
+  %lc = sub.u64 %k, 52
+  %lw = extend.u64.u128 %lc
+  %lv = shl.u128 %mm, %lw
+  ret.u128 %lv
+
+max:
+  %mx = sub.u128 0, 1
+  ret.u128 %mx
+}

@@ -1,0 +1,14 @@
+@extern
+fn @__floatuntidf(i128 %x) -> f64
+
+@export
+fn @__floattidf(i128 %x) -> f64 {
+entry:
+  %neg = lt.i128 %x, 0
+  %nx = sub.i128 0, %x
+  %m = select.i128 %neg, %nx, %x
+  %r = call @__floatuntidf(%m)
+  %rn = sub.f64 0.0, %r
+  %res = select.f64 %neg, %rn, %r
+  ret.f64 %res
+}

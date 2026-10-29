@@ -1,0 +1,14 @@
+@extern
+fn @__floatuntisf(i128 %x) -> f32
+
+@export
+fn @__floattisf(i128 %x) -> f32 {
+entry:
+  %neg = lt.i128 %x, 0
+  %nx = sub.i128 0, %x
+  %m = select.i128 %neg, %nx, %x
+  %r = call @__floatuntisf(%m)
+  %rn = sub.f32 0.0, %r
+  %res = select.f32 %neg, %rn, %r
+  ret.f32 %res
+}
