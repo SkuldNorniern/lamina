@@ -166,8 +166,6 @@ fn classify_aarch64_arguments(
     let mut places = Vec::with_capacity(kinds.len());
     // Linux gives every stack argument a whole eight-byte slot. Darwin packs a named
     // one at its natural size and alignment, and gives a variadic one a whole slot.
-    // AAPCS64 wants a 16-byte-aligned composite on a 16-aligned slot. This backend does
-    // not place it there yet, which `honors_argument_alignment` states.
     let honors_alignment = TargetArchitecture::Aarch64.honors_argument_alignment();
     let on_stack = |stack: &mut usize, kind: &ArgKind, packed: bool| {
         let bytes = if packed {
@@ -177,7 +175,7 @@ fn classify_aarch64_arguments(
         };
         let align = if packed {
             bytes.min(8).next_power_of_two()
-        } else if honors_alignment {
+        } else if honors_alignment && !kind.by_reference {
             kind.aggregate.map_or(8, |aggregate| aggregate.align).max(8)
         } else {
             8
@@ -210,7 +208,7 @@ fn classify_aarch64_arguments(
         } else {
             kind.aggregate.map_or(1, |a| a.words())
         };
-        if honors_alignment && kind.aggregate.is_some_and(|a| a.align >= 16) {
+        if honors_alignment && !kind.by_reference && kind.aggregate.is_some_and(|a| a.align >= 16) {
             gprs = gprs.next_multiple_of(2);
         }
         if gprs + words <= ARGUMENT_REGISTERS {

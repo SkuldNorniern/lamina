@@ -316,15 +316,17 @@ impl TargetArchitecture {
         }
     }
 
-    /// Whether an argument wider than a word is placed at its own alignment rather than
-    /// at the next word. Only x86_64 does today; aarch64, ppc64 and riscv read the ABI
-    /// the same way but have not implemented it, so an `i128` argument lands one slot
-    /// early there. Exhaustive on purpose, so a new architecture states its answer.
+    /// Whether an argument with 16-byte alignment starts at its own alignment rather than
+    /// at the next word. AAPCS64 rounds the integer register counter up to even before
+    /// such an argument, so an `i128` takes x2:x3 after one `i64`. riscv64 and ppc64
+    /// do not round for named arguments: the riscv psABI makes the even-register rule
+    /// variadic-only, and clang 18 places a named `i128` at a1:a2 and r4:r5. Keep them
+    /// false unless that is settled differently. Exhaustive on purpose, so a new
+    /// architecture states its answer.
     pub const fn honors_argument_alignment(self) -> bool {
         match self {
-            Self::X86_64 => true,
-            Self::Aarch64
-            | Self::Arx64
+            Self::X86_64 | Self::Aarch64 => true,
+            Self::Arx64
             | Self::Arm32
             | Self::Armv7
             | Self::I686
@@ -789,12 +791,13 @@ mod tests {
     }
 
     #[test]
-    fn only_x86_64_honors_argument_alignment() {
+    fn x86_64_and_aarch64_honor_argument_alignment() {
         let honors = |name: &str| name.parse::<Target>().unwrap().honors_argument_alignment();
         assert!(honors("x86_64_linux"));
+        assert!(honors("aarch64_linux"));
         for name in [
-            "aarch64_linux",
             "riscv64_linux",
+            "riscv32_linux",
             "ppc64le_linux",
             "i686_linux",
         ] {
