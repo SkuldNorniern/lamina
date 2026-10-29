@@ -45,19 +45,29 @@ fn get_crt_file(compiler: &str, crt_name: &str, multilib: Option<&str>) -> Optio
         .filter(|path| !path.is_empty() && path != crt_name && path.contains('/'))
 }
 
+/// The driver whose start-up objects belong to the target: the host compiler for a
+/// host-architecture link, otherwise the target's cross compiler.
+fn crt_compiler(target_arch: TargetArchitecture) -> Option<String> {
+    if host_matches(target_arch) {
+        detect_compiler().map(str::to_string)
+    } else {
+        gnu_tool(target_arch, "gcc")
+    }
+}
+
 fn get_crt_files(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Vec<String> {
     if os_uses_macho(target_os) {
         return Vec::new();
     }
 
-    let Some(compiler) = detect_compiler() else {
+    let Some(compiler) = crt_compiler(target_arch) else {
         return Vec::new();
     };
 
     let multilib = multilib_flag(target_arch);
     ["crt1.o", "crti.o"]
         .iter()
-        .filter_map(|name| get_crt_file(compiler, name, multilib))
+        .filter_map(|name| get_crt_file(&compiler, name, multilib))
         .collect()
 }
 
@@ -69,11 +79,11 @@ fn get_crtn_files(
         return Vec::new();
     }
 
-    let Some(compiler) = detect_compiler() else {
+    let Some(compiler) = crt_compiler(target_arch) else {
         return Vec::new();
     };
 
-    get_crt_file(compiler, "crtn.o", multilib_flag(target_arch))
+    get_crt_file(&compiler, "crtn.o", multilib_flag(target_arch))
         .into_iter()
         .collect()
 }
@@ -341,7 +351,7 @@ fn build_crt_args(
     target_os: TargetOperatingSystem,
     before_user_object: bool,
 ) -> Vec<String> {
-    if os_uses_macho(target_os) || !host_matches(target_arch) || cross_os(target_os) {
+    if os_uses_macho(target_os) || cross_os(target_os) {
         return Vec::new();
     }
 
