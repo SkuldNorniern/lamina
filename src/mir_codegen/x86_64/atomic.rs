@@ -12,7 +12,20 @@ pub(super) fn emit<W: Write>(
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     match inst {
-        MirInst::AtomicLoad { ty, dst, addr, .. } => {
+        MirInst::AtomicLoad {
+            ty,
+            dst,
+            addr,
+            ordering,
+        } => {
+            match ordering {
+                MemoryOrdering::Relaxed | MemoryOrdering::Acquire | MemoryOrdering::SeqCst => {}
+                MemoryOrdering::Release | MemoryOrdering::AcqRel => {
+                    return Err(unsupported_ordering("atomic_load", ordering));
+                }
+            }
+            // Every load ordering is a plain mov: x86 loads are already acquire,
+            // and seqcst stores are xchg, so a seqcst load needs no fence.
             let size = ty.size_bytes(pointer_width);
             load_base(address_base(addr)?, writer, reg_alloc, stack_slots, "rax")?;
             writeln!(writer, "    {}", sized_load("rax", size))?;
@@ -26,6 +39,13 @@ pub(super) fn emit<W: Write>(
             addr,
             ordering,
         } => {
+            let store = match ordering {
+                MemoryOrdering::Relaxed | MemoryOrdering::Release => "mov",
+                MemoryOrdering::SeqCst => "xchg",
+                MemoryOrdering::Acquire | MemoryOrdering::AcqRel => {
+                    return Err(unsupported_ordering("atomic_store", ordering));
+                }
+            };
             let size = ty.size_bytes(pointer_width);
             let base = address_base(addr)?;
             load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
@@ -33,11 +53,7 @@ pub(super) fn emit<W: Write>(
             load_base(base, writer, reg_alloc, stack_slots, ptr)?;
             let rax = register_for_size("rax", size).ok_or_else(invalid_size)?;
             let suffix = size_suffix_for(size);
-            if *ordering == MemoryOrdering::SeqCst {
-                writeln!(writer, "    xchg{suffix} %{rax}, (%{ptr})")?;
-            } else {
-                writeln!(writer, "    mov{suffix} %{rax}, (%{ptr})")?;
-            }
+            writeln!(writer, "    {store}{suffix} %{rax}, (%{ptr})")?;
             reg_alloc.free_scratch(ptr);
         }
         MirInst::AtomicBinary {
@@ -48,6 +64,9 @@ pub(super) fn emit<W: Write>(
             value,
             ..
         } => {
+            // Every ordering takes the same locked sequence: the lock makes the
+            // read-modify-write atomic, and locked x86 instructions are full
+            // barriers, so acquire, release and seqcst need nothing more.
             let size = ty.size_bytes(pointer_width);
             let suffix = size_suffix_for(size);
             let rax = register_for_size("rax", size).ok_or_else(invalid_size)?;
@@ -110,6 +129,7 @@ pub(super) fn emit<W: Write>(
             desired,
             ..
         } => {
+            // Both orderings take the locked sequence, as for AtomicBinary.
             let size = ty.size_bytes(pointer_width);
             let suffix = size_suffix_for(size);
             let new = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
@@ -132,11 +152,15 @@ pub(super) fn emit<W: Write>(
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
         }
-        MirInst::Fence { ordering } => {
-            if *ordering == MemoryOrdering::SeqCst {
-                writeln!(writer, "    mfence")?;
-            }
-        }
+        MirInst::Fence { ordering } => match ordering {
+            MemoryOrdering::SeqCst => writeln!(writer, "    mfence")?,
+            // x86 TSO already keeps these orderings, and the MIR passes treat
+            // every fence as a barrier, so no instruction is needed.
+            MemoryOrdering::Relaxed
+            | MemoryOrdering::Acquire
+            | MemoryOrdering::Release
+            | MemoryOrdering::AcqRel => {}
+        },
         other => {
             return Err(LaminaError::ValidationError(format!(
                 "x86_64 backend does not support atomic instruction {other}"
@@ -208,6 +232,12 @@ fn size_suffix_for(size: usize) -> &'static str {
         4 => "l",
         _ => "q",
     }
+}
+
+fn unsupported_ordering(op: &str, ordering: &MemoryOrdering) -> LaminaError {
+    LaminaError::ValidationError(format!(
+        "x86_64 backend does not support {ordering} ordering for {op}"
+    ))
 }
 
 fn invalid_size() -> LaminaError {

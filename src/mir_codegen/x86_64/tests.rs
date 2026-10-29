@@ -1352,7 +1352,7 @@ entry:
  %qb = getfieldptr.struct { a: i64, b: i64 } %q, 1
  store.i64 %qa, 100
  store.i64 %qb, 7
- %r = call @c_pair(%q)
+ %r = call @c_pair(struct { a: i64, b: i64 } %q)
  ret.i64 %r
 }
 @export fn @send_spilled() -> i64 {
@@ -1362,7 +1362,7 @@ entry:
  %qb = getfieldptr.struct { a: i64, b: i64 } %q, 1
  store.i64 %qa, 100
  store.i64 %qb, 7
- %r = call @c_spilled(1, 2, 3, 4, 5, 6, %q)
+ %r = call @c_spilled(1, 2, 3, 4, 5, 6, struct { a: i64, b: i64 } %q)
  ret.i64 %r
 }
 "#;
@@ -1629,6 +1629,49 @@ fn atomic_loads_and_relaxed_stores_are_plain_moves() {
     assert!(!asm.contains("lock"), "{asm}");
     assert!(asm.contains("movq (%rax), %rax"), "{asm}");
     assert!(asm.contains("movq %rax, (%"), "{asm}");
+}
+
+#[test]
+fn each_memory_ordering_emits_the_instruction_x86_requires() {
+    let body = |op: &str| {
+        x86_assembly_for(&format!(
+            "fn @f(ptr %p) -> i64 {{\nentry:\n {op}\n ret.i64 0\n}}"
+        ))
+    };
+    let load = |o: &str| body(&format!("%a = atomic_load.i64 %p, {o}"));
+    assert_eq!(load("acquire"), load("relaxed"));
+    assert_eq!(load("seqcst"), load("relaxed"));
+
+    let store = |o: &str| body(&format!("atomic_store.i64 %p, 7, {o}"));
+    assert_eq!(store("release"), store("relaxed"));
+    assert!(
+        store("relaxed").contains("movq %rax, (%"),
+        "{}",
+        store("relaxed")
+    );
+    let seqcst = store("seqcst");
+    assert!(seqcst.contains("xchgq %rax, (%"), "{seqcst}");
+    assert!(!seqcst.contains("movq %rax, (%"), "{seqcst}");
+
+    let rmw = |o: &str| body(&format!("%a = atomic_add.i64 %p, 1, {o}"));
+    assert_eq!(rmw("relaxed"), rmw("seqcst"));
+    assert_eq!(rmw("acquire"), rmw("seqcst"));
+    assert_eq!(rmw("release"), rmw("seqcst"));
+    assert!(rmw("relaxed").contains("lock xaddq"), "{}", rmw("relaxed"));
+
+    let cas = |s: &str, f: &str| body(&format!("%a = atomic_cmpxchg.i64 %p, 1, 2, {s}, {f}"));
+    assert_eq!(cas("relaxed", "relaxed"), cas("seqcst", "seqcst"));
+    assert_eq!(cas("acqrel", "acquire"), cas("seqcst", "seqcst"));
+    assert!(cas("relaxed", "relaxed").contains("lock cmpxchgq"));
+
+    let plain = body("%a = atomic_load.i64 %p, relaxed");
+    let fence = |o: &str| body(&format!("fence {o}"));
+    for o in ["relaxed", "acquire", "release", "acqrel"] {
+        assert!(!fence(o).contains("mfence"), "{}", fence(o));
+    }
+    assert_eq!(fence("acquire"), fence("relaxed"));
+    assert!(fence("seqcst").contains("mfence"), "{}", fence("seqcst"));
+    assert!(!plain.contains("mfence"), "{plain}");
 }
 
 #[test]

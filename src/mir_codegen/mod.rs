@@ -189,6 +189,24 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             ),
         )));
     }
+    if !matches!(
+        target_arch,
+        TargetArchitecture::X86_64 | TargetArchitecture::I686
+    ) {
+        if let Some(name) = module
+            .functions
+            .iter()
+            .filter(|(_, function)| function.sig.naked)
+            .map(|(name, _)| name)
+            .min()
+        {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "@naked function '{name}' is not supported on target {target_arch:?}-{target_os:?}; only x86_64 Linux honours @naked"
+                ),
+            )));
+        }
+    }
     let effective_caps = {
         #[cfg(feature = "nightly")]
         {
@@ -724,6 +742,27 @@ mod atomic_target_tests {
         let message = err.to_string();
         assert!(message.contains("atomic_add"), "{message}");
         assert!(message.contains("WASM"), "{message}");
+    }
+
+    #[test]
+    fn naked_is_refused_on_targets_that_do_not_honour_it() {
+        let ir = parse_module(
+            "@naked\nfn @isr() -> void {\nentry:\n    asm.void \"cli; hlt\"\n    unreachable\n}\n",
+        )
+        .expect("parse naked");
+        let mir = codegen::from_ir(&ir, "naked").expect("lower naked");
+        for (arch, os) in [
+            (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
+            (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux),
+            (TargetArchitecture::Wasm32, TargetOperatingSystem::Wasi),
+        ] {
+            let mut output = Vec::new();
+            let err = generate_mir_to_target(&mir, &mut output, arch, os, 1)
+                .expect_err("naked must be refused");
+            let message = err.to_string();
+            assert!(message.contains("@naked function 'isr'"), "{message}");
+            assert!(message.contains(&format!("{arch:?}-{os:?}")), "{message}");
+        }
     }
 }
 
