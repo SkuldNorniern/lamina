@@ -1,4 +1,5 @@
 global $tbl: [4 x i64] = [10, 20, 30, 40]
+type !Quad = struct { a: i64, b: i64, c: i64, d: i64 }
 
 fn @setit(ptr %p) -> i64 {
   entry:
@@ -9,7 +10,7 @@ fn @setit(ptr %p) -> i64 {
 
 fn @fieldset(ptr %p) -> i64 {
   entry:
-    %fp = getfieldptr %p, 1
+    %fp = getfieldptr.!Quad %p, 1
     store.i64 %fp, 7
     %v = load.i64 %fp
     ret.i64 %v
@@ -67,13 +68,13 @@ fn @read_global_elem() -> i64 {
 fn @main() -> i64 {
   entry:
     %s = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }
-    %f0 = getfieldptr %s, 0
+    %f0 = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %s, 0
     store.i64 %f0, 1
-    %f1 = getfieldptr %s, 1
+    %f1 = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %s, 1
     store.i64 %f1, 2
-    %f2 = getfieldptr %s, 2
+    %f2 = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %s, 2
     store.i64 %f2, 3
-    %f3 = getfieldptr %s, 3
+    %f3 = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %s, 3
     store.i64 %f3, 4
 
     %r0 = call @setit(%s)

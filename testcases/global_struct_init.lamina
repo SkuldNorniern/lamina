@@ -12,18 +12,18 @@ global $mixed: struct { k: i8, v: f64 } = {65, 2.5}
 
 fn @main() -> i64 {
 entry:
-  %f0 = getfieldptr $pair, 0
+  %f0 = getfieldptr.!Pair $pair, 0
   %a = load.i32 %f0
   %aw = extend.i32.i64 %a
   call @print_i64(%aw)
-  %f1 = getfieldptr $pair, 1
+  %f1 = getfieldptr.!Pair $pair, 1
   %b = load.i64 %f1
   call @print_i64(%b)
-  %g0 = getfieldptr $mixed, 0
+  %g0 = getfieldptr.struct { k: i8, v: f64 } $mixed, 0
   %k = load.i8 %g0
   %kw = extend.i8.i64 %k
   call @print_i64(%kw)
-  %g1 = getfieldptr $mixed, 1
+  %g1 = getfieldptr.struct { k: i8, v: f64 } $mixed, 1
   %v = load.f64 %g1
   call @print_f64(%v)
   ret.i64 0

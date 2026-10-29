@@ -4,13 +4,13 @@ type !Pair = struct { x: i64, y: i64 }
 fn @big(i64 %p0, i64 %p1, f64 %f0, !Pair %pr, i64 %p2, i64 %p3, f64 %f1, !Quad %q, i64 %p4, i64 %p5, i64 %p6) -> !Quad {
 entry:
   %out = stackalloc.!Quad
-  %px = getfieldptr %pr, 0
+  %px = getfieldptr.!Pair %pr, 0
   %x = load.i64 %px
-  %py = getfieldptr %pr, 1
+  %py = getfieldptr.!Pair %pr, 1
   %y = load.i64 %py
-  %qa = getfieldptr %q, 0
+  %qa = getfieldptr.!Quad %q, 0
   %a = load.i64 %qa
-  %qd = getfieldptr %q, 3
+  %qd = getfieldptr.!Quad %q, 3
   %d = load.i64 %qd
   %s0 = add.i64 %p0, %p1
   %s1 = add.i64 %s0, %p2
@@ -25,13 +25,13 @@ entry:
   %fs = add.f64 %f0, %f1
   %fi = fptoint.f64.i64 %fs
   %s10 = add.i64 %s9, %fi
-  %o0 = getfieldptr %out, 0
+  %o0 = getfieldptr.!Quad %out, 0
   store.i64 %o0, %s10
-  %o1 = getfieldptr %out, 1
+  %o1 = getfieldptr.!Quad %out, 1
   store.i64 %o1, %x
-  %o2 = getfieldptr %out, 2
+  %o2 = getfieldptr.!Quad %out, 2
   store.i64 %o2, %a
-  %o3 = getfieldptr %out, 3
+  %o3 = getfieldptr.!Quad %out, 3
   store.i64 %o3, %fi
   ret.ptr %out
 }
@@ -39,27 +39,27 @@ entry:
 fn @main() -> i64 {
 entry:
   %pr = stackalloc.!Pair
-  %px = getfieldptr %pr, 0
+  %px = getfieldptr.!Pair %pr, 0
   store.i64 %px, 100
-  %py = getfieldptr %pr, 1
+  %py = getfieldptr.!Pair %pr, 1
   store.i64 %py, 200
   %q = stackalloc.!Quad
-  %qa = getfieldptr %q, 0
+  %qa = getfieldptr.!Quad %q, 0
   store.i64 %qa, 1
-  %qb = getfieldptr %q, 1
+  %qb = getfieldptr.!Quad %q, 1
   store.i64 %qb, 2
-  %qc = getfieldptr %q, 2
+  %qc = getfieldptr.!Quad %q, 2
   store.i64 %qc, 3
-  %qd = getfieldptr %q, 3
+  %qd = getfieldptr.!Quad %q, 3
   store.i64 %qd, 4
   %r = call @big(1, 2, 1.5, %pr, 3, 4, 2.5, %q, 5, 6, 7)
-  %r0 = getfieldptr %r, 0
+  %r0 = getfieldptr.!Quad %r, 0
   %v0 = load.i64 %r0
   call @print_i64(%v0)
-  %r1 = getfieldptr %r, 1
+  %r1 = getfieldptr.!Quad %r, 1
   %v1 = load.i64 %r1
   call @print_i64(%v1)
-  %r3 = getfieldptr %r, 3
+  %r3 = getfieldptr.!Quad %r, 3
   %v3 = load.i64 %r3
   call @print_i64(%v3)
   ret.i64 0

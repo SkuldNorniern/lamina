@@ -11,8 +11,8 @@ fn @test_point2d_operations() -> i64 {
     %point = stackalloc.struct { x: i32, y: i32 }
 
     # Get field pointers
-    %x_ptr = getfieldptr %point, 0
-    %y_ptr = getfieldptr %point, 1
+    %x_ptr = getfieldptr.struct { x: i32, y: i32 } %point, 0
+    %y_ptr = getfieldptr.struct { x: i32, y: i32 } %point, 1
 
     # Store values
     store.i32 %x_ptr, 10
@@ -40,9 +40,9 @@ fn @test_point3d_operations() -> i64 {
     %point = stackalloc.struct { x: i64, y: i64, z: i64 }
 
     # Get field pointers
-    %x_ptr = getfieldptr %point, 0
-    %y_ptr = getfieldptr %point, 1
-    %z_ptr = getfieldptr %point, 2
+    %x_ptr = getfieldptr.struct { x: i64, y: i64, z: i64 } %point, 0
+    %y_ptr = getfieldptr.struct { x: i64, y: i64, z: i64 } %point, 1
+    %z_ptr = getfieldptr.struct { x: i64, y: i64, z: i64 } %point, 2
 
     # Store values
     store.i64 %x_ptr, 3
@@ -71,9 +71,9 @@ fn @test_person_operations() -> i64 {
     %person = stackalloc.struct { name: [10 x i8], age: u8, height: f32 }
 
     # Get field pointers
-    %name_ptr = getfieldptr %person, 0
-    %age_ptr = getfieldptr %person, 1
-    %height_ptr = getfieldptr %person, 2
+    %name_ptr = getfieldptr.struct { name: [10 x i8], age: u8, height: f32 } %person, 0
+    %age_ptr = getfieldptr.struct { name: [10 x i8], age: u8, height: f32 } %person, 1
+    %height_ptr = getfieldptr.struct { name: [10 x i8], age: u8, height: f32 } %person, 2
 
     # Store name (first 3 characters)
     %name0 = getelem.i8 %name_ptr, 0
@@ -107,9 +107,9 @@ fn @test_complex_data_operations() -> i64 {
     %data = stackalloc.struct { id: u32, value: f64, active: bool }
 
     # Get field pointers
-    %id_ptr = getfieldptr %data, 0
-    %value_ptr = getfieldptr %data, 1
-    %active_ptr = getfieldptr %data, 2
+    %id_ptr = getfieldptr.struct { id: u32, value: f64, active: bool } %data, 0
+    %value_ptr = getfieldptr.struct { id: u32, value: f64, active: bool } %data, 1
+    %active_ptr = getfieldptr.struct { id: u32, value: f64, active: bool } %data, 2
 
     # Store values
     store.u32 %id_ptr, 12345
@@ -135,13 +135,13 @@ fn @test_mixed_types_operations() -> i64 {
     %mixed = stackalloc.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 }
 
     # Get all field pointers
-    %a_ptr = getfieldptr %mixed, 0  # i8
-    %b_ptr = getfieldptr %mixed, 1  # u16
-    %c_ptr = getfieldptr %mixed, 2  # i32
-    %d_ptr = getfieldptr %mixed, 3  # u64
-    %e_ptr = getfieldptr %mixed, 4  # f32
-    %f_ptr = getfieldptr %mixed, 5  # bool
-    %g_ptr = getfieldptr %mixed, 6  # i8
+    %a_ptr = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 } %mixed, 0  # i8
+    %b_ptr = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 } %mixed, 1  # u16
+    %c_ptr = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 } %mixed, 2  # i32
+    %d_ptr = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 } %mixed, 3  # u64
+    %e_ptr = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 } %mixed, 4  # f32
+    %f_ptr = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 } %mixed, 5  # bool
+    %g_ptr = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 } %mixed, 6  # i8
 
     # Store test values
     store.i8 %a_ptr, 10
@@ -186,14 +186,14 @@ fn @test_struct_copy_operations() -> i64 {
     %point2 = stackalloc.struct { x: i32, y: i32 }
 
     # Initialize point1
-    %p1_x_ptr = getfieldptr %point1, 0
-    %p1_y_ptr = getfieldptr %point1, 1
+    %p1_x_ptr = getfieldptr.struct { x: i32, y: i32 } %point1, 0
+    %p1_y_ptr = getfieldptr.struct { x: i32, y: i32 } %point1, 1
     store.i32 %p1_x_ptr, 5
     store.i32 %p1_y_ptr, 10
 
     # Copy values to point2
-    %p2_x_ptr = getfieldptr %point2, 0
-    %p2_y_ptr = getfieldptr %point2, 1
+    %p2_x_ptr = getfieldptr.struct { x: i32, y: i32 } %point2, 0
+    %p2_y_ptr = getfieldptr.struct { x: i32, y: i32 } %point2, 1
 
     %x_val = load.i32 %p1_x_ptr
     %y_val = load.i32 %p1_y_ptr
@@ -225,18 +225,18 @@ fn @test_nested_struct_operations() -> i64 {
     %line = stackalloc.struct { start: struct { x: i32, y: i32 }, end: struct { x: i32, y: i32 } }
 
     # Get pointers to nested structs
-    %start_ptr = getfieldptr %line, 0
-    %end_ptr = getfieldptr %line, 1
+    %start_ptr = getfieldptr.struct { start: struct { x: i32, y: i32 }, end: struct { x: i32, y: i32 } } %line, 0
+    %end_ptr = getfieldptr.struct { start: struct { x: i32, y: i32 }, end: struct { x: i32, y: i32 } } %line, 1
 
     # Set start point (1, 2)
-    %start_x_ptr = getfieldptr %start_ptr, 0
-    %start_y_ptr = getfieldptr %start_ptr, 1
+    %start_x_ptr = getfieldptr.struct { x: i32, y: i32 } %start_ptr, 0
+    %start_y_ptr = getfieldptr.struct { x: i32, y: i32 } %start_ptr, 1
     store.i32 %start_x_ptr, 1
     store.i32 %start_y_ptr, 2
 
     # Set end point (4, 6)
-    %end_x_ptr = getfieldptr %end_ptr, 0
-    %end_y_ptr = getfieldptr %end_ptr, 1
+    %end_x_ptr = getfieldptr.struct { x: i32, y: i32 } %end_ptr, 0
+    %end_y_ptr = getfieldptr.struct { x: i32, y: i32 } %end_ptr, 1
     store.i32 %end_x_ptr, 4
     store.i32 %end_y_ptr, 6
 
@@ -270,20 +270,20 @@ fn @test_struct_array_operations() -> i64 {
     %point2 = getelem.ptr %points, 2
 
     # Set point 0: (1, 1)
-    %p0_x_ptr = getfieldptr %point0, 0
-    %p0_y_ptr = getfieldptr %point0, 1
+    %p0_x_ptr = getfieldptr.struct { x: i32, y: i32 } %point0, 0
+    %p0_y_ptr = getfieldptr.struct { x: i32, y: i32 } %point0, 1
     store.i32 %p0_x_ptr, 1
     store.i32 %p0_y_ptr, 1
 
     # Set point 1: (2, 3)
-    %p1_x_ptr = getfieldptr %point1, 0
-    %p1_y_ptr = getfieldptr %point1, 1
+    %p1_x_ptr = getfieldptr.struct { x: i32, y: i32 } %point1, 0
+    %p1_y_ptr = getfieldptr.struct { x: i32, y: i32 } %point1, 1
     store.i32 %p1_x_ptr, 2
     store.i32 %p1_y_ptr, 3
 
     # Set point 2: (4, 7)
-    %p2_x_ptr = getfieldptr %point2, 0
-    %p2_y_ptr = getfieldptr %point2, 1
+    %p2_x_ptr = getfieldptr.struct { x: i32, y: i32 } %point2, 0
+    %p2_y_ptr = getfieldptr.struct { x: i32, y: i32 } %point2, 1
     store.i32 %p2_x_ptr, 4
     store.i32 %p2_y_ptr, 7
 

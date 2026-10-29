@@ -12,8 +12,8 @@ fn @free(ptr %p) -> void
 fn @create_person(i64 %id, i64 %age) -> ptr {
   entry:
     %person = stackalloc.struct { id: i64, age: i64, name: ptr }
-    %id_ptr = getfieldptr %person, 0
-    %age_ptr = getfieldptr %person, 1
+    %id_ptr = getfieldptr.struct { id: i64, age: i64, name: ptr } %person, 0
+    %age_ptr = getfieldptr.struct { id: i64, age: i64, name: ptr } %person, 1
 
     store.i64 %id_ptr, %id
     store.i64 %age_ptr, %age

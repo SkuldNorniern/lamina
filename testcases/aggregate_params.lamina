@@ -8,8 +8,8 @@ type !Three = struct { a: i32, b: i32, c: i32 }
 
 fn @sum_pair(!Pair %p) -> i64 {
   entry:
-    %ap = getfieldptr %p, 0
-    %bp = getfieldptr %p, 1
+    %ap = getfieldptr.!Pair %p, 0
+    %bp = getfieldptr.!Pair %p, 1
     %a = load.i64 %ap
     %b = load.i64 %bp
     %s = add.i64 %a, %b
@@ -18,8 +18,8 @@ fn @sum_pair(!Pair %p) -> i64 {
 
 fn @sum_small(!Small %p) -> i64 {
   entry:
-    %ap = getfieldptr %p, 0
-    %bp = getfieldptr %p, 1
+    %ap = getfieldptr.!Small %p, 0
+    %bp = getfieldptr.!Small %p, 1
     %a = load.i32 %ap
     %b = load.i32 %bp
     %s = add.i32 %a, %b
@@ -29,9 +29,9 @@ fn @sum_small(!Small %p) -> i64 {
 
 fn @sum_three(!Three %p) -> i64 {
   entry:
-    %ap = getfieldptr %p, 0
-    %bp = getfieldptr %p, 1
-    %cp = getfieldptr %p, 2
+    %ap = getfieldptr.!Three %p, 0
+    %bp = getfieldptr.!Three %p, 1
+    %cp = getfieldptr.!Three %p, 2
     %a = load.i32 %ap
     %b = load.i32 %bp
     %c = load.i32 %cp
@@ -48,8 +48,8 @@ fn @spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, !Pair %p) -> i64 {
     %ef = add.i64 %e, %f
     %abcd = add.i64 %ab, %cd
     %scalars = add.i64 %abcd, %ef
-    %ap = getfieldptr %p, 0
-    %bp = getfieldptr %p, 1
+    %ap = getfieldptr.!Pair %p, 0
+    %bp = getfieldptr.!Pair %p, 1
     %x = load.i64 %ap
     %y = load.i64 %bp
     %xy = add.i64 %x, %y
@@ -60,8 +60,8 @@ fn @spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, !Pair %p) -> i64 {
 fn @make_pair(i64 %x) -> !Pair {
   entry:
     %p = stackalloc.!Pair
-    %pa = getfieldptr %p, 0
-    %pb = getfieldptr %p, 1
+    %pa = getfieldptr.!Pair %p, 0
+    %pb = getfieldptr.!Pair %p, 1
     store.i64 %pa, %x
     %y = add.i64 %x, 1
     store.i64 %pb, %y
@@ -71,8 +71,8 @@ fn @make_pair(i64 %x) -> !Pair {
 fn @make_small(i32 %x) -> !Small {
   entry:
     %p = stackalloc.!Small
-    %pa = getfieldptr %p, 0
-    %pb = getfieldptr %p, 1
+    %pa = getfieldptr.!Small %p, 0
+    %pb = getfieldptr.!Small %p, 1
     store.i32 %pa, %x
     store.i32 %pb, 9
     ret.ptr %p
@@ -81,25 +81,25 @@ fn @make_small(i32 %x) -> !Small {
 fn @main() -> i64 {
   entry:
     %pair = stackalloc.!Pair
-    %pair_a = getfieldptr %pair, 0
-    %pair_b = getfieldptr %pair, 1
+    %pair_a = getfieldptr.!Pair %pair, 0
+    %pair_b = getfieldptr.!Pair %pair, 1
     store.i64 %pair_a, 17
     store.i64 %pair_b, 25
     %sum = call @sum_pair(%pair)
     call @print_i64(%sum)
 
     %small = stackalloc.!Small
-    %small_a = getfieldptr %small, 0
-    %small_b = getfieldptr %small, 1
+    %small_a = getfieldptr.!Small %small, 0
+    %small_b = getfieldptr.!Small %small, 1
     store.i32 %small_a, 3
     store.i32 %small_b, 4
     %packed = call @sum_small(%small)
     call @print_i64(%packed)
 
     %three = stackalloc.!Three
-    %three_a = getfieldptr %three, 0
-    %three_b = getfieldptr %three, 1
-    %three_c = getfieldptr %three, 2
+    %three_a = getfieldptr.!Three %three, 0
+    %three_b = getfieldptr.!Three %three, 1
+    %three_c = getfieldptr.!Three %three, 2
     store.i32 %three_a, 1
     store.i32 %three_b, 2
     store.i32 %three_c, 3

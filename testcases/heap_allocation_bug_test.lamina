@@ -1,3 +1,5 @@
+type !Words = struct { x: i32, y: i32 }
+
 @extern
 fn @malloc(i64 %n) -> ptr
 @extern
@@ -57,8 +59,8 @@ fn @test_heap_struct() -> i64 {
     %heap_struct = call @malloc(16)
 
     # Access struct fields
-    %ptr_x = getfieldptr %heap_struct, 0
-    %ptr_y = getfieldptr %heap_struct, 1
+    %ptr_x = getfieldptr.!Words %heap_struct, 0
+    %ptr_y = getfieldptr.!Words %heap_struct, 1
 
     store.i32 %ptr_x, 111
     store.i32 %ptr_y, 222

@@ -12,8 +12,8 @@ fn @set_word(ptr %p, i64 %v) -> i64 {
 fn @escape_call() -> i64 {
   entry:
     %s = stackalloc.struct { a: i64, b: i64 }
-    %a = getfieldptr %s, 0
-    %b = getfieldptr %s, 1
+    %a = getfieldptr.struct { a: i64, b: i64 } %s, 0
+    %b = getfieldptr.struct { a: i64, b: i64 } %s, 1
     store.i64 %a, 1
     store.i64 %b, 2
     %r = call @set_word(%b, 40)
@@ -29,8 +29,8 @@ fn @escape_store() -> i64 {
   entry:
     %s = stackalloc.struct { a: i64, b: i64 }
     %holder = stackalloc.ptr
-    %a = getfieldptr %s, 0
-    %b = getfieldptr %s, 1
+    %a = getfieldptr.struct { a: i64, b: i64 } %s, 0
+    %b = getfieldptr.struct { a: i64, b: i64 } %s, 1
     store.i64 %a, 5
     store.i64 %b, 6
     store.ptr %holder, %b
@@ -104,8 +104,8 @@ fn @overlap() -> i64 {
 fn @volatile_field() -> i64 {
   entry:
     %s = stackalloc.struct { a: i64, b: i64 }
-    %a = getfieldptr %s, 0
-    %b = getfieldptr %s, 1
+    %a = getfieldptr.struct { a: i64, b: i64 } %s, 0
+    %b = getfieldptr.struct { a: i64, b: i64 } %s, 1
     store.i64 %a, 3
     volatile store.i64 %b, 9
     %av = load.i64 %a
@@ -119,8 +119,8 @@ fn @volatile_field() -> i64 {
 fn @split_fields() -> i64 {
   entry:
     %s = stackalloc.struct { x: i64, y: i64 }
-    %x = getfieldptr %s, 0
-    %y = getfieldptr %s, 1
+    %x = getfieldptr.struct { x: i64, y: i64 } %s, 0
+    %y = getfieldptr.struct { x: i64, y: i64 } %s, 1
     store.i64 %x, 0
     store.i64 %y, 0
     %i = add.i64 0, 0
@@ -152,8 +152,8 @@ fn @split_fields() -> i64 {
 fn @bool_field() -> i64 {
   entry:
     %s = stackalloc.struct { flag: bool, count: i64 }
-    %f = getfieldptr %s, 0
-    %c = getfieldptr %s, 1
+    %f = getfieldptr.struct { flag: bool, count: i64 } %s, 0
+    %c = getfieldptr.struct { flag: bool, count: i64 } %s, 1
     store.bool %f, true
     store.i64 %c, 4
     %fv = load.bool %f

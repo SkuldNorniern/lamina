@@ -15,9 +15,9 @@ fn @test_packed_struct() -> i64 {
     # Test with uniform i64 fields to expose offset bug
     %packed = stackalloc.struct { x: i64, y: i64, z: i64 }
 
-    %ptr_x = getfieldptr %packed, 0  # Should be at offset 0
-    %ptr_y = getfieldptr %packed, 1  # Should be at offset 8 (not 8 - this works)
-    %ptr_z = getfieldptr %packed, 2  # Should be at offset 16 (not 16 - this works)
+    %ptr_x = getfieldptr.struct { x: i64, y: i64, z: i64 } %packed, 0  # Should be at offset 0
+    %ptr_y = getfieldptr.struct { x: i64, y: i64, z: i64 } %packed, 1  # Should be at offset 8 (not 8 - this works)
+    %ptr_z = getfieldptr.struct { x: i64, y: i64, z: i64 } %packed, 2  # Should be at offset 16 (not 16 - this works)
 
     store.i64 %ptr_x, 1
     store.i64 %ptr_y, 2
