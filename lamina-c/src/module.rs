@@ -138,7 +138,7 @@ unsafe fn compile_to_buf(
         let target = match tgt_string {
             Some(ref s) => Target::from_str(s)
                 .map_err(|e| LaminaError::ValidationError(format!("invalid target: {e}")))?,
-            None => Target::detect_host(),
+            None => Target::detect_host().map_err(LaminaError::ValidationError)?,
         };
 
         let mut asm: Vec<u8> = Vec::new();

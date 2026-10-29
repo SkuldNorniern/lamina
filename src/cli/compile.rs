@@ -47,10 +47,9 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
 
     let _exe_extension = if cfg!(windows) { ".exe" } else { "" };
 
-    let target_for_extensions = if let Some(target_str) = &options.target_arch {
-        Target::from_str(target_str).unwrap_or_else(|_| Target::detect_host())
-    } else {
-        Target::detect_host()
+    let target_for_extensions = match &options.target_arch {
+        Some(target_str) => Target::from_str(target_str).or_else(|_| Target::detect_host())?,
+        None => Target::detect_host()?,
     };
 
     let output_stem = if let Some(out_path) = &options.output_file {
@@ -161,12 +160,12 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         if options.verbose {
             println!("[VERBOSE] Using explicit target: {target_str}");
         }
-        Target::from_str(target_str).unwrap_or_else(|e| {
+        Target::from_str(target_str).or_else(|e| {
             eprintln!("Warning: Invalid target '{target_str}': {e}. Using host target.");
             Target::detect_host()
-        })
+        })?
     } else {
-        let default_target = Target::detect_host();
+        let default_target = Target::detect_host()?;
         if options.verbose {
             println!("[VERBOSE] Using host target: {default_target}");
         }

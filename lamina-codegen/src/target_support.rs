@@ -15,6 +15,7 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
         TargetArchitecture::Amdgcn => os == TargetOperatingSystem::AmdHsa,
         TargetArchitecture::X86_64 => os_supported_for_x86_64(os),
         TargetArchitecture::Aarch64 => os_supported_for_aarch64(os),
+        #[cfg(feature = "nightly")]
         TargetArchitecture::Arx64 => os_supported_for_arx64(os),
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => os_supported_for_riscv(os),
         TargetArchitecture::LoongArch64 => os == TargetOperatingSystem::Linux,
@@ -47,8 +48,7 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
         }
         TargetArchitecture::PowerPC64
         | TargetArchitecture::PowerPC64Be
-        | TargetArchitecture::Arm32
-        | TargetArchitecture::Unknown => false,
+        | TargetArchitecture::Arm32 => false,
         #[cfg(feature = "nightly")]
         TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => false,
     }
@@ -97,6 +97,7 @@ fn os_supported_for_aarch64(os: TargetOperatingSystem) -> bool {
 }
 
 /// Returns true if the OS is supported for ARX64 code generation.
+#[cfg(feature = "nightly")]
 fn os_supported_for_arx64(os: TargetOperatingSystem) -> bool {
     matches!(os, TargetOperatingSystem::Unknown)
 }
@@ -281,7 +282,7 @@ mod tests {
     #[test]
     fn test_unsupported_arch() {
         assert!(!is_assembly_supported(
-            TargetArchitecture::Unknown,
+            TargetArchitecture::Arm32,
             TargetOperatingSystem::Linux
         ));
     }

@@ -43,7 +43,7 @@ mod tests {
 
     #[test]
     fn test_from_str_roundtrip() {
-        let host = Target::detect_host();
+        let host = Target::detect_host().expect("host is a supported target");
         let str_repr = host.to_str();
         let parsed_back = Target::from_str(&str_repr).expect("Valid target should parse");
 
@@ -56,24 +56,24 @@ mod tests {
     #[test]
     fn test_detect_functions_consistency() {
         // Test that detect_host uses the same logic as the separate functions
-        let combined = Target::detect_host();
+        let combined = Target::detect_host().expect("host is a supported target");
         let arch_str = detect_host_architecture_only();
         let os_str = detect_host_os();
 
         assert_eq!(
             combined.architecture,
-            TargetArchitecture::from_str(arch_str).unwrap_or(TargetArchitecture::Unknown)
+            TargetArchitecture::from_str(arch_str).expect("host arch parses")
         );
         assert_eq!(
             combined.operating_system,
-            TargetOperatingSystem::from_str(os_str).unwrap_or(TargetOperatingSystem::Unknown)
+            TargetOperatingSystem::from_str(os_str).expect("host os parses")
         );
     }
 
     #[cfg(feature = "nightly")]
     #[test]
     fn test_target_simd_capabilities() {
-        let target = Target::detect_host();
+        let target = Target::detect_host().expect("host is a supported target");
         let caps = target.simd_capabilities();
         // At minimum, we should know if SIMD is supported or not
         assert!(caps.max_vector_width <= 2048);

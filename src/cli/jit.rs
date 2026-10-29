@@ -120,7 +120,7 @@ pub fn handle_jit_compilation(
             LaminaError::ValidationError(format!("Invalid target '{target_str}': {e}"))
         })?
     } else {
-        Target::detect_host()
+        Target::detect_host().map_err(LaminaError::ValidationError)?
     };
 
     if target.architecture == TargetArchitecture::X86_64 {

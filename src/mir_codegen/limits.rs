@@ -180,17 +180,20 @@ mod tests {
             let mut module = MirModule::new("aggregates");
             module.add_function(func);
 
-            for arch in [
+            #[cfg_attr(not(feature = "nightly"), allow(unused_mut))]
+            let mut arches = vec![
                 TargetArchitecture::X86_64,
                 TargetArchitecture::Aarch64,
                 TargetArchitecture::Riscv32,
                 TargetArchitecture::Riscv64,
-                TargetArchitecture::Arx64,
                 TargetArchitecture::LoongArch64,
                 TargetArchitecture::PowerPC64,
                 TargetArchitecture::Wasm32,
                 TargetArchitecture::Wasm64,
-            ] {
+            ];
+            #[cfg(feature = "nightly")]
+            arches.push(TargetArchitecture::Arx64);
+            for arch in arches {
                 let classifies = CapabilitySet::for_architecture(arch)
                     .supports(&CodegenCapability::AggregateArguments);
                 match (classifies, validate_module_call_parameters(&module, arch)) {

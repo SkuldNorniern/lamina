@@ -1,6 +1,7 @@
 //! MIR-based code generation for multiple target architectures.
 
 pub mod amdgpu;
+#[cfg(feature = "nightly")]
 pub mod arx64;
 pub mod assemble;
 pub mod capability;
@@ -265,6 +266,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 pointer_width,
             )?;
         }
+        #[cfg(feature = "nightly")]
         TargetArchitecture::Arx64 => {
             arx64::generate_mir_arx64_with_units_and_settings(
                 module,
@@ -389,7 +391,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         }
         #[cfg(feature = "nightly")]
         TargetArchitecture::Lisa => return Err(not_implemented(target_arch, target_os)),
-        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn | TargetArchitecture::Unknown => {
+        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn => {
             return Err(LaminaError::ValidationError(format!(
                 "Unsupported target architecture: {target_arch:?}"
             )));

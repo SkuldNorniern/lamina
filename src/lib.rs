@@ -21,7 +21,7 @@
 //! use std::io::Write;
 //!
 //! // Detect the host architecture
-//! let target = Target::detect_host();
+//! let target = Target::detect_host().expect("host is a supported target");
 //! println!("Host target: {}", target);
 //! println!("Architecture: {}", target.architecture);
 //!
@@ -392,7 +392,9 @@ macro_rules! lamina {
             let mir_module = $crate::mir::codegen::from_ir_for_target(
                 &ir_module,
                 "lamina_macro",
-                $crate::target::Target::detect_host().data_layout(),
+                $crate::target::Target::detect_host()
+                    .map_err(|e| format!("lamina!: Failed to lower to MIR: {}", e))?
+                    .data_layout(),
             )
                 .map_err(|e| format!("lamina!: Failed to lower to MIR: {}", e))?;
 
@@ -494,7 +496,9 @@ pub fn compile_lamina_ir_to_assembly<W: Write>(
     output_asm: &mut W,
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
-    let target = Target::detect_host().to_str();
+    let target = Target::detect_host()
+        .map_err(LaminaError::ValidationError)?
+        .to_str();
     compile_lamina_ir_to_target_assembly(input_ir, output_asm, &target, codegen_units)
 }
 
@@ -532,7 +536,6 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     match target_obj.architecture {
         TargetArchitecture::X86_64
         | TargetArchitecture::Aarch64
-        | TargetArchitecture::Arx64
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Riscv32
@@ -551,7 +554,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
             )?;
         }
         #[cfg(feature = "nightly")]
-        TargetArchitecture::Riscv128 => {
+        TargetArchitecture::Riscv128 | TargetArchitecture::Arx64 => {
             mir_codegen::generate_mir_to_target(
                 &mir_module,
                 output_asm,

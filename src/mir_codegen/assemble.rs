@@ -446,15 +446,13 @@ fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
         // The Cortex-M toolchain is `arm-none-eabi`, not a Linux GNU triple.
         TargetArchitecture::Thumbv6m
         | TargetArchitecture::Thumbv7m
-        | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Nvptx64
-        | TargetArchitecture::Amdgcn
-        | TargetArchitecture::Unknown => None,
+        | TargetArchitecture::Amdgcn => None,
         #[cfg(feature = "nightly")]
-        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => None,
+        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => None,
     }
 }
 
@@ -479,16 +477,16 @@ pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
         TargetArchitecture::I686 => cfg!(any(target_arch = "x86", target_arch = "x86_64")),
         TargetArchitecture::Thumbv6m
         | TargetArchitecture::Thumbv7m
-        | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Riscv32
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Nvptx64
-        | TargetArchitecture::Amdgcn
-        | TargetArchitecture::Unknown => false,
+        | TargetArchitecture::Amdgcn => false,
         #[cfg(feature = "nightly")]
-        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => false,
+        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {
+            false
+        }
     }
 }
 

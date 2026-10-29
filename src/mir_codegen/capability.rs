@@ -39,8 +39,10 @@
 
 use std::{collections::HashSet, fmt};
 
+#[cfg(feature = "nightly")]
+use super::arx64;
 use super::{
-    Codegen, arm, arm::aarch64::AArch64Codegen, arx64, i686, loongarch64, mips64,
+    Codegen, arm, arm::aarch64::AArch64Codegen, i686, loongarch64, mips64,
     powerpc::powerpc64::Ppc64Codegen, riscv::RiscVCodegen, s390x, wasm::WasmCodegen,
     x86_64::X86Codegen,
 };
@@ -272,6 +274,7 @@ impl CapabilitySet {
         match arch {
             TargetArchitecture::X86_64 => <X86Codegen<'static> as Codegen>::capabilities(),
             TargetArchitecture::Aarch64 => <AArch64Codegen<'static> as Codegen>::capabilities(),
+            #[cfg(feature = "nightly")]
             TargetArchitecture::Arx64 => arx64::capabilities(),
             TargetArchitecture::LoongArch64 => loongarch64::capabilities(),
             TargetArchitecture::S390x => s390x::capabilities(),
@@ -301,7 +304,7 @@ impl CapabilitySet {
             TargetArchitecture::Thumbv6m | TargetArchitecture::Thumbv7m => {
                 arm::cortexm::capabilities()
             }
-            TargetArchitecture::Arm32 | TargetArchitecture::Unknown => Self::new(),
+            TargetArchitecture::Arm32 => Self::new(),
             #[cfg(feature = "nightly")]
             TargetArchitecture::Lisa => Self::new(),
         }

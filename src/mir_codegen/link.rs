@@ -321,7 +321,6 @@ fn build_arch_emulation_flags(
             args.push("elf_i386".to_string());
         }
         TargetArchitecture::PowerPC64
-        | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Armv7
         | TargetArchitecture::Thumbv6m
@@ -329,10 +328,9 @@ fn build_arch_emulation_flags(
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Nvptx64
-        | TargetArchitecture::Amdgcn
-        | TargetArchitecture::Unknown => {}
+        | TargetArchitecture::Amdgcn => {}
         #[cfg(feature = "nightly")]
-        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {}
+        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {}
     }
 
     args
@@ -401,16 +399,16 @@ fn build_dynamic_linker_arg(
         TargetArchitecture::Mips64 | TargetArchitecture::Mips64El => "/lib64/ld.so.1",
         TargetArchitecture::Thumbv6m
         | TargetArchitecture::Thumbv7m
-        | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::PowerPC64
         | TargetArchitecture::Nvptx64
-        | TargetArchitecture::Amdgcn
-        | TargetArchitecture::Unknown => return Vec::new(),
+        | TargetArchitecture::Amdgcn => return Vec::new(),
         #[cfg(feature = "nightly")]
-        TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => return Vec::new(),
+        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {
+            return Vec::new();
+        }
     };
 
     vec!["--dynamic-linker".to_string(), interpreter.to_string()]

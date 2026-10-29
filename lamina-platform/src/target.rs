@@ -150,16 +150,20 @@ impl Target {
     ///
     /// ```
     /// use lamina_platform::Target;
-    /// let host = Target::detect_host();
+    /// let host = Target::detect_host().expect("host is a supported target");
     /// println!("Host target: {}", host);
     /// ```
-    pub fn detect_host() -> Self {
+    ///
+    /// Fails for a host whose architecture or OS lamina has no backend for, rather than
+    /// guessing a target for it.
+    pub fn detect_host() -> Result<Self, String> {
         let arch = detect_host_architecture_only();
         let os = detect_host_os();
-        Self::new(
-            TargetArchitecture::from_str(arch).unwrap_or(TargetArchitecture::Unknown),
-            TargetOperatingSystem::from_str(os).unwrap_or(TargetOperatingSystem::Unknown),
-        )
+        let architecture = TargetArchitecture::from_str(arch)
+            .map_err(|_| format!("host architecture '{arch}' has no lamina backend"))?;
+        let operating_system = TargetOperatingSystem::from_str(os)
+            .map_err(|_| format!("host operating system '{os}' has no lamina backend"))?;
+        Ok(Self::new(architecture, operating_system))
     }
 }
 
@@ -191,6 +195,7 @@ impl fmt::Display for Target {
 pub enum TargetArchitecture {
     X86_64,
     Aarch64,
+    #[cfg(feature = "nightly")]
     Arx64,
     Arm32,
     Armv7,
@@ -215,7 +220,6 @@ pub enum TargetArchitecture {
     Amdgcn,
     #[cfg(feature = "nightly")]
     Lisa,
-    Unknown,
 }
 
 impl TargetArchitecture {
@@ -225,7 +229,6 @@ impl TargetArchitecture {
         match self {
             Self::X86_64
             | Self::Aarch64
-            | Self::Arx64
             | Self::Riscv64
             | Self::PowerPC64
             | Self::PowerPC64Be
@@ -235,8 +238,7 @@ impl TargetArchitecture {
             | Self::S390x
             | Self::Wasm64
             | Self::Nvptx64
-            | Self::Amdgcn
-            | Self::Unknown => PointerWidth::Bits64,
+            | Self::Amdgcn => PointerWidth::Bits64,
             Self::Arm32
             | Self::Armv7
             | Self::Thumbv6m
@@ -249,7 +251,7 @@ impl TargetArchitecture {
                 panic!("rv128 needs 16-byte pointers, and PointerWidth has no 128-bit variant yet")
             }
             #[cfg(feature = "nightly")]
-            Self::Lisa => PointerWidth::Bits64,
+            Self::Arx64 | Self::Lisa => PointerWidth::Bits64,
         }
     }
 
@@ -260,7 +262,6 @@ impl TargetArchitecture {
         match self {
             Self::X86_64
             | Self::Aarch64
-            | Self::Arx64
             | Self::Riscv64
             | Self::PowerPC64
             | Self::PowerPC64Be
@@ -271,8 +272,7 @@ impl TargetArchitecture {
             | Self::Wasm32
             | Self::Wasm64
             | Self::Nvptx64
-            | Self::Amdgcn
-            | Self::Unknown => 64,
+            | Self::Amdgcn => 64,
             Self::Arm32
             | Self::Armv7
             | Self::Thumbv6m
@@ -282,7 +282,7 @@ impl TargetArchitecture {
             #[cfg(feature = "nightly")]
             Self::Riscv128 => 128,
             #[cfg(feature = "nightly")]
-            Self::Lisa => 64,
+            Self::Arx64 | Self::Lisa => 64,
         }
     }
 
@@ -299,7 +299,6 @@ impl TargetArchitecture {
         match self {
             Self::X86_64
             | Self::Aarch64
-            | Self::Arx64
             | Self::Arm32
             | Self::Armv7
             | Self::Thumbv6m
@@ -313,11 +312,10 @@ impl TargetArchitecture {
             | Self::Mips64El
             | Self::LoongArch64
             | Self::Nvptx64
-            | Self::Amdgcn
-            | Self::Unknown => Endianness::Little,
+            | Self::Amdgcn => Endianness::Little,
             Self::S390x | Self::PowerPC64Be | Self::Mips64 => Endianness::Big,
             #[cfg(feature = "nightly")]
-            Self::Riscv128 | Self::Lisa => Endianness::Little,
+            Self::Arx64 | Self::Riscv128 | Self::Lisa => Endianness::Little,
         }
     }
 
@@ -328,7 +326,6 @@ impl TargetArchitecture {
             Self::X86_64
             | Self::I686
             | Self::Aarch64
-            | Self::Arx64
             | Self::Armv7
             | Self::Riscv32
             | Self::Riscv64
@@ -336,14 +333,13 @@ impl TargetArchitecture {
             | Self::PowerPC64Be
             | Self::Mips64
             | Self::Mips64El
-            | Self::LoongArch64
-            | Self::Unknown => 16,
+            | Self::LoongArch64 => 16,
             Self::Arm32 | Self::Thumbv6m | Self::Thumbv7m | Self::S390x => 8,
             Self::Wasm32 | Self::Wasm64 | Self::Nvptx64 | Self::Amdgcn => 1,
             #[cfg(feature = "nightly")]
             Self::Riscv128 => 16,
             #[cfg(feature = "nightly")]
-            Self::Lisa => 16,
+            Self::Arx64 | Self::Lisa => 16,
         }
     }
 
@@ -357,8 +353,7 @@ impl TargetArchitecture {
     pub const fn honors_argument_alignment(self) -> bool {
         match self {
             Self::X86_64 | Self::Aarch64 => true,
-            Self::Arx64
-            | Self::Arm32
+            Self::Arm32
             | Self::Armv7
             | Self::Thumbv6m
             | Self::Thumbv7m
@@ -374,10 +369,9 @@ impl TargetArchitecture {
             | Self::LoongArch64
             | Self::S390x
             | Self::Nvptx64
-            | Self::Amdgcn
-            | Self::Unknown => false,
+            | Self::Amdgcn => false,
             #[cfg(feature = "nightly")]
-            Self::Riscv128 | Self::Lisa => false,
+            Self::Arx64 | Self::Riscv128 | Self::Lisa => false,
         }
     }
 
@@ -387,7 +381,6 @@ impl TargetArchitecture {
         match self {
             Self::X86_64
             | Self::Aarch64
-            | Self::Arx64
             | Self::Arm32
             | Self::Armv7
             | Self::Thumbv6m
@@ -400,12 +393,11 @@ impl TargetArchitecture {
             | Self::Mips64
             | Self::Mips64El
             | Self::LoongArch64
-            | Self::S390x
-            | Self::Unknown => OutputArtifact::Executable,
+            | Self::S390x => OutputArtifact::Executable,
             Self::Wasm32 | Self::Wasm64 => OutputArtifact::Module,
             Self::Nvptx64 | Self::Amdgcn => OutputArtifact::Text,
             #[cfg(feature = "nightly")]
-            Self::Riscv128 | Self::Lisa => OutputArtifact::Executable,
+            Self::Arx64 | Self::Riscv128 | Self::Lisa => OutputArtifact::Executable,
         }
     }
 
@@ -429,7 +421,6 @@ impl TargetArchitecture {
             Self::Aarch64 => ArchVariant::Aarch64(Aarch64Level::V8_0),
             Self::PowerPC64 | Self::PowerPC64Be => ArchVariant::PowerPC64(PowerLevel::Power8),
             Self::X86_64
-            | Self::Arx64
             | Self::Arm32
             | Self::Thumbv6m
             | Self::I686
@@ -440,12 +431,11 @@ impl TargetArchitecture {
             | Self::LoongArch64
             | Self::S390x
             | Self::Nvptx64
-            | Self::Amdgcn
-            | Self::Unknown => ArchVariant::None,
+            | Self::Amdgcn => ArchVariant::None,
             #[cfg(feature = "nightly")]
             Self::Riscv128 => ArchVariant::Riscv(RiscvIsa::general(128)),
             #[cfg(feature = "nightly")]
-            Self::Lisa => ArchVariant::None,
+            Self::Arx64 | Self::Lisa => ArchVariant::None,
         }
     }
 }
@@ -533,6 +523,7 @@ impl FromStr for TargetArchitecture {
             "amdgcn" => Ok(Self::Amdgcn),
             "x86_64" => Ok(Self::X86_64),
             "aarch64" => Ok(Self::Aarch64),
+            #[cfg(feature = "nightly")]
             "arx64" => Ok(Self::Arx64),
             "arm32" => Ok(Self::Arm32),
             "armv7" | "armv7a" | "armv7hf" => Ok(Self::Armv7),
@@ -646,6 +637,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Amdgcn => "amdgcn",
             Self::X86_64 => "x86_64",
             Self::Aarch64 => "aarch64",
+            #[cfg(feature = "nightly")]
             Self::Arx64 => "arx64",
             Self::Arm32 => "arm32",
             Self::Armv7 => "armv7",
@@ -666,7 +658,6 @@ impl fmt::Display for TargetArchitecture {
             Self::S390x => "s390x",
             #[cfg(feature = "nightly")]
             Self::Lisa => "lisa",
-            Self::Unknown => "unknown",
         };
         write!(f, "{s}")
     }
@@ -738,6 +729,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "arm32_vita",
     "x86_64_orbis",
     "x86_64_prospero",
+    #[cfg(feature = "nightly")]
     "arx64_unknown",
     "wasm32_unknown",
     "wasm64_unknown",

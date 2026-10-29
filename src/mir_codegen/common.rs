@@ -2093,13 +2093,14 @@ mod backend_plan_tests {
 #[cfg(test)]
 mod export_linkage_tests {
     use super::{reject_thread_local_globals, reject_underaligned_accesses};
+    #[cfg(feature = "nightly")]
+    use crate::mir_codegen::arx64::generate_mir_arx64;
     use crate::{
         error::LaminaError,
         mir::{Module as MirModule, codegen::from_ir},
         mir_codegen::{
-            arm::aarch64::generate_mir_aarch64, arx64::generate_mir_arx64,
-            powerpc::powerpc64::generate_mir_ppc64, riscv::generate_mir_riscv,
-            x86_64::generate_mir_x86_64,
+            arm::aarch64::generate_mir_aarch64, powerpc::powerpc64::generate_mir_ppc64,
+            riscv::generate_mir_riscv, x86_64::generate_mir_x86_64,
         },
         parser::parse_module,
     };
@@ -2130,7 +2131,8 @@ entry:
     fn only_exported_functions_and_main_are_global() {
         let ir = parse_module(SOURCE).expect("parse export module");
         let mir = from_ir(&ir, "exports").expect("lower export module");
-        let emitters: [(&str, Emitter, TargetOperatingSystem); 5] = [
+        #[cfg_attr(not(feature = "nightly"), allow(unused_mut))]
+        let mut emitters: Vec<(&str, Emitter, TargetOperatingSystem)> = vec![
             (
                 "x86_64",
                 generate_mir_x86_64::<Vec<u8>>,
@@ -2151,12 +2153,13 @@ entry:
                 generate_mir_ppc64::<Vec<u8>>,
                 TargetOperatingSystem::Linux,
             ),
-            (
-                "arx64",
-                generate_mir_arx64::<Vec<u8>>,
-                TargetOperatingSystem::Unknown,
-            ),
         ];
+        #[cfg(feature = "nightly")]
+        emitters.push((
+            "arx64",
+            generate_mir_arx64::<Vec<u8>>,
+            TargetOperatingSystem::Unknown,
+        ));
         for (name, emit, os) in emitters {
             let mut output = Vec::new();
             emit(&mir, &mut output, os).expect("emit module");

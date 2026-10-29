@@ -31,7 +31,7 @@ pub fn compile_lir_internal(
     function_name: &str,
     _codegen_units: usize,
 ) -> Result<RuntimeResult, LaminaError> {
-    let host = Target::detect_host();
+    let host = Target::detect_host().map_err(LaminaError::ValidationError)?;
     let target_arch = host.architecture;
     let target_os = host.operating_system;
 

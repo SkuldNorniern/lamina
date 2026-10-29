@@ -167,11 +167,11 @@ impl SimdCapabilities {
             TargetArchitecture::Riscv128 => Self::detect_riscv128(),
             #[cfg(feature = "nightly")]
             TargetArchitecture::Lisa => Self::detect_lisa(),
-            TargetArchitecture::Unknown => Self::default(),
+            #[cfg(feature = "nightly")]
+            TargetArchitecture::Arx64 => Self::default(),
             TargetArchitecture::Thumbv6m
             | TargetArchitecture::Thumbv7m
             | TargetArchitecture::I686
-            | TargetArchitecture::Arx64
             | TargetArchitecture::PowerPC64
             | TargetArchitecture::LoongArch64
             | TargetArchitecture::PowerPC64Be
@@ -429,8 +429,7 @@ impl SimdCapabilities {
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm")))]
         {
             // For other architectures, fall back to static detection
-            let target = Target::detect_host();
-            Self::detect(&target)
+            Target::detect_host().map_or_else(|_| Self::default(), |target| Self::detect(&target))
         }
     }
 
@@ -679,7 +678,7 @@ impl Target {
     /// # use lamina_platform::Target;
     /// # #[cfg(feature = "nightly")]
     /// # {
-    /// let target = Target::detect_host();
+    /// let target = Target::detect_host().expect("host is a supported target");
     /// let caps = target.simd_capabilities();
     /// println!("SIMD supported: {}", caps.supported);
     /// println!("Max vector width: {} bits", caps.max_vector_width);
@@ -757,8 +756,8 @@ mod tests {
     }
 
     #[test]
-    fn test_simd_capabilities_unknown() {
-        let target = Target::new(TargetArchitecture::Unknown, TargetOperatingSystem::Unknown);
+    fn test_simd_capabilities_default_without_vector_unit() {
+        let target = Target::new(TargetArchitecture::Thumbv6m, TargetOperatingSystem::Unknown);
         let caps = SimdCapabilities::detect(&target);
         assert!(!caps.supported);
         assert!(!caps.v128_supported);

@@ -104,8 +104,10 @@ pub extern "C" fn lia_compiler_version() -> *const c_char {
 pub extern "C" fn lia_host_target() -> *const c_char {
     HOST_TARGET
         .get_or_init(|| {
-            let t = Target::detect_host();
-            CString::new(t.to_str()).unwrap_or_default()
+            Target::detect_host()
+                .ok()
+                .and_then(|t| CString::new(t.to_str()).ok())
+                .unwrap_or_default()
         })
         .as_ptr()
 }
