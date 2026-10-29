@@ -1,11 +1,12 @@
-use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
+use lamina_mir::SourceLoc;
 mod atomic;
 mod bit;
 mod simd;
@@ -249,7 +250,7 @@ fn compile_single_function_riscv(
                     }
                 }
                 // use_regs omits the slot a StackAddr names.
-                if let MirInst::StackAddr { slot, .. } = inst
+                if let MirInst::StackAddr { slot, .. } = &inst.instr
                     && !stack_slots.contains_key(slot)
                 {
                     stack_slots.insert(
@@ -266,7 +267,9 @@ fn compile_single_function_riscv(
     let sret_offset = func
         .sig
         .ret_aggregate
-        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+        .filter(|aggregate| {
+            aggregate.size as u64 > Aggregate::max_in_registers(target_pointer(target))
+        })
         .map(|_| {
             stack_slots
                 .values()
@@ -309,7 +312,7 @@ fn compile_single_function_riscv(
         target,
         target_os,
         settings,
-        debug_line: 0,
+        loc: None,
         label_seq: 0,
         live_across_calls,
         stack_size,
@@ -366,7 +369,7 @@ fn live_vregs_across_calls(
     for block in &function.blocks {
         for instruction in &block.instructions {
             if matches!(
-                instruction,
+                &instruction.instr,
                 MirInst::Call { .. } | MirInst::CallIndirect { .. }
             ) {
                 let mut live: Vec<_> = intervals
@@ -385,25 +388,54 @@ fn live_vregs_across_calls(
     result
 }
 
-fn validate_rv32_i64(module: &MirModule, target: RiscVTarget) -> Result<(), LaminaError> {
+/// Rejects a value that still needs two rv32 registers at the point assembly is
+/// emitted. Reaching here means the 64-bit legalization did not split it, and a
+/// truncating answer would be worse than no answer, so the compile stops and names
+/// what was left behind.
+fn reject_unsplit_wide_values(module: &MirModule, target: RiscVTarget) -> Result<(), LaminaError> {
     if target.xlen == Xlen::Rv64 {
         return Ok(());
     }
+    let refuse = |what: String| {
+        Err(LaminaError::ValidationError(format!(
+            "{what} needs two rv32 registers; the 64-bit legalization pass did not split it, \
+             and {} cannot hold it in one",
+            target.isa_name()
+        )))
+    };
     let i64_type = |ty: &MirType| matches!(ty, MirType::Scalar(ScalarType::I64));
-    let has_i64_global = module.globals.values().any(|global| i64_type(&global.ty));
-    let has_i64_function = module.functions.values().any(|function| {
-        function.sig.params.iter().any(|param| i64_type(&param.ty))
-            || function.sig.ret_ty.as_ref().is_some_and(i64_type)
-            || function.blocks.iter().any(|block| {
-                block
-                    .instructions
-                    .iter()
-                    .any(|i| instruction_type(i).is_some_and(i64_type)
-                        || matches!(i, MirInst::IntConvert { from, to, .. } if i64_type(from) || i64_type(to)))
-            })
-    });
-    if has_i64_global || has_i64_function {
-        target.require_i64().map_err(LaminaError::ValidationError)?;
+    for (name, global) in &module.globals {
+        if i64_type(&global.ty) {
+            return refuse(format!("global @{name}"));
+        }
+    }
+    for (name, function) in &module.functions {
+        if function.sig.params.iter().any(|param| i64_type(&param.ty)) {
+            return refuse(format!("a parameter of @{name}"));
+        }
+        if function.sig.ret_ty.as_ref().is_some_and(i64_type) {
+            return refuse(format!("the result of @{name}"));
+        }
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let instruction = &instruction.instr;
+                if let MirInst::Select { ty, .. } = instruction
+                    && ty.size_bytes(PointerWidth::Bits32) > 4
+                {
+                    return Err(LaminaError::ValidationError(format!(
+                        "select of a {ty} in @{name} picks between two integer registers, \
+                         which hold 32 bits on {}; it is refused rather than truncated",
+                        target.isa_name()
+                    )));
+                }
+                let named = instruction_type(instruction).is_some_and(i64_type)
+                    || matches!(instruction, MirInst::IntConvert { from, to, .. }
+                        if i64_type(from) || i64_type(to));
+                if named {
+                    return refuse(format!("`{instruction}` in @{name}"));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -487,7 +519,7 @@ fn emit_riscv_module<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
-    validate_rv32_i64(module, target)?;
+    reject_unsplit_wide_values(module, target)?;
     let settings_arc = Arc::new(settings.clone());
     let signatures = Arc::new(AggregateSignatures::from_module(module));
     let results =
@@ -559,7 +591,8 @@ fn pass_riscv_arguments<W: Write>(
 ) -> Result<usize, LaminaError> {
     let arg_regs = RiscVAbi::ARG_REGISTERS;
     let word = target.word_bytes() as usize;
-    let places = classify_riscv_arguments(kinds, usize::from(hidden.is_some()));
+    let pointer = target_pointer(target);
+    let places = classify_riscv_arguments(kinds, usize::from(hidden.is_some()), pointer);
     let stack_words: usize = places
         .iter()
         .map(|place| match *place {
@@ -572,9 +605,9 @@ fn pass_riscv_arguments<W: Write>(
     let mut copies = vec![None; kinds.len()];
     let mut copy_bytes = stack_words * word;
     for (kind, copy) in kinds.iter().zip(copies.iter_mut()) {
-        if kind.by_reference() {
+        if kind.by_reference(pointer) {
             *copy = Some(copy_bytes);
-            copy_bytes += kind.aggregate.map_or(0, |a| a.words()) * word;
+            copy_bytes += kind.aggregate.map_or(0, |a| a.words_of(pointer)) * word;
         }
     }
     let stack_space = align_up(copy_bytes, 16);
@@ -585,7 +618,7 @@ fn pass_riscv_arguments<W: Write>(
     for ((arg, kind), copy) in args.iter().zip(kinds).zip(&copies) {
         let Some(at) = *copy else { continue };
         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a7")?;
-        for index in 0..kind.aggregate.map_or(0, |a| a.words()) {
+        for index in 0..kind.aggregate.map_or(0, |a| a.words_of(pointer)) {
             let offset = index * word;
             writeln!(writer, "    {} t0, {offset}(a7)", target.load_word())?;
             writeln!(
@@ -731,9 +764,11 @@ fn store_incoming_arguments<W: Write>(
             aggregate: p.aggregate,
         })
         .collect();
-    let places = classify_riscv_arguments(&kinds, first_gpr);
+    let pointer = target_pointer(target);
+    let places = classify_riscv_arguments(&kinds, first_gpr, pointer);
     for ((param, kind), place) in func.sig.params.iter().zip(&kinds).zip(&places) {
-        let via_stack_pointer = kind.by_reference() && matches!(place, RiscVArgPlace::Stack(_));
+        let via_stack_pointer =
+            kind.by_reference(pointer) && matches!(place, RiscVArgPlace::Stack(_));
         if via_stack_pointer != through_stack_pointers {
             continue;
         }
@@ -743,7 +778,7 @@ fn store_incoming_arguments<W: Write>(
         let Some(&slot) = stack_slots.get(vreg) else {
             continue;
         };
-        let words = kind.aggregate.map_or(0, |a| a.words());
+        let words = kind.aggregate.map_or(0, |a| a.words_of(pointer));
         match *place {
             RiscVArgPlace::Fpr(bank) => store_fp_register_to_register(
                 &format!("fa{bank}"),
@@ -753,7 +788,7 @@ fn store_incoming_arguments<W: Write>(
                 stack_slots,
                 param.ty.size_bytes(func.pointer_width) == 4,
             )?,
-            RiscVArgPlace::Gpr(bank) if kind.by_reference() => {
+            RiscVArgPlace::Gpr(bank) if kind.by_reference(pointer) => {
                 copy_from_pointer_to_frame(writer, arg_regs[bank], words, slot, target)?
             }
             RiscVArgPlace::Gpr(bank) => match reg_alloc.get_mapping(vreg) {
@@ -762,7 +797,7 @@ fn store_incoming_arguments<W: Write>(
                     RiscVFrame::fp_store(writer, target.store_word(), arg_regs[bank], slot, "t0")?
                 }
             },
-            RiscVArgPlace::Stack(caller) if kind.by_reference() => {
+            RiscVArgPlace::Stack(caller) if kind.by_reference(pointer) => {
                 RiscVFrame::fp_load(writer, target.load_word(), "a7", caller as i32 * word, "a7")?;
                 copy_from_pointer_to_frame(writer, "a7", words, slot, target)?;
             }
@@ -808,6 +843,15 @@ fn store_incoming_arguments<W: Write>(
     Ok(())
 }
 
+/// The pointer width the target's registers hold, which decides how many registers an
+/// aggregate spans and how large one may be before it travels by reference.
+fn target_pointer(target: RiscVTarget) -> PointerWidth {
+    match target.xlen {
+        Xlen::Rv32 => PointerWidth::Bits32,
+        _ => PointerWidth::Bits64,
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ArgKind {
     ty: MirType,
@@ -826,16 +870,20 @@ impl ArgKind {
         self.aggregate.is_none() && self.ty.is_float()
     }
 
-    fn by_reference(&self) -> bool {
+    fn by_reference(&self, pointer: PointerWidth) -> bool {
         self.aggregate
-            .is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE)
+            .is_some_and(|a| a.size as u64 > Aggregate::max_in_registers(pointer))
     }
 }
 
 /// An aggregate of two words or fewer takes consecutive integer registers when they all
 /// remain. With one register left, its first word goes there and the second on the stack.
 /// With none left it goes to the stack whole. A larger one passes the address of a copy.
-fn classify_riscv_arguments(kinds: &[ArgKind], first_gpr: usize) -> Vec<RiscVArgPlace> {
+fn classify_riscv_arguments(
+    kinds: &[ArgKind],
+    first_gpr: usize,
+    pointer: PointerWidth,
+) -> Vec<RiscVArgPlace> {
     let banks = RiscVAbi::ARG_REGISTERS.len();
     let mut gprs = first_gpr;
     let mut fprs = 0;
@@ -843,8 +891,8 @@ fn classify_riscv_arguments(kinds: &[ArgKind], first_gpr: usize) -> Vec<RiscVArg
     let mut places = Vec::with_capacity(kinds.len());
     for kind in kinds {
         match kind.aggregate {
-            Some(aggregate) if !kind.by_reference() => {
-                let words = aggregate.words();
+            Some(aggregate) if !kind.by_reference(pointer) => {
+                let words = aggregate.words_of(pointer);
                 if gprs + words <= banks {
                     places.push(RiscVArgPlace::Words { first: gprs, words });
                     gprs += words;
@@ -968,7 +1016,7 @@ struct EmitCtx<'a> {
     target: RiscVTarget,
     target_os: TargetOperatingSystem,
     settings: &'a MirCodegenSettings,
-    debug_line: u32,
+    loc: Option<SourceLoc>,
     /// Sequence for compiler-generated labels, so they do not depend on any address.
     label_seq: u32,
     live_across_calls: HashMap<usize, Vec<VirtualReg>>,
@@ -1044,8 +1092,9 @@ fn emit_planned_block_riscv<W: Write>(
                     false_target,
                     ..
                 },
-            ) = (inst, &block.instructions[position + 1])
+            ) = (&inst.instr, &block.instructions[position + 1].instr)
             {
+                emit_source_loc(writer, ctx.settings, inst.loc)?;
                 load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "a0")?;
                 load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
                 let unsigned = matches!(
@@ -1077,8 +1126,9 @@ fn emit_planned_block_riscv<W: Write>(
                 }
             }
             position += 1;
-        } else if matches!(inst, MirInst::Jmp { target } if target == next) {
+        } else if matches!(&inst.instr, MirInst::Jmp { target } if target == next) {
         } else {
+            ctx.loc = inst.loc;
             emit_instruction_riscv(
                 inst,
                 block_start + position,
@@ -1128,9 +1178,10 @@ fn emit_instruction_riscv<W: Write>(
     let target_os = ctx.target_os;
     let settings = ctx.settings;
     let func_name = ctx.func_name;
-    if settings.emit_asm_debug_lines {
-        ctx.debug_line = ctx.debug_line.saturating_add(1);
-        writeln!(writer, "    .loc 1 {} 0", ctx.debug_line)?;
+    if settings.emit_asm_debug_lines
+        && let Some(loc) = ctx.loc
+    {
+        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
     }
     match inst {
         MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
@@ -1457,8 +1508,21 @@ fn emit_instruction_riscv<W: Write>(
                 // LP64D sends a variadic argument through the integer bank, a float
                 // included, so the callee's va_arg finds the bits where it looks.
                 if let Some(fixed) = ctx.signatures.fixed_arguments(name) {
-                    for kind in kinds.iter_mut().skip(fixed).filter(|kind| kind.float()) {
-                        kind.ty = MirType::i64();
+                    let pointer = target_pointer(ctx.target);
+                    for kind in kinds.iter_mut().skip(fixed) {
+                        if kind.ty.size_bytes(pointer) > pointer.bytes() {
+                            return Err(LaminaError::CodegenError(
+                                CodegenError::UnsupportedFeature(format!(
+                                    "a variadic {} argument to @{name} spans two {} registers, \
+                                     which this backend does not yet place",
+                                    kind.ty,
+                                    ctx.target.isa_name()
+                                )),
+                            ));
+                        }
+                        if kind.float() {
+                            kind.ty = MirType::i64();
+                        }
                     }
                 }
                 let result_slot = match ret {
@@ -1466,7 +1530,10 @@ fn emit_instruction_riscv<W: Write>(
                     _ => None,
                 };
                 let hidden = match ctx.signatures.result(name) {
-                    Some(aggregate) if aggregate.size as u64 > MAX_REGISTER_AGGREGATE => {
+                    Some(aggregate)
+                        if aggregate.size as u64
+                            > Aggregate::max_in_registers(target_pointer(ctx.target)) =>
+                    {
                         Some(result_slot.ok_or_else(|| {
                             LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                                 "RISC-V aggregate result has no frame slot".to_string(),
@@ -1509,7 +1576,9 @@ fn emit_instruction_riscv<W: Write>(
                 && let Register::Virtual(vreg) = ret_reg
             {
                 match ctx.signatures.result(name) {
-                    Some(aggregate) if aggregate.size as u64 > MAX_REGISTER_AGGREGATE => {}
+                    Some(aggregate)
+                        if aggregate.size as u64
+                            > Aggregate::max_in_registers(target_pointer(ctx.target)) => {}
                     Some(aggregate) => {
                         let slot = stack_slots.get(vreg).copied().ok_or_else(|| {
                             LaminaError::CodegenError(CodegenError::UnsupportedFeature(
@@ -1517,7 +1586,7 @@ fn emit_instruction_riscv<W: Write>(
                             ))
                         })?;
                         RiscVFrame::fp_store(writer, ctx.target.store_word(), "a0", slot, "t0")?;
-                        if aggregate.words() > 1 {
+                        if aggregate.words_of(target_pointer(ctx.target)) > 1 {
                             let at = slot + ctx.target.word_bytes();
                             RiscVFrame::fp_store(writer, ctx.target.store_word(), "a1", at, "t0")?;
                         }
@@ -1614,7 +1683,7 @@ fn emit_instruction_riscv<W: Write>(
             }
             let arg_regs = RiscVAbi::ARG_REGISTERS;
             let kinds = ctx.signatures.arguments(name, args);
-            let places = classify_riscv_arguments(&kinds, 0);
+            let places = classify_riscv_arguments(&kinds, 0, target_pointer(ctx.target));
             for ((arg, kind), place) in args.iter().zip(&kinds).zip(&places) {
                 match *place {
                     RiscVArgPlace::Gpr(bank) => load_operand_to_register(
@@ -1800,7 +1869,7 @@ fn emit_instruction_riscv<W: Write>(
                     (Some(aggregate), Some(offset)) => {
                         load_operand_to_register(val, writer, reg_alloc, stack_slots, "t0")?;
                         RiscVFrame::fp_load(writer, ctx.target.load_word(), "a1", offset, "a1")?;
-                        for index in 0..aggregate.words() {
+                        for index in 0..aggregate.words_of(target_pointer(ctx.target)) {
                             let at = index as i32 * ctx.target.word_bytes();
                             writeln!(writer, "    {} a7, {at}(t0)", ctx.target.load_word())?;
                             writeln!(writer, "    {} a7, {at}(a1)", ctx.target.store_word())?;
@@ -1810,7 +1879,7 @@ fn emit_instruction_riscv<W: Write>(
                     (Some(aggregate), None) => {
                         load_operand_to_register(val, writer, reg_alloc, stack_slots, "t0")?;
                         writeln!(writer, "    {} a0, 0(t0)", ctx.target.load_word())?;
-                        if aggregate.words() > 1 {
+                        if aggregate.words_of(target_pointer(ctx.target)) > 1 {
                             let at = ctx.target.word_bytes();
                             writeln!(writer, "    {} a1, {at}(t0)", ctx.target.load_word())?;
                         }

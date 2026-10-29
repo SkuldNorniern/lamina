@@ -1,6 +1,9 @@
 use super::*;
 use crate::mir::FunctionBuilder;
+use crate::mir::codegen::from_ir_for_target;
 use crate::mir_codegen::test_support::cross_assembler_ready;
+use crate::parser::parse_module;
+use lamina_mir::Located;
 use lamina_platform::PointerWidth;
 use std::error::Error;
 
@@ -138,16 +141,16 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
                 .build()
                 .with_pointer_width(PointerWidth::Bits32);
         let instructions = &mut function.blocks[0].instructions;
-        instructions.push(MirInst::Copy {
+        instructions.push(Located::from(MirInst::Copy {
             ty,
             dst: freg(1),
             src: immediate(-1.23456789),
-        });
-        instructions.push(MirInst::Copy {
+        }));
+        instructions.push(Located::from(MirInst::Copy {
             ty,
             dst: freg(2),
             src: foperand(1),
-        });
+        }));
         for (id, op) in [
             FloatBinOp::FAdd,
             FloatBinOp::FSub,
@@ -157,34 +160,34 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .enumerate()
         {
-            instructions.push(MirInst::FloatBinary {
+            instructions.push(Located::from(MirInst::FloatBinary {
                 op,
                 ty,
                 dst: freg(id as u32 + 3),
                 lhs: foperand(2),
                 rhs: immediate(3.25),
-            });
+            }));
         }
         for (id, op) in [FloatUnOp::FNeg, FloatUnOp::FSqrt].into_iter().enumerate() {
-            instructions.push(MirInst::FloatUnary {
+            instructions.push(Located::from(MirInst::FloatUnary {
                 op,
                 ty,
                 dst: freg(id as u32 + 7),
                 src: foperand(3),
-            });
+            }));
         }
-        instructions.push(MirInst::Store {
+        instructions.push(Located::from(MirInst::Store {
             ty,
             src: foperand(7),
             addr: addr.clone(),
             attrs: Default::default(),
-        });
-        instructions.push(MirInst::Load {
+        }));
+        instructions.push(Located::from(MirInst::Load {
             ty,
             dst: freg(9),
             addr: addr.clone(),
             attrs: Default::default(),
-        });
+        }));
         for (id, op) in [
             FloatCmpOp::Eq,
             FloatCmpOp::Ne,
@@ -196,17 +199,17 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .enumerate()
         {
-            instructions.push(MirInst::FloatCmp {
+            instructions.push(Located::from(MirInst::FloatCmp {
                 op,
                 ty,
                 dst: reg(id as u32 + 10),
                 lhs: foperand(9),
                 rhs: immediate(-2.5),
-            });
+            }));
         }
-        instructions.push(MirInst::Ret {
+        instructions.push(Located::from(MirInst::Ret {
             value: Some(Operand::Immediate(Immediate::I32(0))),
-        });
+        }));
         module.add_function(function);
     }
     let mut function = FunctionBuilder::new("integers")
@@ -216,33 +219,33 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         .block("entry")
         .build();
     let instructions = &mut function.blocks[0].instructions;
-    instructions.push(MirInst::Load {
+    instructions.push(Located::from(MirInst::Load {
         ty: MirType::ptr(),
         dst: reg(2),
         addr: addr.clone(),
         attrs: Default::default(),
-    });
-    instructions.push(MirInst::Copy {
+    }));
+    instructions.push(Located::from(MirInst::Copy {
         ty: MirType::ptr(),
         dst: reg(3),
         src: operand(2),
-    });
-    instructions.push(MirInst::Store {
+    }));
+    instructions.push(Located::from(MirInst::Store {
         ty: MirType::ptr(),
         src: operand(3),
         addr: addr.clone(),
         attrs: Default::default(),
-    });
+    }));
     let mut id = 4;
     for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
         let input = id;
-        instructions.push(MirInst::IntConvert {
+        instructions.push(Located::from(MirInst::IntConvert {
             from: MirType::i32(),
             to: ty,
             signed: false,
             dst: reg(input),
             src: operand(1),
-        });
+        }));
         id += 1;
         for op in [
             IntBinOp::Add,
@@ -259,39 +262,39 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
             IntBinOp::LShr,
             IntBinOp::AShr,
         ] {
-            instructions.push(MirInst::IntBinary {
+            instructions.push(Located::from(MirInst::IntBinary {
                 op,
                 ty,
                 dst: reg(id),
                 lhs: operand(input),
                 rhs: Operand::Immediate(Immediate::I32(2)),
-            });
+            }));
             id += 1;
         }
     }
     for ty in [MirType::i8(), MirType::i16()] {
-        instructions.push(MirInst::IntConvert {
+        instructions.push(Located::from(MirInst::IntConvert {
             from: MirType::i32(),
             to: ty,
             signed: false,
             dst: reg(id),
             src: operand(1),
-        });
+        }));
         let truncated = id;
         for signed in [false, true] {
-            instructions.push(MirInst::IntConvert {
+            instructions.push(Located::from(MirInst::IntConvert {
                 from: ty,
                 to: MirType::i32(),
                 signed,
                 dst: reg(id + 1),
                 src: operand(truncated),
-            });
+            }));
             id += 2;
         }
     }
-    instructions.push(MirInst::Ret {
+    instructions.push(Located::from(MirInst::Ret {
         value: Some(Operand::Immediate(Immediate::I32(0))),
-    });
+    }));
     for block in &mut function.blocks {
         for instruction in &mut block.instructions {
             instruction.normalize_integer_immediates(function.sig.ret_ty);
@@ -493,7 +496,7 @@ fn rv32_uses_word_memory_ops_not_doubleword() {
 }
 
 #[test]
-fn rv32_rejects_i64_instead_of_truncating_it() {
+fn rv32_refuses_an_i64_that_legalization_left_behind() {
     let ty = MirType::Scalar(ScalarType::I64);
     let dst = Register::Virtual(VirtualReg::gpr(0));
     let function = FunctionBuilder::new("wide")
@@ -519,19 +522,76 @@ fn rv32_rejects_i64_instead_of_truncating_it() {
         1,
         &MirCodegenSettings::default(),
     );
-    assert!(result.is_err(), "rv32 i64 must be rejected");
+    assert!(
+        result.is_err(),
+        "an i64 reaching rv32 codegen means legalization missed it; truncating it silently is worse than failing"
+    );
     let Err(error) = result else {
         return;
     };
     let message = error.to_string();
     assert!(
-        message.contains("i64"),
-        "message did not name type: {message}"
+        message.contains("two rv32 registers"),
+        "message did not say what is missing: {message}"
     );
     assert!(
-        message.contains("rv32imafd"),
-        "message did not name target: {message}"
+        message.contains("legalization"),
+        "message did not name the pass that should have split it: {message}"
     );
+}
+
+/// The whole point of the legalization: a 64-bit source program now compiles for rv32,
+/// and nothing in the output names a 64-bit register or a doubleword access.
+#[test]
+fn rv32_compiles_i64_source_into_word_operations() -> Result<(), Box<dyn Error>> {
+    let source = r"
+fn @main() -> i64 {
+entry:
+  %a = add.i64 4294967295, 1
+  %b = mul.i64 %a, 3
+  %c = shr.i64 %b, 33
+  %d = lt.i64 %c, 0
+  %e = select.i64 %d, %b, %c
+  ret.i64 %e
+}
+";
+    let module = parse_module(source).map_err(|e| e.to_string())?;
+    let mir =
+        from_ir_for_target(&module, "rv32_i64", PointerWidth::Bits32).map_err(|e| e.to_string())?;
+    for function in mir.functions.values() {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                assert!(
+                    !format!("{}", instruction.instr).contains("i64"),
+                    "legalization left an i64 behind: {}",
+                    instruction.instr
+                );
+            }
+        }
+    }
+    let mut output = Vec::new();
+    generate_mir_riscv_with_units_and_settings(
+        &mir,
+        &mut output,
+        RiscVTarget::general(Xlen::Rv32),
+        TargetOperatingSystem::Linux,
+        1,
+        &MirCodegenSettings::default(),
+    )?;
+    let assembly = String::from_utf8(output)?;
+    assert!(
+        !assembly.contains("    sd "),
+        "rv32 emitted sd:\n{assembly}"
+    );
+    assert!(
+        !assembly.contains("    ld "),
+        "rv32 emitted ld:\n{assembly}"
+    );
+    assert!(
+        assembly.contains("    sw "),
+        "rv32 emitted no sw:\n{assembly}"
+    );
+    Ok(())
 }
 
 #[test]

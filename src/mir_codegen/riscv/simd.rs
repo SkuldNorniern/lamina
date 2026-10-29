@@ -286,9 +286,12 @@ mod tests {
                 VectorOp::VAdd,
                 0,
             );
-            f.blocks[0]
-                .instructions
-                .retain(|i| matches!(i, Instruction::VectorOp { .. } | Instruction::Ret { .. }));
+            f.blocks[0].instructions.retain(|i| {
+                matches!(
+                    &i.instr,
+                    Instruction::VectorOp { .. } | Instruction::Ret { .. }
+                )
+            });
             declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V128(lane)), lane);
             module.add_function(f);
             let mut output = Vec::new();

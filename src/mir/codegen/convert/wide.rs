@@ -16,18 +16,57 @@ use crate::ir::instruction::{AsmOperand as IRAsmOperand, UnaryOp};
 use crate::ir::types::Literal;
 use crate::mir::codegen::mapping::wide_aggregate;
 use lamina_codegen::abi::BuiltinLibrary;
-use lamina_platform::TargetOperatingSystem;
+use lamina_platform::{PointerWidth, TargetOperatingSystem};
 
-pub(super) fn is_wide_prim(ty: IRPrim) -> bool {
-    matches!(ty, IRPrim::I128 | IRPrim::U128)
+/// The integer that takes two registers on a target of this pointer width: `i128` where
+/// a register holds 64 bits, `i64` where it holds 32.
+pub(super) fn is_wide_prim(ty: IRPrim, pointer: PointerWidth) -> bool {
+    match pointer {
+        PointerWidth::Bits32 => matches!(ty, IRPrim::I64 | IRPrim::U64),
+        PointerWidth::Bits64 => matches!(ty, IRPrim::I128 | IRPrim::U128),
+    }
 }
 
-pub(super) fn is_wide_type(ty: &IRType<'_>) -> bool {
-    matches!(ty, IRType::Primitive(p) if is_wide_prim(*p))
+pub(super) fn is_wide_type(ty: &IRType<'_>, pointer: PointerWidth) -> bool {
+    matches!(ty, IRType::Primitive(p) if is_wide_prim(*p, pointer))
 }
 
-fn imm(value: i64) -> Operand {
-    Operand::Immediate(Immediate::I64(value))
+/// A 128-bit integer needs four registers on a 32-bit target, which this lowering does
+/// not build, so it is refused by name rather than truncated.
+pub(super) fn is_quad_prim(ty: IRPrim, pointer: PointerWidth) -> bool {
+    pointer == PointerWidth::Bits32 && matches!(ty, IRPrim::I128 | IRPrim::U128)
+}
+
+pub(super) fn is_quad_type(ty: &IRType<'_>, pointer: PointerWidth) -> bool {
+    matches!(ty, IRType::Primitive(p) if is_quad_prim(*p, pointer))
+}
+
+pub(super) fn word_ty(pointer: PointerWidth) -> MirType {
+    match pointer {
+        PointerWidth::Bits32 => MirType::i32(),
+        PointerWidth::Bits64 => MirType::i64(),
+    }
+}
+
+const fn word_bits(pointer: PointerWidth) -> i64 {
+    match pointer {
+        PointerWidth::Bits32 => 32,
+        PointerWidth::Bits64 => 64,
+    }
+}
+
+const fn word_bytes(pointer: PointerWidth) -> i32 {
+    match pointer {
+        PointerWidth::Bits32 => 4,
+        PointerWidth::Bits64 => 8,
+    }
+}
+
+fn word_imm(pointer: PointerWidth, value: i64) -> Operand {
+    match pointer {
+        PointerWidth::Bits32 => Operand::Immediate(Immediate::I32(value as i32)),
+        PointerWidth::Bits64 => Operand::Immediate(Immediate::I64(value)),
+    }
 }
 
 #[derive(Clone)]
@@ -50,14 +89,14 @@ pub(super) struct LibCall {
 }
 
 impl LibCall {
-    pub(super) fn declaration(&self) -> Function {
+    pub(super) fn declaration(&self, pointer: PointerWidth) -> Function {
         let mut sig = Signature::new(self.name.clone());
         for (index, param) in self.params.iter().enumerate() {
             let slot = u32::try_from(index).unwrap_or(u32::MAX);
             let parameter = match param {
                 Abi::Wide => {
                     Parameter::new(Register::Virtual(VirtualReg::gpr(slot)), MirType::ptr())
-                        .with_aggregate(wide_aggregate())
+                        .with_aggregate(wide_aggregate(pointer))
                 }
                 Abi::Scalar(ty) => {
                     let class = if ty.is_float() {
@@ -75,7 +114,7 @@ impl LibCall {
             Some(Abi::Wide) => {
                 sig = sig
                     .with_return(MirType::ptr())
-                    .with_return_aggregate(wide_aggregate());
+                    .with_return_aggregate(wide_aggregate(pointer));
             }
             Some(Abi::Scalar(ty)) => sig = sig.with_return(ty),
         }
@@ -89,25 +128,40 @@ pub(super) struct Cx<'c, 'a> {
     pub(super) reservations: &'c mut HashMap<VirtualReg, usize>,
     pub(super) globals: &'c mut GlobalAddresses<'a>,
     pub(super) module: &'c IRModule<'a>,
+    pub(super) pointer: PointerWidth,
     pub(super) out: Vec<Instruction>,
 }
 
 impl<'c, 'a> Cx<'c, 'a> {
+    fn word(&self) -> MirType {
+        word_ty(self.pointer)
+    }
+
+    fn bits(&self) -> i64 {
+        word_bits(self.pointer)
+    }
+
+    fn imm(&self, value: i64) -> Operand {
+        word_imm(self.pointer, value)
+    }
+
     fn temp(&mut self) -> Register {
         Register::Virtual(self.vregs.allocate_gpr())
     }
 
     fn bin(&mut self, op: IntBinOp, lhs: Operand, rhs: Operand) -> Operand {
-        if let (Operand::Immediate(Immediate::I64(a)), Operand::Immediate(Immediate::I64(b))) =
-            (&lhs, &rhs)
-            && let Some(value) = fold(op, *a, *b)
+        if let (Some(a), Some(b)) = (lhs.integer_constant(), rhs.integer_constant())
+            && matches!(lhs, Operand::Immediate(_))
+            && matches!(rhs, Operand::Immediate(_))
+            && let Some(value) = fold(op, a, b, self.pointer)
         {
-            return imm(value);
+            return self.imm(value);
         }
         let dst = self.temp();
+        let ty = self.word();
         self.out.push(Instruction::IntBinary {
             op,
-            ty: MirType::i64(),
+            ty,
             dst: dst.clone(),
             lhs,
             rhs,
@@ -116,18 +170,22 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn not(&mut self, value: Operand) -> Operand {
-        self.bin(IntBinOp::Xor, value, imm(-1))
+        let ones = self.imm(-1);
+        self.bin(IntBinOp::Xor, value, ones)
     }
 
     fn nonzero(&mut self, value: Operand) -> Operand {
-        let negated = self.bin(IntBinOp::Sub, imm(0), value.clone());
+        let zero = self.imm(0);
+        let negated = self.bin(IntBinOp::Sub, zero, value.clone());
         let any = self.bin(IntBinOp::Or, value, negated);
-        self.bin(IntBinOp::LShr, any, imm(63))
+        let top = self.imm(self.bits() - 1);
+        self.bin(IntBinOp::LShr, any, top)
     }
 
     fn is_zero(&mut self, value: Operand) -> Operand {
         let nonzero = self.nonzero(value);
-        self.bin(IntBinOp::Xor, nonzero, imm(1))
+        let one = self.imm(1);
+        self.bin(IntBinOp::Xor, nonzero, one)
     }
 
     fn carry_out(&mut self, x: Operand, y: Operand, sum: Operand) -> Operand {
@@ -136,7 +194,8 @@ impl<'c, 'a> Cx<'c, 'a> {
         let not_sum = self.not(sum);
         let propagate = self.bin(IntBinOp::And, either, not_sum);
         let joined = self.bin(IntBinOp::Or, both, propagate);
-        self.bin(IntBinOp::LShr, joined, imm(63))
+        let top = self.imm(self.bits() - 1);
+        self.bin(IntBinOp::LShr, joined, top)
     }
 
     fn borrow_out(&mut self, x: Operand, y: Operand, diff: Operand) -> Operand {
@@ -146,7 +205,8 @@ impl<'c, 'a> Cx<'c, 'a> {
         let same = self.not(differ);
         let propagate = self.bin(IntBinOp::And, same, diff);
         let joined = self.bin(IntBinOp::Or, lent, propagate);
-        self.bin(IntBinOp::LShr, joined, imm(63))
+        let top = self.imm(self.bits() - 1);
+        self.bin(IntBinOp::LShr, joined, top)
     }
 
     fn add(&mut self, a: Words, b: Words) -> Words {
@@ -166,20 +226,22 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn mul_high_unsigned(&mut self, a: Operand, b: Operand) -> Operand {
-        let mask = imm(0xffff_ffff);
+        let half = self.bits() / 2;
+        let mask = self.imm((1i64 << half) - 1);
+        let half = self.imm(half);
         let a0 = self.bin(IntBinOp::And, a.clone(), mask.clone());
-        let a1 = self.bin(IntBinOp::LShr, a, imm(32));
+        let a1 = self.bin(IntBinOp::LShr, a, half.clone());
         let b0 = self.bin(IntBinOp::And, b.clone(), mask.clone());
-        let b1 = self.bin(IntBinOp::LShr, b, imm(32));
+        let b1 = self.bin(IntBinOp::LShr, b, half.clone());
         let w0 = self.bin(IntBinOp::Mul, a0.clone(), b0.clone());
-        let w0_high = self.bin(IntBinOp::LShr, w0, imm(32));
+        let w0_high = self.bin(IntBinOp::LShr, w0, half.clone());
         let a1b0 = self.bin(IntBinOp::Mul, a1.clone(), b0);
         let t = self.bin(IntBinOp::Add, a1b0, w0_high);
         let t_low = self.bin(IntBinOp::And, t.clone(), mask);
-        let t_high = self.bin(IntBinOp::LShr, t, imm(32));
+        let t_high = self.bin(IntBinOp::LShr, t, half.clone());
         let a0b1 = self.bin(IntBinOp::Mul, a0, b1.clone());
         let w1 = self.bin(IntBinOp::Add, t_low, a0b1);
-        let w1_high = self.bin(IntBinOp::LShr, w1, imm(32));
+        let w1_high = self.bin(IntBinOp::LShr, w1, half);
         let a1b1 = self.bin(IntBinOp::Mul, a1, b1);
         let partial = self.bin(IntBinOp::Add, a1b1, t_high);
         self.bin(IntBinOp::Add, partial, w1_high)
@@ -198,10 +260,14 @@ impl<'c, 'a> Cx<'c, 'a> {
     /// Splits the shift count into its masked low six bits, and a mask that is all ones
     /// when the count is 64 or more.
     fn shift_parts(&mut self, count: Operand) -> (Operand, Operand) {
-        let count = self.bin(IntBinOp::And, count, imm(127));
-        let small = self.bin(IntBinOp::And, count.clone(), imm(63));
-        let big = self.bin(IntBinOp::LShr, count, imm(6));
-        let mask = self.bin(IntBinOp::Sub, imm(0), big);
+        let both = self.imm(2 * self.bits() - 1);
+        let count = self.bin(IntBinOp::And, count, both);
+        let within = self.imm(self.bits() - 1);
+        let small = self.bin(IntBinOp::And, count.clone(), within);
+        let log2 = self.imm(self.bits().trailing_zeros().into());
+        let big = self.bin(IntBinOp::LShr, count, log2);
+        let zero = self.imm(0);
+        let mask = self.bin(IntBinOp::Sub, zero, big);
         (small, mask)
     }
 
@@ -209,16 +275,20 @@ impl<'c, 'a> Cx<'c, 'a> {
     /// Written as two shifts, so a count of zero contributes nothing and no shift
     /// reaches 64.
     fn cross_shift_left(&mut self, low: Operand, count: Operand) -> Operand {
-        let halved = self.bin(IntBinOp::LShr, low, imm(1));
-        let rest = self.bin(IntBinOp::Xor, count, imm(63));
+        let one = self.imm(1);
+        let halved = self.bin(IntBinOp::LShr, low, one);
+        let top = self.imm(self.bits() - 1);
+        let rest = self.bin(IntBinOp::Xor, count, top);
         self.bin(IntBinOp::LShr, halved, rest)
     }
 
     /// Bits of the high word that move down into the low word for a right shift below
     /// 64, with the same two-shift form.
     fn cross_shift_right(&mut self, high: Operand, count: Operand) -> Operand {
-        let doubled = self.bin(IntBinOp::Shl, high, imm(1));
-        let rest = self.bin(IntBinOp::Xor, count, imm(63));
+        let one = self.imm(1);
+        let doubled = self.bin(IntBinOp::Shl, high, one);
+        let top = self.imm(self.bits() - 1);
+        let rest = self.bin(IntBinOp::Xor, count, top);
         self.bin(IntBinOp::Shl, doubled, rest)
     }
 
@@ -254,9 +324,10 @@ impl<'c, 'a> Cx<'c, 'a> {
         };
         let high_shifted = self.bin(high_op, a.hi.clone(), small);
         let fill = if arithmetic {
-            self.bin(IntBinOp::AShr, a.hi, imm(63))
+            let top = self.imm(self.bits() - 1);
+            self.bin(IntBinOp::AShr, a.hi, top)
         } else {
-            imm(0)
+            self.imm(0)
         };
         let lo = self.select_mask(mask.clone(), high_shifted.clone(), low_small);
         let hi_small = self.bin(IntBinOp::And, high_shifted, not_mask);
@@ -267,9 +338,10 @@ impl<'c, 'a> Cx<'c, 'a> {
 
     fn unary_word(&mut self, op: IntUnOp, src: Operand) -> Operand {
         let dst = self.temp();
+        let ty = self.word();
         self.out.push(Instruction::IntUnary {
             op,
-            ty: MirType::i64(),
+            ty,
             dst: dst.clone(),
             src,
         });
@@ -281,7 +353,7 @@ impl<'c, 'a> Cx<'c, 'a> {
         let hi = self.unary_word(IntUnOp::Popcount, a.hi);
         Words {
             lo: self.bin(IntBinOp::Add, lo, hi),
-            hi: imm(0),
+            hi: self.imm(0),
         }
     }
 
@@ -290,11 +362,12 @@ impl<'c, 'a> Cx<'c, 'a> {
         let high = self.unary_word(IntUnOp::Ctlz, a.hi.clone());
         let low = self.unary_word(IntUnOp::Ctlz, a.lo.clone());
         let mask = self.is_zero(a.hi);
-        let mask = self.bin(IntBinOp::Sub, imm(0), mask);
+        let zero = self.imm(0);
+        let mask = self.bin(IntBinOp::Sub, zero, mask);
         let low = self.bin(IntBinOp::And, low, mask);
         Words {
             lo: self.bin(IntBinOp::Add, high, low),
-            hi: imm(0),
+            hi: self.imm(0),
         }
     }
 
@@ -303,18 +376,20 @@ impl<'c, 'a> Cx<'c, 'a> {
         let low = self.unary_word(IntUnOp::Cttz, a.lo.clone());
         let high = self.unary_word(IntUnOp::Cttz, a.hi.clone());
         let mask = self.is_zero(a.lo);
-        let mask = self.bin(IntBinOp::Sub, imm(0), mask);
+        let zero = self.imm(0);
+        let mask = self.bin(IntBinOp::Sub, zero, mask);
         let high = self.bin(IntBinOp::And, high, mask);
         Words {
             lo: self.bin(IntBinOp::Add, low, high),
-            hi: imm(0),
+            hi: self.imm(0),
         }
     }
 
     /// Rotation by `count` modulo 128. The shifts mask their count, so the opposite
     /// shift takes `-count`, and a zero count leaves the value unchanged.
     fn rotate(&mut self, a: Words, count: Operand, left: bool) -> Words {
-        let opposite = self.bin(IntBinOp::Sub, imm(0), count.clone());
+        let zero = self.imm(0);
+        let opposite = self.bin(IntBinOp::Sub, zero, count.clone());
         let (toward, away) = if left {
             (count, opposite)
         } else {
@@ -337,9 +412,10 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn flip_sign(&mut self, a: Words) -> Words {
+        let sign = self.imm(sign_bit(self.pointer));
         Words {
             lo: a.lo,
-            hi: self.bin(IntBinOp::Xor, a.hi, imm(i64::MIN)),
+            hi: self.bin(IntBinOp::Xor, a.hi, sign),
         }
     }
 
@@ -357,11 +433,12 @@ impl<'c, 'a> Cx<'c, 'a> {
 
     fn store_words(&mut self, base: Register, words: Words) {
         let attrs = MemoryAttrs {
-            align: 8,
+            align: word_bytes(self.pointer) as u8,
             volatile: false,
         };
+        let ty = self.word();
         self.out.push(Instruction::Store {
-            ty: MirType::i64(),
+            ty,
             src: words.lo,
             addr: AddressMode::BaseOffset {
                 base: base.clone(),
@@ -370,9 +447,9 @@ impl<'c, 'a> Cx<'c, 'a> {
             },
             attrs,
         });
-        let high = self.word_address(&base, 8);
+        let high = self.word_address(&base, word_bytes(self.pointer));
         self.out.push(Instruction::Store {
-            ty: MirType::i64(),
+            ty,
             src: words.hi,
             addr: AddressMode::BaseOffset {
                 base: high,
@@ -385,12 +462,13 @@ impl<'c, 'a> Cx<'c, 'a> {
 
     fn load_words(&mut self, base: Register) -> Words {
         let attrs = MemoryAttrs {
-            align: 8,
+            align: word_bytes(self.pointer) as u8,
             volatile: false,
         };
+        let ty = self.word();
         let lo = self.temp();
         self.out.push(Instruction::Load {
-            ty: MirType::i64(),
+            ty,
             dst: lo.clone(),
             addr: AddressMode::BaseOffset {
                 base: base.clone(),
@@ -399,10 +477,10 @@ impl<'c, 'a> Cx<'c, 'a> {
             },
             attrs,
         });
-        let high = self.word_address(&base, 8);
+        let high = self.word_address(&base, word_bytes(self.pointer));
         let hi = self.temp();
         self.out.push(Instruction::Load {
-            ty: MirType::i64(),
+            ty,
             dst: hi.clone(),
             addr: AddressMode::BaseOffset {
                 base: high,
@@ -418,13 +496,7 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn spill(&mut self, words: Words) -> Operand {
-        let slot = self.vregs.allocate_gpr();
-        self.reservations.insert(slot, 1);
-        let address = self.temp();
-        self.out.push(Instruction::StackAddr {
-            dst: address.clone(),
-            slot,
-        });
+        let address = self.pair_slot();
         self.store_words(address.clone(), words);
         Operand::Register(address)
     }
@@ -472,13 +544,14 @@ impl<'c, 'a> Cx<'c, 'a> {
         signed: bool,
     ) -> Result<Operand, FromIRError> {
         let from = map_ir_prim(ty)?;
-        if from == MirType::i64() {
+        let to = self.word();
+        if from == to {
             return Ok(operand);
         }
         let dst = self.temp();
         self.out.push(Instruction::IntConvert {
             from,
-            to: MirType::i64(),
+            to,
             signed,
             dst: dst.clone(),
             src: operand,
@@ -486,13 +559,34 @@ impl<'c, 'a> Cx<'c, 'a> {
         Ok(Operand::Register(dst))
     }
 
+    /// The operand a non-pair instruction reads from this value: its low word when the
+    /// value is a pair, otherwise the value itself.
+    fn narrow(&mut self, value: &IRVal<'a>) -> Result<Operand, FromIRError> {
+        if is_wide_value(value, self.vars, self.pointer) {
+            return Ok(self.operand_words(value)?.lo);
+        }
+        resolve_operand(value, self.vregs, self.vars, self.globals)
+    }
+
+    /// A stack slot two words deep, as a register holding its address.
+    fn pair_slot(&mut self) -> Register {
+        let slot = self.vregs.allocate_gpr();
+        self.reservations.insert(slot, 1);
+        let address = self.temp();
+        self.out.push(Instruction::StackAddr {
+            dst: address.clone(),
+            slot,
+        });
+        address
+    }
+
     fn operand_words(&mut self, value: &IRVal<'a>) -> Result<Words, FromIRError> {
         match value {
             IRVal::Constant(literal) => {
-                let (lo, hi) = literal_words(literal)?;
+                let (lo, hi) = literal_words(literal, self.pointer)?;
                 Ok(Words {
-                    lo: imm(lo),
-                    hi: imm(hi),
+                    lo: self.imm(lo),
+                    hi: self.imm(hi),
                 })
             }
             IRVal::Variable(name) => {
@@ -528,13 +622,14 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn write_pair(&mut self, pair: [Register; 2], words: Words) {
+        let ty = self.word();
         self.out.push(Instruction::Copy {
-            ty: MirType::i64(),
+            ty,
             dst: pair[0].clone(),
             src: words.lo,
         });
         self.out.push(Instruction::Copy {
-            ty: MirType::i64(),
+            ty,
             dst: pair[1].clone(),
             src: words.hi,
         });
@@ -544,17 +639,20 @@ impl<'c, 'a> Cx<'c, 'a> {
         let joined = self.bin(IntBinOp::Or, b.lo.clone(), b.hi.clone());
         let nonzero_divisor = self.nonzero(joined);
         let divisor = if signed {
-            let sign_flipped = self.bin(IntBinOp::Xor, a.hi.clone(), imm(i64::MIN));
+            let sign = self.imm(sign_bit(self.pointer));
+            let sign_flipped = self.bin(IntBinOp::Xor, a.hi.clone(), sign);
             let a_min_hi = self.is_zero(sign_flipped);
             let a_min_lo = self.is_zero(a.lo.clone());
-            let b_lo_neg = self.bin(IntBinOp::Xor, b.lo.clone(), imm(-1));
+            let ones = self.imm(-1);
+            let b_lo_neg = self.bin(IntBinOp::Xor, b.lo.clone(), ones.clone());
             let b_lo_is = self.is_zero(b_lo_neg);
-            let b_hi_neg = self.bin(IntBinOp::Xor, b.hi.clone(), imm(-1));
+            let b_hi_neg = self.bin(IntBinOp::Xor, b.hi.clone(), ones);
             let b_hi_is = self.is_zero(b_hi_neg);
             let left = self.bin(IntBinOp::And, a_min_hi, a_min_lo);
             let right = self.bin(IntBinOp::And, b_lo_is, b_hi_is);
             let overflow = self.bin(IntBinOp::And, left, right);
-            let fine = self.bin(IntBinOp::Xor, overflow, imm(1));
+            let one = self.imm(1);
+            let fine = self.bin(IntBinOp::Xor, overflow, one);
             self.bin(IntBinOp::And, nonzero_divisor, fine)
         } else {
             nonzero_divisor
@@ -565,19 +663,25 @@ impl<'c, 'a> Cx<'c, 'a> {
             IntBinOp::UDiv
         };
         let trap_dst = self.temp();
+        let ty = self.word();
+        let one = self.imm(1);
         self.out.push(Instruction::IntBinary {
             op: trap_op,
-            ty: MirType::i64(),
+            ty,
             dst: trap_dst,
-            lhs: imm(1),
+            lhs: one,
             rhs: divisor,
         });
 
-        let symbol = match (signed, remainder) {
-            (true, false) => RuntimeSymbol::Divti3,
-            (false, false) => RuntimeSymbol::Udivti3,
-            (true, true) => RuntimeSymbol::Modti3,
-            (false, true) => RuntimeSymbol::Umodti3,
+        let symbol = match (self.pointer, signed, remainder) {
+            (PointerWidth::Bits64, true, false) => RuntimeSymbol::Divti3,
+            (PointerWidth::Bits64, false, false) => RuntimeSymbol::Udivti3,
+            (PointerWidth::Bits64, true, true) => RuntimeSymbol::Modti3,
+            (PointerWidth::Bits64, false, true) => RuntimeSymbol::Umodti3,
+            (PointerWidth::Bits32, true, false) => RuntimeSymbol::Divdi3,
+            (PointerWidth::Bits32, false, false) => RuntimeSymbol::Udivdi3,
+            (PointerWidth::Bits32, true, true) => RuntimeSymbol::Moddi3,
+            (PointerWidth::Bits32, false, true) => RuntimeSymbol::Umoddi3,
         };
         let name = self.libcall_name(symbol, vec![Abi::Wide, Abi::Wide], Some(Abi::Wide));
         let pa = self.spill(a);
@@ -586,9 +690,33 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 }
 
-/// Folds a 64-bit operation on two literal words, with the same wrapping and masking
-/// the backends use. Operations that can trap are left to run.
-fn fold(op: IntBinOp, a: i64, b: i64) -> Option<i64> {
+/// The value of the word's sign bit, as the word-width immediate that carries it.
+const fn sign_bit(pointer: PointerWidth) -> i64 {
+    match pointer {
+        PointerWidth::Bits32 => i32::MIN as i64,
+        PointerWidth::Bits64 => i64::MIN,
+    }
+}
+
+/// Folds an operation on two literal words at the word's width, with the same wrapping
+/// and masking the backends use. Operations that can trap are left to run.
+fn fold(op: IntBinOp, a: i64, b: i64, pointer: PointerWidth) -> Option<i64> {
+    if pointer == PointerWidth::Bits32 {
+        let (a, b) = (a as i32, b as i32);
+        let count = b as u32 & 31;
+        return Some(i64::from(match op {
+            IntBinOp::Add => a.wrapping_add(b),
+            IntBinOp::Sub => a.wrapping_sub(b),
+            IntBinOp::Mul => a.wrapping_mul(b),
+            IntBinOp::And => a & b,
+            IntBinOp::Or => a | b,
+            IntBinOp::Xor => a ^ b,
+            IntBinOp::Shl => ((a as u32) << count) as i32,
+            IntBinOp::LShr => ((a as u32) >> count) as i32,
+            IntBinOp::AShr => a >> count,
+            IntBinOp::UDiv | IntBinOp::SDiv | IntBinOp::URem | IntBinOp::SRem => return None,
+        }));
+    }
     let count = (b as u64 & 63) as u32;
     Some(match op {
         IntBinOp::Add => a.wrapping_add(b),
@@ -604,7 +732,30 @@ fn fold(op: IntBinOp, a: i64, b: i64) -> Option<i64> {
     })
 }
 
-fn literal_words(literal: &Literal<'_>) -> Result<(i64, i64), FromIRError> {
+fn literal_words(literal: &Literal<'_>, pointer: PointerWidth) -> Result<(i64, i64), FromIRError> {
+    if pointer == PointerWidth::Bits32 {
+        let value: i64 = match literal {
+            Literal::I8(v) => i64::from(*v),
+            Literal::I16(v) => i64::from(*v),
+            Literal::I32(v) => i64::from(*v),
+            Literal::I64(v) => *v,
+            Literal::U8(v) => i64::from(*v),
+            Literal::U16(v) => i64::from(*v),
+            Literal::U32(v) => i64::from(*v),
+            Literal::U64(v) => *v as i64,
+            Literal::Bool(v) => i64::from(*v),
+            Literal::I128(_)
+            | Literal::U128(_)
+            | Literal::F32(_)
+            | Literal::F64(_)
+            | Literal::String(_) => return Err(FromIRError::UnsupportedType),
+        };
+        let value = value as u64;
+        return Ok((
+            i64::from(value as u32 as i32),
+            i64::from((value >> 32) as u32 as i32),
+        ));
+    }
     let wide: i128 = match literal {
         Literal::I128(value) => return Ok(split(*value as u128)),
         Literal::U128(value) => return Ok(split(*value)),
@@ -627,20 +778,31 @@ fn split(value: u128) -> (i64, i64) {
     (value as u64 as i64, (value >> 64) as u64 as i64)
 }
 
-fn is_wide_value(value: &IRVal<'_>, vars: &VarBindings<'_>) -> bool {
+/// Whether a value already stands for a pair. A literal is only self-evidently wide at
+/// 128 bits; at 64 bits on a 32-bit target the literal's own type says nothing, so the
+/// callee signature decides and a bare literal stays scalar here.
+fn is_wide_value(value: &IRVal<'_>, vars: &VarBindings<'_>, pointer: PointerWidth) -> bool {
     match value {
         IRVal::Variable(name) => vars.wide.contains_key(name),
-        IRVal::Constant(literal) => matches!(literal, Literal::I128(_) | Literal::U128(_)),
+        IRVal::Constant(literal) => {
+            pointer == PointerWidth::Bits64
+                && matches!(literal, Literal::I128(_) | Literal::U128(_))
+        }
         IRVal::Global(_) => false,
     }
 }
 
 /// Whether the instruction names a 128-bit type, or reads a 128-bit value. Every variant
 /// is listed, so a new IR instruction forces a decision here.
-fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_>) -> bool {
+fn touches_wide(
+    instr: &IRInst<'_>,
+    vars: &VarBindings<'_>,
+    module: &IRModule<'_>,
+    pointer: PointerWidth,
+) -> bool {
     let typed = match instr {
         IRInst::Binary { ty, .. } | IRInst::Unary { ty, .. } | IRInst::Cmp { ty, .. } => {
-            is_wide_prim(*ty)
+            is_wide_prim(*ty, pointer)
         }
         IRInst::ZeroExtend {
             source_type,
@@ -666,12 +828,12 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
             source_type,
             target_type,
             ..
-        } => is_wide_prim(*source_type) || is_wide_prim(*target_type),
-        IRInst::IntToFloat { source_type, .. } => is_wide_prim(*source_type),
+        } => is_wide_prim(*source_type, pointer) || is_wide_prim(*target_type, pointer),
+        IRInst::IntToFloat { source_type, .. } => is_wide_prim(*source_type, pointer),
         IRInst::FloatToInt { target_type, .. }
         | IRInst::PtrToInt { target_type, .. }
-        | IRInst::IntToPtr { target_type, .. } => is_wide_prim(*target_type),
-        IRInst::Switch { ty, .. } => is_wide_prim(*ty),
+        | IRInst::IntToPtr { target_type, .. } => is_wide_prim(*target_type, pointer),
+        IRInst::Switch { ty, .. } => is_wide_prim(*ty, pointer),
         IRInst::Select { ty, .. }
         | IRInst::Ret { ty, .. }
         | IRInst::Phi { ty, .. }
@@ -681,27 +843,31 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
         | IRInst::AtomicLoad { ty, .. }
         | IRInst::AtomicStore { ty, .. }
         | IRInst::AtomicBinary { ty, .. }
-        | IRInst::AtomicCompareExchange { ty, .. } => is_wide_type(ty),
-        IRInst::VaArg { ty, .. } => is_wide_prim(*ty),
+        | IRInst::AtomicCompareExchange { ty, .. } => is_wide_type(ty, pointer),
+        IRInst::VaArg { ty, .. } => is_wide_prim(*ty, pointer),
         IRInst::InlineAsm {
             result, operands, ..
         } => {
-            result.as_ref().is_some_and(|(_, ty)| is_wide_prim(*ty))
+            result.as_ref().is_some_and(|(_, ty)| is_wide_prim(*ty, pointer))
                 || operands.iter().any(|operand| {
-                    matches!(operand, IRAsmOperand::In { value, .. } if is_wide_value(value, vars))
+                    matches!(operand, IRAsmOperand::In { value, .. } if is_wide_value(value, vars, pointer))
                 })
         }
         IRInst::CallIndirect {
             args, return_type, ..
-        } => is_wide_type(return_type) || args.iter().any(|(ty, _)| is_wide_type(ty)),
+        } => is_wide_type(return_type, pointer) || args.iter().any(|(ty, _)| is_wide_type(ty, pointer)),
         IRInst::Call {
             func_name, args, ..
         } => {
             module.functions.get(func_name).is_some_and(|callee| {
-                is_wide_type(&callee.signature.return_type)
-                    || callee.signature.params.iter().any(|p| is_wide_type(&p.ty))
-            }) || args.iter().any(|arg| is_wide_value(arg, vars))
+                is_wide_type(&callee.signature.return_type, pointer)
+                    || callee.signature.params.iter().any(|p| is_wide_type(&p.ty, pointer))
+            }) || args.iter().any(|arg| is_wide_value(arg, vars, pointer))
         }
+        IRInst::Write { .. }
+        | IRInst::Read { .. }
+        | IRInst::WriteByte { .. }
+        | IRInst::ReadByte { .. } => pointer == PointerWidth::Bits32,
         IRInst::Alloc { .. }
         | IRInst::FuncAddr { .. }
         | IRInst::Br { .. }
@@ -710,15 +876,11 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
         | IRInst::Fence { .. }
         | IRInst::GetFieldPtr { .. }
         | IRInst::GetElemPtr { .. }
-        | IRInst::Write { .. }
-        | IRInst::Read { .. }
-        | IRInst::WriteByte { .. }
-        | IRInst::ReadByte { .. }
         | IRInst::VaStart { .. }
         | IRInst::VaEnd { .. }
         | IRInst::VaCopy { .. } => false,
         #[cfg(feature = "nightly")]
-        IRInst::SimdExtract { scalar_type, .. } => is_wide_prim(*scalar_type),
+        IRInst::SimdExtract { scalar_type, .. } => is_wide_prim(*scalar_type, pointer),
         #[cfg(feature = "nightly")]
         IRInst::SimdBinary { .. }
         | IRInst::SimdUnary { .. }
@@ -735,11 +897,93 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
             .any(|name| vars.wide.contains_key(name))
 }
 
+/// Whether the instruction names a 128-bit type on a target whose registers are 32 bits
+/// wide. Four-word integers are not lowered, so the compile stops here by name.
+fn quad_mention(instr: &IRInst<'_>, module: &IRModule<'_>, pointer: PointerWidth) -> bool {
+    if pointer != PointerWidth::Bits32 {
+        return false;
+    }
+    match instr {
+        IRInst::Binary { ty, .. }
+        | IRInst::Unary { ty, .. }
+        | IRInst::Cmp { ty, .. }
+        | IRInst::Switch { ty, .. }
+        | IRInst::VaArg { ty, .. } => is_quad_prim(*ty, pointer),
+        IRInst::ZeroExtend {
+            source_type,
+            target_type,
+            ..
+        }
+        | IRInst::SignExtend {
+            source_type,
+            target_type,
+            ..
+        }
+        | IRInst::Trunc {
+            source_type,
+            target_type,
+            ..
+        }
+        | IRInst::Bitcast {
+            source_type,
+            target_type,
+            ..
+        }
+        | IRInst::FloatConvert {
+            source_type,
+            target_type,
+            ..
+        }
+        | IRInst::IntToFloat {
+            source_type,
+            target_type,
+            ..
+        }
+        | IRInst::FloatToInt {
+            source_type,
+            target_type,
+            ..
+        } => is_quad_prim(*source_type, pointer) || is_quad_prim(*target_type, pointer),
+        IRInst::PtrToInt { target_type, .. } | IRInst::IntToPtr { target_type, .. } => {
+            is_quad_prim(*target_type, pointer)
+        }
+        IRInst::Select { ty, .. }
+        | IRInst::Ret { ty, .. }
+        | IRInst::Phi { ty, .. }
+        | IRInst::Copy { ty, .. }
+        | IRInst::Load { ty, .. }
+        | IRInst::Store { ty, .. }
+        | IRInst::Alloc {
+            allocated_ty: ty, ..
+        } => is_quad_type(ty, pointer),
+        IRInst::Call { func_name, .. } => module.functions.get(func_name).is_some_and(|callee| {
+            is_quad_type(&callee.signature.return_type, pointer)
+                || callee
+                    .signature
+                    .params
+                    .iter()
+                    .any(|p| is_quad_type(&p.ty, pointer))
+        }),
+        IRInst::CallIndirect {
+            args, return_type, ..
+        } => {
+            is_quad_type(return_type, pointer)
+                || args.iter().any(|(ty, _)| is_quad_type(ty, pointer))
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn lower_instruction<'a>(
     instr: &IRInst<'a>,
     cx: &mut Cx<'_, 'a>,
 ) -> Result<bool, FromIRError> {
-    if !touches_wide(instr, cx.vars, cx.module) {
+    if quad_mention(instr, cx.module, cx.pointer) {
+        return Err(FromIRError::NotLegalizable(format!(
+            "`{instr}` names a 128-bit integer on a 32-bit target: that takes four registers, and only pairs are split"
+        )));
+    }
+    if !touches_wide(instr, cx.vars, cx.module, cx.pointer) {
         return Ok(false);
     }
     match instr {
@@ -749,8 +993,8 @@ pub(super) fn lower_instruction<'a>(
             ty,
             lhs,
             rhs,
-        } if is_wide_prim(*ty) => {
-            let signed = *ty == IRPrim::I128;
+        } if is_wide_prim(*ty, cx.pointer) => {
+            let signed = matches!(*ty, IRPrim::I128 | IRPrim::I64);
             let a = cx.operand_words(lhs)?;
             let b = cx.operand_words(rhs)?;
             let value = match op {
@@ -784,13 +1028,13 @@ pub(super) fn lower_instruction<'a>(
             result,
             ty,
             value,
-        } if is_wide_prim(*ty) => {
+        } if is_wide_prim(*ty, cx.pointer) => {
             let a = cx.operand_words(value)?;
             let value = match op {
                 UnaryOp::Neg => {
                     let zero = Words {
-                        lo: imm(0),
-                        hi: imm(0),
+                        lo: cx.imm(0),
+                        hi: cx.imm(0),
                     };
                     cx.sub(zero, a)
                 }
@@ -816,8 +1060,8 @@ pub(super) fn lower_instruction<'a>(
             ty,
             lhs,
             rhs,
-        } if is_wide_prim(*ty) => {
-            let signed = *ty == IRPrim::I128;
+        } if is_wide_prim(*ty, cx.pointer) => {
+            let signed = matches!(*ty, IRPrim::I128 | IRPrim::I64);
             let a = cx.operand_words(lhs)?;
             let b = cx.operand_words(rhs)?;
             let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
@@ -831,12 +1075,14 @@ pub(super) fn lower_instruction<'a>(
                     } else {
                         IntCmpOp::Ne
                     };
+                    let ty = cx.word();
+                    let zero = cx.imm(0);
                     cx.out.push(Instruction::IntCmp {
                         op,
-                        ty: MirType::i64(),
+                        ty,
                         dst,
                         lhs: differ,
-                        rhs: imm(0),
+                        rhs: zero,
                     });
                     return Ok(true);
                 }
@@ -851,22 +1097,26 @@ pub(super) fn lower_instruction<'a>(
                         IRCmp::Gt => cx.unsigned_less(y, x),
                         IRCmp::Le => {
                             let greater = cx.unsigned_less(y, x);
-                            cx.bin(IntBinOp::Xor, greater, imm(1))
+                            let one = cx.imm(1);
+                            cx.bin(IntBinOp::Xor, greater, one)
                         }
                         IRCmp::Ge => {
                             let less = cx.unsigned_less(x, y);
-                            cx.bin(IntBinOp::Xor, less, imm(1))
+                            let one = cx.imm(1);
+                            cx.bin(IntBinOp::Xor, less, one)
                         }
                         IRCmp::Eq | IRCmp::Ne => return Err(FromIRError::UnsupportedInstruction),
                     }
                 }
             };
+            let ty = cx.word();
+            let zero = cx.imm(0);
             cx.out.push(Instruction::IntCmp {
                 op: IntCmpOp::Ne,
-                ty: MirType::i64(),
+                ty,
                 dst,
                 lhs: flag,
-                rhs: imm(0),
+                rhs: zero,
             });
         }
         IRInst::ZeroExtend {
@@ -874,7 +1124,7 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*target_type) && !is_wide_prim(*source_type) => {
+        } if is_wide_prim(*target_type, cx.pointer) && !is_wide_prim(*source_type, cx.pointer) => {
             extend_to_wide(cx, result, *source_type, value, false)?;
         }
         IRInst::SignExtend {
@@ -882,7 +1132,7 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*target_type) && !is_wide_prim(*source_type) => {
+        } if is_wide_prim(*target_type, cx.pointer) && !is_wide_prim(*source_type, cx.pointer) => {
             extend_to_wide(cx, result, *source_type, value, true)?;
         }
         IRInst::Trunc {
@@ -890,19 +1140,21 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*source_type) && !is_wide_prim(*target_type) => {
+        } if is_wide_prim(*source_type, cx.pointer) && !is_wide_prim(*target_type, cx.pointer) => {
             let a = cx.operand_words(value)?;
             let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
-            if matches!(target_type, IRPrim::I64 | IRPrim::U64) {
+            let word = cx.word();
+            let to = map_ir_prim(*target_type)?;
+            if to == word {
                 cx.out.push(Instruction::Copy {
-                    ty: MirType::i64(),
+                    ty: word,
                     dst,
                     src: a.lo,
                 });
             } else {
                 cx.out.push(Instruction::IntConvert {
-                    from: MirType::i64(),
-                    to: map_ir_prim(*target_type)?,
+                    from: word,
+                    to,
                     signed: false,
                     dst,
                     src: a.lo,
@@ -929,15 +1181,16 @@ pub(super) fn lower_instruction<'a>(
             let t = cx.operand_words(true_val)?;
             let f = cx.operand_words(false_val)?;
             let pair = cx.result_pair(result);
+            let ty = cx.word();
             cx.out.push(Instruction::Select {
-                ty: MirType::i64(),
+                ty,
                 dst: pair[0].clone(),
                 cond: cond_reg.clone(),
                 true_val: t.lo,
                 false_val: f.lo,
             });
             cx.out.push(Instruction::Select {
-                ty: MirType::i64(),
+                ty,
                 dst: pair[1].clone(),
                 cond: cond_reg,
                 true_val: t.hi,
@@ -948,8 +1201,8 @@ pub(super) fn lower_instruction<'a>(
             result,
             ty,
             ptr,
-            volatile: false,
-        } if is_wide_type(ty) => {
+            volatile: _,
+        } if is_wide_type(ty, cx.pointer) => {
             let base = address_base(ptr, cx)?;
             let loaded = cx.load_words(base);
             let pair = cx.result_pair(result);
@@ -959,21 +1212,21 @@ pub(super) fn lower_instruction<'a>(
             ty,
             ptr,
             value,
-            volatile: false,
-        } if is_wide_type(ty) => {
+            volatile: _,
+        } if is_wide_type(ty, cx.pointer) => {
             let base = address_base(ptr, cx)?;
             let words = cx.operand_words(value)?;
             cx.store_words(base, words);
         }
-        IRInst::Phi { result, ty, .. } if is_wide_type(ty) => {
+        IRInst::Phi { result, ty, .. } if is_wide_type(ty, cx.pointer) => {
             cx.result_pair(result);
         }
-        IRInst::Copy { result, ty, value } if is_wide_type(ty) => {
+        IRInst::Copy { result, ty, value } if is_wide_type(ty, cx.pointer) => {
             let words = cx.operand_words(value)?;
             let pair = cx.result_pair(result);
             cx.write_pair(pair, words);
         }
-        IRInst::Ret { ty, value } if is_wide_type(ty) => {
+        IRInst::Ret { ty, value } if is_wide_type(ty, cx.pointer) => {
             let Some(value) = value else {
                 return Err(FromIRError::InvalidIR);
             };
@@ -993,28 +1246,28 @@ pub(super) fn lower_instruction<'a>(
             for (index, arg) in args.iter().enumerate() {
                 let param_wide = callee
                     .and_then(|f| f.signature.params.get(index))
-                    .is_some_and(|p| is_wide_type(&p.ty));
-                if param_wide || is_wide_value(arg, cx.vars) {
+                    .is_some_and(|p| is_wide_type(&p.ty, cx.pointer));
+                if param_wide || is_wide_value(arg, cx.vars, cx.pointer) {
                     let words = cx.operand_words(arg)?;
                     mir_args.push(cx.spill(words));
                 } else {
                     mir_args.push(resolve_operand(arg, cx.vregs, cx.vars, cx.globals)?);
                 }
             }
-            let ret_wide = callee.is_some_and(|f| is_wide_type(&f.signature.return_type));
+            let ret_wide =
+                callee.is_some_and(|f| is_wide_type(&f.signature.return_type, cx.pointer));
             if ret_wide {
-                let Some(result) = result else {
-                    return Err(FromIRError::InvalidIR);
-                };
                 let placeholder = cx.temp();
                 cx.out.push(Instruction::Call {
                     name: (*func_name).to_string(),
                     args: mir_args,
                     ret: Some(placeholder.clone()),
                 });
-                let loaded = cx.load_words(placeholder);
-                let pair = cx.result_pair(result);
-                cx.write_pair(pair, loaded);
+                if let Some(result) = result {
+                    let loaded = cx.load_words(placeholder);
+                    let pair = cx.result_pair(result);
+                    cx.write_pair(pair, loaded);
+                }
             } else {
                 if callee.is_none() {
                     return Err(FromIRError::UnsupportedInstruction);
@@ -1038,14 +1291,19 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*source_type) => {
+        } if is_wide_prim(*source_type, cx.pointer) => {
             let words = cx.operand_words(value)?;
             let arg = cx.spill(words);
+            let wide = cx.pointer == PointerWidth::Bits64;
             let (symbol, ret_ty) = match target_type {
-                IRPrim::F64 if *signed => (RuntimeSymbol::Floattidf, MirType::f64()),
-                IRPrim::F64 => (RuntimeSymbol::Floatuntidf, MirType::f64()),
-                IRPrim::F32 if *signed => (RuntimeSymbol::Floattisf, MirType::f32()),
-                IRPrim::F32 => (RuntimeSymbol::Floatuntisf, MirType::f32()),
+                IRPrim::F64 if *signed && wide => (RuntimeSymbol::Floattidf, MirType::f64()),
+                IRPrim::F64 if wide => (RuntimeSymbol::Floatuntidf, MirType::f64()),
+                IRPrim::F32 if *signed && wide => (RuntimeSymbol::Floattisf, MirType::f32()),
+                IRPrim::F32 if wide => (RuntimeSymbol::Floatuntisf, MirType::f32()),
+                IRPrim::F64 if *signed => (RuntimeSymbol::Floatdidf, MirType::f64()),
+                IRPrim::F64 => (RuntimeSymbol::Floatundidf, MirType::f64()),
+                IRPrim::F32 if *signed => (RuntimeSymbol::Floatdisf, MirType::f32()),
+                IRPrim::F32 => (RuntimeSymbol::Floatundisf, MirType::f32()),
                 IRPrim::I8
                 | IRPrim::I16
                 | IRPrim::I32
@@ -1073,12 +1331,17 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*target_type) => {
+        } if is_wide_prim(*target_type, cx.pointer) => {
+            let wide = cx.pointer == PointerWidth::Bits64;
             let (symbol, param_ty) = match source_type {
-                IRPrim::F64 if *signed => (RuntimeSymbol::Fixdfti, MirType::f64()),
-                IRPrim::F64 => (RuntimeSymbol::Fixunsdfti, MirType::f64()),
-                IRPrim::F32 if *signed => (RuntimeSymbol::Fixsfti, MirType::f32()),
-                IRPrim::F32 => (RuntimeSymbol::Fixunssfti, MirType::f32()),
+                IRPrim::F64 if *signed && wide => (RuntimeSymbol::Fixdfti, MirType::f64()),
+                IRPrim::F64 if wide => (RuntimeSymbol::Fixunsdfti, MirType::f64()),
+                IRPrim::F32 if *signed && wide => (RuntimeSymbol::Fixsfti, MirType::f32()),
+                IRPrim::F32 if wide => (RuntimeSymbol::Fixunssfti, MirType::f32()),
+                IRPrim::F64 if *signed => (RuntimeSymbol::Fixdfdi, MirType::f64()),
+                IRPrim::F64 => (RuntimeSymbol::Fixunsdfdi, MirType::f64()),
+                IRPrim::F32 if *signed => (RuntimeSymbol::Fixsfdi, MirType::f32()),
+                IRPrim::F32 => (RuntimeSymbol::Fixunssfdi, MirType::f32()),
                 IRPrim::I8
                 | IRPrim::I16
                 | IRPrim::I32
@@ -1098,6 +1361,169 @@ pub(super) fn lower_instruction<'a>(
             let pair = cx.result_pair(result);
             cx.write_pair(pair, words);
         }
+        IRInst::Write {
+            buffer,
+            size,
+            result,
+        } => {
+            let buffer = cx.narrow(buffer)?;
+            let size = cx.narrow(size)?;
+            io_call(cx, "lamina.write", vec![buffer, size], result);
+        }
+        IRInst::WriteByte { value, result } => {
+            let value = cx.narrow(value)?;
+            io_call(cx, "lamina.writebyte", vec![value], result);
+        }
+        IRInst::Read {
+            buffer,
+            size,
+            result,
+        } => {
+            let buffer = cx.narrow(buffer)?;
+            let size = cx.narrow(size)?;
+            io_call(cx, "lamina.read", vec![buffer, size], result);
+        }
+        IRInst::ReadByte { result } => {
+            io_call(cx, "lamina.readbyte", Vec::new(), result);
+        }
+        IRInst::Bitcast {
+            result,
+            source_type,
+            target_type,
+            value,
+        } => {
+            let from_pair = is_wide_prim(*source_type, cx.pointer);
+            let to_pair = is_wide_prim(*target_type, cx.pointer);
+            match (from_pair, to_pair) {
+                (true, true) => {
+                    let words = cx.operand_words(value)?;
+                    let pair = cx.result_pair(result);
+                    cx.write_pair(pair, words);
+                }
+                (false, true) => {
+                    if let IRVal::Constant(literal) = value {
+                        let (lo, hi) = float_literal_words(literal, cx.pointer)?;
+                        let words = Words {
+                            lo: cx.imm(lo),
+                            hi: cx.imm(hi),
+                        };
+                        let pair = cx.result_pair(result);
+                        cx.write_pair(pair, words);
+                    } else {
+                        let src = resolve_operand(value, cx.vregs, cx.vars, cx.globals)?;
+                        let ty = map_ir_prim(*source_type)?;
+                        let address = cx.pair_slot();
+                        cx.out.push(Instruction::Store {
+                            ty,
+                            src,
+                            addr: AddressMode::BaseOffset {
+                                base: address.clone(),
+                                offset: 0,
+                                address_space: Default::default(),
+                            },
+                            attrs: MemoryAttrs {
+                                align: word_bytes(cx.pointer) as u8,
+                                volatile: false,
+                            },
+                        });
+                        let words = cx.load_words(address);
+                        let pair = cx.result_pair(result);
+                        cx.write_pair(pair, words);
+                    }
+                }
+                (true, false) => {
+                    let words = cx.operand_words(value)?;
+                    let address = cx.pair_slot();
+                    cx.store_words(address.clone(), words);
+                    let ty = map_ir_prim(*target_type)?;
+                    let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
+                    cx.out.push(Instruction::Load {
+                        ty,
+                        dst,
+                        addr: AddressMode::BaseOffset {
+                            base: address,
+                            offset: 0,
+                            address_space: Default::default(),
+                        },
+                        attrs: MemoryAttrs {
+                            align: word_bytes(cx.pointer) as u8,
+                            volatile: false,
+                        },
+                    });
+                }
+                (false, false) => return Err(FromIRError::UnsupportedInstruction),
+            }
+        }
+        IRInst::PtrToInt {
+            result,
+            ptr_value,
+            target_type,
+        } if is_wide_prim(*target_type, cx.pointer) => {
+            let src = resolve_operand(ptr_value, cx.vregs, cx.vars, cx.globals)?;
+            let lo = cx.temp();
+            let to = cx.word();
+            cx.out.push(Instruction::IntConvert {
+                from: MirType::ptr(),
+                to,
+                signed: false,
+                dst: lo.clone(),
+                src,
+            });
+            let pair = cx.result_pair(result);
+            let words = Words {
+                lo: Operand::Register(lo),
+                hi: cx.imm(0),
+            };
+            cx.write_pair(pair, words);
+        }
+        IRInst::IntToPtr {
+            result,
+            int_value,
+            target_type,
+        } if is_wide_prim(*target_type, cx.pointer) => {
+            let src = cx.narrow(int_value)?;
+            let from = cx.word();
+            let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
+            cx.out.push(Instruction::IntConvert {
+                from,
+                to: MirType::ptr(),
+                signed: false,
+                dst,
+                src,
+            });
+        }
+        IRInst::GetElemPtr {
+            result,
+            array_ptr,
+            index,
+            element_type,
+        } => {
+            let base = address_base(array_ptr, cx)?;
+            let size = sizeof_type(element_type, cx.pointer)
+                .and_then(|size| i64::try_from(size).ok())
+                .ok_or(FromIRError::UnsupportedInstruction)?;
+            let index = cx.narrow(index)?;
+            let scale = cx.imm(size);
+            let scaled = cx.bin(IntBinOp::Mul, index, scale);
+            let address = cx.temp();
+            let word = cx.word();
+            cx.out.push(Instruction::IntConvert {
+                from: MirType::ptr(),
+                to: word,
+                signed: false,
+                dst: address.clone(),
+                src: Operand::Register(base),
+            });
+            let sum = cx.bin(IntBinOp::Add, Operand::Register(address), scaled);
+            let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
+            cx.out.push(Instruction::IntConvert {
+                from: word,
+                to: MirType::ptr(),
+                signed: false,
+                dst,
+                src: sum,
+            });
+        }
         IRInst::Binary { .. }
         | IRInst::Unary { .. }
         | IRInst::Cmp { .. }
@@ -1111,7 +1537,6 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::Ret { .. }
         | IRInst::IntToFloat { .. }
         | IRInst::FloatToInt { .. }
-        | IRInst::Bitcast { .. }
         | IRInst::FloatConvert { .. }
         | IRInst::FuncAddr { .. }
         | IRInst::Switch { .. }
@@ -1119,24 +1544,27 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::Jmp { .. }
         | IRInst::Unreachable
         | IRInst::Alloc { .. }
-        | IRInst::AtomicLoad { .. }
-        | IRInst::AtomicStore { .. }
-        | IRInst::AtomicBinary { .. }
-        | IRInst::AtomicCompareExchange { .. }
         | IRInst::Fence { .. }
         | IRInst::GetFieldPtr { .. }
-        | IRInst::GetElemPtr { .. }
         | IRInst::PtrToInt { .. }
         | IRInst::IntToPtr { .. }
-        | IRInst::Write { .. }
-        | IRInst::Read { .. }
-        | IRInst::WriteByte { .. }
-        | IRInst::ReadByte { .. }
         | IRInst::VaStart { .. }
-        | IRInst::VaArg { .. }
         | IRInst::VaEnd { .. }
         | IRInst::VaCopy { .. }
         | IRInst::InlineAsm { .. } => return Err(FromIRError::UnsupportedInstruction),
+        IRInst::VaArg { .. } => {
+            return Err(FromIRError::NotLegalizable(
+                "va_arg of a 64-bit integer on a 32-bit target: a variadic slot holds one word, and reading the pair is not implemented".to_string(),
+            ));
+        }
+        IRInst::AtomicLoad { .. }
+        | IRInst::AtomicStore { .. }
+        | IRInst::AtomicBinary { .. }
+        | IRInst::AtomicCompareExchange { .. } => {
+            return Err(FromIRError::NotLegalizable(
+                "an atomic operation on a 64-bit integer on a 32-bit target: two words cannot be read or written atomically without a double-word atomic".to_string(),
+            ));
+        }
         #[cfg(feature = "nightly")]
         IRInst::SimdBinary { .. }
         | IRInst::SimdUnary { .. }
@@ -1150,6 +1578,38 @@ pub(super) fn lower_instruction<'a>(
     Ok(true)
 }
 
+/// An io intrinsic returns a signed count typed `i64`, so on a 32-bit target it defines
+/// a pair: the call's own word, and that word's sign.
+fn io_call<'a>(cx: &mut Cx<'_, 'a>, name: &str, args: Vec<Operand>, result: &'a str) {
+    let pair = cx.result_pair(result);
+    cx.out.push(Instruction::Call {
+        name: name.to_string(),
+        args,
+        ret: Some(pair[0].clone()),
+    });
+    let top = cx.imm(cx.bits() - 1);
+    let hi = cx.bin(IntBinOp::AShr, Operand::Register(pair[0].clone()), top);
+    let ty = cx.word();
+    cx.out.push(Instruction::Copy {
+        ty,
+        dst: pair[1].clone(),
+        src: hi,
+    });
+}
+
+/// The words of a float literal reinterpreted as an integer of the same width.
+fn float_literal_words(
+    literal: &Literal<'_>,
+    pointer: PointerWidth,
+) -> Result<(i64, i64), FromIRError> {
+    let bits = match literal {
+        Literal::F64(value) => value.to_bits() as i64,
+        Literal::F32(value) => i64::from(value.to_bits()),
+        other => return literal_words(other, pointer),
+    };
+    literal_words(&Literal::I64(bits), pointer)
+}
+
 fn extend_to_wide<'a>(
     cx: &mut Cx<'_, 'a>,
     result: &'a str,
@@ -1160,9 +1620,10 @@ fn extend_to_wide<'a>(
     let src = resolve_operand(value, cx.vregs, cx.vars, cx.globals)?;
     let word = cx.word_of(source, src, signed)?;
     let hi = if signed {
-        cx.bin(IntBinOp::AShr, word.clone(), imm(63))
+        let top = cx.imm(cx.bits() - 1);
+        cx.bin(IntBinOp::AShr, word.clone(), top)
     } else {
-        imm(0)
+        cx.imm(0)
     };
     let pair = cx.result_pair(result);
     cx.write_pair(pair, Words { lo: word, hi });
@@ -1184,6 +1645,7 @@ pub(super) fn phi_words<'a>(
     globals: &mut GlobalAddresses<'a>,
     reservations: &mut HashMap<VirtualReg, usize>,
     module: &IRModule<'a>,
+    pointer: PointerWidth,
 ) -> Result<(Operand, Operand), FromIRError> {
     let mut cx = Cx {
         vregs,
@@ -1191,6 +1653,7 @@ pub(super) fn phi_words<'a>(
         reservations,
         globals,
         module,
+        pointer,
         out: Vec::new(),
     };
     let words = cx.operand_words(value)?;
@@ -1201,15 +1664,17 @@ pub(super) fn load_wide_parameter(
     address: Register,
     vregs: &mut VirtualRegAllocator,
     prelude: &mut Vec<Instruction>,
+    pointer: PointerWidth,
 ) -> [Register; 2] {
     let lo = Register::Virtual(vregs.allocate_gpr());
     let hi = Register::Virtual(vregs.allocate_gpr());
+    let word = word_ty(pointer);
     let attrs = MemoryAttrs {
-        align: 8,
+        align: word_bytes(pointer) as u8,
         volatile: false,
     };
     prelude.push(Instruction::Load {
-        ty: MirType::i64(),
+        ty: word,
         dst: lo.clone(),
         addr: AddressMode::BaseOffset {
             base: address.clone(),
@@ -1222,10 +1687,10 @@ pub(super) fn load_wide_parameter(
     prelude.push(Instruction::Lea {
         dst: high.clone(),
         base: address,
-        offset: 8,
+        offset: word_bytes(pointer),
     });
     prelude.push(Instruction::Load {
-        ty: MirType::i64(),
+        ty: word,
         dst: hi.clone(),
         addr: AddressMode::BaseOffset {
             base: high,

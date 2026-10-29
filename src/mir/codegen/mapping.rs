@@ -14,7 +14,7 @@ use crate::{
 use lamina_platform::PointerWidth;
 
 /// Largest aggregate passed in registers. Beyond this every target in the table puts
-/// the value in memory, except ppc64, which is why ppc64 rejects aggregates for now.
+/// the value in memory, except ppc64le, which is why ppc64le rejects aggregates for now.
 pub const MAX_REGISTER_AGGREGATE: u64 = 16;
 
 /// Maps an IR primitive to the MIR type that holds it. Signedness is dropped, because
@@ -79,12 +79,13 @@ pub fn classify_aggregate(
     classify_aggregate_within(ty, what, None, pointer)
 }
 
-/// The ABI of a 128-bit integer crossing a boundary: 16 bytes, 16-byte aligned, two
-/// INTEGER words, as System V classifies `__int128`.
-pub fn wide_aggregate() -> Aggregate {
+/// The ABI of the integer that takes two registers, crossing a boundary: two words,
+/// aligned to its own size, one INTEGER aggregate, as System V classifies `__int128`.
+pub fn wide_aggregate(pointer: PointerWidth) -> Aggregate {
+    let size = 2 * pointer.bytes();
     Aggregate {
-        size: 16,
-        align: 16,
+        size,
+        align: size,
         class: AggregateClass::Integer,
     }
 }
@@ -96,7 +97,14 @@ fn classify_aggregate_within(
     pointer: PointerWidth,
 ) -> Result<Option<Aggregate>, FromIRError> {
     if matches!(ty, IRType::Primitive(IRPrim::I128 | IRPrim::U128)) {
-        return Ok(Some(wide_aggregate()));
+        if pointer == PointerWidth::Bits32 {
+            return Err(FromIRError::UnsupportedType);
+        }
+        return Ok(Some(wide_aggregate(pointer)));
+    }
+    if pointer == PointerWidth::Bits32 && matches!(ty, IRType::Primitive(IRPrim::I64 | IRPrim::U64))
+    {
+        return Ok(Some(wide_aggregate(pointer)));
     }
     if !is_aggregate(ty) {
         return Ok(None);
