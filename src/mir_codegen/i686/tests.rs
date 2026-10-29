@@ -150,3 +150,59 @@ fn debug_lines_follow_source_locations_and_skip_synthesized_instructions() {
         ["    .loc 1 3 5", "    .loc 1 5 5", "    .loc 1 9 5"]
     );
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod aggregate_return_tests {
+    use crate::mir::codegen::from_ir_for_target;
+    use crate::parser::parse_module;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    fn emit(source: &str) -> Result<String, String> {
+        let ir = parse_module(source).expect("parse");
+        let mir = from_ir_for_target(&ir, "i686_test", TargetArchitecture::I686.data_layout())
+            .map_err(|error| error.to_string())?;
+        let mut out = Vec::new();
+        super::super::generate_mir_i686_with_units_and_settings(
+            &mir,
+            &mut out,
+            TargetOperatingSystem::Linux,
+            1,
+            &Default::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(String::from_utf8(out).expect("utf8"))
+    }
+
+    const ONE_FIELD_LONG: &str = "fn @make(i32 %x) -> struct { a: i64 } {\nentry:\n  \
+         %p = stackalloc.struct { a: i64 }\n  %lo = getelem.i32 %p, 0\n  \
+         store.i32 %lo, %x\n  ret.struct { a: i64 } %p\n}\n";
+
+    #[test]
+    fn a_one_field_sixty_four_bit_struct_comes_back_through_the_hidden_pointer() {
+        let assembly = emit(ONE_FIELD_LONG).expect("a struct return is a cdecl memory return");
+        assert!(assembly.contains("ret $4"), "{assembly}");
+        assert!(assembly.contains("movl 8(%ebp)"), "{assembly}");
+        assert!(assembly.contains("movl 12(%ebp)"), "{assembly}");
+    }
+
+    #[test]
+    fn a_two_word_struct_comes_back_through_the_hidden_pointer() {
+        let assembly = emit(
+            "fn @make(i32 %x) -> struct { a: i32, b: i32 } {\nentry:\n  \
+             %p = stackalloc.struct { a: i32, b: i32 }\n  \
+             %pa = getfieldptr.struct { a: i32, b: i32 } %p, 0\n  \
+             store.i32 %pa, %x\n  ret.struct { a: i32, b: i32 } %p\n}\n",
+        )
+        .expect("a struct return is a cdecl memory return");
+        assert!(assembly.contains("ret $4"), "{assembly}");
+    }
+
+    #[test]
+    fn a_legalized_sixty_four_bit_integer_return_is_still_refused_by_name() {
+        let error = emit("fn @make(i64 %x) -> i64 {\nentry:\n  ret.i64 %x\n}\n")
+            .expect_err("a 64-bit integer comes back in %edx:%eax, which is not implemented");
+        assert!(error.contains("%edx:%eax"), "{error}");
+        assert!(error.contains("@make"), "{error}");
+    }
+}

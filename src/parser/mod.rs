@@ -1621,7 +1621,7 @@ fn @test_empty_blocks() -> i64 {
     #[test]
     fn test_parse_instruction_variations() -> Result<(), LaminaError> {
         let source = r#"
-fn @test_instructions() -> i64 {
+fn @test_instructions() -> bool {
   entry:
     %a = add.i64 1, 2
     %b = sub.i64 %a, 3
@@ -1635,7 +1635,7 @@ fn @test_instructions() -> i64 {
     %j = gt.i64 %i, 0
     %k = ge.i64 %j, 0
     %out = writebyte %k
-    ret.i64 %k
+    ret.bool %k
 }
 "#;
         let module = parse_module(source)?;

@@ -65,7 +65,7 @@ fn @make_pair(i64 %x) -> !Pair {
     store.i64 %pa, %x
     %y = add.i64 %x, 1
     store.i64 %pb, %y
-    ret.ptr %p
+    ret.!Pair %p
 }
 
 fn @make_small(i32 %x) -> !Small {
@@ -75,7 +75,7 @@ fn @make_small(i32 %x) -> !Small {
     %pb = getfieldptr.!Small %p, 1
     store.i32 %pa, %x
     store.i32 %pb, 9
-    ret.ptr %p
+    ret.!Small %p
 }
 
 fn @main() -> i64 {

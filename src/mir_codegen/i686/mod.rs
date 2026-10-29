@@ -29,10 +29,10 @@ use crate::mir_codegen::common::{
 use crate::{
     error::LaminaError,
     mir::{
-        Aggregate, AggregateClass, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
-        Instruction as MirInst, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MirType,
-        Module as MirModule, Operand, Register, RelocationModel, ScalarType,
-        instruction::AddressMode, instruction::Immediate, register::RegisterClass,
+        Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Instruction as MirInst, IntBinOp,
+        IntCmpOp, IntRotOp, IntUnOp, MirType, Module as MirModule, Operand, Register,
+        RelocationModel, ScalarType, instruction::AddressMode, instruction::Immediate,
+        register::RegisterClass,
     },
     mir_codegen::{
         CodegenError, MirCodegenSettings, RegallocStrategy, validate_module_call_parameters,
@@ -73,20 +73,12 @@ fn reject_wide(ty: &MirType, what: &str) -> Result<(), LaminaError> {
     Ok(())
 }
 
-/// Whether an aggregate has the shape MIR lowering gives a 64-bit integer that
-/// crosses a boundary on a 32-bit target: two words, aligned to its own size.
-///
-/// cdecl returns such a value in `%edx:%eax`, not through the hidden pointer a real
-/// struct uses, so honouring the hidden pointer would miscompile every caller the
-/// module does not also compile — `main`, reached from the C runtime, first of all.
-fn is_wide_integer(aggregate: Aggregate) -> bool {
-    aggregate.size == 2 * WORD
-        && aggregate.align == 2 * WORD
-        && aggregate.class == AggregateClass::Integer
-}
-
 fn reject_wide_integer_return(aggregate: Aggregate, func_name: &str) -> Result<(), LaminaError> {
-    if is_wide_integer(aggregate) {
+    // cdecl returns a legalized 64-bit integer in `%edx:%eax`, not through the hidden
+    // pointer a struct uses, so honouring the hidden pointer would miscompile every
+    // caller the module does not also compile — `main`, reached from the C runtime,
+    // first of all.
+    if aggregate.is_wide_scalar() {
         return Err(unsupported(format!(
             "i686 return of @{func_name}: a 64-bit integer comes back in %edx:%eax, and 64-bit integers are not yet legalized into 32-bit register pairs"
         )));

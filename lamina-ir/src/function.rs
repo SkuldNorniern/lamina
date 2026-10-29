@@ -224,7 +224,7 @@ use std::{collections::HashMap, fmt, iter, num::NonZeroU32};
 
 use crate::{
     instruction::Instruction,
-    types::{Identifier, Label, PrimitiveType, Type},
+    types::{Identifier, Label, Type},
 };
 
 /// Function annotations that provide metadata about function behavior.
@@ -740,18 +740,9 @@ impl<'a> Function<'a> {
                         }
                     }
                     Instruction::Ret { ty, value } => {
+                        // The written type is checked against the signature in
+                        // `lamina_ir::calls`, which can resolve a named type.
                         let ret_is_void = matches!(ty, Type::Void);
-                        let sig_is_void = matches!(self.signature.return_type, Type::Void);
-                        if ret_is_void != sig_is_void
-                            || (!ret_is_void
-                                && *ty != self.signature.return_type
-                                && !is_pointer_either(ty, &self.signature.return_type))
-                        {
-                            errors.push(format!(
-                                "return in block '{}' of '@{}': return type '{}' does not match signature return type '{}'",
-                                label, self.name, ty, self.signature.return_type
-                            ));
-                        }
                         if !ret_is_void && value.is_none() {
                             errors.push(format!(
                                 "non-void return in block '{}' of '@{}' has no value",
@@ -997,11 +988,6 @@ fn and_assign(a: &mut [u64], b: &[u64]) {
     for (x, y) in a.iter_mut().zip(b) {
         *x &= y;
     }
-}
-
-fn is_pointer_either(a: &Type<'_>, b: &Type<'_>) -> bool {
-    matches!(a, Type::Primitive(PrimitiveType::Ptr))
-        || matches!(b, Type::Primitive(PrimitiveType::Ptr))
 }
 
 impl fmt::Display for FunctionAnnotation {
@@ -1542,24 +1528,6 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_return_type_mismatch() {
-        let mut blocks = HashMap::new();
-        blocks.insert(
-            "entry",
-            BasicBlock {
-                instructions: vec![Instruction::Ret {
-                    ty: Type::Void,
-                    value: None,
-                }],
-                instruction_locs: Vec::new(),
-            },
-        );
-        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
-        let errs = f.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("return type")));
-    }
-
-    #[test]
     fn test_validate_undefined_variable() {
         let mut blocks = HashMap::new();
         blocks.insert(
@@ -1679,24 +1647,6 @@ mod tests {
         let f = simple_func(vec![], Type::Void, blocks, "entry");
         let errs = f.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("'%late'")));
-    }
-
-    #[test]
-    fn test_validate_return_value_type_mismatch_fails() {
-        let mut blocks = HashMap::new();
-        blocks.insert(
-            "entry",
-            BasicBlock {
-                instructions: vec![Instruction::Ret {
-                    ty: Type::Primitive(PrimitiveType::I64),
-                    value: Some(Value::Constant(Literal::I64(0))),
-                }],
-                instruction_locs: Vec::new(),
-            },
-        );
-        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
-        let errs = f.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("return type")));
     }
 
     #[test]

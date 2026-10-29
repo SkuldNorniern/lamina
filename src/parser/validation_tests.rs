@@ -242,3 +242,60 @@ fn a_call_with_the_wrong_argument_count_names_the_signature() {
         "{err}"
     );
 }
+
+fn return_module(signature: &str, ret: &str) -> String {
+    format!(
+        "type !Pair = struct {{ a: i64, b: i64 }}\n\
+         fn @make{signature} {{\nentry:\n    %q = stackalloc.!Pair\n    %n = add.i64 1, 2\n    {ret}\n}}\n"
+    )
+}
+
+#[test]
+fn an_aggregate_return_must_name_its_type() {
+    let err = rejected(&return_module("() -> !Pair", "ret.ptr %q"));
+    assert!(
+        err.contains("is written ret.ptr, but '@make' declares !Pair"),
+        "{err}"
+    );
+    assert!(err.contains("write 'ret.!Pair <value>'"), "{err}");
+
+    accepted(&return_module("() -> !Pair", "ret.!Pair %q"));
+}
+
+#[test]
+fn a_pointer_returned_where_a_scalar_is_declared_is_rejected() {
+    let err = rejected(&return_module("() -> i64", "ret.ptr %q"));
+    assert!(
+        err.contains("is written ret.ptr, but '@make' declares i64"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_returned_value_of_the_wrong_type_is_rejected() {
+    let err = rejected(&return_module("() -> ptr", "ret.ptr %n"));
+    assert!(err.contains("must be ptr, but %n has type i64"), "{err}");
+}
+
+#[test]
+fn a_return_resolves_the_name_on_either_side() {
+    let source = "type !Pair = struct { a: i64, b: i64 }\n\
+                  fn @make() -> !Pair {\nentry:\n    %q = stackalloc.struct { a: i64, b: i64 }\n    \
+                  ret.struct { a: i64, b: i64 } %q\n}\n";
+    accepted(source);
+}
+
+#[test]
+fn a_scalar_returned_where_an_aggregate_is_declared_is_rejected() {
+    let err = rejected(&return_module("() -> !Pair", "ret.!Pair %n"));
+    assert!(err.contains("must be !Pair, but %n has type i64"), "{err}");
+}
+
+#[test]
+fn a_void_return_from_a_value_returning_function_is_rejected() {
+    let err = rejected(&return_module("() -> i64", "ret.void"));
+    assert!(
+        err.contains("is written ret.void, but '@make' declares i64"),
+        "{err}"
+    );
+}

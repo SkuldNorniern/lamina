@@ -222,7 +222,7 @@ fn narrow_bit_scan_adjusts_lzcnt_and_sets_the_zero_bit_for_tzcnt() {
 #[test]
 fn variable_shift_uses_bmi2_only_at_v3() {
     let module = ir_module(
-        "fn @f(i64 %x, i64 %s) -> i64 {\nentry:\n    %p = shl.i64 %x, %s\n    %q = shr.i64 %p, %s\n    %r = shr.u64 %q, %s\n    ret.i64 %r\n}\n",
+        "fn @f(i64 %x, i64 %s) -> u64 {\nentry:\n    %p = shl.i64 %x, %s\n    %q = shr.i64 %p, %s\n    %r = shr.u64 %q, %s\n    ret.u64 %r\n}\n",
         "shift",
     );
     let asm = emit(&module, X86CpuLevel::V2).expect("shifts emit at v2");

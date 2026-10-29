@@ -18,7 +18,7 @@ fn @create_person(i64 %id, i64 %age) -> ptr {
     store.i64 %id_ptr, %id
     store.i64 %age_ptr, %age
 
-    ret.i64 %person
+    ret.ptr %person
 }
 
 # ===== MATHEMATICAL FUNCTIONS =====

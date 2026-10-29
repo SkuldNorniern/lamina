@@ -86,18 +86,24 @@ fn set_condition<W: Write>(w: &mut W, dest: &str, cond: &str) -> Result<(), Lami
     Ok(())
 }
 
-/// Moves `bytes` through `ip`, a word at a time, from the address in `source` to the
-/// address in `destination`.
+/// Moves exactly `bytes` through `ip`, from the address in `source` to the address in
+/// `destination`: whole words first, then the tail a byte at a time. A caller's buffer
+/// for a result is the object itself and carries no padding, so nothing may be written
+/// past `bytes`.
 pub(crate) fn copy_through_pointer<W: Write>(
     w: &mut W,
     source: &str,
     destination: &str,
     bytes: usize,
 ) -> Result<(), LaminaError> {
-    for word in 0..bytes.div_ceil(4) {
+    for word in 0..bytes / 4 {
         let at = word * 4;
         writeln!(w, "    ldr {ADDR}, [{source}, #{at}]")?;
         writeln!(w, "    str {ADDR}, [{destination}, #{at}]")?;
+    }
+    for at in bytes - bytes % 4..bytes {
+        writeln!(w, "    ldrb {ADDR}, [{source}, #{at}]")?;
+        writeln!(w, "    strb {ADDR}, [{destination}, #{at}]")?;
     }
     Ok(())
 }

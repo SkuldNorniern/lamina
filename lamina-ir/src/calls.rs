@@ -1,12 +1,14 @@
-//! Call-site checking: argument count and argument type against the callee's signature.
+//! Boundary checking: a call's arguments against the callee's signature, and a `ret`
+//! against the signature it returns from.
 //!
-//! This is the one layer that sees both a call and the signature it targets, so every
-//! argument form is checked here and nowhere else: register, literal, global address,
-//! function address, pointer and aggregate.
+//! This is the one layer that sees both a boundary and the signature it crosses, so
+//! every argument and result form is checked here and nowhere else: register, literal,
+//! global address, function address, pointer and aggregate.
 //!
-//! An aggregate argument is still passed as the address of its storage, so the call
-//! site must state the aggregate type (`call @sum(!Pair %p)`). That annotation is what
-//! separates an aggregate from a plain pointer, which an operand's own type cannot do.
+//! An aggregate is still passed and returned as the address of its storage, so the
+//! site must state the aggregate type (`call @sum(!Pair %p)`, `ret.!Pair %p`). That
+//! annotation is what separates an aggregate from a plain pointer, which an operand's
+//! own type cannot do.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -46,10 +48,52 @@ pub(crate) fn validate_calls(module: &Module<'_>, errors: &mut Vec<String>) {
                             }
                         }
                     }
+                    Instruction::Ret { ty, value } => {
+                        check_return(module, &env, site, func, ty, value.as_ref(), errors)
+                    }
                     _ => {}
                 }
             }
         }
+    }
+}
+
+/// The result side of the same rule the arguments follow: the type written on `ret`
+/// must be the function's declared return type, and the value must have that type.
+/// An aggregate result is the address of its storage, so `ret` names the aggregate
+/// and a `ptr` operand is then what it holds.
+fn check_return<'a>(
+    module: &Module<'a>,
+    env: &HashMap<&'a str, Type<'a>>,
+    site: Site<'_>,
+    func: &Function<'a>,
+    written: &Type<'a>,
+    value: Option<&Value<'a>>,
+    errors: &mut Vec<String>,
+) {
+    let declared = &func.signature.return_type;
+    if !same_type(module, written, declared) {
+        let hint = if is_aggregate(module, declared) {
+            format!(
+                "  Hint: An aggregate result is the address of its storage, so the return must name the type: write 'ret.{declared} <value>'"
+            )
+        } else {
+            format!("  Hint: Write 'ret.{declared} <value>', or change the signature")
+        };
+        errors.push(format!(
+            "return in '@{}' ({site}) is written ret.{written}, but '@{}' declares {declared}\n{hint}",
+            site.caller, site.caller,
+        ));
+        return;
+    }
+    let Some(value) = value else {
+        return;
+    };
+    if let Some(found) = mismatch_against(module, env, declared, value, true) {
+        errors.push(format!(
+            "return in '@{}' ({site}) must be {declared}, but {found}\n  Hint: Return a {declared}, or convert the value before the return",
+            site.caller,
+        ));
     }
 }
 

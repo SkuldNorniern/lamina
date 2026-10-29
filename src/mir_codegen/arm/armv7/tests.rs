@@ -1,8 +1,8 @@
 use super::*;
 use crate::mir::codegen::from_ir_for_target;
-use crate::mir::{Aggregate, AggregateClass, MirType};
+use crate::mir::{Aggregate, AggregateClass, AggregateShape, MirType};
 use crate::parser::parse_module;
-use abi::{ArgKind, classify, stack_bytes};
+use abi::{ArgKind, classify, returns_in_memory, stack_bytes};
 use lamina_mir::ScalarType;
 
 fn integer() -> ArgKind {
@@ -17,14 +17,28 @@ fn double() -> ArgKind {
     ArgKind::of(MirType::Scalar(ScalarType::F64), None)
 }
 
+fn composite(size: usize, align: usize) -> Aggregate {
+    Aggregate {
+        size,
+        align,
+        class: AggregateClass::Integer,
+        shape: AggregateShape::Composite,
+    }
+}
+
+fn wide_scalar() -> Aggregate {
+    Aggregate {
+        size: 8,
+        align: 8,
+        class: AggregateClass::Integer,
+        shape: AggregateShape::WideScalar,
+    }
+}
+
 fn aggregate(size: usize, align: usize) -> ArgKind {
     ArgKind::of(
         MirType::Scalar(ScalarType::Ptr),
-        Some(Aggregate {
-            size,
-            align,
-            class: AggregateClass::Integer,
-        }),
+        Some(composite(size, align)),
     )
 }
 
@@ -176,4 +190,47 @@ fn a_double_is_two_words_wide() {
     assert!(kind.double);
     assert_eq!(kind.words(), 2);
     assert_eq!(kind.align, 8);
+}
+
+#[test]
+fn aapcs_returns_a_composite_over_a_word_in_memory_and_a_legalized_integer_in_registers() {
+    assert!(!returns_in_memory(Some(composite(4, 4))));
+    assert!(returns_in_memory(Some(composite(5, 1))));
+    assert!(returns_in_memory(Some(composite(8, 4))));
+    assert!(returns_in_memory(Some(composite(16, 8))));
+    assert!(!returns_in_memory(Some(wide_scalar())));
+    assert!(!returns_in_memory(None));
+}
+
+#[test]
+fn a_composite_result_over_a_word_takes_a_hidden_pointer_in_r0() {
+    let assembly = compile(
+        "fn @make(i32 %x) -> struct { a: i32, b: i32 } {\nentry:\n  \
+         %p = stackalloc.struct { a: i32, b: i32 }\n  \
+         %pa = getfieldptr.struct { a: i32, b: i32 } %p, 0\n  \
+         store.i32 %pa, %x\n  ret.struct { a: i32, b: i32 } %p\n}\n",
+    );
+    assert!(assembly.contains("str r1, ["), "{assembly}");
+    assert!(!assembly.contains("ldr r1, ["), "{assembly}");
+}
+
+#[test]
+fn a_composite_result_of_one_word_still_comes_back_in_r0() {
+    let assembly = compile(
+        "fn @make(i32 %x) -> struct { a: i32 } {\nentry:\n  \
+         %p = stackalloc.struct { a: i32 }\n  \
+         %pa = getfieldptr.struct { a: i32 } %p, 0\n  \
+         store.i32 %pa, %x\n  ret.struct { a: i32 } %p\n}\n",
+    );
+    assert!(!assembly.contains("str r1, ["), "{assembly}");
+}
+
+#[test]
+fn a_result_of_five_bytes_is_copied_a_byte_at_a_time_past_the_first_word() {
+    let assembly = compile(
+        "fn @make() -> [5 x i8] {\nentry:\n  %p = stackalloc.[5 x i8]\n  \
+         %e = getelem.i8 %p, 0\n  store.i8 %e, 3\n  ret.[5 x i8] %p\n}\n",
+    );
+    assert_eq!(assembly.matches("ldr r12, [").count(), 1, "{assembly}");
+    assert_eq!(assembly.matches("ldrb r12, [").count(), 1, "{assembly}");
 }

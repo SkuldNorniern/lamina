@@ -8,7 +8,7 @@ use crate::{
     ir::types::{PrimitiveType as IRPrim, Type as IRType, align_of_type, sizeof_type},
     mir::{
         codegen::error::FromIRError,
-        types::{Aggregate, AggregateClass, MirType, ScalarType, Signedness},
+        types::{Aggregate, AggregateClass, AggregateShape, MirType, ScalarType, Signedness},
     },
 };
 use lamina_platform::PointerWidth;
@@ -88,6 +88,7 @@ pub fn wide_aggregate(int64_regs: bool) -> Aggregate {
         size,
         align: size,
         class: AggregateClass::Integer,
+        shape: AggregateShape::WideScalar,
     }
 }
 
@@ -132,5 +133,6 @@ fn classify_aggregate_within(
         size: size as usize,
         align: align_of_type(ty, pointer) as usize,
         class: AggregateClass::Integer,
+        shape: AggregateShape::Composite,
     }))
 }

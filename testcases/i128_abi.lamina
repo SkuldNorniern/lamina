@@ -53,7 +53,8 @@ entry:
   %pq = mul.i128 %p, %q
   %pqr = sub.i128 %pq, %r
   %res = add.i128 %pqr, %s
-  ret.u128 %res
+  %out = bitcast.i128.u128 %res
+  ret.u128 %out
 }
 
 fn @pad(i64 %g1, i64 %g2, i64 %g3, i64 %g4, i64 %g5, i64 %g6, i64 %stk, i128 %y, i128 %w) -> i128 {

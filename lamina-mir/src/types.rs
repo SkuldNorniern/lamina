@@ -50,6 +50,22 @@ pub enum AggregateClass {
     Integer,
 }
 
+/// What a value of aggregate shape actually is. A [`AggregateShape::Composite`] is a
+/// struct or an array the author wrote; a [`AggregateShape::WideScalar`] is one
+/// integer that legalization split across n registers because no register on the
+/// target is wide enough to hold it.
+///
+/// The two reach a backend with the same size, alignment and class, and several ABIs
+/// place them differently: AAPCS returns a composite over four bytes in memory while
+/// a 64-bit integer comes back in `r0:r1`, and cdecl returns a struct through a
+/// hidden pointer while a 64-bit integer comes back in `%edx:%eax`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum AggregateShape {
+    #[default]
+    Composite,
+    WideScalar,
+}
+
 /// An aggregate passed by value. The parameter register holds the address of the
 /// callee's own copy; size and class tell a backend which registers carry it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,9 +73,20 @@ pub struct Aggregate {
     pub size: usize,
     pub align: usize,
     pub class: AggregateClass,
+    pub shape: AggregateShape,
 }
 
 impl Aggregate {
+    /// Whether this is a struct or an array rather than one legalized integer.
+    pub fn is_composite(&self) -> bool {
+        self.shape == AggregateShape::Composite
+    }
+
+    /// Whether this is one integer that legalization split across registers.
+    pub fn is_wide_scalar(&self) -> bool {
+        self.shape == AggregateShape::WideScalar
+    }
+
     /// Eight-byte words the aggregate occupies in registers or on the stack.
     pub fn words(&self) -> usize {
         self.size.div_ceil(8)

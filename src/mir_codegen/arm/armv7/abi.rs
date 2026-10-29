@@ -14,14 +14,14 @@ use crate::mir::{
 use lamina_codegen::abi::{Abi, common_call_stub};
 use lamina_platform::TargetOperatingSystem;
 
-/// A result of up to two words comes back in r0:r1, the way a 64-bit integer does.
-/// Anything larger comes back through a buffer the caller owns, whose address it
-/// passes as a hidden first argument in r0.
-///
-/// AAPCS puts a *composite* over four bytes in memory, but MIR models a legalized
-/// 64-bit integer as an eight-byte integer aggregate and cannot tell the two apart, so
-/// the register form wins: a wrong answer for a 64-bit integer is the costlier mistake.
-pub(crate) const MAX_REGISTER_RETURN: usize = 8;
+/// Largest composite AAPCS returns in a register: one word in r0. Anything larger is
+/// written to a buffer the caller owns, whose address it passes as a hidden first
+/// argument in r0.
+pub(crate) const MAX_REGISTER_RETURN_COMPOSITE: usize = 4;
+
+/// Largest legalized integer AAPCS returns in registers: two words in r0:r1, the way
+/// a `long long` comes back.
+pub(crate) const MAX_REGISTER_RETURN_WIDE_SCALAR: usize = 8;
 
 pub(crate) struct Armv7Abi {
     target_os: TargetOperatingSystem,
@@ -204,7 +204,14 @@ pub(crate) fn stack_bytes(places: &[ArgPlace]) -> usize {
 }
 
 pub(crate) fn returns_in_memory(aggregate: Option<Aggregate>) -> bool {
-    aggregate.is_some_and(|aggregate| aggregate.size > MAX_REGISTER_RETURN)
+    aggregate.is_some_and(|aggregate| {
+        let max = if aggregate.is_composite() {
+            MAX_REGISTER_RETURN_COMPOSITE
+        } else {
+            MAX_REGISTER_RETURN_WIDE_SCALAR
+        };
+        aggregate.size > max
+    })
 }
 
 /// Type a variadic argument reaches the callee as on a 32-bit target: a float travels

@@ -320,7 +320,7 @@ fn integer_aggregate_parameter_arrives_as_pointer_to_its_own_slot() {
 #[test]
 fn aggregate_of_any_size_carries_its_layout() {
     let wide = parse_module(
-        "fn @make() -> struct { a: i64, b: i64, c: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64, c: i64 }\nret.ptr %p\n}",
+        "fn @make() -> struct { a: i64, b: i64, c: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64, c: i64 }\nret.struct { a: i64, b: i64, c: i64 } %p\n}",
     )
     .expect("parse wide aggregate return");
     let module = from_ir(&wide, "make").expect("wide aggregate return");
@@ -354,7 +354,7 @@ fn float_and_oversized_aggregates_are_rejected_by_name() {
     );
 
     let returned = parse_module(
-        "fn @make() -> struct { a: f64, b: f64 } {\nentry:\n%p = stackalloc.struct { a: f64, b: f64 }\nret.ptr %p\n}",
+        "fn @make() -> struct { a: f64, b: f64 } {\nentry:\n%p = stackalloc.struct { a: f64, b: f64 }\nret.struct { a: f64, b: f64 } %p\n}",
     )
     .expect("parse float aggregate return");
     let error = from_ir(&returned, "make").expect_err("float aggregate return rejected");
@@ -369,7 +369,7 @@ fn float_and_oversized_aggregates_are_rejected_by_name() {
 #[test]
 fn integer_aggregate_return_lands_in_slot_the_caller_addresses() {
     let ir = parse_module(
-        "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64 }\nret.ptr %p\n}\nfn @use() -> i64 {\nentry:\n%r = call @make()\n%ap = getfieldptr.struct { a: i64, b: i64 } %r, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
+        "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64 }\nret.struct { a: i64, b: i64 } %p\n}\nfn @use() -> i64 {\nentry:\n%r = call @make()\n%ap = getfieldptr.struct { a: i64, b: i64 } %r, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
     )
     .expect("parse aggregate return");
     let mir = from_ir(&ir, "returns").expect("lower aggregate return");

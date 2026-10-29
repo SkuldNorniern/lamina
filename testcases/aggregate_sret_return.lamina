@@ -14,7 +14,7 @@ entry:
   %k3 = add.i64 %k, 3
   %f3 = getfieldptr.!Quad %q, 3
   store.i64 %f3, %k3
-  ret.ptr %q
+  ret.!Quad %q
 }
 
 fn @sum(!Quad %q) -> i64 {

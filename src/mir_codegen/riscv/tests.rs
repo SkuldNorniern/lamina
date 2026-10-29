@@ -1143,7 +1143,7 @@ fn aggregate_split_between_last_register_and_stack() -> Result<(), Box<dyn Error
 
 #[test]
 fn aggregate_result_past_two_words_uses_hidden_pointer() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @make() -> struct { a: i64, b: i64, c: i64, d: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }\n  %pa = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+    let ir = "fn @make() -> struct { a: i64, b: i64, c: i64, d: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }\n  %pa = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %p, 0\n  store.i64 %pa, 7\n  ret.struct { a: i64, b: i64, c: i64, d: i64 } %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr.struct { a: i64, b: i64, c: i64, d: i64 } %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
     let assembly = emit_aggregate_module(ir, "hidden_result")?;
 
     let callee = function_body(&assembly, "make")?;
@@ -1167,7 +1167,7 @@ fn aggregate_result_past_two_words_uses_hidden_pointer() -> Result<(), Box<dyn E
 
 #[test]
 fn aggregate_result_of_two_words_comes_back_in_a0_and_a1() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64 }\n  %pa = getfieldptr.struct { a: i64, b: i64 } %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr.struct { a: i64, b: i64 } %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+    let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64 }\n  %pa = getfieldptr.struct { a: i64, b: i64 } %p, 0\n  store.i64 %pa, 7\n  ret.struct { a: i64, b: i64 } %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr.struct { a: i64, b: i64 } %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
     let assembly = emit_aggregate_module(ir, "pair_result")?;
 
     let callee = function_body(&assembly, "make")?;

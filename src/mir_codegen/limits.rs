@@ -146,12 +146,13 @@ mod tests {
 
     #[test]
     fn only_classifying_backends_accept_aggregates_at_boundaries() {
-        use lamina_mir::{Aggregate, AggregateClass};
+        use lamina_mir::{Aggregate, AggregateClass, AggregateShape};
         let slot = VirtualReg::gpr(0);
         let aggregate = Aggregate {
             size: 16,
             align: 8,
             class: AggregateClass::Integer,
+            shape: AggregateShape::Composite,
         };
         let parameter = Parameter::new(Register::Virtual(slot), MirType::Scalar(ScalarType::Ptr))
             .with_aggregate(aggregate);
