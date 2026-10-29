@@ -40,8 +40,8 @@
 use std::{collections::HashSet, fmt};
 
 use super::{
-    Codegen, arm::aarch64::AArch64Codegen, arx64, loongarch64, powerpc::powerpc64::Ppc64Codegen,
-    riscv::RiscVCodegen, wasm::WasmCodegen, x86_64::X86Codegen,
+    Codegen, arm, arm::aarch64::AArch64Codegen, arx64, i686, loongarch64,
+    powerpc::powerpc64::Ppc64Codegen, riscv::RiscVCodegen, wasm::WasmCodegen, x86_64::X86Codegen,
 };
 #[cfg(feature = "nightly")]
 use lamina_platform::SimdCapabilities;
@@ -278,6 +278,7 @@ impl CapabilitySet {
                 <WasmCodegen<'static> as Codegen>::capabilities()
             }
             TargetArchitecture::Riscv32 => <RiscVCodegen<'static> as Codegen>::capabilities()
+                .with(CodegenCapability::AggregateArguments)
                 .with(CodegenCapability::GlobalRegisterAllocation),
             TargetArchitecture::Riscv64 => <RiscVCodegen<'static> as Codegen>::capabilities()
                 .with(CodegenCapability::AggregateArguments)
@@ -290,10 +291,9 @@ impl CapabilitySet {
             TargetArchitecture::Amdgcn => Self::gpu()
                 .with(CodegenCapability::IntegerArithmetic)
                 .with(CodegenCapability::MemoryOperations),
-            TargetArchitecture::Arm32
-            | TargetArchitecture::Armv7
-            | TargetArchitecture::I686
-            | TargetArchitecture::Unknown => Self::new(),
+            TargetArchitecture::I686 => i686::capabilities(),
+            TargetArchitecture::Armv7 => arm::armv7::capabilities(),
+            TargetArchitecture::Arm32 | TargetArchitecture::Unknown => Self::new(),
             #[cfg(feature = "nightly")]
             TargetArchitecture::Lisa => Self::new(),
         }

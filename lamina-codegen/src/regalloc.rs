@@ -228,7 +228,7 @@ impl LinearScanAllocator {
                         }
                     })
                     .collect();
-                if let Instruction::StackAddr { slot, .. } = instr {
+                if let Instruction::StackAddr { slot, .. } = &instr.instr {
                     used.push(*slot);
                 }
                 for vreg in used {

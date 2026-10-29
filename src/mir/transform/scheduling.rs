@@ -4,6 +4,7 @@ use crate::mir::{
     Block, Function, Instruction, IntBinOp, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_mir::Located;
 use lamina_platform::PointerWidth;
 use std::{
     cmp::Ordering,
@@ -81,7 +82,7 @@ impl InstructionScheduling {
 
     fn build_dependency_graph(
         &self,
-        instructions: &[Instruction],
+        instructions: &[Located],
         pointer: PointerWidth,
     ) -> DependencyGraph {
         let mut graph = DependencyGraph::new(instructions.len());
@@ -96,7 +97,7 @@ impl InstructionScheduling {
         let mut last_memory_op: Option<usize> = None;
         let mut last_asm: Option<usize> = None;
 
-        for (idx, instr) in instructions.iter().enumerate() {
+        for (idx, instr) in instructions.iter().map(|i| &i.instr).enumerate() {
             // Inline assembly is a full barrier: nothing crosses it, in either direction.
             if let Some(asm_idx) = last_asm {
                 graph.add_edge(asm_idx, idx);
@@ -160,11 +161,9 @@ impl InstructionScheduling {
             }
         }
 
-        if let [
-            ..,
-            Instruction::IntCmp { dst, .. } | Instruction::FloatCmp { dst, .. },
-            Instruction::Br { cond, .. },
-        ] = instructions
+        if let [.., cmp, br] = instructions
+            && let Instruction::IntCmp { dst, .. } | Instruction::FloatCmp { dst, .. } = &cmp.instr
+            && let Instruction::Br { cond, .. } = &br.instr
             && dst == cond
         {
             let comparison_index = instructions.len() - 2;
@@ -199,7 +198,7 @@ impl InstructionScheduling {
     fn calculate_priorities(
         &self,
         graph: &DependencyGraph,
-        instructions: &[Instruction],
+        instructions: &[Located],
     ) -> Vec<usize> {
         let mut priorities = vec![0; instructions.len()];
         for node in (0..instructions.len()).rev() {
@@ -362,33 +361,37 @@ mod tests {
         let counter: Register = VirtualReg::gpr(2).into();
         let flag: Register = VirtualReg::gpr(3).into();
         for _ in 0..8 {
-            block.instructions.push(Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ty,
-                dst: a.clone(),
-                lhs: a.clone().into(),
-                rhs: b.clone().into(),
-            });
+            block
+                .instructions
+                .push(Located::from(Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty,
+                    dst: a.clone(),
+                    lhs: a.clone().into(),
+                    rhs: b.clone().into(),
+                }));
         }
-        block.instructions.push(Instruction::IntBinary {
-            op: IntBinOp::Sub,
-            ty,
-            dst: counter.clone(),
-            lhs: counter.clone().into(),
-            rhs: Operand::imm_i64(8),
-        });
-        block.instructions.push(Instruction::IntCmp {
+        block
+            .instructions
+            .push(Located::from(Instruction::IntBinary {
+                op: IntBinOp::Sub,
+                ty,
+                dst: counter.clone(),
+                lhs: counter.clone().into(),
+                rhs: Operand::imm_i64(8),
+            }));
+        block.instructions.push(Located::from(Instruction::IntCmp {
             op: IntCmpOp::Ne,
             ty,
             dst: flag.clone(),
             lhs: counter.into(),
             rhs: Operand::imm_i64(0),
-        });
-        block.instructions.push(Instruction::Br {
+        }));
+        block.instructions.push(Located::from(Instruction::Br {
             cond: flag,
             true_target: "body".into(),
             false_target: "exit".into(),
-        });
+        }));
         let tail = block.instructions[block.instructions.len() - 2..].to_vec();
         InstructionScheduling.schedule_block(&mut block, PointerWidth::Bits64);
         assert_eq!(block.instructions[block.instructions.len() - 2..], tail);
@@ -428,13 +431,13 @@ mod tests {
         let read_pos = instrs
             .iter()
             .position(|i| {
-                matches!(i, Instruction::IntBinary { dst: Register::Virtual(v), lhs: Operand::Register(_), .. } if v.id == 8)
+                matches!(&i.instr, Instruction::IntBinary { dst: Register::Virtual(v), lhs: Operand::Register(_), .. } if v.id == 8)
             })
             .unwrap();
         let redefine_pos = instrs
             .iter()
             .position(|i| {
-                matches!(i, Instruction::IntBinary { dst: Register::Virtual(v), rhs: Operand::Immediate(Immediate::I64(100)), .. } if v.id == 2)
+                matches!(&i.instr, Instruction::IntBinary { dst: Register::Virtual(v), rhs: Operand::Immediate(Immediate::I64(100)), .. } if v.id == 2)
             })
             .unwrap();
         assert!(read_pos < redefine_pos);
@@ -503,12 +506,12 @@ mod tests {
         // Find indices
         let load_idx = instrs
             .iter()
-            .position(|i| matches!(i, Instruction::Load { .. }))
+            .position(|i| matches!(&i.instr, Instruction::Load { .. }))
             .unwrap();
         let r2_def_idx = instrs
             .iter()
             .position(|i| {
-                if let Instruction::IntBinary { dst, .. } = i
+                if let Instruction::IntBinary { dst, .. } = &i.instr
                     && let Register::Virtual(vreg) = dst
                 {
                     return vreg.id == 2;

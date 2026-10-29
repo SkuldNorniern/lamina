@@ -4,6 +4,7 @@ use crate::mir::{
     AddressMode, AsmOperand, Block, Function, Instruction, Module, Operand, Register, VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_mir::Located;
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
@@ -65,7 +66,7 @@ impl ModuleInlining {
                     for (index, instruction) in block.instructions.iter().enumerate() {
                         if let Instruction::Call {
                             name: callee, args, ..
-                        } = instruction
+                        } = &instruction.instr
                             && !module.is_external(callee)
                             && let Some(function) = module.functions.get(callee)
                             && function.sig.kernel.is_none()
@@ -75,7 +76,7 @@ impl ModuleInlining {
                                 .blocks
                                 .iter()
                                 .flat_map(|b| &b.instructions)
-                                .any(|i| matches!(i, Instruction::InlineAsm { .. }))
+                                .any(|i| matches!(&i.instr, Instruction::InlineAsm { .. }))
                             && function.instruction_count() <= Self::callee_size_limit(function)
                             && function.sig.params.len() == args.len()
                             && function.sig.ret_aggregate.is_none()
@@ -91,7 +92,7 @@ impl ModuleInlining {
                                 .flat_map(|b| &b.instructions)
                                 .all(|i| {
                                     let mut clone = i.clone();
-                                    !matches!(i, Instruction::TailCall { .. })
+                                    !matches!(&i.instr, Instruction::TailCall { .. })
                                         && Self::map_registers(&mut clone, &mut Clone::clone)
                                 })
                         {
@@ -147,7 +148,9 @@ impl ModuleInlining {
                 .iter()
                 .flat_map(|b| &b.instructions)
                 .any(|i| {
-                    if let Instruction::Call { name, .. } | Instruction::TailCall { name, .. } = i {
+                    if let Instruction::Call { name, .. } | Instruction::TailCall { name, .. } =
+                        &i.instr
+                    {
                         name == root || Self::is_recursive(root, name, module, seen)
                     } else {
                         false
@@ -164,7 +167,7 @@ impl ModuleInlining {
         callee: &Function,
     ) -> Result<(), TransformError> {
         let Instruction::Call { args, ret, .. } =
-            caller.blocks[block_index].instructions[index].clone()
+            &caller.blocks[block_index].instructions[index].clone().instr
         else {
             return Err(TransformError::InvalidState("expected call"));
         };
@@ -193,7 +196,7 @@ impl ModuleInlining {
                 for used in instruction.use_regs() {
                     record(used);
                 }
-                if let Instruction::StackAddr { slot, .. } = instruction {
+                if let Instruction::StackAddr { slot, .. } = &instruction.instr {
                     record(&Register::Virtual(*slot));
                 }
             }
@@ -218,10 +221,10 @@ impl ModuleInlining {
             let mut copy = Instruction::Copy {
                 ty: param.ty,
                 dst: rename(&param.reg),
-                src: arg,
+                src: arg.clone(),
             };
             copy.normalize_integer_immediates(None);
-            copies.push(copy);
+            copies.push(Located::from(copy));
         }
         let mut slots: Vec<VirtualReg> = callee
             .stack_reservations
@@ -266,8 +269,9 @@ impl ModuleInlining {
             block.label = labels[&block.label].clone();
             let mut instructions = Vec::new();
             for mut instruction in block.instructions.drain(..) {
+                let loc = instruction.loc;
                 Self::map_registers(&mut instruction, &mut rename);
-                match &mut instruction {
+                match &mut instruction.instr {
                     Instruction::Jmp { target } => *target = labels[target].clone(),
                     Instruction::Br {
                         true_target,
@@ -291,12 +295,15 @@ impl ModuleInlining {
                                 ty,
                             };
                             copy.normalize_integer_immediates(None);
-                            instructions.push(copy);
+                            instructions.push(copy.into());
                         }
                         returns = true;
-                        instruction = Instruction::Jmp {
-                            target: continuation.clone(),
-                        };
+                        instruction = Located::at(
+                            Instruction::Jmp {
+                                target: continuation.clone(),
+                            },
+                            loc,
+                        );
                     }
                     _ => {}
                 }
@@ -307,7 +314,7 @@ impl ModuleInlining {
         }
         let block = &mut caller.blocks[block_index];
         if blocks.len() == 1
-            && matches!(blocks[0].instructions.last(), Some(Instruction::Jmp { target }) if target == &continuation)
+            && matches!(&blocks[0].instructions.last().map(|i| &i.instr), Some(Instruction::Jmp { target }) if target == &continuation)
         {
             blocks[0].instructions.pop();
             copies.append(&mut blocks[0].instructions);
@@ -317,15 +324,15 @@ impl ModuleInlining {
         let after = block.instructions.split_off(index + 1);
         block.instructions.pop();
         block.instructions.extend(copies);
-        block.instructions.push(Instruction::Jmp {
+        block.instructions.push(Located::from(Instruction::Jmp {
             target: labels[&callee.entry].clone(),
-        });
+        }));
         blocks.push(Block {
             label: continuation,
             instructions: if returns {
                 after
             } else {
-                vec![Instruction::Unreachable]
+                vec![Instruction::Unreachable.into()]
             },
         });
         caller
@@ -548,7 +555,7 @@ mod tests {
             .iter()
             .flat_map(|block| &block.instructions)
             .filter(|instruction| {
-                matches!(instruction, Instruction::Call { name, .. } if name == "helper")
+                matches!(&instruction.instr, Instruction::Call { name, .. } if name == "helper")
             })
             .count();
         assert_eq!(calls, 1);
@@ -573,7 +580,7 @@ mod tests {
         let slots: Vec<_> = instructions
             .iter()
             .filter_map(|instruction| {
-                if let Instruction::StackAddr { slot, .. } = instruction {
+                if let Instruction::StackAddr { slot, .. } = &instruction.instr {
                     Some(Register::Virtual(*slot))
                 } else {
                     None
@@ -620,7 +627,7 @@ ret.i64 %c
             .iter()
             .flat_map(|b| &b.instructions)
             .filter_map(|i| {
-                if let Instruction::StackAddr { slot, .. } = i {
+                if let Instruction::StackAddr { slot, .. } = &i.instr {
                     Some(*slot)
                 } else {
                     None
@@ -743,7 +750,7 @@ ret.void
         let has_call = caller.blocks.iter().any(|b| {
             b.instructions
                 .iter()
-                .any(|i| matches!(i, Instruction::Call { .. }))
+                .any(|i| matches!(&i.instr, Instruction::Call { .. }))
         });
         assert!(!has_call, "Call instruction should be removed");
     }
@@ -860,7 +867,7 @@ mod inline_hint_tests {
             .blocks
             .iter()
             .flat_map(|b| &b.instructions)
-            .any(|i| matches!(i, Instruction::Call { .. }))
+            .any(|i| matches!(&i.instr, Instruction::Call { .. }))
     }
 
     #[test]

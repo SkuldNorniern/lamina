@@ -3,6 +3,7 @@ use crate::{
     mir::{FunctionBuilder, RelocationModel, ScalarType, codegen::from_ir},
     parser::parse_module,
 };
+use lamina_mir::Located;
 use lamina_platform::PointerWidth;
 use std::{error::Error as StdError, slice};
 
@@ -181,12 +182,14 @@ fn lea_selection_respects_flags_uses_and_encoding() {
         .collect();
     let alloc = X64RegAlloc::from_global_plan(TargetOperatingSystem::Linux, true, &plan);
     let operand = |i: usize| Operand::Register(Register::Virtual(regs[i]));
-    let binary = |op, dst: usize, lhs, rhs| MirInst::IntBinary {
-        op,
-        dst: Register::Virtual(regs[dst]),
-        lhs,
-        rhs,
-        ty: MirType::i64(),
+    let binary = |op, dst: usize, lhs, rhs| {
+        Located::from(MirInst::IntBinary {
+            op,
+            dst: Register::Virtual(regs[dst]),
+            lhs,
+            rhs,
+            ty: MirType::i64(),
+        })
     };
     let imm = |v| Operand::Immediate(Immediate::I64(v));
     let add = binary(IntBinOp::Add, 2, operand(0), operand(1));
@@ -741,7 +744,7 @@ entry:
             "{text}"
         );
 
-        for assembler in ["gas", "clang"] {
+        for assembler in ["gas", "clang", "ras"] {
             let executable = directory.join(format!("two_functions-{assembler}"));
             compile(&source, &executable, &["-g", "--assembler", assembler])?;
             let output = Command::new("timeout")
@@ -756,10 +759,19 @@ entry:
             );
         }
 
-        let refused = directory.join("two_functions-ras");
-        let error = compile(&source, &refused, &["-g", "--assembler", "ras"])
-            .expect_err("ras must refuse .loc");
-        assert!(error.to_string().contains(".loc"), "{error}");
+        // `%r = mul...` and `ret` of @double sit on lines 4 and 5, @triple's on 9 and 10.
+        let rows: Vec<&str> = text
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with(".loc "))
+            .filter_map(|line| line.split_whitespace().nth(2))
+            .collect();
+        for expected in ["4", "5", "9", "10"] {
+            assert!(
+                rows.contains(&expected),
+                "missing .loc for line {expected}: {text}"
+            );
+        }
         fs::remove_dir_all(directory)?;
         Ok(())
     }

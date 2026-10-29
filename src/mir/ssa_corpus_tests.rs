@@ -1,5 +1,6 @@
 #![allow(clippy::expect_used)]
 
+use lamina_mir::Located;
 use std::{fs, path::Path};
 
 use lamina_mir::{Module, ssa::SsaFunction};
@@ -111,11 +112,11 @@ fn destroy_copies_on_a_real_loop_edge_round_trip() {
                 source: inst_index,
                 defines: Some(copy),
                 uses: vec![arg],
-                instruction: Instruction::Copy {
+                instruction: Located::from(Instruction::Copy {
                     ty: source_value.ty.unwrap_or_else(MirType::i64),
                     dst: copy_register,
                     src: Operand::Register(source_value.register.clone()),
-                },
+                }),
             },
         );
         graph.blocks[body].edges[edge].args[position] = copy;
@@ -133,7 +134,7 @@ fn destroy_copies_on_a_real_loop_edge_round_trip() {
         .clone();
     assert!(
         body_block.instructions.iter().any(|inst| matches!(
-            inst,
+            &inst.instr,
             Instruction::Copy { dst, .. } if *dst == head_register
         )),
         "{:?}",

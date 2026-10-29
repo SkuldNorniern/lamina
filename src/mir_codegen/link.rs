@@ -28,8 +28,15 @@ fn detect_compiler() -> Option<&'static str> {
     }
 }
 
-fn get_crt_file(compiler: &str, crt_name: &str) -> Option<String> {
+/// The flag that makes a 64-bit host compiler answer for the 32-bit multilib, so a
+/// query for a C runtime object or the compiler runtime finds the i686 copy.
+fn multilib_flag(target_arch: TargetArchitecture) -> Option<&'static str> {
+    (target_arch == TargetArchitecture::I686).then_some("-m32")
+}
+
+fn get_crt_file(compiler: &str, crt_name: &str, multilib: Option<&str>) -> Option<String> {
     Command::new(compiler)
+        .args(multilib)
         .arg(format!("--print-file-name={crt_name}"))
         .output()
         .ok()
@@ -38,7 +45,7 @@ fn get_crt_file(compiler: &str, crt_name: &str) -> Option<String> {
         .filter(|path| !path.is_empty() && path != crt_name && path.contains('/'))
 }
 
-fn get_crt_files(target_os: TargetOperatingSystem) -> Vec<String> {
+fn get_crt_files(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Vec<String> {
     if os_uses_macho(target_os) {
         return Vec::new();
     }
@@ -47,13 +54,17 @@ fn get_crt_files(target_os: TargetOperatingSystem) -> Vec<String> {
         return Vec::new();
     };
 
+    let multilib = multilib_flag(target_arch);
     ["crt1.o", "crti.o"]
         .iter()
-        .filter_map(|name| get_crt_file(compiler, name))
+        .filter_map(|name| get_crt_file(compiler, name, multilib))
         .collect()
 }
 
-fn get_crtn_files(target_os: TargetOperatingSystem) -> Vec<String> {
+fn get_crtn_files(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Vec<String> {
     if os_uses_macho(target_os) {
         return Vec::new();
     }
@@ -62,7 +73,9 @@ fn get_crtn_files(target_os: TargetOperatingSystem) -> Vec<String> {
         return Vec::new();
     };
 
-    get_crt_file(compiler, "crtn.o").into_iter().collect()
+    get_crt_file(compiler, "crtn.o", multilib_flag(target_arch))
+        .into_iter()
+        .collect()
 }
 
 fn windows_sdk_root() -> Option<PathBuf> {
@@ -287,11 +300,14 @@ fn build_arch_emulation_flags(
             args.push("-m".to_string());
             args.push("elf64loongarch".to_string());
         }
+        TargetArchitecture::I686 => {
+            args.push("-m".to_string());
+            args.push("elf_i386".to_string());
+        }
         TargetArchitecture::PowerPC64
         | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Armv7
-        | TargetArchitecture::I686
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Nvptx64
@@ -314,9 +330,9 @@ fn build_crt_args(
     }
 
     if before_user_object {
-        get_crt_files(target_os)
+        get_crt_files(target_arch, target_os)
     } else {
-        get_crtn_files(target_os)
+        get_crtn_files(target_arch, target_os)
     }
 }
 
@@ -383,7 +399,8 @@ fn build_library_args(
     } else {
         args.push("-lc".to_string());
         if host_matches(target_arch)
-            && let Some(libgcc) = detect_compiler().and_then(get_libgcc_file)
+            && let Some(libgcc) =
+                detect_compiler().and_then(|cc| get_libgcc_file(cc, multilib_flag(target_arch)))
         {
             args.push(libgcc);
         }
@@ -394,8 +411,9 @@ fn build_library_args(
 
 /// The compiler runtime archive. It supplies the 128-bit integer helpers (`__divti3`
 /// and friends) that i128 lowering calls, which `-lc` does not provide.
-fn get_libgcc_file(compiler: &str) -> Option<String> {
+fn get_libgcc_file(compiler: &str, multilib: Option<&str>) -> Option<String> {
     Command::new(compiler)
+        .args(multilib)
         .arg("-print-libgcc-file-name")
         .output()
         .ok()

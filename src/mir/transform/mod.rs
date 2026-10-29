@@ -5,6 +5,9 @@
 //! or entire modules.
 
 mod addressing;
+mod alias;
+#[cfg(test)]
+mod alias_tests;
 mod branch_opt;
 mod cfg;
 mod constant_folding;
@@ -550,9 +553,12 @@ ret.i64 %s
                         .blocks
                         .iter()
                         .flat_map(|b| &b.instructions)
-                        .all(|i| !matches!(i, Instruction::Copy { .. } | Instruction::Call { .. }))
+                        .all(|i| !matches!(
+                            &i.instr,
+                            Instruction::Copy { .. } | Instruction::Call { .. }
+                        ))
                 );
-                assert!(caller.blocks.iter().flat_map(|b| &b.instructions).any(|i| matches!(i, Instruction::IntBinary { lhs: Operand::Register(reg), .. } if reg == &caller.sig.params[0].reg)));
+                assert!(caller.blocks.iter().flat_map(|b| &b.instructions).any(|i| matches!(&i.instr, Instruction::IntBinary { lhs: Operand::Register(reg), .. } if reg == &caller.sig.params[0].reg)));
             }
         }
     }
@@ -675,7 +681,7 @@ ret.i64 %s
         pipeline.apply_to_function(&mut func).unwrap();
         let folded = func.blocks[0].instructions.iter().any(|inst| {
             matches!(
-                inst,
+                &inst.instr,
                 Instruction::Copy {
                     src: Operand::Immediate(Immediate::I64(8)),
                     ..
@@ -711,7 +717,7 @@ ret.i64 %s
         let dead = func.blocks[0]
             .instructions
             .iter()
-            .any(|inst| matches!(inst, Instruction::IntBinary { .. }));
+            .any(|inst| matches!(&inst.instr, Instruction::IntBinary { .. }));
         assert!(!dead, "{:?}", func.blocks[0].instructions);
     }
 

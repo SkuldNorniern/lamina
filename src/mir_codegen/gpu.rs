@@ -37,7 +37,7 @@ pub(super) fn kernels(
         {
             return Err(error("only single-block void kernels without parameters or stack storage are supported"));
         }
-        if !matches!(function.blocks[0].instructions.last(), Some(Instruction::Ret { value: None })) {
+        if !matches!(&function.blocks[0].instructions.last().map(|i| &i.instr), Some(Instruction::Ret { value: None })) {
             return Err(error("kernel must end with a void return"));
         }
         if let Some(size) = metadata.required_workgroup_size {

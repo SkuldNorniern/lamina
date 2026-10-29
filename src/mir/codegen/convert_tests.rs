@@ -57,10 +57,10 @@ fn global_address_is_materialized_once_at_entry() {
     let entry = &module.functions["main"].blocks[0].instructions;
     let symbol_addresses = entry
         .iter()
-        .filter(|i| matches!(i, Instruction::SymbolAddress { symbol, .. } if symbol == "g"))
+        .filter(|i| matches!(&i.instr, Instruction::SymbolAddress { symbol, .. } if symbol == "g"))
         .count();
     assert_eq!(symbol_addresses, 1);
-    assert!(matches!(entry[0], Instruction::SymbolAddress { .. }));
+    assert!(matches!(&entry[0].instr, Instruction::SymbolAddress { .. }));
 }
 
 #[test]
@@ -114,13 +114,13 @@ fn bitcasts_preserve_source_bindings_and_define_distinct_results() {
     let module = from_ir(&ir, "bitcasts").expect("lower bitcasts");
     let function = &module.functions["f"];
     let instructions = &function.blocks[0].instructions;
-    let Instruction::Bitcast { from, to, dst, src } = &instructions[0] else {
+    let Instruction::Bitcast { from, to, dst, src } = &instructions[0].instr else {
         panic!("expected bitcast")
     };
     assert_eq!((*from, *to), (MirType::f64(), MirType::i64()));
     assert_eq!(src, &Operand::reg(function.sig.params[0].reg.clone()));
     assert_ne!(dst, &function.sig.params[0].reg);
-    let Instruction::Bitcast { dst: back, .. } = &instructions[1] else {
+    let Instruction::Bitcast { dst: back, .. } = &instructions[1].instr else {
         panic!("expected round trip")
     };
     assert_ne!(dst, back);
@@ -162,11 +162,11 @@ ret.ptr %variable
         mir.validate().expect("composite addresses verify");
         let instructions = &mir.get_function("gep").expect("gep function").blocks[0].instructions;
         assert!(instructions.iter().any(|inst| matches!(
-            inst,
+            &inst.instr,
             Instruction::Lea { offset, .. } if i64::from(*offset) == 2 * stride
         )));
         assert!(instructions.iter().any(|inst| matches!(
-            inst,
+            &inst.instr,
             Instruction::IntBinary {
                 op: IntBinOp::Mul,
                 rhs: Operand::Immediate(Immediate::I64(size)),
@@ -193,7 +193,7 @@ fn constant_gep_preserves_pointer_width_offsets() {
         let offset = function.blocks[0]
             .instructions
             .iter()
-            .find_map(|inst| match inst {
+            .find_map(|inst| match &inst.instr {
                 Instruction::Lea { offset, .. } => Some(i64::from(*offset)),
                 Instruction::IntBinary {
                     op: IntBinOp::Add,
@@ -216,7 +216,7 @@ fn offsets_past_i32_reach_their_address() {
     let offset = mir.get_function("field").expect("field function").blocks[0]
         .instructions
         .iter()
-        .find_map(|inst| match inst {
+        .find_map(|inst| match &inst.instr {
             Instruction::Lea { offset, .. } => Some(i64::from(*offset)),
             Instruction::IntBinary {
                 op: IntBinOp::Add,
@@ -276,7 +276,7 @@ fn straight_line_reassignment_reads_previous_definition() {
             lhs: Operand::Register(source),
             dst,
             ..
-        } = &pair[1]
+        } = &pair[1].instr
         else {
             panic!("expected dependent add");
         };
@@ -304,7 +304,7 @@ fn integer_aggregate_parameter_arrives_as_pointer_to_its_own_slot() {
     assert_eq!(function.stack_reservations[slot], 1);
     let Instruction::StackAddr {
         slot: addressed, ..
-    } = &function.blocks[0].instructions[0]
+    } = &function.blocks[0].instructions[0].instr
     else {
         panic!("expected stack address prelude");
     };
@@ -376,13 +376,13 @@ fn integer_aggregate_return_lands_in_slot_the_caller_addresses() {
     let caller = mir.get_function("use").expect("use function");
     let Instruction::Call {
         ret: Some(slot), ..
-    } = &caller.blocks[0].instructions[0]
+    } = &caller.blocks[0].instructions[0].instr
     else {
         panic!("expected call");
     };
     let Instruction::StackAddr {
         slot: addressed, ..
-    } = &caller.blocks[0].instructions[1]
+    } = &caller.blocks[0].instructions[1].instr
     else {
         panic!("expected stack address after call");
     };
@@ -411,7 +411,7 @@ fn width_conversions_reject_equal_widths_and_wrong_directions() {
     let function = mir.get_function("flag").expect("flag function");
     assert!(
         matches!(
-            function.blocks[0].instructions[0],
+            &function.blocks[0].instructions[0].instr,
             Instruction::IntConvert { .. }
         ),
         "{:?}",
@@ -443,11 +443,11 @@ fn padded_struct_allocations_use_abi_size() {
     ).expect("parse padded allocations");
     let mir = from_ir(&ir, "sizes").expect("lower padded allocations");
     let function = mir.get_function("sizes").expect("sizes function");
-    let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[0] else {
+    let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[0].instr else {
         panic!("expected stack allocation");
     };
     assert_eq!(function.stack_reservations[slot], 2);
-    let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[1] else {
+    let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[1].instr else {
         panic!("expected array allocation");
     };
     assert_eq!(function.stack_reservations[slot], 5);
@@ -461,7 +461,7 @@ fn stack_storage_is_not_a_register_use() {
     mir.validate().expect("stack allocation verifies");
     let function = mir.get_function("stack").expect("stack function");
     let instruction = &function.blocks[0].instructions[0];
-    let Instruction::StackAddr { slot, .. } = instruction else {
+    let Instruction::StackAddr { slot, .. } = &instruction.instr else {
         panic!("expected stack address");
     };
     assert!(instruction.use_regs().is_empty());
@@ -510,7 +510,7 @@ fn test_from_ir_simple_add() {
     assert_eq!(func.entry, "entry");
     let entry = func.get_block("entry").expect("entry block exists");
     assert_eq!(entry.instructions.len(), 2);
-    match &entry.instructions[0] {
+    match &entry.instructions[0].instr {
         Instruction::IntBinary {
             op,
             ty,
@@ -525,7 +525,7 @@ fn test_from_ir_simple_add() {
         }
         other => panic!("Unexpected first instruction: {:?}", other),
     }
-    match &entry.instructions[1] {
+    match &entry.instructions[1].instr {
         Instruction::Ret { value } => {
             assert!(matches!(value, Some(Operand::Register(_))));
         }
@@ -534,34 +534,12 @@ fn test_from_ir_simple_add() {
 }
 
 #[test]
-fn f64_phi_immediate_survives_lowering_as_copy() {
-    let negative_zero = IRVal::Constant(IRLit::F64(-0.0));
-    let other = IRVal::Constant(IRLit::F64(3.5));
-    let mut builder = IRBuilder::new();
-    builder
-        .function_with_params(
-            "choose",
-            vec![FunctionParameter {
-                name: "condition",
-                ty: IRType::Primitive(IRPrim::Bool),
-                annotations: vec![],
-            }],
-            IRType::Primitive(IRPrim::F64),
-        )
-        .branch(var("condition"), "left", "right")
-        .block("left")
-        .jump("merge")
-        .block("right")
-        .jump("merge")
-        .block("merge")
-        .phi(
-            "value",
-            IRType::Primitive(IRPrim::F64),
-            vec![(negative_zero, "left"), (other, "right")],
-        )
-        .ret(IRType::Primitive(IRPrim::F64), var("value"));
-
-    let mir_module = from_ir(&builder.build(), "test").expect("from_ir should succeed");
+fn f64_merge_immediate_survives_lowering_as_copy() {
+    let ir = parse_module(
+        "fn @choose(bool %condition) -> f64 {\nentry:\n  br %condition, left, right\nleft:\n  %value = copy.f64 -0.0\n  jmp merge\nright:\n  %value = copy.f64 3.5\n  jmp merge\nmerge:\n  ret.f64 %value\n}\n",
+    )
+    .expect("parse f64 merge");
+    let mir_module = from_ir(&ir, "test").expect("from_ir should succeed");
     let function = mir_module
         .get_function("choose")
         .expect("function should exist");
@@ -571,7 +549,7 @@ fn f64_phi_immediate_survives_lowering_as_copy() {
             .iter()
             .flat_map(|block| &block.instructions)
             .any(|instruction| matches!(
-                instruction,
+                &instruction.instr,
                 Instruction::Copy {
                     ty: MirType::Scalar(ScalarType::F64),
                     src: Operand::Immediate(Immediate::F64(value)),
@@ -600,12 +578,12 @@ fn variadic_f32_argument_widens_to_f64() {
     let widened: Vec<_> = module.functions["main"].blocks[0]
         .instructions
         .iter()
-        .filter(|inst| matches!(inst, Instruction::FloatConvert { .. }))
+        .filter(|inst| matches!(&inst.instr, Instruction::FloatConvert { .. }))
         .collect();
     assert_eq!(widened.len(), 1, "{widened:?}");
     assert!(
         matches!(
-            widened[0],
+            &widened[0].instr,
             Instruction::FloatConvert { from, to, .. }
                 if *from == MirType::f32() && *to == MirType::f64()
         ),
@@ -621,12 +599,12 @@ fn variadic_callptr_widens_only_past_its_marker() {
     let widened: Vec<_> = module.functions["main"].blocks[0]
         .instructions
         .iter()
-        .filter(|inst| matches!(inst, Instruction::FloatConvert { .. }))
+        .filter(|inst| matches!(&inst.instr, Instruction::FloatConvert { .. }))
         .collect();
     assert_eq!(widened.len(), 1, "{widened:?}");
     assert!(
         matches!(
-            widened[0],
+            &widened[0].instr,
             Instruction::FloatConvert { from, to, .. }
                 if *from == MirType::f32() && *to == MirType::f64()
         ),
@@ -653,46 +631,6 @@ fn string_global_resolves_escapes() {
 }
 
 #[test]
-fn switch_edge_moves_run_on_their_own_edge() {
-    let mut builder = IRBuilder::new();
-    builder
-        .function("main", IRType::Primitive(IRPrim::I64))
-        .jump("loop")
-        .block("loop")
-        .phi(
-            "i",
-            IRType::Primitive(IRPrim::I64),
-            vec![
-                (IRVal::Constant(IRLit::I64(0)), "entry"),
-                (var("n"), "loop"),
-            ],
-        )
-        .binary(
-            IRBin::Add,
-            "n",
-            IRPrim::I64,
-            var("i"),
-            IRVal::Constant(IRLit::I64(2)),
-        )
-        .switch(IRPrim::I64, var("i"), "loop", &[(IRLit::I64(4), "done")])
-        .block("done")
-        .ret(IRType::Primitive(IRPrim::I64), var("n"));
-    let module = from_ir(&builder.build(), "switch").expect("lower switch");
-
-    let block = module.functions["main"]
-        .blocks
-        .iter()
-        .find(|block| matches!(block.instructions.last(), Some(Instruction::Switch { .. })))
-        .expect("switch block");
-    let copies = block
-        .instructions
-        .iter()
-        .filter(|inst| matches!(inst, Instruction::Copy { .. }))
-        .count();
-    assert_eq!(copies, 0, "{:?}", block.instructions);
-}
-
-#[test]
 fn volatile_ir_accesses_set_memory_attrs_bit() {
     let module = lowered_global_module(
         "fn @f(ptr %p) -> i64 {\nentry:\n %a = volatile load.i64 %p\n volatile store.i64 %p, 5\n %b = load.i64 %p\n ret.i64 %b\n}",
@@ -701,7 +639,7 @@ fn volatile_ir_accesses_set_memory_attrs_bit() {
     let volatile_bits: Vec<bool> = module.functions["f"].blocks[0]
         .instructions
         .iter()
-        .filter_map(|inst| match inst {
+        .filter_map(|inst| match &inst.instr {
             Instruction::Load { attrs, .. } | Instruction::Store { attrs, .. } => {
                 Some(attrs.volatile)
             }
@@ -719,21 +657,21 @@ fn atomic_ir_lowers_to_mir_atomics_with_their_ordering() {
     .expect("lower atomics");
     let instructions = &module.functions["f"].blocks[0].instructions;
     assert!(matches!(
-        &instructions[0],
+        &instructions[0].instr,
         Instruction::AtomicLoad {
             ordering: MemoryOrdering::Acquire,
             ..
         }
     ));
     assert!(matches!(
-        &instructions[1],
+        &instructions[1].instr,
         Instruction::AtomicStore {
             ordering: MemoryOrdering::Release,
             ..
         }
     ));
     assert!(matches!(
-        &instructions[2],
+        &instructions[2].instr,
         Instruction::AtomicBinary {
             op: AtomicBinOp::Add,
             ordering: MemoryOrdering::AcqRel,
@@ -741,7 +679,7 @@ fn atomic_ir_lowers_to_mir_atomics_with_their_ordering() {
         }
     ));
     assert!(matches!(
-        &instructions[3],
+        &instructions[3].instr,
         Instruction::AtomicBinary {
             op: AtomicBinOp::Exchange,
             ordering: MemoryOrdering::SeqCst,
@@ -749,7 +687,7 @@ fn atomic_ir_lowers_to_mir_atomics_with_their_ordering() {
         }
     ));
     assert!(matches!(
-        &instructions[4],
+        &instructions[4].instr,
         Instruction::Fence {
             ordering: MemoryOrdering::SeqCst
         }
@@ -763,11 +701,11 @@ fn atomic_binary_result_is_the_old_value_register() {
     )
     .expect("lower atomic add");
     let instructions = &module.functions["f"].blocks[0].instructions;
-    let Instruction::AtomicBinary { dst, .. } = &instructions[0] else {
+    let Instruction::AtomicBinary { dst, .. } = &instructions[0].instr else {
         panic!("expected AtomicBinary, found {:?}", instructions[0]);
     };
     assert!(matches!(
-        &instructions[1],
+        &instructions[1].instr,
         Instruction::Ret { value: Some(Operand::Register(reg)) } if reg == dst
     ));
 }
@@ -796,7 +734,7 @@ fn atomic_compare_exchange_lowers_to_mir() {
     let lowered = from_ir(&module, "cas").expect("cmpxchg lowers");
     let entry = &lowered.functions["f"].blocks[0].instructions;
     assert!(matches!(
-        entry[0],
+        &entry[0].instr,
         Instruction::AtomicCompareExchange {
             success_ordering: MemoryOrdering::SeqCst,
             failure_ordering: MemoryOrdering::SeqCst,
@@ -874,37 +812,154 @@ fn io_result_is_i64_in_every_typed_position() {
     }
 }
 
-#[test]
-fn identical_branch_arms_with_phi_copies_share_one_trampoline() {
-    let mut builder = IRBuilder::new();
-    builder
-        .function_with_params(
-            "f",
-            vec![FunctionParameter {
-                name: "condition",
-                ty: IRType::Primitive(IRPrim::Bool),
-                annotations: vec![],
-            }],
-            IRType::Primitive(IRPrim::I64),
+mod pairs_on_a_32_bit_target {
+    use super::*;
+
+    fn lower32(source: &str) -> Result<Module, FromIRError> {
+        let ir = parse_module(source).expect("parse");
+        from_ir_for_target(&ir, "pairs", PointerWidth::Bits32)
+    }
+
+    fn body(source: &str) -> String {
+        let module = lower32(source).expect("lower for a 32-bit target");
+        let mut text = String::new();
+        for function in module.functions.values() {
+            for block in &function.blocks {
+                for instruction in &block.instructions {
+                    text.push_str(&format!("{}\n", instruction.instr));
+                }
+            }
+        }
+        text
+    }
+
+    const ADD: &str = "fn @sum(i64 %x, i64 %y) -> i64 {\nentry:\n %a = add.i64 %x, %y\n ret.i64 %a\n}\n\
+         fn @main() -> i64 {\nentry:\n ret.i64 0\n}";
+
+    #[test]
+    fn no_instruction_still_names_a_64_bit_type() {
+        let text = body(
+            "fn @main() -> i64 {\nentry:\n\
+             %a = add.i64 1, 2\n %b = sub.i64 %a, 3\n %c = mul.i64 %b, %a\n\
+             %d = and.i64 %c, %b\n %e = or.i64 %d, %a\n %f = xor.i64 %e, %b\n\
+             %g = shl.i64 %f, 33\n %h = shr.i64 %g, 7\n %i = lt.i64 %h, %a\n\
+             %j = select.i64 %i, %h, %a\n ret.i64 %j\n}",
+        );
+        for line in text.lines() {
+            assert!(!line.contains("i64"), "a 64-bit operation survived: {line}");
+        }
+    }
+
+    #[test]
+    fn a_64_bit_add_computes_its_own_carry_without_a_flags_register() {
+        let text = body(ADD);
+        // The carry is `((a & b) | ((a | b) & !sum)) >> 31`, so the low word's add is
+        // followed by a shift that lands the carry bit in a register of its own.
+        assert!(
+            text.contains("lshr") && text.contains("31"),
+            "no carry extraction in:\n{text}"
+        );
+        assert!(
+            text.matches("add").count() >= 3,
+            "a pair add needs the low word, the high word and the carry:\n{text}"
+        );
+    }
+
+    #[test]
+    fn division_calls_the_64_bit_runtime_helpers_not_the_128_bit_ones() {
+        for (op, ty, symbol) in [
+            ("div", "i64", "__divdi3"),
+            ("div", "u64", "__udivdi3"),
+            ("rem", "i64", "__moddi3"),
+            ("rem", "u64", "__umoddi3"),
+        ] {
+            let source =
+                format!("fn @main() -> {ty} {{\nentry:\n %a = {op}.{ty} 7, 3\n ret.{ty} %a\n}}");
+            let module = lower32(&source).expect("lower a division");
+            assert!(
+                module.functions.contains_key(symbol),
+                "{op}.{ty} did not call {symbol}"
+            );
+            assert!(
+                !module.functions.keys().any(|name| name.ends_with("ti3")),
+                "{op}.{ty} reached for a 128-bit helper"
+            );
+        }
+    }
+
+    #[test]
+    fn a_shift_count_is_taken_modulo_sixty_four() {
+        // 2 * 32 - 1 masks the count to the pair's width before it is split.
+        assert!(
+            body(
+                "fn @sh(i64 %x, i64 %n) -> i64 {\nentry:\n %a = shl.i64 %x, %n\n ret.i64 %a\n}\n\
+                  fn @main() -> i64 {\nentry:\n ret.i64 0\n}"
+            )
+            .contains("63"),
+            "the shift count was not masked to the pair's width"
+        );
+    }
+
+    #[test]
+    fn a_64_bit_value_crosses_a_boundary_as_two_words() {
+        let module = lower32(
+            "fn @id(i64 %x) -> i64 {\nentry:\n ret.i64 %x\n}\n\
+             fn @main() -> i64 {\nentry:\n %a = call @id(5)\n ret.i64 %a\n}",
         )
-        .branch(var("condition"), "join", "join")
-        .block("join")
-        .phi(
-            "m",
-            IRType::Primitive(IRPrim::I64),
-            vec![(IRVal::Constant(IRLit::I64(7)), "entry")],
+        .expect("lower a call");
+        let id = &module.functions["id"];
+        let aggregate = id.sig.params[0].aggregate.expect("parameter aggregate");
+        assert_eq!(aggregate.size, 8);
+        assert_eq!(aggregate.words_of(PointerWidth::Bits32), 2);
+        assert_eq!(aggregate.words_of(PointerWidth::Bits64), 1);
+        assert_eq!(id.sig.ret_aggregate.expect("result aggregate").size, 8);
+    }
+
+    #[test]
+    fn a_64_bit_global_becomes_eight_bytes_of_memory() {
+        let module = lower32("global $cell: i64 = -2\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}")
+            .expect("lower a global");
+        let cell = &module.globals["cell"];
+        assert_eq!(cell.size, 8);
+        assert_eq!(
+            cell.initializer.as_deref(),
+            Some((-2i64).to_le_bytes().as_slice())
+        );
+    }
+
+    #[test]
+    fn a_128_bit_integer_is_refused_by_name_rather_than_truncated() {
+        let error = lower32("fn @main() -> i64 {\nentry:\n %a = add.i128 1, 2\n ret.i64 0\n}")
+            .expect_err("i128 needs four registers on a 32-bit target");
+        let message = error.to_string();
+        assert!(message.contains("128-bit"), "{message}");
+        assert!(message.contains("add.i128"), "{message}");
+    }
+
+    #[test]
+    fn a_64_bit_atomic_is_refused_by_name_rather_than_split_unsafely() {
+        let error = lower32(
+            "fn @main() -> i64 {\nentry:\n %p = stackalloc.i64\n\
+             %a = atomic_add.i64 %p, 5, seqcst\n ret.i64 0\n}",
         )
-        .ret(IRType::Primitive(IRPrim::I64), var("m"));
-    let module = from_ir(&builder.build(), "identical").expect("lower identical branch with phi");
-    let entry = &module.functions["f"].blocks[0];
-    let Some(Instruction::Br {
-        true_target,
-        false_target,
-        ..
-    }) = entry.instructions.last()
-    else {
-        panic!("expected a branch, found {:?}", entry.instructions.last());
-    };
-    assert_eq!(true_target, false_target);
-    assert_ne!(true_target, "join");
+        .expect_err("two words cannot be updated atomically");
+        let message = error.to_string();
+        assert!(message.contains("atomic"), "{message}");
+        assert!(message.contains("64-bit"), "{message}");
+    }
+
+    #[test]
+    fn a_64_bit_target_is_untouched_by_any_of_this() {
+        let ir = parse_module(ADD).expect("parse");
+        let module = from_ir_for_target(&ir, "pairs", PointerWidth::Bits64).expect("lower");
+        let text: String = module.functions["sum"].blocks[0]
+            .instructions
+            .iter()
+            .map(|instruction| format!("{}\n", instruction.instr))
+            .collect();
+        assert!(
+            text.contains("i64"),
+            "a 64-bit target still works in i64:\n{text}"
+        );
+    }
 }

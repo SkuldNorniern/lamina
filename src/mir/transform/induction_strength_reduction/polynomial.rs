@@ -198,7 +198,7 @@ impl<'a> Analysis<'a> {
             lhs,
             rhs,
             ..
-        } = instruction
+        } = &instruction.instr
             && *ty == self.ty
         {
             let step = match (lhs, rhs) {
@@ -245,7 +245,7 @@ impl<'a> Analysis<'a> {
         {
             return None;
         }
-        match instruction {
+        match &instruction.instr {
             Instruction::Copy { ty, src, .. } if *ty == self.ty => self.operand(src, definition),
             Instruction::IntBinary {
                 op, ty, lhs, rhs, ..

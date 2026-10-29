@@ -186,6 +186,17 @@ mod tests {
         }
     }
 
+    fn switch(value: u32, default: &str, cases: &[(i64, &str)]) -> Instruction {
+        Instruction::Switch {
+            value: gpr(value),
+            cases: cases
+                .iter()
+                .map(|(key, target)| (*key, (*target).to_string()))
+                .collect(),
+            default: default.to_string(),
+        }
+    }
+
     fn graph_of(function: &Function) -> SsaFunction {
         SsaFunction::build(function, &|_| None).expect("build")
     }
@@ -351,7 +362,7 @@ mod tests {
             .find(|b| b.label == "entry")
             .expect("entry");
         assert_eq!(
-            entry_block.instructions.last(),
+            entry_block.terminator(),
             Some(&branch(0, "entry_to_join_phi1", "body"))
         );
     }
@@ -416,7 +427,7 @@ mod tests {
                 dst,
                 src: Operand::Register(src),
                 ..
-            } = instruction
+            } = &instruction.instr
             {
                 let value = regs[&src.clone()];
                 regs.insert(dst.clone(), value);
@@ -480,8 +491,81 @@ mod tests {
         );
         let twin_block = out.blocks.iter().find(|b| b.label == "twin").expect("twin");
         assert_eq!(
-            twin_block.instructions.last(),
+            twin_block.terminator(),
             Some(&branch(0, "twin_to_join_phi1", "twin_to_join_phi1"))
+        );
+        verify_function_in_pipeline(&out).expect("destroyed MIR verifies");
+    }
+
+    #[test]
+    fn switch_edge_moves_run_on_their_own_edge() {
+        let f = FunctionBuilder::new("dispatch")
+            .param(gpr(0), MirType::i64())
+            .returns(MirType::i64())
+            .block("entry")
+            .instr(imm(1, 1))
+            .instr(imm(5, 7))
+            .instr(switch(0, "other", &[(4, "join")]))
+            .block("other")
+            .instr(imm(1, 2))
+            .instr(jump("join"))
+            .block("join")
+            .instr(ret(1))
+            .build();
+        let mut graph = graph_of(&f);
+        let seven = ValueId(
+            graph
+                .values
+                .iter()
+                .position(|v| v.register == gpr(5))
+                .expect("v5") as u32,
+        );
+        let entry = graph
+            .blocks
+            .iter()
+            .position(|b| b.label == "entry")
+            .expect("entry");
+        let join = graph
+            .blocks
+            .iter()
+            .position(|b| b.label == "join")
+            .expect("join");
+        let edge = graph.blocks[entry]
+            .edges
+            .iter_mut()
+            .find(|e| e.target == BlockId(join as u32))
+            .expect("edge");
+        edge.args[0] = seven;
+        let out = destroy(&graph).expect("destroy");
+
+        let tramp = out
+            .blocks
+            .iter()
+            .find(|b| b.label == "entry_to_join_phi1")
+            .expect("trampoline");
+        assert_eq!(
+            tramp.instructions,
+            vec![
+                Instruction::Copy {
+                    ty: MirType::i64(),
+                    dst: gpr(1),
+                    src: Operand::v_gpr(5),
+                },
+                jump("join"),
+            ]
+        );
+        let entry_block = out
+            .blocks
+            .iter()
+            .find(|b| b.label == "entry")
+            .expect("entry");
+        assert_eq!(
+            entry_block.instructions,
+            vec![
+                imm(1, 1),
+                imm(5, 7),
+                switch(0, "other", &[(4, "entry_to_join_phi1")]),
+            ]
         );
         verify_function_in_pipeline(&out).expect("destroyed MIR verifies");
     }

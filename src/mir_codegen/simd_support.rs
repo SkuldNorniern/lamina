@@ -69,7 +69,7 @@ pub fn declare_uses_as_params(f: &mut Function, vector_ty: &MirType, lane: Vecto
     let mut bases: Vec<Register> = Vec::new();
     for block in &f.blocks {
         for inst in &block.instructions {
-            if let Instruction::Load { addr, .. } | Instruction::Store { addr, .. } = inst
+            if let Instruction::Load { addr, .. } | Instruction::Store { addr, .. } = &inst.instr
                 && let AddressMode::BaseOffset { base, .. } = addr
             {
                 bases.push(base.clone());
@@ -396,7 +396,7 @@ pub fn immediate(f: &mut Function, lane: VectorLane) {
         _ => Operand::imm_i64(-123),
     };
     for inst in &mut f.blocks[0].instructions {
-        if let Instruction::VectorOp { op, operands, .. } = inst {
+        if let Instruction::VectorOp { op, operands, .. } = &mut inst.instr {
             match op {
                 VectorOp::VSplat => operands[0] = value.clone(),
                 VectorOp::VInsertLane => operands[1] = value.clone(),
@@ -435,9 +435,15 @@ pub fn negative(backend: Backend, pointer_width: PointerWidth) {
                     0,
                 );
                 f.blocks[0].instructions.retain(|i| match part {
-                    0 => matches!(i, Instruction::Load { .. } | Instruction::Ret { .. }),
-                    1 => matches!(i, Instruction::Store { .. } | Instruction::Ret { .. }),
-                    _ => matches!(i, Instruction::VectorOp { .. } | Instruction::Ret { .. }),
+                    0 => matches!(&i.instr, Instruction::Load { .. } | Instruction::Ret { .. }),
+                    1 => matches!(
+                        &i.instr,
+                        Instruction::Store { .. } | Instruction::Ret { .. }
+                    ),
+                    _ => matches!(
+                        &i.instr,
+                        Instruction::VectorOp { .. } | Instruction::Ret { .. }
+                    ),
                 });
                 declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V256(lane)), lane);
                 m.functions.insert("bad".into(), f);
@@ -453,7 +459,7 @@ pub fn negative(backend: Backend, pointer_width: PointerWidth) {
                 ] {
                     let mut f = f.clone();
                     for inst in &mut f.blocks[0].instructions {
-                        if let Instruction::VectorOp { operands, .. } = inst {
+                        if let Instruction::VectorOp { operands, .. } = &mut inst.instr {
                             *operands.last_mut().expect("index") = index.clone();
                         }
                     }

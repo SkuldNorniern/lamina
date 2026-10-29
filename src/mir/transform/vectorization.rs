@@ -67,7 +67,8 @@ impl AutoVectorization {
         let dominators = calculate_dominators(func);
 
         for block in &func.blocks {
-            for instr in &block.instructions {
+            for located in &block.instructions {
+                let instr = &located.instr;
                 if let Instruction::Br {
                     true_target,
                     false_target,
@@ -219,8 +220,11 @@ impl AutoVectorization {
                             attrs: store_attrs,
                             ..
                         },
-                    ) = (&instructions[i], &instructions[i + 1], &instructions[i + 2])
-                    {
+                    ) = (
+                        &instructions[i].instr,
+                        &instructions[i + 1].instr,
+                        &instructions[i + 2].instr,
+                    ) {
                         if !load_attrs.volatile
                             && !store_attrs.volatile
                             && self.is_vectorizable_type(ty)
@@ -258,8 +262,11 @@ impl AutoVectorization {
                             attrs: store_attrs,
                             ..
                         },
-                    ) = (&instructions[i], &instructions[i + 1], &instructions[i + 2])
-                    {
+                    ) = (
+                        &instructions[i].instr,
+                        &instructions[i + 1].instr,
+                        &instructions[i + 2].instr,
+                    ) {
                         if !load_attrs.volatile
                             && !store_attrs.volatile
                             && self.is_vectorizable_type(ty)
@@ -306,10 +313,10 @@ impl AutoVectorization {
                             ..
                         },
                     ) = (
-                        &instructions[i],
-                        &instructions[i + 1],
-                        &instructions[i + 2],
-                        &instructions[i + 3],
+                        &instructions[i].instr,
+                        &instructions[i + 1].instr,
+                        &instructions[i + 2].instr,
+                        &instructions[i + 3].instr,
                     ) {
                         if !load_attrs.volatile
                             && !store_attrs.volatile
@@ -437,9 +444,9 @@ impl AutoVectorization {
         }
 
         // Extract the instructions
-        let load_instr = block.instructions[pattern.load_idx].clone();
-        let compute_instr = block.instructions[pattern.compute_idx].clone();
-        let store_instr = block.instructions[pattern.store_idx].clone();
+        let load_instr = block.instructions[pattern.load_idx].instr.clone();
+        let compute_instr = block.instructions[pattern.compute_idx].instr.clone();
+        let store_instr = block.instructions[pattern.store_idx].instr.clone();
 
         // Determine vector type based on element type
         let vector_type = self.get_vector_type_for_scalar(pattern.element_type)?;
@@ -483,7 +490,7 @@ impl AutoVectorization {
             let vector_dst = self.allocate_vector_register();
             let vector_op = self.int_binop_to_vector_op(pattern.operation)?;
 
-            block.instructions[pattern.load_idx] = Instruction::Load {
+            block.instructions[pattern.load_idx].instr = Instruction::Load {
                 ty: MirType::Vector(vector_type),
                 dst: vector_dst.clone(),
                 addr: AddressMode::BaseOffset {
@@ -505,7 +512,8 @@ impl AutoVectorization {
                         ty: MirType::Vector(vector_type),
                         dst: splat_reg.clone(),
                         operands: vec![compute_rhs],
-                    },
+                    }
+                    .into(),
                 );
                 Operand::Register(splat_reg)
             } else if matches!(compute_rhs, Operand::Register(_)) {
@@ -525,14 +533,15 @@ impl AutoVectorization {
                             address_space,
                         },
                         attrs: Default::default(),
-                    },
+                    }
+                    .into(),
                 );
                 Operand::Register(vector_rhs_reg)
             } else {
                 compute_rhs
             };
 
-            block.instructions[pattern.compute_idx + 1] = Instruction::VectorOp {
+            block.instructions[pattern.compute_idx + 1].instr = Instruction::VectorOp {
                 op: vector_op,
                 ty: MirType::Vector(vector_type),
                 dst: vector_dst.clone(),
@@ -545,7 +554,7 @@ impl AutoVectorization {
                 address_space,
             } = store_addr
             {
-                block.instructions[pattern.store_idx + 1] = Instruction::Store {
+                block.instructions[pattern.store_idx + 1].instr = Instruction::Store {
                     ty: MirType::Vector(vector_type),
                     src: Operand::Register(vector_dst),
                     addr: AddressMode::BaseOffset {

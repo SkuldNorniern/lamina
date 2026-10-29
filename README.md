@@ -217,7 +217,7 @@ The following results are from our 256×256 2D matrix multiplication benchmark (
 
 **RISC-V**
 - `riscv32_unknown`: RISC-V 32-bit
-- `riscv64_unknown`: RISC-V 64-bit
+- `riscv64_linux`: RISC-V 64-bit Linux (`riscv64_unknown` and `riscv64gc_linux` are accepted aliases)
 - `riscv128_unknown`: RISC-V 128-bit (nightly feature)
 
 **WebAssembly**

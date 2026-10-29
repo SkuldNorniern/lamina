@@ -207,7 +207,7 @@ impl CfgSimplify {
 
         for block in &mut func.blocks {
             for instr in &mut block.instructions {
-                match instr {
+                match &instr.instr {
                     // br cond, A, A -> jmp A
                     Instruction::Br {
                         cond: _,
@@ -215,7 +215,7 @@ impl CfgSimplify {
                         false_target,
                     } if true_target == false_target => {
                         let target = true_target.clone();
-                        *instr = Instruction::Jmp { target };
+                        instr.instr = Instruction::Jmp { target };
                         changed = true;
                     }
                     // select cond, x, x -> copy x
@@ -231,7 +231,7 @@ impl CfgSimplify {
                             dst: dst.clone(),
                             src: true_val.clone(),
                         };
-                        *instr = replacement;
+                        instr.instr = replacement;
                         changed = true;
                     }
                     _ => {}
@@ -244,7 +244,7 @@ impl CfgSimplify {
             if let Some(term) = block.instructions.last()
                 && term.is_terminator()
             {
-                match term {
+                match &term.instr {
                     Instruction::Jmp { target } => {
                         preds
                             .entry(target.clone())
@@ -285,7 +285,8 @@ impl CfgSimplify {
         let mut merges = Vec::new();
         for block in &func.blocks {
             if block.instructions.len() == 1
-                && let Some(Instruction::Jmp { target }) = block.instructions.last()
+                && let Some(Instruction::Jmp { target }) =
+                    block.instructions.last().map(|i| &i.instr)
                 && let Some(preds_list) = preds.get(&block.label)
                 && preds_list.len() == 1
             {
@@ -307,7 +308,7 @@ impl CfgSimplify {
             }
             if let Some(pred_block) = func.blocks.iter_mut().find(|b| b.label == pred_label)
                 && let Some(pred_term) = pred_block.instructions.last_mut()
-                && let Instruction::Jmp { target } = pred_term
+                && let Instruction::Jmp { target } = &mut pred_term.instr
                 && *target == trivial_label
             {
                 touched.extend([pred_label, new_target.clone(), trivial_label.clone()]);
@@ -359,7 +360,7 @@ impl JumpThreading {
 
         for block in &func.blocks {
             if block.instructions.len() == 1
-                && let Instruction::Jmp { target } = &block.instructions[0]
+                && let Instruction::Jmp { target } = &block.instructions[0].instr
             {
                 simple_jumps.insert(block.label.clone(), target.clone());
             }
@@ -392,7 +393,7 @@ impl JumpThreading {
         let mut changed = false;
         for block in &mut func.blocks {
             for instr in &mut block.instructions {
-                match instr {
+                match &mut instr.instr {
                     Instruction::Jmp { target } => {
                         if let Some(new_tgt) = resolved_targets.get(target)
                             && new_tgt != target
@@ -595,7 +596,9 @@ mod tests {
         let changed = apply_pass(&CfgSimplify, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit"));
+        assert!(
+            matches!(&entry.instructions[0].instr, Instruction::Jmp { target } if target == "exit")
+        );
     }
 
     #[test]
@@ -621,7 +624,10 @@ mod tests {
         let changed = apply_pass(&CfgSimplify, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(&entry.instructions[0], Instruction::Copy { .. }));
+        assert!(matches!(
+            &entry.instructions[0].instr,
+            Instruction::Copy { .. }
+        ));
     }
 
     #[test]
@@ -650,7 +656,7 @@ mod tests {
         let entry = func.get_block("entry").unwrap();
         assert!(
             matches!(
-                &entry.instructions[0],
+                &entry.instructions[0].instr,
                 Instruction::Copy {
                     ty,
                     src: Operand::Immediate(Immediate::F64(value)),
@@ -690,7 +696,9 @@ mod tests {
         let changed = apply_pass(&JumpThreading, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit"));
+        assert!(
+            matches!(&entry.instructions[0].instr, Instruction::Jmp { target } if target == "exit")
+        );
     }
 
     #[test]
@@ -724,7 +732,7 @@ mod tests {
         let changed = apply_pass(&JumpThreading, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        if let Instruction::Br { true_target, .. } = &entry.instructions[0] {
+        if let Instruction::Br { true_target, .. } = &entry.instructions[0].instr {
             assert_eq!(true_target, "exit");
         } else {
             panic!("expected Br in entry block");

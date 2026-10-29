@@ -78,7 +78,7 @@ pub(crate) fn interpret_mir_function(
         let mut next_label: Option<String> = None;
 
         for instruction in &block.instructions {
-            match instruction {
+            match &instruction.instr {
                 Instruction::Copy { ty, dst, src }
                 | Instruction::Bitcast {
                     to: ty, dst, src, ..

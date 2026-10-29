@@ -10,6 +10,7 @@ use crate::mir::{
     ssa::{SsaFunction, ValueDef, ValueId, destroy},
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_mir::Located;
 use std::{collections::HashMap, mem};
 
 /// An expression's text and the values it reads.
@@ -163,7 +164,7 @@ impl CommonSubexpressionElimination {
         }
         for (b, i, src, copy) in rewrites {
             let inst = &mut graph.blocks[b].insts[i];
-            inst.instruction = copy;
+            inst.instruction = Located::at(copy, inst.instruction.loc);
             inst.uses = vec![src];
         }
         verify_graph(&graph, "after CSE")?;
@@ -244,6 +245,7 @@ mod tests {
         FloatBinOp, FloatCmpOp, FunctionBuilder, Immediate, IntBinOp, ScalarType, VirtualReg,
         transform::test_utils::get_block,
     };
+    use lamina_mir::Located;
 
     #[test]
     fn test_cse_empty_function() {
@@ -400,18 +402,20 @@ mod tests {
         for i in 0..200 {
             func.blocks[0].instructions.insert(
                 0,
-                Instruction::IntBinary {
+                Located::from(Instruction::IntBinary {
                     op: IntBinOp::Add,
                     ty: MirType::Scalar(ScalarType::I64),
                     dst: VirtualReg::gpr(i).into(),
                     lhs: Operand::Immediate(Immediate::I64(i as i64)),
                     rhs: Operand::Immediate(Immediate::I64(1)),
-                },
+                }),
             );
         }
-        func.blocks[0].instructions.push(Instruction::Ret {
-            value: Some(Operand::Immediate(Immediate::I64(0))),
-        });
+        func.blocks[0]
+            .instructions
+            .push(Located::from(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            }));
 
         let cse = CommonSubexpressionElimination;
         let result = cse.apply(&mut func);
@@ -450,7 +454,7 @@ mod tests {
         let entry = get_block(&func, "entry");
         let first: Register = VirtualReg::gpr(0).into();
         let second: Register = VirtualReg::gpr(1).into();
-        match &entry.instructions[1] {
+        match &entry.instructions[1].instr {
             Instruction::Copy {
                 ty,
                 dst,
@@ -485,7 +489,7 @@ mod tests {
 
         let entry = get_block(&func, "entry");
         assert!(matches!(
-            &entry.instructions[1],
+            &entry.instructions[1].instr,
             Instruction::IntBinary {
                 ty: MirType::Scalar(ScalarType::I32),
                 ..
@@ -527,7 +531,7 @@ mod tests {
         let first: Register = VirtualReg::gpr(0).into();
         let next = get_block(&func, "next");
         assert!(matches!(
-            &next.instructions[0],
+            &next.instructions[0].instr,
             Instruction::Copy { src: Operand::Register(src), .. } if *src == first
         ));
     }
@@ -590,7 +594,7 @@ mod tests {
         );
         let head = get_block(&func, "head");
         assert!(matches!(
-            &head.instructions[2],
+            &head.instructions[2].instr,
             Instruction::Copy {
                 src: Operand::Register(_),
                 ..
@@ -667,7 +671,7 @@ mod tests {
                 .instructions
                 .iter()
                 .take(4)
-                .all(|instr| matches!(instr, Instruction::FloatBinary { .. })),
+                .all(|instr| matches!(&instr.instr, Instruction::FloatBinary { .. })),
             "{:?}",
             entry.instructions
         );

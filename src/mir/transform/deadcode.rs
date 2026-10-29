@@ -90,7 +90,7 @@ impl DeadCodeElimination {
                 // 1. Calculate LiveOut = Union(LiveIn(successors))
                 let mut current_live_out = HashSet::new();
                 if let Some(terminator) = block.instructions.last() {
-                    match terminator {
+                    match &terminator.instr {
                         Instruction::Jmp { target } => {
                             if let Some(succ_live_in) = live_in.get(target) {
                                 current_live_out.extend(succ_live_in.iter().cloned());
@@ -315,17 +315,20 @@ pub fn truncate_after_noreturn_calls(module: &mut Module) -> usize {
     for func in module.functions.values_mut() {
         for block in &mut func.blocks {
             let Some(index) = block.instructions.iter().position(
-                |inst| matches!(inst, Instruction::Call { name, .. } if noreturn.contains(name)),
+                |inst| matches!(&inst.instr, Instruction::Call { name, .. } if noreturn.contains(name)),
             ) else {
                 continue;
             };
             let already_ends = block.instructions.len() == index + 2
-                && matches!(block.instructions.last(), Some(Instruction::Unreachable));
+                && matches!(
+                    &block.instructions.last().map(|i| &i.instr),
+                    Some(Instruction::Unreachable)
+                );
             if already_ends {
                 continue;
             }
             block.instructions.truncate(index + 1);
-            block.instructions.push(Instruction::Unreachable);
+            block.instructions.push(Instruction::Unreachable.into());
             changed += 1;
         }
     }
@@ -358,7 +361,7 @@ pub fn remove_dead_pure_calls(module: &mut Module) -> usize {
             }
             for block in &mut func.blocks {
                 let before = block.instructions.len();
-                block.instructions.retain(|inst| match inst {
+                block.instructions.retain(|inst| match &inst.instr {
                     Instruction::Call { name, ret, .. } if pure.contains(name) => match ret {
                         Some(reg) => uses.get(reg).is_some_and(|&n| n > 0),
                         None => false,
@@ -384,6 +387,7 @@ mod tests {
         AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
         ScalarType, VirtualReg, transform::test_utils::get_block,
     };
+    use lamina_mir::Located;
 
     fn defines(block: &Block, reg: VirtualReg) -> bool {
         let reg: Register = reg.into();
@@ -391,14 +395,17 @@ mod tests {
     }
 
     fn ends_with_ret(block: &Block) -> bool {
-        matches!(block.instructions.last(), Some(Instruction::Ret { .. }))
+        matches!(
+            &block.instructions.last().map(|i| &i.instr),
+            Some(Instruction::Ret { .. })
+        )
     }
 
     fn has_int_binary(block: &Block) -> bool {
         block
             .instructions
             .iter()
-            .any(|i| matches!(i, Instruction::IntBinary { .. }))
+            .any(|i| matches!(&i.instr, Instruction::IntBinary { .. }))
     }
 
     #[test]
@@ -503,7 +510,7 @@ mod tests {
         // Jmp and Ret should still exist
         let entry = get_block(&func, "entry");
         assert!(matches!(
-            entry.instructions.last(),
+            &entry.instructions.last().map(|i| &i.instr),
             Some(Instruction::Jmp { .. })
         ));
     }
@@ -539,8 +546,14 @@ mod tests {
 
         assert!(!changed);
         let entry = &func.blocks[0];
-        assert!(matches!(entry.instructions[0], Instruction::Store { .. }));
-        assert!(matches!(entry.instructions[1], Instruction::Call { .. }));
+        assert!(matches!(
+            &entry.instructions[0].instr,
+            Instruction::Store { .. }
+        ));
+        assert!(matches!(
+            &entry.instructions[1].instr,
+            Instruction::Call { .. }
+        ));
         assert!(ends_with_ret(entry));
     }
 
@@ -620,7 +633,7 @@ mod tests {
         let entry = get_block(&func, "entry");
         assert!(defines(entry, VirtualReg::gpr(1)));
         assert!(matches!(
-            entry.instructions.last(),
+            &entry.instructions.last().map(|i| &i.instr),
             Some(Instruction::Jmp { .. })
         ));
     }
@@ -663,7 +676,7 @@ mod tests {
         let loop_block = get_block(&func, "loop");
         assert!(defines(loop_block, VirtualReg::gpr(0)));
         assert!(matches!(
-            loop_block.instructions.last(),
+            &loop_block.instructions.last().map(|i| &i.instr),
             Some(Instruction::Br { .. })
         ));
     }
@@ -680,18 +693,20 @@ mod tests {
         for i in 0..500 {
             func.blocks[0].instructions.insert(
                 0,
-                Instruction::IntBinary {
+                Located::from(Instruction::IntBinary {
                     op: IntBinOp::Add,
                     ty: MirType::Scalar(ScalarType::I64),
                     dst: VirtualReg::gpr(i + 1).into(),
                     lhs: Operand::Immediate(Immediate::I64(i as i64)),
                     rhs: Operand::Immediate(Immediate::I64(1)),
-                },
+                }),
             );
         }
-        func.blocks[0].instructions.push(Instruction::Ret {
-            value: Some(Operand::Immediate(Immediate::I64(0))),
-        });
+        func.blocks[0]
+            .instructions
+            .push(Located::from(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            }));
 
         let dce = DeadCodeElimination;
         let result = dce.apply(&mut func);
@@ -721,7 +736,7 @@ mod annotation_tests {
         func.blocks
             .iter()
             .flat_map(|b| &b.instructions)
-            .filter(|i| matches!(i, Instruction::Call { .. }))
+            .filter(|i| matches!(&i.instr, Instruction::Call { .. }))
             .count()
     }
 
@@ -734,8 +749,14 @@ mod annotation_tests {
         assert_eq!(truncate_after_noreturn_calls(&mut module), 1);
         let block = &module.get_function("main").expect("main").blocks[0];
         assert_eq!(block.instructions.len(), 2, "{:?}", block.instructions);
-        assert!(matches!(block.instructions[0], Instruction::Call { .. }));
-        assert!(matches!(block.instructions[1], Instruction::Unreachable));
+        assert!(matches!(
+            &block.instructions[0].instr,
+            Instruction::Call { .. }
+        ));
+        assert!(matches!(
+            &block.instructions[1].instr,
+            Instruction::Unreachable
+        ));
     }
 
     #[test]
@@ -747,10 +768,10 @@ mod annotation_tests {
             !block
                 .instructions
                 .iter()
-                .any(|i| matches!(i, Instruction::Unreachable))
+                .any(|i| matches!(&i.instr, Instruction::Unreachable))
         );
         assert!(matches!(
-            block.instructions.last(),
+            &block.instructions.last().map(|i| &i.instr),
             Some(Instruction::Ret { .. })
         ));
     }
@@ -763,8 +784,12 @@ mod annotation_tests {
             .apply_to_module(&mut module)
             .expect("optimize");
         let main = module.get_function("main").expect("main");
-        let instructions: Vec<&Instruction> =
-            main.blocks.iter().flat_map(|b| &b.instructions).collect();
+        let instructions: Vec<&Instruction> = main
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .map(|i| &i.instr)
+            .collect();
         assert!(
             instructions
                 .iter()
@@ -816,7 +841,7 @@ mod annotation_tests {
                 generate_mir_aarch64(module, writer, os, PointerWidth::Bits64)
             }),
             ("riscv", generate_mir_riscv::<Vec<u8>>),
-            ("ppc64", generate_mir_ppc64::<Vec<u8>>),
+            ("ppc64le", generate_mir_ppc64::<Vec<u8>>),
         ];
         for (name, emit) in emitters {
             let mut output = Vec::new();

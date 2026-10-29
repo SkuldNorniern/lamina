@@ -11,6 +11,7 @@ use crate::mir::{
     RegisterClass, ScalarType, VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_mir::Located;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
@@ -115,7 +116,7 @@ fn promote(func: &mut Function) -> bool {
             for used in inst.use_regs() {
                 mentioned.insert(used.clone());
             }
-            if let Instruction::StackAddr { dst, slot } = inst {
+            if let Instruction::StackAddr { dst, slot } = &inst.instr {
                 slots
                     .entry(*slot)
                     .or_insert_with(|| SlotInfo {
@@ -222,7 +223,7 @@ fn promote(func: &mut Function) -> bool {
     let mut gen_: Vec<Vec<bool>> = vec![vec![false; n]; func.blocks.len()];
     for (b, block) in func.blocks.iter().enumerate() {
         for inst in &block.instructions {
-            if let Instruction::Store { addr, .. } = inst
+            if let Instruction::Store { addr, .. } = &inst.instr
                 && let Some(base) = direct_access_base(addr)
                 && let Some(s) = slot_of_pointer(base)
             {
@@ -263,7 +264,7 @@ fn promote(func: &mut Function) -> bool {
     for (b, block) in func.blocks.iter().enumerate() {
         let mut assigned = inn[b].clone();
         for inst in &block.instructions {
-            match inst {
+            match &inst.instr {
                 Instruction::Load { addr, .. } => {
                     if let Some(base) = direct_access_base(addr)
                         && let Some(s) = slot_of_pointer(base)
@@ -338,53 +339,57 @@ fn rewrite_block(
     let instructions = mem::take(&mut block.instructions);
     block.instructions = instructions
         .into_iter()
-        .filter_map(|inst| match inst {
-            Instruction::StackAddr { slot, .. } if promoted.contains(&slot) => None,
-            Instruction::Load {
-                ty,
-                dst,
-                addr,
-                attrs,
-            } => match promoted_access(&addr) {
-                Some(slot) => {
-                    let mut copy = Instruction::Copy {
-                        ty,
-                        dst,
-                        src: Operand::Register(slot_reg[&slot].clone()),
-                    };
-                    copy.normalize_integer_immediates(None);
-                    Some(copy)
-                }
-                None => Some(Instruction::Load {
+        .filter_map(|inst| {
+            let loc = inst.loc;
+            let replacement = match inst.instr {
+                Instruction::StackAddr { slot, .. } if promoted.contains(&slot) => None,
+                Instruction::Load {
                     ty,
                     dst,
                     addr,
                     attrs,
-                }),
-            },
-            Instruction::Store {
-                ty,
-                src,
-                addr,
-                attrs,
-            } => match promoted_access(&addr) {
-                Some(slot) => {
-                    let mut copy = Instruction::Copy {
+                } => match promoted_access(&addr) {
+                    Some(slot) => {
+                        let mut copy = Instruction::Copy {
+                            ty,
+                            dst,
+                            src: Operand::Register(slot_reg[&slot].clone()),
+                        };
+                        copy.normalize_integer_immediates(None);
+                        Some(copy)
+                    }
+                    None => Some(Instruction::Load {
                         ty,
-                        dst: slot_reg[&slot].clone(),
-                        src,
-                    };
-                    copy.normalize_integer_immediates(None);
-                    Some(copy)
-                }
-                None => Some(Instruction::Store {
+                        dst,
+                        addr,
+                        attrs,
+                    }),
+                },
+                Instruction::Store {
                     ty,
                     src,
                     addr,
                     attrs,
-                }),
-            },
-            other => Some(other),
+                } => match promoted_access(&addr) {
+                    Some(slot) => {
+                        let mut copy = Instruction::Copy {
+                            ty,
+                            dst: slot_reg[&slot].clone(),
+                            src,
+                        };
+                        copy.normalize_integer_immediates(None);
+                        Some(copy)
+                    }
+                    None => Some(Instruction::Store {
+                        ty,
+                        src,
+                        addr,
+                        attrs,
+                    }),
+                },
+                other => Some(other),
+            }?;
+            Some(Located::at(replacement, loc))
         })
         .collect();
 }
@@ -480,18 +485,20 @@ mod tests {
         func.blocks
             .iter()
             .flat_map(|b| &b.instructions)
-            .any(|i| matches!(i, Instruction::StackAddr { .. }))
+            .any(|i| matches!(&i.instr, Instruction::StackAddr { .. }))
     }
 
     fn has_memory_access(func: &Function) -> bool {
-        func.blocks
-            .iter()
-            .flat_map(|b| &b.instructions)
-            .any(|i| matches!(i, Instruction::Load { .. } | Instruction::Store { .. }))
+        func.blocks.iter().flat_map(|b| &b.instructions).any(|i| {
+            matches!(
+                &i.instr,
+                Instruction::Load { .. } | Instruction::Store { .. }
+            )
+        })
     }
 
     fn copy_src_reg(block: &Block, index: usize) -> Register {
-        match &block.instructions[index] {
+        match &block.instructions[index].instr {
             Instruction::Copy {
                 src: Operand::Register(r),
                 ..
@@ -527,11 +534,11 @@ mod tests {
         assert!(!has_stack_addr(&func));
         assert!(!has_memory_access(&func));
 
-        let entry_dst = match &get_block(&func, "entry").instructions[0] {
+        let entry_dst = match &get_block(&func, "entry").instructions[0].instr {
             Instruction::Copy { dst, .. } => dst.clone(),
             other => panic!("expected copy, got {other}"),
         };
-        let then_dst = match &get_block(&func, "then").instructions[0] {
+        let then_dst = match &get_block(&func, "then").instructions[0].instr {
             Instruction::Copy { dst, .. } => dst.clone(),
             other => panic!("expected copy, got {other}"),
         };

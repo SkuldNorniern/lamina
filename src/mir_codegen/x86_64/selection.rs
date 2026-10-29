@@ -1,4 +1,5 @@
 use super::*;
+use lamina_mir::Located;
 use lamina_platform::PointerWidth;
 
 pub(super) fn mapped_register(reg: &Register, alloc: &X64RegAlloc) -> Option<&'static str> {
@@ -19,7 +20,7 @@ pub(super) fn integer_immediate(operand: &Operand) -> Option<i64> {
 }
 
 pub(super) fn select_lea(
-    instructions: &[MirInst],
+    instructions: &[Located],
     alloc: &X64RegAlloc,
     uses: &HashMap<VirtualReg, usize>,
     flags_live: impl Fn(usize) -> bool,
@@ -32,7 +33,7 @@ pub(super) fn select_lea(
             lhs,
             rhs,
             ty,
-        } = &instructions[length - 1]
+        } = &instructions[length - 1].instr
         else {
             continue;
         };
@@ -48,7 +49,7 @@ pub(super) fn select_lea(
         #[allow(clippy::too_many_arguments)]
         fn collect(
             value: &Operand,
-            prefix: &[MirInst],
+            prefix: &[Located],
             alloc: &X64RegAlloc,
             uses: &HashMap<VirtualReg, usize>,
             terms: &mut Vec<(&'static str, i64)>,
@@ -72,6 +73,7 @@ pub(super) fn select_lea(
                     },
                 )) = prefix
                     .iter()
+                    .map(|i| &i.instr)
                     .enumerate()
                     .find(|(_, inst)| inst.def_reg() == Some(reg))
                 && ty.size_bytes(pointer_width) == 8

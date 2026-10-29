@@ -18,7 +18,7 @@ pub fn validate_cfg(func: &Function) -> Result<(), TransformError> {
             edge,
         };
         for inst in &block.instructions {
-            match inst {
+            match &inst.instr {
                 Instruction::Jmp { target } => {
                     if !labels.contains(target.as_str()) {
                         return Err(invalid_edge(target, "jumps to"));

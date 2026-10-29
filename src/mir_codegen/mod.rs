@@ -6,6 +6,7 @@ pub mod assemble;
 pub mod capability;
 pub mod common;
 mod gpu;
+pub mod i686;
 pub mod limits;
 pub mod link;
 pub mod loongarch64;
@@ -93,7 +94,7 @@ pub fn retarget_runtime_calls<'a>(
         for block in &mut function.blocks {
             for instruction in &mut block.instructions {
                 if let Instruction::Call { name, .. } | Instruction::TailCall { name, .. } =
-                    instruction
+                    &mut instruction.instr
                 {
                     retarget(name);
                 }
@@ -198,7 +199,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     if !gpu_target {
         for function in module.functions.values() {
             if function.sig.kernel.is_some() || function.blocks.iter().flat_map(|b| &b.instructions).any(|i| {
-                matches!(i, Instruction::Call { name, .. } if name.trim_start_matches('@').starts_with("__lamina_gpu_"))
+                matches!(&i.instr, Instruction::Call { name, .. } if name.trim_start_matches('@').starts_with("__lamina_gpu_"))
             }) {
                 return Err(LaminaError::ValidationError("GPU kernels and intrinsics require a GPU target".into()));
             }
@@ -286,7 +287,25 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 settings,
             )?;
         }
-        TargetArchitecture::Arm32 | TargetArchitecture::Armv7 | TargetArchitecture::I686 => {
+        TargetArchitecture::I686 => {
+            i686::generate_mir_i686_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
+        }
+        TargetArchitecture::Armv7 => {
+            arm::armv7::generate_mir_armv7_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
+        }
+        TargetArchitecture::Arm32 => {
             return Err(not_implemented(target_arch, target_os));
         }
         #[cfg(feature = "nightly")]
@@ -485,7 +504,20 @@ mod tests {
             asm.contains(".file 1 \"add.lamina\""),
             "expected .file: {asm}"
         );
-        assert!(asm.contains(".loc 1"), "expected .loc directives: {asm}");
+        // The source above puts `add` on line 4 and `ret` on line 5.
+        let lines: Vec<&str> = asm
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with(".loc "))
+            .collect();
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.split_whitespace().nth(2).unwrap_or(""))
+                .collect::<Vec<_>>(),
+            ["4", "5"],
+            "expected .loc rows on the real source lines: {asm}"
+        );
     }
 
     #[test]

@@ -10,6 +10,7 @@
 //! - Type mapping and validation
 
 use crate::mir::parallel::insert_edge_moves;
+use lamina_mir::{Located, SourceLoc};
 use lamina_platform::PointerWidth;
 
 use std::{
@@ -307,10 +308,27 @@ pub fn from_ir_for_target(
             }
             global
         } else {
-            if wide::is_wide_type(&resolved) {
+            if matches!(resolved, IRType::Primitive(IRPrim::I128 | IRPrim::U128)) {
                 return Err(FromIRError::UnsupportedGlobal(format!(
                     "@{global_name} is a 128-bit integer; globals of i128 and u128 are not lowered yet"
                 )));
+            }
+            if wide::is_wide_type(&resolved, pointer) {
+                // Two words, addressed as bytes: the scalar type would name a register
+                // the target does not have.
+                let size = 2 * pointer.bytes();
+                let align = size.max(declared_align(decl.align));
+                let bytes = wide_global_bytes(global_name, decl.initializer.as_ref(), size)?;
+                let mut global =
+                    Global::new(*global_name, MirType::i8(), pointer).with_layout(size, align);
+                if let Some(bytes) = bytes {
+                    global = global.with_initializer(bytes);
+                }
+                if decl.exported {
+                    global = global.exported();
+                }
+                mir_module.globals.insert(global_name.to_string(), global);
+                continue;
             }
             let ty = map_ir_type(&resolved)?;
             let initializer =
@@ -345,7 +363,7 @@ pub fn from_ir_for_target(
     for (name, libcall) in libcalls {
         if !mir_module.functions.contains_key(&name) {
             mir_module.mark_external(name.clone());
-            mir_module.add_function(libcall.declaration().with_pointer_width(pointer));
+            mir_module.add_function(libcall.declaration(pointer).with_pointer_width(pointer));
         }
     }
 
@@ -552,6 +570,47 @@ fn string_literal_bytes(name: &str, text: &str) -> Result<Vec<u8>, FromIRError> 
     Ok(bytes)
 }
 
+/// Bytes of a global that takes two registers, at its full width in memory.
+fn wide_global_bytes(
+    name: &str,
+    value: Option<&GlobalInit<'_>>,
+    size: usize,
+) -> Result<Option<Vec<u8>>, FromIRError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let GlobalInit::Value(IRVal::Constant(literal)) = value else {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} needs a literal initializer"
+        )));
+    };
+    let mut bytes = literal_bytes(name, literal)?;
+    if bytes.len() > size {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} initializer is {} bytes, wider than the {size} its type takes",
+            bytes.len()
+        )));
+    }
+    let sign = if literal_is_negative(literal) {
+        0xff
+    } else {
+        0
+    };
+    bytes.resize(size, sign);
+    Ok(Some(bytes))
+}
+
+fn literal_is_negative(literal: &IRLit<'_>) -> bool {
+    match literal {
+        IRLit::I8(v) => *v < 0,
+        IRLit::I16(v) => *v < 0,
+        IRLit::I32(v) => *v < 0,
+        IRLit::I64(v) => *v < 0,
+        IRLit::I128(v) => *v < 0,
+        _ => false,
+    }
+}
+
 fn global_initializer(
     name: &str,
     ty: MirType,
@@ -756,8 +815,13 @@ fn convert_function<'a>(
                 dst: addr.clone(),
                 slot,
             });
-            if wide::is_wide_type(&resolved) {
-                let pair = wide::load_wide_parameter(addr, &mut vreg_alloc, &mut aggregate_prelude);
+            if wide::is_wide_type(&resolved, pointer) {
+                let pair = wide::load_wide_parameter(
+                    addr,
+                    &mut vreg_alloc,
+                    &mut aggregate_prelude,
+                    pointer,
+                );
                 var_to_reg.wide.insert(param.name, pair);
             } else {
                 var_to_reg.insert(param.name, addr);
@@ -790,7 +854,9 @@ fn convert_function<'a>(
         .map(|(name, callee)| (*name, callee.signature.params.len()))
         .collect();
 
-    let mut mir_func = Function::new(mir_sig).with_entry(f.entry_block);
+    let mut mir_func = Function::new(mir_sig)
+        .with_entry(f.entry_block)
+        .with_pointer_width(pointer);
 
     let mut names: HashSet<&str> = f.signature.params.iter().map(|p| p.name).collect();
     let mut reassigned_names = HashSet::new();
@@ -822,7 +888,10 @@ fn convert_function<'a>(
         // Registers already defined in this block. A scan of the emitted instructions per
         // instruction made conversion quadratic in the size of a single-block function.
         let mut defined_in_block: HashSet<Register> = HashSet::new();
-        for instr in &ir_block.instructions {
+        for (ir_index, instr) in ir_block.instructions.iter().enumerate() {
+            let loc = ir_block
+                .loc_at(ir_index)
+                .and_then(|l| SourceLoc::new(l.line.get(), l.column));
             let mut resolved;
             let instr = if matches!(
                 instr,
@@ -915,9 +984,11 @@ fn convert_function<'a>(
                 {
                     for (argument, parameter) in args.iter_mut().zip(&callee.signature.params) {
                         if is_aggregate(&parameter.ty)
-                            || wide::is_wide_type(&parameter.ty)
+                            || wide::is_wide_type(&parameter.ty, pointer)
                             || resolve_type_names(&parameter.ty, &module.type_declarations)
-                                .is_some_and(|ty| is_aggregate(&ty) || wide::is_wide_type(&ty))
+                                .is_some_and(|ty| {
+                                    is_aggregate(&ty) || wide::is_wide_type(&ty, pointer)
+                                })
                         {
                             continue;
                         }
@@ -952,7 +1023,7 @@ fn convert_function<'a>(
                             .functions
                             .get(name.as_str())
                             .and_then(|callee| map_ir_type(&callee.signature.return_type).ok())
-                            .or_else(|| io_intrinsic_result_type(name)),
+                            .or_else(|| io_intrinsic_result_type(name, pointer)),
                         Instruction::Lea { .. } | Instruction::StackAddr { .. } => {
                             Some(MirType::ptr())
                         }
@@ -965,12 +1036,12 @@ fn convert_function<'a>(
                 if let Some(dst) = mir_instr.def_reg() {
                     defined_in_block.insert(dst.clone());
                 }
-                mir_block.push(mir_instr);
+                mir_block.push_at(mir_instr, loc);
                 if let Some(address) = result_address {
                     if let Some(dst) = address.def_reg() {
                         defined_in_block.insert(dst.clone());
                     }
-                    mir_block.push(address);
+                    mir_block.push_at(address, loc);
                 }
             }
         }
@@ -1030,7 +1101,7 @@ fn convert_function<'a>(
                     ty,
                     incoming,
                 } = instr
-                    && wide::is_wide_type(ty)
+                    && wide::is_wide_type(ty, pointer)
                     && let Some(pair) = var_to_reg.wide.get(result).cloned()
                 {
                     let mut halves: Vec<PhiVerification> = pair
@@ -1038,7 +1109,7 @@ fn convert_function<'a>(
                         .map(|dst| PhiVerification {
                             block: (*succ_label).to_string(),
                             dst: dst.clone(),
-                            ty: MirType::i64(),
+                            ty: wide::word_ty(pointer),
                             incoming: Vec::new(),
                         })
                         .collect();
@@ -1053,6 +1124,7 @@ fn convert_function<'a>(
                             &mut globals,
                             &mut reservations,
                             module,
+                            pointer,
                         )?;
                         for ((half, dst), src) in halves.iter_mut().zip(&pair).zip([lo, hi]) {
                             half.incoming.push(((*pred_label).to_string(), src.clone()));
@@ -1060,7 +1132,7 @@ fn convert_function<'a>(
                                 .entry(((*pred_label).to_string(), (*succ_label).to_string()))
                                 .or_default()
                                 .push(Instruction::Copy {
-                                    ty: MirType::i64(),
+                                    ty: wide::word_ty(pointer),
                                     dst: dst.clone(),
                                     src,
                                 });
@@ -1122,7 +1194,9 @@ fn convert_function<'a>(
         if !prelude.is_empty()
             && let Some(entry) = mir_func.get_block_mut(f.entry_block)
         {
-            entry.instructions.splice(0..0, prelude);
+            entry
+                .instructions
+                .splice(0..0, prelude.into_iter().map(Located::from));
         }
 
         verify_before_phi_lowering(
@@ -1170,6 +1244,7 @@ fn convert_instruction<'a>(
         reservations: &mut *reservations,
         globals: &mut *globals,
         module: facts.module,
+        pointer,
         out: Vec::new(),
     };
     if wide::lower_instruction(instr, &mut wide_cx)? {
@@ -1998,6 +2073,9 @@ fn convert_instruction<'a>(
             } else {
                 let index_op = resolve_operand(index, vreg_alloc, var_to_reg, globals)?;
                 let from = operand_type(&index_op, register_types);
+                // Address arithmetic is done in the target's own word, so a 32-bit
+                // target neither widens the index nor asks for a 64-bit add.
+                let word = address_word(pointer);
                 let wide_index = Register::Virtual(vreg_alloc.allocate_gpr());
                 let scaled = Register::Virtual(vreg_alloc.allocate_gpr());
                 let address = Register::Virtual(vreg_alloc.allocate_gpr());
@@ -2005,34 +2083,34 @@ fn convert_instruction<'a>(
                 Ok(vec![
                     Instruction::IntConvert {
                         from,
-                        to: MirType::i64(),
-                        signed: from.size_bytes(pointer) < 8,
+                        to: word,
+                        signed: from.size_bytes(pointer) < word.size_bytes(pointer),
                         dst: wide_index.clone(),
                         src: index_op,
                     },
                     Instruction::IntBinary {
                         op: IntBinOp::Mul,
-                        ty: MirType::i64(),
+                        ty: word,
                         dst: scaled.clone(),
                         lhs: Operand::Register(wide_index),
                         rhs: Operand::Immediate(Immediate::I64(elem_size)),
                     },
                     Instruction::IntConvert {
                         from: MirType::ptr(),
-                        to: MirType::i64(),
+                        to: word,
                         signed: false,
                         dst: address.clone(),
                         src: Operand::Register(base),
                     },
                     Instruction::IntBinary {
                         op: IntBinOp::Add,
-                        ty: MirType::i64(),
+                        ty: word,
                         dst: sum.clone(),
                         lhs: Operand::Register(address),
                         rhs: Operand::Register(scaled),
                     },
                     Instruction::IntConvert {
-                        from: MirType::i64(),
+                        from: word,
                         to: MirType::ptr(),
                         signed: false,
                         dst,
@@ -2363,6 +2441,14 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
         }
     };
     Ok(imm)
+}
+
+/// The integer an address is computed in on a target with this pointer width.
+fn address_word(pointer: PointerWidth) -> MirType {
+    match pointer {
+        PointerWidth::Bits32 => MirType::i32(),
+        _ => MirType::i64(),
+    }
 }
 
 /// Adds a constant byte offset to a pointer. `Lea` carries a signed 32-bit

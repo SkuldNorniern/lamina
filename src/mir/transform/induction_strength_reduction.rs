@@ -1,3 +1,4 @@
+use lamina_mir::Located;
 use std::collections::{HashMap, HashSet};
 
 use crate::mir::{
@@ -86,7 +87,7 @@ fn block_local_defs(func: &Function, block: &Block) -> Vec<Register> {
                 || other.instructions.iter().all(|instr| {
                     !instr.use_regs().contains(&reg)
                         && instr.def_reg() != Some(reg)
-                        && !matches!(instr, Instruction::StackAddr { slot, .. }
+                        && !matches!(&instr.instr, Instruction::StackAddr { slot, .. }
                             if Register::Virtual(*slot) == *reg)
                 })
         })
@@ -110,7 +111,7 @@ fn following_offset(
     ty: &MirType,
     defs: &HashMap<Register, Vec<(usize, usize)>>,
 ) -> Option<Operand> {
-    match block.instructions.get(ii + 1) {
+    match block.instructions.get(ii + 1).map(|i| &i.instr) {
         Some(Instruction::IntBinary {
             op: IntBinOp::Add,
             dst: ad,
@@ -306,7 +307,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> Result<bool, TransformEr
                 ty,
                 lhs,
                 rhs,
-            } = instr
+            } = &instr.instr
             else {
                 continue;
             };
@@ -434,7 +435,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> Result<bool, TransformEr
                     lhs: al,
                     rhs: ar,
                     ..
-                } = &block.instructions[ai]
+                } = &block.instructions[ai].instr
                 && at == ty
             {
                 match (al, ar) {
@@ -463,7 +464,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> Result<bool, TransformEr
                 lhs: ul,
                 rhs: ur,
                 ..
-            } = &update_block.instructions[ui]
+            } = &update_block.instructions[ui].instr
             else {
                 continue;
             };
@@ -659,10 +660,10 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> Result<bool, TransformEr
             instructions.push(
                 replacements
                     .remove(&(bi, ii))
-                    .unwrap_or_else(|| instr.clone()),
+                    .map_or_else(|| instr.clone(), |new| Located::at(new, instr.loc)),
             );
             if let Some(updates) = increments.remove(&(bi, ii)) {
-                instructions.extend(updates);
+                instructions.extend(updates.into_iter().map(Located::from));
             }
         }
         block.instructions = instructions;
@@ -678,7 +679,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> Result<bool, TransformEr
     }
     let init_block = Block {
         label: init_label,
-        instructions: init,
+        instructions: init.into_iter().map(Located::from).collect(),
     };
     let product_idx = product_block.unwrap_or(header_idx);
     if product_idx >= header_idx {
@@ -701,7 +702,7 @@ fn redirect(block: &mut Block, replace: &impl Fn(&str) -> Option<String>) {
                 *label = new;
             }
         };
-        match instr {
+        match &mut instr.instr {
             Instruction::Jmp { target: label } => target(label),
             Instruction::Br {
                 true_target,
@@ -862,7 +863,7 @@ mod tests {
                         v & ((1u64 << bits) - 1)
                     }
                 };
-                match instr {
+                match &instr.instr {
                     Instruction::Copy { dst, ty, src } => {
                         let v = mask(ty, read(src));
                         values.insert(dst.clone(), v);
@@ -934,7 +935,7 @@ mod tests {
                 .instructions
                 .iter()
                 .any(|i| matches!(
-                    i,
+                    &i.instr,
                     Instruction::IntBinary {
                         op: IntBinOp::Mul,
                         ..
@@ -969,28 +970,29 @@ mod tests {
         func.get_block_mut("entry").unwrap().instructions.remove(0);
         func.get_block_mut("entry").unwrap().instructions.insert(
             0,
-            Instruction::Copy {
+            Located::from(Instruction::Copy {
                 dst: reg(5),
                 ty: MirType::i64(),
                 src: constant(0),
-            },
+            }),
         );
         if let Instruction::Br { true_target, .. } = func
             .get_block_mut("header")
             .unwrap()
             .instructions
             .last_mut()
+            .map(|i| &mut i.instr)
             .unwrap()
         {
             *true_target = "gate".into();
         }
         func.blocks.push(Block {
             label: "gate".into(),
-            instructions: vec![Instruction::Br {
+            instructions: vec![Located::from(Instruction::Br {
                 cond: reg(5),
                 true_target: "body".into(),
                 false_target: "exit".into(),
-            }],
+            })],
         });
         let expected = execute(&func);
         assert!(InductionStrengthReduction.apply(&mut func).unwrap());
@@ -1004,18 +1006,18 @@ mod tests {
         for (id, value) in [(6, 7), (7, 3)] {
             func.get_block_mut("entry").unwrap().instructions.insert(
                 0,
-                Instruction::Copy {
+                Located::from(Instruction::Copy {
                     dst: reg(id),
                     ty: MirType::i8(),
                     src: constant(value),
-                },
+                }),
             );
         }
         let body = func.get_block_mut("body").unwrap();
-        if let Instruction::IntBinary { rhs, .. } = &mut body.instructions[0] {
+        if let Instruction::IntBinary { rhs, .. } = &mut body.instructions[0].instr {
             *rhs = operand(6);
         }
-        if let Instruction::IntBinary { rhs, .. } = &mut body.instructions[3] {
+        if let Instruction::IntBinary { rhs, .. } = &mut body.instructions[3].instr {
             *rhs = operand(7);
         }
         let expected = execute(&func);
@@ -1033,9 +1035,9 @@ mod tests {
             .unwrap()
             .instructions
             .last_mut()
-            .unwrap() = Instruction::Ret {
+            .unwrap() = Located::from(Instruction::Ret {
             value: Some(operand(4)),
-        };
+        });
         let expected = execute(&func);
         assert!(InductionStrengthReduction.apply(&mut func).unwrap());
         let actual = execute(&func);
@@ -1047,33 +1049,35 @@ mod tests {
         let mut func = example(ty, trips);
         func.get_block_mut("entry").unwrap().instructions.insert(
             0,
-            Instruction::Copy {
+            Located::from(Instruction::Copy {
                 dst: reg(5),
                 ty,
                 src: constant(99),
-            },
+            }),
         );
         for (id, value) in [(7, 7), (8, 5), (9, 3)] {
             func.get_block_mut("entry").unwrap().instructions.insert(
                 0,
-                Instruction::Copy {
+                Located::from(Instruction::Copy {
                     dst: reg(id),
                     ty,
                     src: constant(value),
-                },
+                }),
             );
         }
         let body = func.get_block_mut("body").unwrap();
-        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(0), operand(7));
-        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), operand(9));
-        body.instructions[1] = binary(IntBinOp::Add, 6, ty, operand(4), constant(11));
-        body.instructions
-            .insert(2, binary(IntBinOp::Mul, 5, ty, operand(6), operand(8)));
-        body.instructions[3] = binary(IntBinOp::Add, 2, ty, operand(2), operand(5));
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(0), operand(7)).into();
+        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), operand(9)).into();
+        body.instructions[1] = binary(IntBinOp::Add, 6, ty, operand(4), constant(11)).into();
+        body.instructions.insert(
+            2,
+            binary(IntBinOp::Mul, 5, ty, operand(6), operand(8)).into(),
+        );
+        body.instructions[3] = binary(IntBinOp::Add, 2, ty, operand(2), operand(5)).into();
         if escapes {
-            func.get_block_mut("exit").unwrap().instructions[0] = Instruction::Ret {
+            func.get_block_mut("exit").unwrap().instructions[0] = Located::from(Instruction::Ret {
                 value: Some(operand(5)),
-            };
+            });
         }
         func
     }
@@ -1095,7 +1099,7 @@ mod tests {
                     .iter()
                     .any(|i| {
                         matches!(
-                            i,
+                            &i.instr,
                             Instruction::IntBinary {
                                 op: IntBinOp::Mul,
                                 ..
@@ -1112,11 +1116,14 @@ mod tests {
         let mut func = example(ty, 20);
         let body = func.get_block_mut("body").unwrap();
         let mut tail = body.instructions.split_off(2);
-        tail[0] = binary(IntBinOp::Add, 2, ty, operand(2), operand(5));
-        tail.insert(0, binary(IntBinOp::Mul, 5, ty, operand(4), constant(5)));
-        body.instructions.push(Instruction::Jmp {
+        tail[0] = binary(IntBinOp::Add, 2, ty, operand(2), operand(5)).into();
+        tail.insert(
+            0,
+            binary(IntBinOp::Mul, 5, ty, operand(4), constant(5)).into(),
+        );
+        body.instructions.push(Located::from(Instruction::Jmp {
             target: "product".into(),
-        });
+        }));
         func.blocks.push(Block {
             label: "product".into(),
             instructions: tail,
@@ -1143,7 +1150,7 @@ mod tests {
             .unwrap()
             .instructions
             .iter()
-            .filter_map(|instr| match instr {
+            .filter_map(|instr| match &instr.instr {
                 Instruction::IntBinary { dst, .. } => Some(dst.clone()),
                 _ => None,
             })
@@ -1170,7 +1177,7 @@ mod tests {
         let mut func = two_level_blocks();
         assert!(InductionStrengthReduction.apply(&mut func).unwrap());
         for instr in func.blocks.iter().flat_map(|b| &b.instructions) {
-            if let Instruction::IntCmp { dst, .. } = instr {
+            if let Instruction::IntCmp { dst, .. } = &instr.instr {
                 assert_eq!(
                     func.blocks
                         .iter()
@@ -1188,7 +1195,7 @@ mod tests {
         let mut func = example(MirType::i64(), 10);
         func.get_block_mut("body").unwrap().instructions.insert(
             4,
-            binary(IntBinOp::Add, 0, MirType::i64(), operand(0), constant(1)),
+            binary(IntBinOp::Add, 0, MirType::i64(), operand(0), constant(1)).into(),
         );
         assert!(!InductionStrengthReduction.apply(&mut func).unwrap());
     }
@@ -1197,7 +1204,7 @@ mod tests {
     fn rejects_width_mismatch() {
         let mut func = example(MirType::i8(), 10);
         if let Instruction::IntBinary { ty, .. } =
-            &mut func.get_block_mut("body").unwrap().instructions[3]
+            &mut func.get_block_mut("body").unwrap().instructions[3].instr
         {
             *ty = MirType::i64();
         }
@@ -1212,17 +1219,17 @@ mod tests {
             .unwrap()
             .instructions
             .last_mut()
-            .unwrap() = Instruction::Br {
+            .unwrap() = Located::from(Instruction::Br {
             cond: reg(3),
             true_target: "left".into(),
             false_target: "right".into(),
-        };
+        });
         for label in ["left", "right"] {
             func.blocks.push(Block {
                 label: label.into(),
-                instructions: vec![Instruction::Jmp {
+                instructions: vec![Located::from(Instruction::Jmp {
                     target: "header".into(),
-                }],
+                })],
             });
         }
         let expected = execute(&func);
@@ -1238,18 +1245,18 @@ mod tests {
         func.get_block_mut("body")
             .unwrap()
             .instructions
-            .push(Instruction::Br {
+            .push(Located::from(Instruction::Br {
                 cond: reg(3),
                 true_target: "update".into(),
                 false_target: "header".into(),
-            });
+            }));
         func.blocks.push(Block {
             label: "update".into(),
             instructions: vec![
-                binary(IntBinOp::Add, 0, MirType::i64(), operand(0), constant(1)),
-                Instruction::Jmp {
+                binary(IntBinOp::Add, 0, MirType::i64(), operand(0), constant(1)).into(),
+                Located::from(Instruction::Jmp {
                     target: "header".into(),
-                },
+                }),
             ],
         });
         assert!(!InductionStrengthReduction.apply(&mut func).unwrap());
@@ -1258,23 +1265,25 @@ mod tests {
         let mut func = example(ty, trips);
         func.get_block_mut("entry").unwrap().instructions.insert(
             0,
-            Instruction::Copy {
+            Located::from(Instruction::Copy {
                 dst: reg(6),
                 ty,
                 src: constant(13),
-            },
+            }),
         );
         let body = func.get_block_mut("body").unwrap();
-        body.instructions[0] = binary(
+        body.instructions[0] = Located::from(binary(
             IntBinOp::Mul,
             4,
             ty,
             operand(0),
             operand(if square { 0 } else { 6 }),
+        ));
+        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), constant(a)).into();
+        body.instructions.insert(
+            4,
+            binary(IntBinOp::Add, 6, ty, operand(6), constant(b)).into(),
         );
-        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), constant(a));
-        body.instructions
-            .insert(4, binary(IntBinOp::Add, 6, ty, operand(6), constant(b)));
         func
     }
 
@@ -1312,7 +1321,7 @@ mod tests {
                                 .iter()
                                 .any(|i| {
                                     matches!(
-                                        i,
+                                        &i.instr,
                                         Instruction::IntBinary {
                                             op: IntBinOp::Mul,
                                             ..
@@ -1334,21 +1343,25 @@ mod tests {
         for (id, value) in [(12, -7), (13, 11), (14, 93)] {
             entry.instructions.insert(
                 0,
-                Instruction::Copy {
+                Located::from(Instruction::Copy {
                     dst: reg(id),
                     ty,
                     src: constant(value),
-                },
+                }),
             );
         }
         let body = func.get_block_mut("body").unwrap();
-        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), operand(12));
-        body.instructions[4] = binary(IntBinOp::Add, 6, ty, operand(6), operand(13));
-        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(11), operand(6));
-        body.instructions
-            .insert(0, binary(IntBinOp::Add, 11, ty, operand(10), operand(14)));
-        body.instructions
-            .insert(0, binary(IntBinOp::Add, 10, ty, operand(0), operand(6)));
+        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), operand(12)).into();
+        body.instructions[4] = binary(IntBinOp::Add, 6, ty, operand(6), operand(13)).into();
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(11), operand(6)).into();
+        body.instructions.insert(
+            0,
+            binary(IntBinOp::Add, 11, ty, operand(10), operand(14)).into(),
+        );
+        body.instructions.insert(
+            0,
+            binary(IntBinOp::Add, 10, ty, operand(0), operand(6)).into(),
+        );
         equivalent(func, true);
     }
 
@@ -1360,15 +1373,15 @@ mod tests {
                 let mut func = quadratic(ty, trips, -3, 8, false);
                 func.get_block_mut("entry").unwrap().instructions.insert(
                     0,
-                    Instruction::Copy {
+                    Located::from(Instruction::Copy {
                         dst: reg(4),
                         ty,
                         src: constant(99),
-                    },
+                    }),
                 );
                 func.get_block_mut("exit").unwrap().instructions.insert(
                     0,
-                    binary(IntBinOp::Add, 2, ty, operand(2), operand(escaped)),
+                    binary(IntBinOp::Add, 2, ty, operand(2), operand(escaped)).into(),
                 );
                 equivalent(func, true);
             }
@@ -1380,12 +1393,18 @@ mod tests {
         let ty = MirType::i64();
         let mut func = quadratic(ty, 27, 5, -3, false);
         let body = func.get_block_mut("body").unwrap();
-        body.instructions
-            .insert(3, binary(IntBinOp::Add, 2, ty, operand(2), operand(0)));
-        body.instructions
-            .insert(5, binary(IntBinOp::Add, 2, ty, operand(2), operand(0)));
-        body.instructions
-            .insert(7, binary(IntBinOp::Add, 2, ty, operand(2), operand(6)));
+        body.instructions.insert(
+            3,
+            binary(IntBinOp::Add, 2, ty, operand(2), operand(0)).into(),
+        );
+        body.instructions.insert(
+            5,
+            binary(IntBinOp::Add, 2, ty, operand(2), operand(0)).into(),
+        );
+        body.instructions.insert(
+            7,
+            binary(IntBinOp::Add, 2, ty, operand(2), operand(6)).into(),
+        );
         equivalent(func, true);
     }
 
@@ -1401,10 +1420,10 @@ mod tests {
                 .any(|i| i.def_reg() == Some(&reg(0)) || i.def_reg() == Some(&reg(6)))
         );
         let mut func = quadratic(ty, 20, 3, 7, false);
-        func.get_block_mut("exit")
-            .unwrap()
-            .instructions
-            .insert(0, binary(IntBinOp::Add, 2, ty, operand(2), operand(6)));
+        func.get_block_mut("exit").unwrap().instructions.insert(
+            0,
+            binary(IntBinOp::Add, 2, ty, operand(2), operand(6)).into(),
+        );
         let func = equivalent(func, true);
         assert!(
             func.get_block("body")
@@ -1425,24 +1444,24 @@ mod tests {
             .retain(|i| i.def_reg() != Some(&reg(0)) && i.def_reg() != Some(&reg(6)));
         func.get_block_mut("entry").unwrap().instructions.insert(
             0,
-            Instruction::Copy {
+            Located::from(Instruction::Copy {
                 dst: reg(5),
                 ty,
                 src: constant(0),
-            },
+            }),
         );
         if let Instruction::Br { true_target, .. } =
-            &mut func.get_block_mut("header").unwrap().instructions[1]
+            &mut func.get_block_mut("header").unwrap().instructions[1].instr
         {
             *true_target = "gate".into();
         }
         func.blocks.push(Block {
             label: "gate".into(),
-            instructions: vec![Instruction::Br {
+            instructions: vec![Located::from(Instruction::Br {
                 cond: reg(5),
                 true_target: "body".into(),
                 false_target: "exit".into(),
-            }],
+            })],
         });
         equivalent(func, true);
     }
@@ -1456,17 +1475,17 @@ mod tests {
             .unwrap()
             .instructions
             .last_mut()
-            .unwrap() = Instruction::Br {
+            .unwrap() = Located::from(Instruction::Br {
             cond: reg(3),
             true_target: "left".into(),
             false_target: "right".into(),
-        };
+        });
         for label in ["left", "right"] {
             func.blocks.push(Block {
                 label: label.into(),
-                instructions: vec![Instruction::Jmp {
+                instructions: vec![Located::from(Instruction::Jmp {
                     target: "header".into(),
-                }],
+                })],
             });
         }
         equivalent(func.clone(), true);
@@ -1483,10 +1502,10 @@ mod tests {
     fn quadratic_discovery_rejects_ambiguous_definition_epochs() {
         let ty = MirType::i64();
         let mut func = quadratic(ty, 20, 3, 7, false);
-        func.get_block_mut("body")
-            .unwrap()
-            .instructions
-            .insert(4, binary(IntBinOp::Add, 0, ty, operand(0), constant(1)));
+        func.get_block_mut("body").unwrap().instructions.insert(
+            4,
+            binary(IntBinOp::Add, 0, ty, operand(0), constant(1)).into(),
+        );
         equivalent(func, false);
         let mut func = quadratic(ty, 20, 3, 7, false);
         let body = func.get_block_mut("body").unwrap();
@@ -1500,9 +1519,11 @@ mod tests {
         let ty = MirType::i64();
         let mut func = quadratic(ty, 2, 3, 7, false);
         let body = func.get_block_mut("body").unwrap();
-        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(10), operand(6));
-        body.instructions
-            .insert(0, binary(IntBinOp::Mul, 10, ty, operand(0), operand(6)));
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(10), operand(6)).into();
+        body.instructions.insert(
+            0,
+            binary(IntBinOp::Mul, 10, ty, operand(0), operand(6)).into(),
+        );
         let defs = HashMap::from([
             (reg(0), vec![(2, 4)]),
             (reg(6), vec![(2, 5)]),
@@ -1514,13 +1535,13 @@ mod tests {
         assert!(analysis.product(&operand(10), &operand(6)).is_none());
         let body = func.get_block_mut("body").unwrap();
         body.instructions.remove(0);
-        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(199), operand(6));
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(199), operand(6)).into();
         let mut defs = HashMap::new();
         for id in 10..200 {
             let source = if id == 10 { 0 } else { id - 1 };
             body.instructions.insert(
                 (id - 10) as usize,
-                binary(IntBinOp::Add, id, ty, operand(source), operand(source)),
+                binary(IntBinOp::Add, id, ty, operand(source), operand(source)).into(),
             );
             defs.insert(reg(id), vec![(2, (id - 10) as usize)]);
         }
@@ -1537,7 +1558,7 @@ mod tests {
         let mut func = quadratic(ty, 20, 3, -7, false);
         let body = func.get_block_mut("body").unwrap();
         body.instructions
-            .push(binary(IntBinOp::Add, 2, ty, operand(2), operand(4)));
+            .push(binary(IntBinOp::Add, 2, ty, operand(2), operand(4)).into());
         let last = body.instructions.len() - 1;
         body.instructions.swap(last, last - 1);
         let func = equivalent(func, true);
@@ -1546,7 +1567,7 @@ mod tests {
                 .unwrap()
                 .instructions
                 .iter()
-                .any(|i| { matches!(i, Instruction::Copy { dst, .. } if *dst == reg(4)) })
+                .any(|i| { matches!(&i.instr, Instruction::Copy { dst, .. } if *dst == reg(4)) })
         );
     }
 
@@ -1562,7 +1583,7 @@ mod tests {
                 .unwrap()
                 .instructions
                 .iter()
-                .any(|i| { matches!(i, Instruction::Copy { dst, .. } if *dst == reg(4)) })
+                .any(|i| { matches!(&i.instr, Instruction::Copy { dst, .. } if *dst == reg(4)) })
         );
     }
 
@@ -1572,12 +1593,12 @@ mod tests {
         let body = func.get_block_mut("body").unwrap();
         let mut tail = body.instructions.split_off(3);
         let y_tail = tail.split_off(1);
-        tail.push(Instruction::Jmp {
+        tail.push(Located::from(Instruction::Jmp {
             target: "y_update".into(),
-        });
-        body.instructions.push(Instruction::Jmp {
+        }));
+        body.instructions.push(Located::from(Instruction::Jmp {
             target: "x_update".into(),
-        });
+        }));
         func.blocks.push(Block {
             label: "x_update".into(),
             instructions: tail,
@@ -1602,11 +1623,11 @@ mod tests {
             .unwrap()
             .instructions
             .last_mut()
-            .unwrap() = Instruction::Br {
+            .unwrap() = Located::from(Instruction::Br {
             cond: reg(3),
             true_target: "header".into(),
             false_target: "body".into(),
-        };
+        });
         equivalent(func, false);
     }
 
@@ -1618,11 +1639,11 @@ mod tests {
             .unwrap()
             .instructions
             .last_mut()
-            .unwrap() = Instruction::Br {
+            .unwrap() = Located::from(Instruction::Br {
             cond: reg(3),
             true_target: "header".into(),
             false_target: "y_update".into(),
-        };
+        });
         equivalent(func, false);
     }
 
@@ -1630,7 +1651,7 @@ mod tests {
     fn quadratic_rewrite_rejects_factor_width_mismatch_and_header_products() {
         let mut func = quadratic(MirType::i64(), 20, 3, 7, false);
         if let Instruction::IntBinary { ty, .. } =
-            &mut func.get_block_mut("body").unwrap().instructions[4]
+            &mut func.get_block_mut("body").unwrap().instructions[4].instr
         {
             *ty = MirType::i32();
         }
@@ -1652,7 +1673,7 @@ mod tests {
         ] {
             let mut func = quadratic(ty, 2, step, step + 1, false);
             for instruction in &mut func.get_block_mut("entry").unwrap().instructions {
-                if let Instruction::Copy { dst, src, .. } = instruction
+                if let Instruction::Copy { dst, src, .. } = &mut instruction.instr
                     && (*dst == reg(0) || *dst == reg(6))
                 {
                     *src = constant(1);

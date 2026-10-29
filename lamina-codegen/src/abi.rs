@@ -114,6 +114,30 @@ pub enum RuntimeSymbol {
     Modti3,
     /// compiler-rt `__umodti3`: 128-bit integer arithmetic and conversion, called by i128 lowering.
     Umodti3,
+    /// compiler-rt `__divdi3`: 64-bit signed division, called when a 32-bit target splits an i64.
+    Divdi3,
+    /// compiler-rt `__udivdi3`: 64-bit unsigned division, called when a 32-bit target splits an i64.
+    Udivdi3,
+    /// compiler-rt `__moddi3`: 64-bit signed remainder, called when a 32-bit target splits an i64.
+    Moddi3,
+    /// compiler-rt `__umoddi3`: 64-bit unsigned remainder, called when a 32-bit target splits an i64.
+    Umoddi3,
+    /// compiler-rt `__floatdidf`: 64-bit integer to double, called when a 32-bit target splits an i64.
+    Floatdidf,
+    /// compiler-rt `__floatundidf`: 64-bit unsigned to double, called when a 32-bit target splits an i64.
+    Floatundidf,
+    /// compiler-rt `__floatdisf`: 64-bit integer to float, called when a 32-bit target splits an i64.
+    Floatdisf,
+    /// compiler-rt `__floatundisf`: 64-bit unsigned to float, called when a 32-bit target splits an i64.
+    Floatundisf,
+    /// compiler-rt `__fixdfdi`: double to 64-bit integer, called when a 32-bit target splits an i64.
+    Fixdfdi,
+    /// compiler-rt `__fixunsdfdi`: double to 64-bit unsigned, called when a 32-bit target splits an i64.
+    Fixunsdfdi,
+    /// compiler-rt `__fixsfdi`: float to 64-bit integer, called when a 32-bit target splits an i64.
+    Fixsfdi,
+    /// compiler-rt `__fixunssfdi`: float to 64-bit unsigned, called when a 32-bit target splits an i64.
+    Fixunssfdi,
     /// compiler-rt `__floattidf`: 128-bit integer arithmetic and conversion, called by i128 lowering.
     Floattidf,
     /// compiler-rt `__floatuntidf`: 128-bit integer arithmetic and conversion, called by i128 lowering.
@@ -133,7 +157,7 @@ pub enum RuntimeSymbol {
 }
 
 impl RuntimeSymbol {
-    pub const ALL: [RuntimeSymbol; 18] = [
+    pub const ALL: [RuntimeSymbol; 30] = [
         RuntimeSymbol::Malloc,
         RuntimeSymbol::Free,
         RuntimeSymbol::Exit,
@@ -144,6 +168,18 @@ impl RuntimeSymbol {
         RuntimeSymbol::Udivti3,
         RuntimeSymbol::Modti3,
         RuntimeSymbol::Umodti3,
+        RuntimeSymbol::Divdi3,
+        RuntimeSymbol::Udivdi3,
+        RuntimeSymbol::Moddi3,
+        RuntimeSymbol::Umoddi3,
+        RuntimeSymbol::Floatdidf,
+        RuntimeSymbol::Floatundidf,
+        RuntimeSymbol::Floatdisf,
+        RuntimeSymbol::Floatundisf,
+        RuntimeSymbol::Fixdfdi,
+        RuntimeSymbol::Fixunsdfdi,
+        RuntimeSymbol::Fixsfdi,
+        RuntimeSymbol::Fixunssfdi,
         RuntimeSymbol::Floattidf,
         RuntimeSymbol::Floatuntidf,
         RuntimeSymbol::Fixdfti,
@@ -167,6 +203,18 @@ impl RuntimeSymbol {
             RuntimeSymbol::Udivti3 => "__udivti3",
             RuntimeSymbol::Modti3 => "__modti3",
             RuntimeSymbol::Umodti3 => "__umodti3",
+            RuntimeSymbol::Divdi3 => "__divdi3",
+            RuntimeSymbol::Udivdi3 => "__udivdi3",
+            RuntimeSymbol::Moddi3 => "__moddi3",
+            RuntimeSymbol::Umoddi3 => "__umoddi3",
+            RuntimeSymbol::Floatdidf => "__floatdidf",
+            RuntimeSymbol::Floatundidf => "__floatundidf",
+            RuntimeSymbol::Floatdisf => "__floatdisf",
+            RuntimeSymbol::Floatundisf => "__floatundisf",
+            RuntimeSymbol::Fixdfdi => "__fixdfdi",
+            RuntimeSymbol::Fixunsdfdi => "__fixunsdfdi",
+            RuntimeSymbol::Fixsfdi => "__fixsfdi",
+            RuntimeSymbol::Fixunssfdi => "__fixunssfdi",
             RuntimeSymbol::Floattidf => "__floattidf",
             RuntimeSymbol::Floatuntidf => "__floatuntidf",
             RuntimeSymbol::Fixdfti => "__fixdfti",

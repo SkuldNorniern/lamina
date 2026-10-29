@@ -26,7 +26,7 @@ pub mod types;
 
 pub use builder::IRBuilder;
 pub use function::{
-    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
+    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, SourceLoc,
 };
 #[cfg(feature = "nightly")]
 pub use instruction::SimdOp;

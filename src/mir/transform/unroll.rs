@@ -1,3 +1,4 @@
+use lamina_mir::Located;
 use std::collections::{HashMap, HashSet};
 
 use lamina_platform::PointerWidth;
@@ -33,13 +34,13 @@ impl Transform for LoopUnrolling {
             .blocks
             .iter()
             .flat_map(|b| &b.instructions)
-            .any(|i| matches!(i, Instruction::InlineAsm { .. }))
+            .any(|i| matches!(&i.instr, Instruction::InlineAsm { .. }))
         {
             return Ok(false);
         }
         if !func.blocks.iter().any(|b| {
             matches!(
-                b.instructions.last(),
+                &b.instructions.last().map(|i| &i.instr),
                 Some(
                     Instruction::Jmp { .. } | Instruction::Br { .. } | Instruction::TailCall { .. }
                 )
@@ -48,7 +49,7 @@ impl Transform for LoopUnrolling {
             return Ok(false);
         }
         let initial_size: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
-        let materialized = if func.blocks.iter().any(|b| matches!(b.instructions.last(), Some(Instruction::TailCall { name, .. }) if name == &func.sig.name)) {
+        let materialized = if func.blocks.iter().any(|b| matches!(&b.instructions.last().map(|i| &i.instr), Some(Instruction::TailCall { name, .. }) if name == &func.sig.name)) {
             let saved = func.clone();
             if !materialize_tail_loop(func) { return Ok(false); }
             if !LoopInvariantCodeMotion.find_loops(func).iter().any(|info| analyze(func, info).is_some()) {
@@ -133,7 +134,7 @@ impl Transform for LoopUnrolling {
 #[derive(Clone)]
 struct Shape {
     header: String,
-    body: Vec<Instruction>,
+    body: Vec<Located>,
     labels: HashSet<String>,
     iv: Register,
     end: Operand,
@@ -151,7 +152,10 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
         return None;
     }
     let header = func.get_block(&info.header)?;
-    let [
+    let [cmp, br] = header.instructions.as_slice() else {
+        return None;
+    };
+    let (
         Instruction::IntCmp {
             op,
             ty: MirType::Scalar(ScalarType::I64),
@@ -164,7 +168,7 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
             true_target,
             false_target,
         },
-    ] = header.instructions.as_slice()
+    ) = (&cmp.instr, &br.instr)
     else {
         return None;
     };
@@ -207,12 +211,13 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
             return None;
         }
         let block = func.get_block(&current)?;
-        let (Instruction::Jmp { target }, instructions) = block.instructions.split_last()? else {
+        let (last, instructions) = block.instructions.split_last()?;
+        let Instruction::Jmp { target } = &last.instr else {
             return None;
         };
         for i in instructions {
             if !matches!(
-                i,
+                &i.instr,
                 Instruction::IntBinary {
                     ty: MirType::Scalar(ScalarType::I64),
                     ..
@@ -248,7 +253,7 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     }
     let mut offsets = HashMap::from([(iv.clone(), 0_i64)]);
     for i in &body {
-        let offset = match i {
+        let offset = match &i.instr {
             Instruction::Copy {
                 src: Operand::Register(src),
                 ..
@@ -285,7 +290,7 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
         .iter()
         .filter(|b| !labels.contains(&b.label) || b.label == info.header)
         .flat_map(|b| &b.instructions)
-        .flat_map(Instruction::use_regs)
+        .flat_map(|i| i.use_regs())
         .cloned()
         .collect();
     let mut defined = HashSet::new();
@@ -302,7 +307,7 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     live_out.retain(|r| defined.contains(r));
     live_out.extend(
         body.iter()
-            .flat_map(Instruction::use_regs)
+            .flat_map(|i| i.use_regs())
             .filter(|r| !defined.contains(*r))
             .cloned(),
     );
@@ -326,10 +331,10 @@ fn choose_plan(func: &Function, shape: &Shape) -> Option<(Option<u64>, usize)> {
     {
         return Some((Some(n), 0));
     }
-    if shape.body.iter().any(|i| matches!(i, Instruction::IntBinary { op: IntBinOp::Mul, dst, lhs, rhs, .. } if lhs.as_register() == Some(dst) || rhs.as_register() == Some(dst))) {
+    if shape.body.iter().any(|i| matches!(&i.instr, Instruction::IntBinary { op: IntBinOp::Mul, dst, lhs, rhs, .. } if lhs.as_register() == Some(dst) || rhs.as_register() == Some(dst))) {
         return None;
     }
-    let work = shape.body.iter().filter(|i| !matches!(i, Instruction::Copy { .. }) && !matches!(i, Instruction::IntBinary { op: IntBinOp::Add, rhs, .. } if rhs.integer_constant() == Some(0))).count();
+    let work = shape.body.iter().filter(|i| !matches!(&i.instr, Instruction::Copy { .. }) && !matches!(&i.instr, Instruction::IntBinary { op: IntBinOp::Add, rhs, .. } if rhs.integer_constant() == Some(0))).count();
     let mut factor = match work {
         0..=4 => 8,
         5..=8 => 4,
@@ -370,7 +375,7 @@ fn guarded_candidate(func: &Function, info: &LoopInfo, loops: &[LoopInfo]) -> bo
             size += b.instructions.len();
             for i in &b.instructions {
                 if !matches!(
-                    i,
+                    &i.instr,
                     Instruction::IntBinary {
                         ty: MirType::Scalar(ScalarType::I64),
                         ..
@@ -461,7 +466,7 @@ fn clone_guarded(func: &mut Function, info: &LoopInfo, factor: usize, next: &mut
     for copy in 0..factor {
         let mut renamed = HashMap::new();
         for b in &originals {
-            for dst in b.instructions.iter().filter_map(Instruction::def_reg) {
+            for dst in b.instructions.iter().filter_map(|i| i.def_reg()) {
                 if local.contains(dst) {
                     renamed.insert(dst.clone(), fresh(next));
                 }
@@ -481,7 +486,7 @@ fn clone_guarded(func: &mut Function, info: &LoopInfo, factor: usize, next: &mut
                         *name = label(name, copy);
                     }
                 };
-                match i {
+                match &mut i.instr {
                     Instruction::Jmp { target: name } => target(name),
                     Instruction::Br {
                         true_target,
@@ -502,7 +507,7 @@ fn clone_guarded(func: &mut Function, info: &LoopInfo, factor: usize, next: &mut
             continue;
         }
         for i in &mut b.instructions {
-            match i {
+            match &mut i.instr {
                 Instruction::Jmp { target } if *target == info.header => {
                     *target = label(&info.header, 0)
                 }
@@ -550,7 +555,9 @@ fn materialize_tail_loop(func: &mut Function) -> bool {
         pre.push('_');
     }
     for block in &mut func.blocks {
-        let Some(Instruction::TailCall { name, args }) = block.instructions.last() else {
+        let Some(Instruction::TailCall { name, args }) =
+            block.instructions.last().map(|i| &i.instr)
+        else {
             continue;
         };
         if name != &func.sig.name || args.len() != func.sig.params.len() {
@@ -575,8 +582,12 @@ fn materialize_tail_loop(func: &mut Function) -> bool {
             });
         }
         block.instructions.pop();
-        block.instructions.extend(snapshots);
-        block.instructions.extend(assignments);
+        block
+            .instructions
+            .extend(snapshots.into_iter().map(Located::from));
+        block
+            .instructions
+            .extend(assignments.into_iter().map(Located::from));
         block.instructions.push(jump(&entry));
     }
     func.blocks.insert(
@@ -616,35 +627,35 @@ fn fresh(next: &mut u32) -> Register {
 fn imm(n: i64) -> Operand {
     Operand::Immediate(Immediate::I64(n))
 }
-fn binary(op: IntBinOp, dst: &Register, lhs: Operand, rhs: Operand) -> Instruction {
-    Instruction::IntBinary {
+fn binary(op: IntBinOp, dst: &Register, lhs: Operand, rhs: Operand) -> Located {
+    Located::new(Instruction::IntBinary {
         op,
         ty: MirType::Scalar(ScalarType::I64),
         dst: dst.clone(),
         lhs,
         rhs,
-    }
+    })
 }
-fn compare(op: IntCmpOp, dst: &Register, lhs: Operand, rhs: Operand) -> Instruction {
-    Instruction::IntCmp {
+fn compare(op: IntCmpOp, dst: &Register, lhs: Operand, rhs: Operand) -> Located {
+    Located::new(Instruction::IntCmp {
         op,
         ty: MirType::Scalar(ScalarType::I64),
         dst: dst.clone(),
         lhs,
         rhs,
-    }
+    })
 }
-fn jump(target: &str) -> Instruction {
-    Instruction::Jmp {
+fn jump(target: &str) -> Located {
+    Located::new(Instruction::Jmp {
         target: target.into(),
-    }
+    })
 }
-fn branch(cond: &Register, yes: &str, no: &str) -> Instruction {
-    Instruction::Br {
+fn branch(cond: &Register, yes: &str, no: &str) -> Located {
+    Located::new(Instruction::Br {
         cond: cond.clone(),
         true_target: yes.into(),
         false_target: no.into(),
-    }
+    })
 }
 
 fn counter_only(shape: &Shape) -> bool {
@@ -700,17 +711,17 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
         .get_block(&shape.header)
         .map(|b| b.instructions.clone())
         .unwrap_or_default();
-    if let Some(Instruction::IntCmp { dst, .. }) = guard.first_mut() {
+    if let Some(Instruction::IntCmp { dst, .. }) = guard.first_mut().map(|i| &mut i.instr) {
         *dst = guard_flag.clone();
     }
-    if let Some(Instruction::Br { cond, .. }) = guard.last_mut() {
+    if let Some(Instruction::Br { cond, .. }) = guard.last_mut().map(|i| &mut i.instr) {
         *cond = guard_flag;
     }
     if let Some(Instruction::Br {
         true_target,
         false_target,
         ..
-    }) = guard.last_mut()
+    }) = guard.last_mut().map(|i| &mut i.instr)
     {
         let target = if shape.labels.contains(true_target) {
             true_target
@@ -728,7 +739,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             continue;
         }
         for i in &mut b.instructions {
-            match i {
+            match &mut i.instr {
                 Instruction::Jmp { target } if *target == shape.header => {
                     *target = dispatch.clone()
                 }
@@ -748,7 +759,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             }
         }
     }
-    let mut add_block = |name: String, instructions: Vec<Instruction>| {
+    let mut add_block = |name: String, instructions: Vec<Located>| {
         func.blocks.push(Block {
             label: name,
             instructions,
@@ -844,7 +855,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
     add_block(mainbody, code);
 }
 
-fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction> {
+fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Located> {
     let first_fresh = *next;
     let mut values: HashMap<Register, Operand> = HashMap::new();
     let mut affine: HashMap<Register, (Operand, i64)> = HashMap::new();
@@ -871,7 +882,7 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
                     .cloned()
                     .unwrap_or_else(|| o.clone())
             };
-            let (op, mut lhs, mut rhs) = match i {
+            let (op, mut lhs, mut rhs) = match &i.instr {
                 Instruction::IntBinary { op, lhs, rhs, .. } => (*op, resolve(lhs), resolve(rhs)),
                 Instruction::Copy { src, .. } => (IntBinOp::Add, resolve(src), imm(0)),
                 _ => continue,
@@ -897,7 +908,7 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
                         affine.insert(result.clone(), (lhs.clone(), n));
                     }
                 }
-                code.push(binary(op, &result, lhs, rhs));
+                code.push(binary(op, &result, lhs, rhs).with_loc(i.loc));
                 values.insert(dst.clone(), result.into());
             }
         }
@@ -921,19 +932,19 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
             if let Operand::Register(r) = &src {
                 if !matches!(r, Register::Virtual(v) if v.id >= first_fresh) {
                     let saved = fresh(next);
-                    code.push(Instruction::Copy {
+                    code.push(Located::new(Instruction::Copy {
                         ty: MirType::Scalar(ScalarType::I64),
                         dst: saved.clone(),
                         src,
-                    });
+                    }));
                     src = saved.into();
                 }
             }
-            copies.push(Instruction::Copy {
+            copies.push(Located::new(Instruction::Copy {
                 ty: MirType::Scalar(ScalarType::I64),
                 dst,
                 src,
-            });
+            }));
         }
     }
     code.extend(copies);
@@ -958,7 +969,7 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
     code
 }
 
-fn coalesce_region(code: &mut Vec<Instruction>, live_out: &HashSet<Register>, first_fresh: u32) {
+fn coalesce_region(code: &mut Vec<Located>, live_out: &HashSet<Register>, first_fresh: u32) {
     let mut live = live_out.clone();
     let mut edges: HashSet<(Register, Register)> = HashSet::new();
     let mut candidates = Vec::new();
@@ -966,7 +977,7 @@ fn coalesce_region(code: &mut Vec<Instruction>, live_out: &HashSet<Register>, fi
     for i in code.iter().rev() {
         if let Some(dst) = i.def_reg() {
             registers.insert(dst.clone());
-            let copy = match i {
+            let copy = match &i.instr {
                 Instruction::Copy {
                     src: Operand::Register(src),
                     ..
@@ -994,7 +1005,7 @@ fn coalesce_region(code: &mut Vec<Instruction>, live_out: &HashSet<Register>, fi
             dst,
             lhs: Operand::Register(src),
             ..
-        } = i
+        } = &i.instr
         {
             candidates.push((src.clone(), dst.clone()));
         }
@@ -1029,7 +1040,7 @@ fn coalesce_region(code: &mut Vec<Instruction>, live_out: &HashSet<Register>, fi
         });
     }
     code.retain(
-        |i| !matches!(i, Instruction::Copy { dst, src: Operand::Register(src), .. } if dst == src),
+        |i| !matches!(&i.instr, Instruction::Copy { dst, src: Operand::Register(src), .. } if dst == src),
     );
 }
 
@@ -1041,7 +1052,7 @@ fn full_unroll(func: &mut Function, shape: &Shape, count: u64, next: &mut u32) {
             true_target,
             false_target,
             ..
-        }) = instructions.last()
+        }) = instructions.last().map(|i| &i.instr)
         {
             let exit = if shape.labels.contains(true_target) {
                 false_target
@@ -1050,7 +1061,7 @@ fn full_unroll(func: &mut Function, shape: &Shape, count: u64, next: &mut u32) {
             }
             .clone();
             instructions.pop();
-            instructions.push(Instruction::Jmp { target: exit });
+            instructions.push(Located::new(Instruction::Jmp { target: exit }));
         }
         header.instructions = instructions;
     }
@@ -1066,7 +1077,7 @@ fn constant_trip_count(func: &Function, shape: &Shape) -> Option<u64> {
             o.integer_constant()
                 .or_else(|| o.as_register().and_then(|r| values.get(r).copied()))
         };
-        let result = match i {
+        let result = match &i.instr {
             Instruction::Copy { src, .. } => value(src),
             Instruction::IntBinary {
                 op, ty, lhs, rhs, ..
@@ -1137,7 +1148,7 @@ ret.i64 %b
         let mut original = counting(0, "%n", "lt");
         let invariant = original.sig.params[0].reg.clone();
         if let Instruction::IntBinary { lhs, .. } =
-            &mut original.get_block_mut("body").unwrap().instructions[0]
+            &mut original.get_block_mut("body").unwrap().instructions[0].instr
         {
             *lhs = invariant.into();
         }
@@ -1280,11 +1291,11 @@ ret.i64 %b
         let body = renamed_body(&shape, 8, &mut next);
         let arithmetic: Vec<_> = body
             .iter()
-            .filter(|i| matches!(i, Instruction::IntBinary { .. }))
+            .filter(|i| matches!(&i.instr, Instruction::IntBinary { .. }))
             .collect();
         assert_eq!(arithmetic.len(), 9);
         assert!(body[..8].iter().all(|i| matches!(
-            i,
+            &i.instr,
             Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ..

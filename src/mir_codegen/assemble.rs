@@ -321,14 +321,6 @@ fn ras_assemble(
             output_path.display()
         );
     }
-    let assembly = fs::read_to_string(input_path)
-        .map_err(|e| format!("failed to read {}: {e}", input_path.display()))?;
-    if assembly
-        .lines()
-        .any(|line| line.trim_start().starts_with(".loc "))
-    {
-        return Err("ras does not implement the .loc directive (needed by -g)".to_string());
-    }
     let mut ras = Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
         .map_err(|e| format!("failed to create ras assembler: {e}"))?;
     ras.assemble_file(input_path, output_path)
@@ -457,7 +449,9 @@ pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
         TargetArchitecture::LoongArch64 => cfg!(target_arch = "loongarch64"),
         TargetArchitecture::PowerPC64 => cfg!(target_arch = "powerpc64"),
         TargetArchitecture::Armv7 => cfg!(target_arch = "arm"),
-        TargetArchitecture::I686 => cfg!(target_arch = "x86"),
+        // An x86_64 host assembles and links i686 with its own binutils, given
+        // `--32` and `-m elf_i386`.
+        TargetArchitecture::I686 => cfg!(any(target_arch = "x86", target_arch = "x86_64")),
         TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Riscv32
@@ -517,6 +511,7 @@ fn gas_arch_flags(
                 args.push("--64".to_string());
             }
         }
+        TargetArchitecture::I686 => args.push("--32".to_string()),
         TargetArchitecture::Aarch64 => {
             // Mach-O assemblers take -arch instead of -march
             if os_uses_macho(target_os) {

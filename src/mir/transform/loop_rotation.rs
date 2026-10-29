@@ -1,3 +1,4 @@
+use lamina_mir::Located;
 use std::collections::{HashMap, HashSet};
 
 use crate::mir::{
@@ -54,7 +55,7 @@ impl Transform for LoopRotation {
                 .enumerate()
                 .filter(|(_, b)| {
                     b.label != header
-                        && matches!(b.instructions.last(), Some(Instruction::Jmp { target }) if *target == header)
+                        && matches!(&b.instructions.last().map(|i| &i.instr), Some(Instruction::Jmp { target }) if *target == header)
                         && dominators.dominates(&header, &b.label)
                 })
                 .map(|(index, _)| index)
@@ -95,7 +96,7 @@ fn next_virtual_id(func: &Function) -> u32 {
 
 /// Registers the test defines before any use and never mentions outside itself. A copy
 /// may rename these without changing what any other block reads.
-fn local_temporaries(func: &Function, header: &str, test: &[Instruction]) -> HashSet<Register> {
+fn local_temporaries(func: &Function, header: &str, test: &[Located]) -> HashSet<Register> {
     let mut seen: HashSet<&Register> = HashSet::new();
     let mut local: HashSet<Register> = HashSet::new();
     let mut excluded: HashSet<&Register> = HashSet::new();
@@ -123,11 +124,7 @@ fn local_temporaries(func: &Function, header: &str, test: &[Instruction]) -> Has
     local
 }
 
-fn fresh_copy(
-    test: &[Instruction],
-    local: &HashSet<Register>,
-    next_id: &mut u32,
-) -> Vec<Instruction> {
+fn fresh_copy(test: &[Located], local: &HashSet<Register>, next_id: &mut u32) -> Vec<Located> {
     let mut renamed: HashMap<Register, Register> = HashMap::new();
     for reg in local {
         if let Register::Virtual(v) = reg {
@@ -151,8 +148,8 @@ fn fresh_copy(
 
 fn is_test_block(block: &Block) -> bool {
     match block.instructions.split_last() {
-        Some((Instruction::Br { .. }, body)) => {
-            body.len() <= MAX_TEST_INSTRUCTIONS && body.iter().all(is_duplicable)
+        Some((last, body)) if matches!(last.instr, Instruction::Br { .. }) => {
+            body.len() <= MAX_TEST_INSTRUCTIONS && body.iter().all(|i| is_duplicable(&i.instr))
         }
         _ => false,
     }
@@ -254,14 +251,14 @@ mod tests {
         assert!(apply_pass(&LoopRotation, &mut func));
         let body = get_block(&func, "body");
         assert!(matches!(
-            body.instructions.last(),
+            &body.instructions.last().map(|i| &i.instr),
             Some(Instruction::Br { true_target, false_target, .. })
                 if true_target == "body" && false_target == "exit"
         ));
         assert!(
             body.instructions
                 .iter()
-                .any(|i| matches!(i, Instruction::IntCmp { .. }))
+                .any(|i| matches!(&i.instr, Instruction::IntCmp { .. }))
         );
     }
 
@@ -270,7 +267,7 @@ mod tests {
         let mut func = loop_with_test(compare_test());
         apply_pass(&LoopRotation, &mut func);
         let body = get_block(&func, "body");
-        let Some(Instruction::Br { cond, .. }) = body.instructions.last() else {
+        let Some(Instruction::Br { cond, .. }) = body.instructions.last().map(|i| &i.instr) else {
             panic!("back edge must end in a branch");
         };
         assert_ne!(cond, &reg(1));
@@ -285,7 +282,10 @@ mod tests {
         }]);
         assert!(!apply_pass(&LoopRotation, &mut func));
         assert!(matches!(
-            get_block(&func, "body").instructions.last(),
+            get_block(&func, "body")
+                .instructions
+                .last()
+                .map(|i| &i.instr),
             Some(Instruction::Jmp { .. })
         ));
     }

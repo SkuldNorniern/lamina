@@ -295,6 +295,7 @@ fn verify_structure<'a>(
 
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let instruction = &instruction.instr;
             for target in instruction_targets(instruction) {
                 if !block_indices.contains_key(target) {
                     errors.push(instruction_location(
@@ -339,6 +340,7 @@ fn collect_definitions(
     }
     for (block_index, block) in function.blocks.iter().enumerate() {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let instruction = &instruction.instr;
             if let Some(register) = instruction.def_reg()
                 && register.is_virtual()
             {
@@ -352,7 +354,7 @@ fn collect_definitions(
                             Instruction::Call { name, .. } => module
                                 .and_then(|m| m.functions.get(name))
                                 .and_then(|callee| callee.sig.ret_ty)
-                                .or_else(|| io_intrinsic_result_type(name)),
+                                .or_else(|| io_intrinsic_result_type(name, function.pointer_width)),
                             _ => instruction_definition_type(instruction),
                         },
                     });
@@ -606,6 +608,7 @@ fn verify_dominance(
 ) {
     for (block_index, block) in function.blocks.iter().enumerate() {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let instruction = &instruction.instr;
             for register in instruction.use_regs() {
                 if !register.is_virtual() {
                     continue;
@@ -658,6 +661,7 @@ fn verify_instruction_types(
 ) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
+            let instruction = &instruction.instr;
             let mut instruction_errors = Vec::new();
             match instruction {
                 Instruction::Call { name, args, .. } | Instruction::TailCall { name, args } => {
@@ -725,7 +729,8 @@ fn verify_instruction_types(
                     );
                 }
                 Instruction::Bitcast { from, to, dst, src } => {
-                    if from.size_bytes(function.pointer_width) != to.size_bytes(function.pointer_width)
+                    if from.size_bytes(function.pointer_width)
+                        != to.size_bytes(function.pointer_width)
                         || from.is_vector()
                         || to.is_vector()
                     {
@@ -750,7 +755,9 @@ fn verify_instruction_types(
                 } => {
                     if !is_integer_or_pointer(*from)
                         || !is_integer_or_pointer(*to)
-                        || (*signed && from.size_bytes(function.pointer_width) >= to.size_bytes(function.pointer_width))
+                        || (*signed
+                            && from.size_bytes(function.pointer_width)
+                                >= to.size_bytes(function.pointer_width))
                     {
                         instruction_errors.push("expected a valid integer conversion".into());
                     }

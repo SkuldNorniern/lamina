@@ -19,6 +19,7 @@ mod bit;
 mod util;
 
 use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::common::lamina_to_codegen_error;
@@ -27,6 +28,7 @@ use crate::mir_codegen::common::{
     ClobberIndex, CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
+use lamina_mir::SourceLoc;
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -207,7 +209,7 @@ fn assign_ppc64_slots(func: &Function) -> (HashMap<VirtualReg, i32>, usize) {
         if let Some(Register::Virtual(vreg)) = inst.def_reg() {
             defined.insert(*vreg);
         }
-        if let MirInst::StackAddr { slot, .. } = inst {
+        if let MirInst::StackAddr { slot, .. } = &inst.instr {
             used.insert(*slot);
         }
         for reg in inst.use_regs() {
@@ -287,7 +289,7 @@ fn compile_single_function_ppc64(
             .enumerate()
         {
             if matches!(
-                inst,
+                &inst.instr,
                 MirInst::Call { .. } | MirInst::CallIndirect { .. } | MirInst::TailCall { .. }
             ) {
                 calls.mark((), index);
@@ -334,7 +336,7 @@ fn compile_single_function_ppc64(
                         claim_ppc64_slot(func, vreg, &mut stack_slots, &mut next_slot);
                     }
                 }
-                if let MirInst::StackAddr { slot, .. } = inst
+                if let MirInst::StackAddr { slot, .. } = &inst.instr
                     && !stack_slots.contains_key(slot)
                 {
                     claim_ppc64_slot(func, slot, &mut stack_slots, &mut next_slot);
@@ -384,7 +386,6 @@ fn compile_single_function_ppc64(
         ret_aggregate: func.sig.ret_aggregate,
         hidden_result_slot,
     };
-    let mut debug_line: u32 = 0;
     let mut cmp_seq: u32 = 0;
     if plan
         .order
@@ -409,7 +410,6 @@ fn compile_single_function_ppc64(
             &mut reg_alloc,
             &stack_slots,
             &emit,
-            &mut debug_line,
             &mut cmp_seq,
         )
         .map_err(lamina_to_codegen_error)?;
@@ -776,7 +776,6 @@ fn emit_planned_block_ppc64<W: Write>(
     reg_alloc: &mut Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     emit: &Ppc64Emit<'_>,
-    debug_line: &mut u32,
     cmp_seq: &mut u32,
 ) -> Result<(), LaminaError> {
     let block = &func.blocks[index];
@@ -828,8 +827,9 @@ fn emit_planned_block_ppc64<W: Write>(
                     false_target,
                     ..
                 },
-            ) = (inst, &block.instructions[position + 1])
+            ) = (&inst.instr, &block.instructions[position + 1].instr)
             {
+                emit_source_loc(writer, emit.settings, inst.loc)?;
                 load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
                 load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
                 let unsigned = matches!(
@@ -862,7 +862,7 @@ fn emit_planned_block_ppc64<W: Write>(
                 }
             }
             position += 1;
-        } else if matches!(inst, MirInst::Jmp { target } if target == next) {
+        } else if matches!(&inst.instr, MirInst::Jmp { target } if target == next) {
         } else {
             emit_instruction_ppc64(
                 inst,
@@ -870,7 +870,7 @@ fn emit_planned_block_ppc64<W: Write>(
                 reg_alloc,
                 stack_slots,
                 emit,
-                debug_line,
+                inst.loc,
                 cmp_seq,
                 func.pointer_width,
             )?;
@@ -887,7 +887,7 @@ fn emit_instruction_ppc64<W: Write>(
     reg_alloc: &mut Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     emit: &Ppc64Emit<'_>,
-    debug_line: &mut u32,
+    loc: Option<SourceLoc>,
     cmp_seq: &mut u32,
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
@@ -903,9 +903,10 @@ fn emit_instruction_ppc64<W: Write>(
         ret_aggregate,
         hidden_result_slot,
     } = *emit;
-    if settings.emit_asm_debug_lines {
-        *debug_line = debug_line.saturating_add(1);
-        writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+    if settings.emit_asm_debug_lines
+        && let Some(loc) = loc
+    {
+        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
     }
     if let Some(operations) = integer_conversion(inst, pointer_width) {
         for operation in operations {
@@ -915,7 +916,7 @@ fn emit_instruction_ppc64<W: Write>(
                 reg_alloc,
                 stack_slots,
                 emit,
-                debug_line,
+                None,
                 cmp_seq,
                 pointer_width,
             )?;

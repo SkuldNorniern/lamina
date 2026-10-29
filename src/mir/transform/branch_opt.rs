@@ -122,6 +122,7 @@ mod tests {
     use crate::mir::{
         Block, FunctionBuilder, Immediate, Instruction, MirType, Operand, ScalarType, VirtualReg,
     };
+    use lamina_mir::Located;
 
     #[test]
     fn test_remove_unreachable_blocks() {
@@ -364,9 +365,11 @@ mod tests {
         func.add_block(exit);
 
         // Entry jumps to first block
-        func.blocks[0].instructions.push(Instruction::Jmp {
-            target: "block0".to_string(),
-        });
+        func.blocks[0]
+            .instructions
+            .push(Located::from(Instruction::Jmp {
+                target: "block0".to_string(),
+            }));
 
         let pass = BranchOptimization;
         let result = pass.apply(&mut func);

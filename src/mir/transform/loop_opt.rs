@@ -7,6 +7,7 @@ use crate::mir::{
         calculate_dominators,
     },
 };
+use lamina_mir::Located;
 use lamina_platform::PointerWidth;
 use std::{
     cmp::Reverse,
@@ -152,7 +153,7 @@ mod tests_licm {
         // Loop block should no longer have the 5+10 addition
         let loop_block = func.get_block("loop").expect("loop block exists");
         let has_invariant = loop_block.instructions.iter().any(|i| {
-            if let Instruction::IntBinary { lhs, rhs, .. } = i {
+            if let Instruction::IntBinary { lhs, rhs, .. } = &i.instr {
                 matches!(lhs, Operand::Immediate(Immediate::I64(5)))
                     && matches!(rhs, Operand::Immediate(Immediate::I64(10)))
             } else {
@@ -166,7 +167,7 @@ mod tests_licm {
 
         let pre_header = func.get_block("loop_pre").expect("pre-header created");
         let has_moved = pre_header.instructions.iter().any(|i| {
-            if let Instruction::IntBinary { lhs, rhs, .. } = i {
+            if let Instruction::IntBinary { lhs, rhs, .. } = &i.instr {
                 matches!(lhs, Operand::Immediate(Immediate::I64(5)))
                     && matches!(rhs, Operand::Immediate(Immediate::I64(10)))
             } else {
@@ -228,7 +229,7 @@ impl LoopInvariantCodeMotion {
                     true_target,
                     false_target,
                     ..
-                } = instr
+                } = &instr.instr
                 {
                     // Check for back edges: target dominates source
                     if self.is_back_edge(&dominators, &block.label, true_target)
@@ -244,7 +245,7 @@ impl LoopInvariantCodeMotion {
                         loops.push(loop_info);
                     }
                 }
-                if let Instruction::Jmp { target } = instr
+                if let Instruction::Jmp { target } = &instr.instr
                     && self.is_back_edge(&dominators, &block.label, target)
                     && let Some(loop_info) = self.analyze_loop(target, &block.label, &preds)
                 {
@@ -549,9 +550,11 @@ impl LoopInvariantCodeMotion {
         }
 
         // Add jump to the original header
-        pre_header_block.instructions.push(Instruction::Jmp {
-            target: loop_info.header.clone(),
-        });
+        pre_header_block
+            .instructions
+            .push(Located::from(Instruction::Jmp {
+                target: loop_info.header.clone(),
+            }));
 
         // Insert pre-header before the original header
         func.blocks.insert(header_idx, pre_header_block);
@@ -582,7 +585,7 @@ impl LoopInvariantCodeMotion {
             }
 
             for instr in &mut block.instructions {
-                match instr {
+                match &mut instr.instr {
                     Instruction::Jmp { target } if *target == loop_info.header => {
                         *target = pre_header_label.clone();
                     }
@@ -736,9 +739,9 @@ mod tests {
             .apply(&mut func)
             .expect("LICM failed");
 
-        let defines_v1_constant = |instr: &Instruction| {
+        let defines_v1_constant = |instr: &Located| {
             matches!(
-                instr,
+                &instr.instr,
                 Instruction::IntBinary {
                     dst: Register::Virtual(v),
                     lhs: Operand::Immediate(Immediate::I64(2)),
@@ -814,7 +817,7 @@ mod tests {
 
         let then_block = func.get_block("then").expect("then block exists");
         assert!(then_block.instructions.iter().any(|i| matches!(
-            i,
+            &i.instr,
             Instruction::IntBinary {
                 dst: Register::Virtual(v),
                 ..
@@ -1126,9 +1129,11 @@ mod tests {
         func.add_block(exit_block);
 
         // Update entry to jump to block0
-        func.blocks[0].instructions.push(Instruction::Jmp {
-            target: "block0".to_string(),
-        });
+        func.blocks[0]
+            .instructions
+            .push(Located::from(Instruction::Jmp {
+                target: "block0".to_string(),
+            }));
 
         let licm = LoopInvariantCodeMotion;
         let result = licm.apply(&mut func);

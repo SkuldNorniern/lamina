@@ -225,19 +225,19 @@ mod tests {
 
         let entry = func.get_block("entry").expect("entry block exists");
         assert!(!entry.instructions.iter().any(|i| matches!(
-            i,
+            &i.instr,
             Instruction::IntBinary {
                 op: IntBinOp::Mul,
                 ..
             }
         )));
         assert!(matches!(
-            entry.instructions.last(),
+            &entry.instructions.last().map(|i| &i.instr),
             Some(Instruction::Ret { .. })
         ));
 
         // Check that multiplication was converted to shift
-        match &entry.instructions[0] {
+        match &entry.instructions[0].instr {
             Instruction::IntBinary { op, rhs, .. } => {
                 assert_eq!(*op, IntBinOp::Shl);
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(2))); // log2(4) = 2
@@ -275,7 +275,7 @@ mod tests {
         let entry = func.get_block("entry").expect("entry block exists");
 
         // Check that unsigned division was converted to logical shift right
-        match &entry.instructions[0] {
+        match &entry.instructions[0].instr {
             Instruction::IntBinary { op, rhs, .. } => {
                 assert_eq!(*op, IntBinOp::LShr);
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(3))); // log2(8) = 3
@@ -315,7 +315,7 @@ mod tests {
         let entry = func.get_block("entry").expect("entry block exists");
 
         // Check that signed division remains unchanged
-        match &entry.instructions[0] {
+        match &entry.instructions[0].instr {
             Instruction::IntBinary { op, rhs, .. } => {
                 assert_eq!(*op, IntBinOp::SDiv);
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(16)));
@@ -353,7 +353,7 @@ mod tests {
         let entry = func.get_block("entry").expect("entry block exists");
 
         // Check that unsigned remainder was converted to AND with mask
-        match &entry.instructions[0] {
+        match &entry.instructions[0].instr {
             Instruction::IntBinary { op, rhs, .. } => {
                 assert_eq!(*op, IntBinOp::And);
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(31))); // 32 - 1 = 31
@@ -392,7 +392,7 @@ mod tests {
         let entry = func.get_block("entry").expect("entry block exists");
 
         // Check that multiplication is still multiplication
-        match &entry.instructions[0] {
+        match &entry.instructions[0].instr {
             Instruction::IntBinary { op, rhs, .. } => {
                 assert_eq!(*op, IntBinOp::Mul);
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(6)));
@@ -456,7 +456,7 @@ mod tests {
             assert!(changed, "expected change for mul by 2^{}", expected_shift);
 
             let entry = func.get_block("entry").expect("entry block exists");
-            match &entry.instructions[0] {
+            match &entry.instructions[0].instr {
                 Instruction::IntBinary { op, rhs, .. } => {
                     assert_eq!(*op, IntBinOp::Shl);
                     assert_eq!(rhs, &Operand::Immediate(Immediate::I64(expected_shift)));

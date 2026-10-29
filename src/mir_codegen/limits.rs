@@ -63,7 +63,7 @@ pub fn validate_module_call_parameters(
                     block
                         .instructions
                         .iter()
-                        .any(|i| matches!(i, Instruction::CallIndirect { .. }))
+                        .any(|i| matches!(&i.instr, Instruction::CallIndirect { .. }))
                 })
             })
             .map(|(name, _)| name)
@@ -106,7 +106,7 @@ pub fn validate_module_call_parameters(
         }
         for block in &func.blocks {
             for instr in &block.instructions {
-                match instr {
+                match &instr.instr {
                     Instruction::Call { name, args, .. } => {
                         if args.len() > max {
                             return Err(LaminaError::ValidationError(format!(

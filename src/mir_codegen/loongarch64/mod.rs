@@ -11,6 +11,7 @@ mod operand;
 mod tests;
 
 use crate::mir_codegen::capability::{CapabilitySet, CodegenCapability};
+use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::{
     FunctionEmissionPlan, assign_stack_slots, compile_functions_parallel, emit_debug_file,
     emit_global_data, emit_global_directives, emit_gnu_stack_note, emit_symbol_visibility,
@@ -28,6 +29,7 @@ use crate::{
     },
 };
 use abi::{ARG_FPRS, ARG_GPRS, ArgPlace, WORD};
+use lamina_mir::SourceLoc;
 use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use operand::{
     Slots, load_float_operand, load_operand, phys, slot, store_float, store_register, unsupported,
@@ -110,7 +112,7 @@ struct EmitCtx<'a> {
     func_name: &'a str,
     target_os: TargetOperatingSystem,
     settings: &'a MirCodegenSettings,
-    debug_line: u32,
+    loc: Option<SourceLoc>,
     /// Sequence for compiler-generated labels.
     label_seq: u32,
     stack_size: usize,
@@ -202,7 +204,7 @@ fn compile_function(
         func_name,
         target_os,
         settings,
-        debug_line: 0,
+        loc: None,
         label_seq: 0,
         stack_size,
         signatures,
@@ -292,8 +294,9 @@ fn emit_block<W: Write>(
                     false_target,
                     ..
                 },
-            ) = (inst, &block.instructions[position + 1])
+            ) = (&inst.instr, &block.instructions[position + 1].instr)
             {
+                emit_source_loc(writer, ctx.settings, inst.loc)?;
                 load_operand(lhs, writer, slots, "$a0")?;
                 load_operand(rhs, writer, slots, "$a1")?;
                 let unsigned = matches!(
@@ -315,8 +318,9 @@ fn emit_block<W: Write>(
                 }
             }
             position += 1;
-        } else if matches!(inst, MirInst::Jmp { target } if target == next) {
+        } else if matches!(&inst.instr, MirInst::Jmp { target } if target == next) {
         } else {
+            ctx.loc = inst.loc;
             emit_instruction(inst, writer, slots, ctx)?;
         }
         position += 1;
@@ -498,9 +502,10 @@ fn emit_instruction<W: Write>(
         }
         return Ok(());
     }
-    if ctx.settings.emit_asm_debug_lines {
-        ctx.debug_line = ctx.debug_line.saturating_add(1);
-        writeln!(writer, "    .loc 1 {} 0", ctx.debug_line)?;
+    if ctx.settings.emit_asm_debug_lines
+        && let Some(loc) = ctx.loc
+    {
+        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
     }
     match inst {
         MirInst::Copy { ty, dst, src }

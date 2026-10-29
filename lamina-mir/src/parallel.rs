@@ -5,6 +5,7 @@ use crate::{
     block::Block,
     function::Function,
     instruction::{Instruction, Operand},
+    loc::Located,
     register::{Register, VirtualRegAllocator},
     types::MirType,
 };
@@ -33,9 +34,10 @@ pub fn insert_edge_moves(
             && !pred_bb.instructions.is_empty()
         {
             let insert_pos = pred_bb.instructions.len().saturating_sub(1);
-            pred_bb
-                .instructions
-                .splice(insert_pos..insert_pos, moves.clone());
+            pred_bb.instructions.splice(
+                insert_pos..insert_pos,
+                moves.iter().cloned().map(Located::from),
+            );
             handled = true;
         }
         if !handled
@@ -64,7 +66,7 @@ pub fn insert_edge_moves(
                 });
                 mir_func.add_block(tramp);
                 if let Some(pred_mut) = mir_func.get_block_mut(&pred)
-                    && let Some(last) = pred_mut.instructions.last_mut()
+                    && let Some(last) = pred_mut.instructions.last_mut().map(|i| &mut i.instr)
                     && let Instruction::Br {
                         cond: _,
                         true_target: t,
@@ -104,7 +106,7 @@ pub fn insert_edge_moves(
             mir_func.add_block(tramp);
             if let Some(pred_mut) = mir_func.get_block_mut(&pred)
                 && let Some(Instruction::Switch { cases, default, .. }) =
-                    pred_mut.instructions.last_mut()
+                    pred_mut.instructions.last_mut().map(|i| &mut i.instr)
             {
                 if default == &succ {
                     *default = tramp_label.clone();
@@ -118,9 +120,10 @@ pub fn insert_edge_moves(
         if !handled && let Some(pred_bb) = mir_func.get_block_mut(&pred) {
             if !pred_bb.instructions.is_empty() {
                 let insert_pos = pred_bb.instructions.len().saturating_sub(1);
-                pred_bb
-                    .instructions
-                    .splice(insert_pos..insert_pos, moves.clone());
+                pred_bb.instructions.splice(
+                    insert_pos..insert_pos,
+                    moves.iter().cloned().map(Located::from),
+                );
             } else {
                 for m in &moves {
                     pred_bb.push(m.clone());

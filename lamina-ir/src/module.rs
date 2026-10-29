@@ -765,6 +765,7 @@ mod tests {
                         value: Some(Value::Variable("res")),
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let func = Function {

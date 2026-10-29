@@ -3,7 +3,7 @@ use crate::mir::{Function, Instruction, MirType, Operand, Register, VectorOp};
 pub(super) fn vector_slots(func: &Function) -> Vec<(VirtualReg, usize)> {
     let mut vectors = Vec::new();
     for inst in func.blocks.iter().flat_map(|b| &b.instructions) {
-        let (ty, dst, operands) = match inst {
+        let (ty, dst, operands) = match &inst.instr {
             Instruction::Load { ty, dst, .. } => (*ty, Some(dst), Vec::new()),
             Instruction::Store { ty, src, .. } => (*ty, None, vec![src]),
             Instruction::VectorOp {

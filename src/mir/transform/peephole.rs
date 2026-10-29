@@ -615,11 +615,11 @@ mod tests {
         // A second run must find nothing left to fold.
         assert!(!pass.run_on_function(&mut func));
         assert!(matches!(
-            func.blocks[0].instructions[0],
+            &func.blocks[0].instructions[0].instr,
             Instruction::Copy {
                 src: Operand::Immediate(Immediate::F64(value)),
                 ..
-            } if value == 4.0
+            } if *value == 4.0
         ));
     }
 
@@ -677,7 +677,7 @@ mod tests {
         assert!(changed);
 
         let bb = &func.blocks[0];
-        match &bb.instructions[0] {
+        match &bb.instructions[0].instr {
             Instruction::Copy { ty, src, .. } => {
                 assert_eq!(*ty, MirType::Scalar(ScalarType::I1));
                 assert_eq!(src, &Operand::Immediate(Immediate::I8(1)));
@@ -720,7 +720,7 @@ mod tests {
         }
 
         // LHS should be register now
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::IntBinary { lhs, rhs, .. } => {
                 assert!(matches!(lhs, Operand::Register(_)));
                 assert!(matches!(rhs, Operand::Immediate(_)));
@@ -748,7 +748,7 @@ mod tests {
 
         // Should NOT fold division by zero
         assert!(!changed);
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::IntBinary { op, rhs, .. } => {
                 assert_eq!(*op, IntBinOp::SDiv);
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
@@ -796,7 +796,7 @@ mod tests {
 
         assert!(changed);
         assert!(matches!(
-            &func.blocks[0].instructions[0],
+            &func.blocks[0].instructions[0].instr,
             Instruction::Copy {
                 src: Operand::Immediate(Immediate::I64(i64::MIN)),
                 ..
@@ -822,7 +822,7 @@ mod tests {
         let changed = pass.run_on_function(&mut func);
 
         assert!(changed);
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::Copy { src, .. } => {
                 assert_eq!(src, &Operand::Immediate(Immediate::I64(0)));
             }
@@ -849,7 +849,7 @@ mod tests {
         let changed = pass.run_on_function(&mut func);
 
         assert!(changed);
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::Copy { src, .. } => {
                 assert_eq!(src, &Operand::Immediate(Immediate::I64(0)));
             }
@@ -875,7 +875,7 @@ mod tests {
         let changed = pass.run_on_function(&mut func);
 
         assert!(changed);
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::Copy { src, .. } => {
                 assert_eq!(src, &Operand::Immediate(Immediate::I64(0)));
             }
@@ -901,7 +901,7 @@ mod tests {
 
         assert!(changed);
         assert!(matches!(
-            &func.blocks[0].instructions[0],
+            &func.blocks[0].instructions[0].instr,
             Instruction::Copy {
                 src: Operand::Immediate(Immediate::I64(1)),
                 ..
@@ -950,7 +950,7 @@ mod tests {
         assert!(changed);
 
         // Should fold to 1 (true)
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::Copy { src, .. } => {
                 assert_eq!(src, &Operand::Immediate(Immediate::I8(1)));
             }
@@ -976,7 +976,7 @@ mod tests {
         let changed = pass.run_on_function(&mut func);
         assert!(changed);
 
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::Copy { src, .. } => {
                 assert_eq!(src, &Operand::Immediate(Immediate::I8(1))); // true
             }

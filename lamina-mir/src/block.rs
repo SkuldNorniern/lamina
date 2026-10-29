@@ -4,6 +4,7 @@
 //! a single exit point (terminator instruction). Basic blocks are the fundamental
 //! unit of control flow in LUMIR.
 use crate::instruction::Instruction;
+use crate::loc::{Located, SourceLoc};
 use std::fmt;
 
 /// Block in LUMIR
@@ -13,7 +14,7 @@ pub struct Block {
     pub label: String,
 
     /// Instructions in this block
-    pub instructions: Vec<Instruction>,
+    pub instructions: Vec<Located>,
 }
 
 impl fmt::Display for Block {
@@ -42,13 +43,18 @@ impl Block {
     }
 
     /// Add an instruction to this block
-    pub fn push(&mut self, instr: Instruction) {
-        self.instructions.push(instr);
+    pub fn push(&mut self, instr: impl Into<Located>) {
+        self.instructions.push(instr.into());
+    }
+
+    /// Append an instruction that came from `loc` in the source.
+    pub fn push_at(&mut self, instr: Instruction, loc: Option<SourceLoc>) {
+        self.instructions.push(Located::at(instr, loc));
     }
 
     /// Get the terminator instruction (last instruction)
     pub fn terminator(&self) -> Option<&Instruction> {
-        self.instructions.last()
+        self.instructions.last().map(|i| &i.instr)
     }
 
     /// Check if this block has a terminator
@@ -57,7 +63,7 @@ impl Block {
     }
 
     /// Get all non-terminator instructions
-    pub fn body(&self) -> &[Instruction] {
+    pub fn body(&self) -> &[Located] {
         if self.has_terminator() {
             &self.instructions[..self.instructions.len() - 1]
         } else {

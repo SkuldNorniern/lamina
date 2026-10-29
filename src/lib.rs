@@ -655,15 +655,6 @@ pub fn compile_module_to_object_with_options(
     let text = String::from_utf8(text).map_err(|e| {
         LaminaError::ValidationError(format!("generated assembly is not UTF-8: {e}"))
     })?;
-    if text
-        .lines()
-        .any(|line| line.trim_start().starts_with(".loc "))
-    {
-        return Err(LaminaError::ValidationError(
-            "ras does not implement the .loc directive; disable emit_asm_debug_lines".to_string(),
-        ));
-    }
-
     let mut assembler = Ras::with_object_write_options(
         target.architecture,
         target.operating_system,

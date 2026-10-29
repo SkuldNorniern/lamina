@@ -21,6 +21,7 @@ pub mod block;
 pub mod function;
 pub mod gpu;
 pub mod instruction;
+pub mod loc;
 pub mod module;
 pub mod parallel;
 pub mod register;
@@ -42,6 +43,7 @@ pub use instruction::{
     IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,
 };
 pub use instruction::{AsmOperand, AtomicBinOp, MemoryOrdering, io_intrinsic_result_type};
+pub use loc::{Located, SourceLoc};
 pub use module::{Global, Module, ModuleBuilder, RelocationModel};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 #[cfg(feature = "nightly")]

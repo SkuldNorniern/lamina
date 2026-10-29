@@ -51,7 +51,8 @@ mod native {
             let ir = parse_module(&source)?;
             let mir = from_ir(&ir, "aggregate").map_err(|error| error.to_string())?;
             let function = &mir.functions["main"];
-            let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[0] else {
+            let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[0].instr
+            else {
                 panic!("expected stack storage");
             };
             let size = [16, 24, 24, 24, 24, 48, 48][case];

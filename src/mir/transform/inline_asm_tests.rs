@@ -73,7 +73,7 @@ fn load_is_not_forwarded_across_inline_asm() {
 
     apply_pass(&MemoryOptimization, &mut func);
     assert!(matches!(
-        func.blocks[0].instructions[2],
+        &func.blocks[0].instructions[2].instr,
         Instruction::Load { .. }
     ));
 }
@@ -101,7 +101,7 @@ fn asm_with_result_is_not_hoisted_out_of_a_loop() {
     let changed = LoopInvariantCodeMotion.apply(&mut func).expect("licm");
     assert!(!changed);
     assert!(matches!(
-        func.get_block("loop").unwrap().instructions[0],
+        func.get_block("loop").unwrap().instructions[0].instr,
         Instruction::InlineAsm { .. }
     ));
 }
@@ -120,7 +120,7 @@ fn asm_with_unused_result_is_not_deleted() {
 
     apply_pass(&DeadCodeElimination, &mut func);
     assert!(matches!(
-        func.blocks[0].instructions[0],
+        &func.blocks[0].instructions[0].instr,
         Instruction::InlineAsm { .. }
     ));
 }
@@ -161,7 +161,7 @@ fn asm_keeps_its_position_relative_to_independent_loads() {
     let instructions = &func.blocks[0].instructions;
     let asm_index = instructions
         .iter()
-        .position(|inst| matches!(inst, Instruction::InlineAsm { .. }))
+        .position(|inst| matches!(&inst.instr, Instruction::InlineAsm { .. }))
         .expect("asm stays in the block");
     assert_eq!(asm_index, 1);
 }
@@ -186,7 +186,7 @@ fn copy_propagation_rewrites_inline_asm_inputs() {
         .build();
 
     assert!(apply_pass(&CopyPropagation, &mut func));
-    match &func.blocks[0].instructions[1] {
+    match &func.blocks[0].instructions[1].instr {
         Instruction::InlineAsm { operands, .. } => {
             assert!(matches!(
                 &operands[0],

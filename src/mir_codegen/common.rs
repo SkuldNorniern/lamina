@@ -1,5 +1,6 @@
 //! Common code for MIR codegen backends.
 
+use lamina_mir::SourceLoc;
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt::{Debug, Display},
@@ -61,7 +62,7 @@ pub(super) fn assign_stack_slots_where(
             if let Some(Register::Virtual(vreg)) = inst.def_reg() {
                 def_regs.insert(*vreg);
             }
-            if let Instruction::StackAddr { slot, .. } = inst {
+            if let Instruction::StackAddr { slot, .. } = &inst.instr {
                 used_regs.insert(*slot);
             }
             for reg in inst.use_regs() {
@@ -533,6 +534,21 @@ pub fn emit_debug_file<W: Write>(
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('"', "'");
         writeln!(writer, "    .file 1 \"{tag}\"")?;
+    }
+    Ok(())
+}
+
+/// Emit the `.loc` row for an instruction that came from `loc`. An instruction a
+/// pass synthesized has no position and gets no row.
+pub fn emit_source_loc<W: Write>(
+    writer: &mut W,
+    settings: &MirCodegenSettings,
+    loc: Option<SourceLoc>,
+) -> Result<(), LaminaError> {
+    if settings.emit_asm_debug_lines
+        && let Some(loc) = loc
+    {
+        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
     }
     Ok(())
 }
@@ -1163,7 +1179,7 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
     };
     let mut affinities = HashSet::new();
     for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
-        match inst {
+        match &inst.instr {
             Instruction::Copy {
                 dst,
                 src: Operand::Register(src),
@@ -1205,7 +1221,7 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
         for (offset, inst) in block.instructions.iter().enumerate().rev() {
             let dst = inst.def_reg().and_then(virtual_reg);
             if let Some((dst, src)) = dying_input(inst)
-                && !(matches!(inst, Instruction::IntBinary { .. })
+                && !(matches!(&inst.instr, Instruction::IntBinary { .. })
                     && !affinities.contains(&(dst, src)))
                 && !live.contains(&src)
                 && definitions.get(&dst) == Some(&1)
@@ -1407,14 +1423,17 @@ pub(super) fn rotate_loops(
             continue;
         }
         let instructions = &func.blocks[*header].instructions;
-        let [
+        let [cmp, br] = instructions.as_slice() else {
+            continue;
+        };
+        let (
             Instruction::IntCmp { dst, .. },
             Instruction::Br {
                 cond,
                 true_target,
                 false_target,
             },
-        ] = instructions.as_slice()
+        ) = (&cmp.instr, &br.instr)
         else {
             continue;
         };
@@ -1423,7 +1442,7 @@ pub(super) fn rotate_loops(
                 .blocks
                 .iter()
                 .flat_map(|block| &block.instructions)
-                .flat_map(Instruction::use_regs)
+                .flat_map(|i| i.use_regs())
                 .filter(|reg| *reg == dst)
                 .count()
                 != 1
@@ -1580,7 +1599,7 @@ pub(super) fn branch_comparisons(
                 .instructions
                 .windows(2)
                 .enumerate()
-                .filter_map(move |(i, pair)| match (&pair[0], &pair[1]) {
+                .filter_map(move |(i, pair)| match (&pair[0].instr, &pair[1].instr) {
                     (
                         Instruction::IntCmp {
                             dst: Register::Virtual(dst),
@@ -2028,7 +2047,7 @@ entry:
                 TargetOperatingSystem::Linux,
             ),
             (
-                "ppc64",
+                "ppc64le",
                 generate_mir_ppc64::<Vec<u8>>,
                 TargetOperatingSystem::Linux,
             ),

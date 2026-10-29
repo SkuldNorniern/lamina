@@ -1,6 +1,8 @@
 use super::variadic::SAVE_AREA_SLOTS;
 use super::*;
+use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::{align_up, unsupported_io};
+use lamina_mir::SourceLoc;
 use lamina_platform::PointerWidth;
 
 /// Frame slots are laid out as the stack slots, then the callee-saved registers, then
@@ -750,7 +752,7 @@ pub(super) fn emit_instruction_x86_64(
     target_os: TargetOperatingSystem,
     func_name: &str,
     settings: &MirCodegenSettings,
-    debug_line: &mut u32,
+    loc: Option<SourceLoc>,
     abi_extensions: &AbiExtensions,
     next_label: &str,
     self_param_homes: &[Option<String>],
@@ -761,9 +763,11 @@ pub(super) fn emit_instruction_x86_64(
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let unwind = os_uses_elf(target_os);
-    if settings.emit_asm_debug_lines {
-        *debug_line = debug_line.saturating_add(1);
-        writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+    // An elided fall-through jump writes no bytes, so a row for it would land on the
+    // next block's first instruction.
+    let elided = matches!(inst, MirInst::Jmp { target } if target == next_label);
+    if !elided {
+        emit_source_loc(writer, settings, loc)?;
     }
     if let MirInst::IntConvert {
         from,
@@ -2056,7 +2060,7 @@ pub(super) fn emit_instruction_x86_64(
                     target_os,
                     func_name,
                     settings,
-                    debug_line,
+                    None,
                     abi_extensions,
                     next_label,
                     self_param_homes,

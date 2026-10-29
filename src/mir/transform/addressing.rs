@@ -12,6 +12,7 @@ use crate::mir::{
     instruction::Immediate,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_mir::Located;
 
 /// Canonicalizes address formation patterns into BaseIndexScale addressing.
 #[derive(Default)]
@@ -45,7 +46,7 @@ impl AddressingCanonicalization {
 
         for block in &mut func.blocks {
             for i in 0..block.instructions.len() {
-                let new_addr_mode = match &block.instructions[i] {
+                let new_addr_mode = match &block.instructions[i].instr {
                     Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
                         canonical_address(addr, i, &block.instructions)
                     }
@@ -53,7 +54,7 @@ impl AddressingCanonicalization {
                 };
 
                 if let Some(new_mode) = new_addr_mode {
-                    match &mut block.instructions[i] {
+                    match &mut block.instructions[i].instr {
                         Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
                             *addr = new_mode;
                             changed = true;
@@ -73,7 +74,7 @@ impl AddressingCanonicalization {
 fn canonical_address(
     addr: &AddressMode,
     at: usize,
-    instructions: &[Instruction],
+    instructions: &[Located],
 ) -> Option<AddressMode> {
     let AddressMode::BaseOffset {
         base,
@@ -90,7 +91,7 @@ fn canonical_address(
         lhs,
         rhs,
         ..
-    } = &instructions[formed]
+    } = &instructions[formed].instr
     else {
         return None;
     };
@@ -122,12 +123,12 @@ fn canonical_address(
 /// The register's value is `1 << shift` or `multiplier` times `index`, as set by the
 /// definition at the returned position, which is the last one before `before`.
 fn scaled_index(
-    instructions: &[Instruction],
+    instructions: &[Located],
     reg: &Register,
     before: usize,
 ) -> Option<(usize, Register, u8)> {
     let at = last_definition(instructions, reg, before)?;
-    let (index, scale) = match &instructions[at] {
+    let (index, scale) = match &instructions[at].instr {
         Instruction::IntBinary {
             op: IntBinOp::Shl,
             lhs: Operand::Register(index),
@@ -145,13 +146,13 @@ fn scaled_index(
     Some((at, index.clone(), scale))
 }
 
-fn last_definition(instructions: &[Instruction], reg: &Register, before: usize) -> Option<usize> {
+fn last_definition(instructions: &[Located], reg: &Register, before: usize) -> Option<usize> {
     (0..before)
         .rev()
         .find(|&i| instructions[i].def_reg() == Some(reg))
 }
 
-fn redefined_between(instructions: &[Instruction], reg: &Register, from: usize, to: usize) -> bool {
+fn redefined_between(instructions: &[Located], reg: &Register, from: usize, to: usize) -> bool {
     instructions[from..to]
         .iter()
         .any(|instruction| instruction.def_reg() == Some(reg))
@@ -277,7 +278,7 @@ mod tests {
 
         // Verify the addressing mode was changed to BaseIndexScale
         let entry = get_block(&func, "entry");
-        match &entry.instructions[2] {
+        match &entry.instructions[2].instr {
             Instruction::Load { addr, .. } => {
                 assert!(
                     matches!(addr, AddressMode::BaseIndexScale { scale: 8, .. }),
@@ -335,7 +336,7 @@ mod tests {
         assert!(changed);
 
         let entry = get_block(&func, "entry");
-        match &entry.instructions[2] {
+        match &entry.instructions[2].instr {
             Instruction::Load { addr, .. } => {
                 assert!(
                     matches!(addr, AddressMode::BaseIndexScale { scale: 4, .. }),
@@ -471,7 +472,7 @@ mod tests {
         assert!(changed);
 
         let entry = get_block(&func, "entry");
-        match &entry.instructions[2] {
+        match &entry.instructions[2].instr {
             Instruction::Store { addr, .. } => {
                 assert!(
                     matches!(addr, AddressMode::BaseIndexScale { scale: 4, .. }),
@@ -496,7 +497,7 @@ mod tests {
         for i in 0..100u32 {
             func.blocks[0].instructions.insert(
                 0,
-                Instruction::Load {
+                Located::from(Instruction::Load {
                     ty: MirType::Scalar(ScalarType::I64),
                     dst: VirtualReg::gpr(i + 10).into(),
                     addr: AddressMode::BaseOffset {
@@ -505,12 +506,14 @@ mod tests {
                         address_space: Default::default(),
                     },
                     attrs: MemoryAttrs::default(),
-                },
+                }),
             );
         }
-        func.blocks[0].instructions.push(Instruction::Ret {
-            value: Some(Operand::Immediate(Immediate::I64(0))),
-        });
+        func.blocks[0]
+            .instructions
+            .push(Located::from(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            }));
 
         let pass = AddressingCanonicalization;
         let result = pass.apply(&mut func);
@@ -530,8 +533,12 @@ mod tests {
             .returns(i64_ty)
             .block("entry")
             .build();
-        func.blocks[0].instructions.extend(instructions_before);
-        func.blocks[0].instructions.extend(instructions_after);
+        func.blocks[0]
+            .instructions
+            .extend(instructions_before.into_iter().map(Located::from));
+        func.blocks[0]
+            .instructions
+            .extend(instructions_after.into_iter().map(Located::from));
         func
     }
 
@@ -594,7 +601,7 @@ mod tests {
         let entry = get_block(&func, "entry");
         assert!(
             matches!(
-                entry.instructions[4],
+                &entry.instructions[4].instr,
                 Instruction::Load {
                     addr: AddressMode::BaseOffset { .. },
                     ..
@@ -643,7 +650,7 @@ mod tests {
         let entry = get_block(&func, "entry");
         assert!(
             matches!(
-                entry.instructions[0],
+                &entry.instructions[0].instr,
                 Instruction::Load {
                     addr: AddressMode::BaseOffset { .. },
                     ..

@@ -487,11 +487,9 @@ fn type_layout(ty: &Type<'_>, pointer: PointerWidth) -> Option<(u64, u64)> {
             let (element_size, alignment) = type_layout(element_type, pointer)?;
             Some((element_size.checked_mul(*size)?, alignment))
         }
-        Type::Struct { fields, packed } => aggregate_layout(
-            fields.iter().map(|field| &field.ty),
-            *packed,
-            pointer,
-        ),
+        Type::Struct { fields, packed } => {
+            aggregate_layout(fields.iter().map(|field| &field.ty), *packed, pointer)
+        }
         Type::VaList => match pointer {
             PointerWidth::Bits64 => Some((24, 8)),
             PointerWidth::Bits32 => Some((4, 4)),
@@ -619,9 +617,18 @@ mod tests {
 
     #[test]
     fn pointer_fields_take_the_width_of_the_target() {
-        assert_eq!(sizeof_primitive(PrimitiveType::Ptr, PointerWidth::Bits32), 4);
-        assert_eq!(align_of_primitive(PrimitiveType::Ptr, PointerWidth::Bits32), 4);
-        assert_eq!(sizeof_primitive(PrimitiveType::Ptr, PointerWidth::Bits64), 8);
+        assert_eq!(
+            sizeof_primitive(PrimitiveType::Ptr, PointerWidth::Bits32),
+            4
+        );
+        assert_eq!(
+            align_of_primitive(PrimitiveType::Ptr, PointerWidth::Bits32),
+            4
+        );
+        assert_eq!(
+            sizeof_primitive(PrimitiveType::Ptr, PointerWidth::Bits64),
+            8
+        );
         let pointer_and_byte = Type::Struct {
             fields: vec![
                 StructField {
@@ -635,9 +642,15 @@ mod tests {
             ],
             packed: false,
         };
-        assert_eq!(sizeof_type(&pointer_and_byte, PointerWidth::Bits32), Some(8));
+        assert_eq!(
+            sizeof_type(&pointer_and_byte, PointerWidth::Bits32),
+            Some(8)
+        );
         assert_eq!(align_of_type(&pointer_and_byte, PointerWidth::Bits32), 4);
-        assert_eq!(sizeof_type(&pointer_and_byte, PointerWidth::Bits64), Some(16));
+        assert_eq!(
+            sizeof_type(&pointer_and_byte, PointerWidth::Bits64),
+            Some(16)
+        );
         assert_eq!(
             struct_field_byte_offset(
                 match &pointer_and_byte {
@@ -664,8 +677,14 @@ mod tests {
                 ty: Type::Primitive(PrimitiveType::I32),
             },
         ];
-        assert_eq!(struct_field_byte_offset(&byte_word, false, 1, PointerWidth::Bits64), Some(4));
-        assert_eq!(struct_field_byte_offset(&byte_word, true, 1, PointerWidth::Bits64), Some(1));
+        assert_eq!(
+            struct_field_byte_offset(&byte_word, false, 1, PointerWidth::Bits64),
+            Some(4)
+        );
+        assert_eq!(
+            struct_field_byte_offset(&byte_word, true, 1, PointerWidth::Bits64),
+            Some(1)
+        );
         let packed = Type::Struct {
             fields: byte_word.to_vec(),
             packed: true,
@@ -707,15 +726,24 @@ mod tests {
                 ty: packed_tail,
             },
         ];
-        assert_eq!(struct_field_byte_offset(&outer, false, 1, PointerWidth::Bits64), Some(1));
         assert_eq!(
-            sizeof_type(&Type::Struct {
-                fields: outer.to_vec(),
-                packed: false,
-            }, PointerWidth::Bits64),
+            struct_field_byte_offset(&outer, false, 1, PointerWidth::Bits64),
+            Some(1)
+        );
+        assert_eq!(
+            sizeof_type(
+                &Type::Struct {
+                    fields: outer.to_vec(),
+                    packed: false,
+                },
+                PointerWidth::Bits64
+            ),
             Some(10)
         );
-        assert_eq!(struct_field_byte_offset(&outer, false, 2, PointerWidth::Bits64), None);
+        assert_eq!(
+            struct_field_byte_offset(&outer, false, 2, PointerWidth::Bits64),
+            None
+        );
     }
 
     #[test]

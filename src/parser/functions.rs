@@ -344,6 +344,7 @@ pub fn parse_basic_block<'a>(
     state.expect_char(':')?;
 
     let mut instructions = Vec::new();
+    let mut instruction_locs = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
         if state.at_block_label() {
@@ -354,9 +355,11 @@ pub fn parse_basic_block<'a>(
             break;
         }
 
+        let loc = state.source_loc();
         let instruction = parse_instruction(state)?;
         let is_terminator = instruction.is_terminator();
         instructions.push(instruction);
+        instruction_locs.push(loc);
 
         if is_terminator {
             state.skip_whitespace_and_comments();
@@ -375,7 +378,13 @@ pub fn parse_basic_block<'a>(
         )));
     }
 
-    Ok((label, BasicBlock { instructions }))
+    Ok((
+        label,
+        BasicBlock {
+            instructions,
+            instruction_locs,
+        },
+    ))
 }
 
 #[cfg(test)]

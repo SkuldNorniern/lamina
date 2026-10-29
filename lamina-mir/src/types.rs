@@ -64,6 +64,18 @@ impl Aggregate {
     pub fn words(&self) -> usize {
         self.size.div_ceil(8)
     }
+
+    /// Register-sized words the aggregate occupies on a target of this pointer width.
+    /// A 32-bit target holds twice as many of them as [`Aggregate::words`] counts.
+    pub fn words_of(&self, pointer: PointerWidth) -> usize {
+        self.size.div_ceil(pointer.bytes())
+    }
+
+    /// The largest aggregate a target of this pointer width passes in registers:
+    /// two words, as every ABI in the table classifies it.
+    pub fn max_in_registers(pointer: PointerWidth) -> u64 {
+        2 * pointer.bytes() as u64
+    }
 }
 
 /// A value that fits in one register. `I1` is a one-bit boolean, which the backends

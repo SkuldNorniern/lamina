@@ -307,7 +307,11 @@ mod tests {
     #[test]
     fn test_module_add_global() {
         let mut module = Module::new("test");
-        let global = Global::new("my_global", MirType::Scalar(ScalarType::I32), PointerWidth::Bits64);
+        let global = Global::new(
+            "my_global",
+            MirType::Scalar(ScalarType::I32),
+            PointerWidth::Bits64,
+        );
 
         module.add_global(global);
         assert_eq!(module.globals.len(), 1);
@@ -317,7 +321,11 @@ mod tests {
     #[test]
     fn test_module_builder() {
         let func = Function::new(Signature::new("main"));
-        let global = Global::new("counter", MirType::Scalar(ScalarType::I64), PointerWidth::Bits64);
+        let global = Global::new(
+            "counter",
+            MirType::Scalar(ScalarType::I64),
+            PointerWidth::Bits64,
+        );
 
         let module = ModuleBuilder::new("my_module")
             .function(func)

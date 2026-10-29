@@ -126,7 +126,7 @@ fn analyse_module(module: &MirModule, config: &SandboxConfig) -> Vec<String> {
     for (func_name, func) in &module.functions {
         for block in &func.blocks {
             for inst in &block.instructions {
-                let callee = match inst {
+                let callee = match &inst.instr {
                     Instruction::Call { name, .. } => Some(name.as_str()),
                     Instruction::TailCall { name, .. } => Some(name.as_str()),
                     _ => None,

@@ -318,7 +318,7 @@ mod tests {
         assert!(changed);
 
         // Check the result: (u64::MAX - 1) / 2 = 0x7FFFFFFFFFFFFFFE
-        match &func.blocks[0].instructions[0] {
+        match &func.blocks[0].instructions[0].instr {
             Instruction::Copy { src, .. } => {
                 let expected = ((-2i64 as u64) / 2) as i64;
                 assert_eq!(src, &Operand::Immediate(Immediate::I64(expected)));
@@ -345,7 +345,7 @@ mod tests {
             func
         };
 
-        let extract = |func: &Function| match &func.blocks[0].instructions[0] {
+        let extract = |func: &Function| match &func.blocks[0].instructions[0].instr {
             Instruction::Copy {
                 src: Operand::Immediate(Immediate::I64(v)),
                 ..
@@ -396,7 +396,7 @@ mod tests {
             func
         };
 
-        let extract = |func: &Function| match &func.blocks[0].instructions[0] {
+        let extract = |func: &Function| match &func.blocks[0].instructions[0].instr {
             Instruction::Copy {
                 src: Operand::Immediate(Immediate::F64(v)),
                 ..
@@ -434,7 +434,7 @@ mod tests {
             func
         };
 
-        let extract = |func: &Function| match &func.blocks[0].instructions[0] {
+        let extract = |func: &Function| match &func.blocks[0].instructions[0].instr {
             Instruction::Copy {
                 src: Operand::Immediate(Immediate::I8(v)),
                 ..

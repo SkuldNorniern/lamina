@@ -4,6 +4,7 @@ use crate::mir::RelocationModel;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::argument_types;
 use crate::mir_codegen::common::claim_stack_slot;
+use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::io_codegen_error;
 use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::{ClobberIndex, FunctionEmissionPlan};
@@ -82,7 +83,7 @@ pub(super) fn layout_global_stack_slots(
         })
         .collect();
     for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
-        if let MirInst::StackAddr { slot, .. } = inst {
+        if let MirInst::StackAddr { slot, .. } = &inst.instr {
             address_taken.insert(*slot);
         }
     }
@@ -151,7 +152,7 @@ pub(super) fn compile_single_function_x86_64(
     // A self tail call lowers to a jump back past the prologue, so it neither needs a
     // frame nor clobbers anything a real call would.
     let is_leaf = !func.blocks.iter().any(|b| {
-        b.instructions.iter().any(|i| match i {
+        b.instructions.iter().any(|i| match &i.instr {
             MirInst::Call { .. } => true,
             MirInst::TailCall { name, .. } => name != func_name,
             _ => false,
@@ -186,7 +187,7 @@ pub(super) fn compile_single_function_x86_64(
             .blocks
             .iter()
             .flat_map(|block| &block.instructions)
-            .filter_map(|inst| match inst {
+            .filter_map(|inst| match &inst.instr {
                 MirInst::StackAddr { slot, .. } => Some(*slot),
                 _ => None,
             })
@@ -473,7 +474,6 @@ pub(super) fn compile_single_function_x86_64(
 
     let loop_headers = &plan.aligned_headers;
 
-    let mut debug_line: u32 = 0;
     for (slot, &block_index) in layout.iter().enumerate() {
         let block = &func.blocks[block_index];
         let next_label = layout
@@ -499,6 +499,8 @@ pub(super) fn compile_single_function_x86_64(
                 |offset| flag_producers.contains(&(block_index, position + offset)),
                 func.pointer_width,
             ) {
+                emit_source_loc(&mut output, settings, inst.loc)
+                    .map_err(lamina_to_codegen_error)?;
                 writeln!(output, "    leaq {address}, %{dst}")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 skip = length - 1;
@@ -510,16 +512,18 @@ pub(super) fn compile_single_function_x86_64(
                 lhs,
                 rhs,
                 ty,
-            } = inst
+            } = &inst.instr
                 && let Register::Virtual(cmp_dst) = dst
                 && let Some(MirInst::Br {
                     cond: Register::Virtual(cond),
                     true_target,
                     false_target,
-                }) = block.instructions.get(position + 1)
+                }) = block.instructions.get(position + 1).map(|i| &i.instr)
                 && cond == cmp_dst
                 && flag_producers.contains(&(block_index, position))
             {
+                emit_source_loc(&mut output, settings, inst.loc)
+                    .map_err(lamina_to_codegen_error)?;
                 let scratch = emit_int_compare(
                     op,
                     ty,
@@ -570,7 +574,7 @@ pub(super) fn compile_single_function_x86_64(
                 target_os,
                 func_name,
                 settings,
-                &mut debug_line,
+                inst.loc,
                 abi_extensions,
                 next_label,
                 &self_param_homes,
@@ -624,11 +628,11 @@ fn ensure_naked_body(
     let Some((last, body)) = block.instructions.split_last() else {
         return Err(refuse("has an empty body"));
     };
-    if !matches!(last, MirInst::Unreachable) {
+    if !matches!(&last.instr, MirInst::Unreachable) {
         return Err(refuse("must end in unreachable"));
     }
     for inst in body {
-        match inst {
+        match &inst.instr {
             MirInst::InlineAsm {
                 operands,
                 result: None,

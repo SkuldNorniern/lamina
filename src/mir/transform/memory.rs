@@ -1,10 +1,29 @@
 //! Memory optimization transforms for MIR.
 
 use crate::mir::{
-    AddressMode, AddressSpace, Function, Instruction, MirType, Operand, Register,
-    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+    AddressMode, Function, Instruction, MirType, Operand, Register,
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel,
+        alias::{Access, AliasResult, alias, scan_block},
+    },
 };
-use std::collections::HashMap;
+
+const MAX_CACHED: usize = 64;
+
+struct Cached<V> {
+    base: Register,
+    access: Access,
+    ty: MirType,
+    value: V,
+}
+
+fn same_range<V>(entry: &Cached<V>, ty: MirType, access: &Access) -> bool {
+    entry.ty == ty && alias(&entry.access, access) == AliasResult::SameRange
+}
+
+fn may_overlap<V>(entries: &mut Vec<Cached<V>>, access: &Access) {
+    entries.retain(|entry| alias(&entry.access, access) == AliasResult::NoAlias);
+}
 
 /// Memory optimization transform performing redundant load elimination.
 #[derive(Default)]
@@ -44,100 +63,115 @@ impl MemoryOptimization {
     }
 
     /// Redundant load elimination and store-to-load forwarding within basic blocks.
+    ///
+    /// A store only drops the remembered entries it may overlap, so entries for
+    /// disjoint bytes survive it. Calls, atomics, volatile and unknown accesses drop
+    /// everything.
     fn forward_redundant_loads(&self, func: &mut Function) -> bool {
         let mut changed = false;
+        let Function {
+            blocks,
+            stack_reservations,
+            ..
+        } = func;
 
-        for block in &mut func.blocks {
-            let mut last_store: HashMap<(Register, i16, AddressSpace, MirType), Operand> =
-                HashMap::new();
-            let mut last_load: HashMap<(Register, i16, AddressSpace, MirType), Register> =
-                HashMap::new();
+        for block in blocks.iter_mut() {
+            let accesses = scan_block(block, stack_reservations);
+            let mut stores: Vec<Cached<Operand>> = Vec::new();
+            let mut loads: Vec<Cached<Register>> = Vec::new();
 
-            for inst in &mut block.instructions {
-                // What the maps hold is only good while the registers it names still
+            for (inst, access) in block.instructions.iter_mut().zip(accesses) {
+                // What the caches hold is only good while the registers they name still
                 // hold the same values, so a definition drops every entry naming it.
-                if let Some(defined) = inst.def_reg() {
-                    last_store.retain(|(base, ..), stored| {
-                        base != defined
-                            && !matches!(stored, Operand::Register(reg) if reg == defined)
+                if let Some(defined) = inst.def_reg().cloned() {
+                    stores.retain(|entry| {
+                        entry.base != defined
+                            && !matches!(&entry.value, Operand::Register(reg) if *reg == defined)
                     });
-                    last_load.retain(|(base, ..), loaded| base != defined && loaded != defined);
+                    loads.retain(|entry| entry.base != defined && entry.value != defined);
                 }
 
                 let mut replacement: Option<Instruction> = None;
-                match &*inst {
+                match &inst.instr {
                     Instruction::Store {
                         ty,
                         src,
-                        addr,
+                        addr: AddressMode::BaseOffset { base, .. },
                         attrs,
-                    } => match addr {
-                        AddressMode::BaseOffset {
-                            base,
-                            offset,
-                            address_space,
-                        } if !attrs.volatile => {
-                            last_store.clear();
-                            last_store
-                                .insert((base.clone(), *offset, *address_space, *ty), src.clone());
-                            last_load.clear();
+                    } if !attrs.volatile => match access {
+                        Some(access) if access.base_known() => {
+                            may_overlap(&mut stores, &access);
+                            may_overlap(&mut loads, &access);
+                            stores.push(Cached {
+                                base: base.clone(),
+                                access,
+                                ty: *ty,
+                                value: src.clone(),
+                            });
+                            if stores.len() + loads.len() > MAX_CACHED {
+                                stores.clear();
+                                loads.clear();
+                            }
                         }
                         _ => {
-                            last_store.clear();
-                            last_load.clear();
+                            stores.clear();
+                            loads.clear();
                         }
                     },
                     Instruction::Load {
                         ty,
                         dst,
-                        addr,
+                        addr: AddressMode::BaseOffset { base, .. },
                         attrs,
-                    } => {
-                        // Skip volatile loads
-                        if attrs.volatile {
-                            last_store.clear();
-                            last_load.clear();
-                        } else if let AddressMode::BaseOffset {
-                            base,
-                            offset,
-                            address_space,
-                        } = addr
-                        {
-                            let key = (base.clone(), *offset, *address_space, *ty);
-                            if let Some(stored_val) = last_store.get(&key) {
-                                // store-to-load forwarding: replace load with a copy of stored_val
+                    } if !attrs.volatile => match access {
+                        Some(access) if access.base_known() => {
+                            let source = stores
+                                .iter()
+                                .find(|entry| same_range(entry, *ty, &access))
+                                .map(|entry| entry.value.clone())
+                                .or_else(|| {
+                                    loads
+                                        .iter()
+                                        .find(|entry| same_range(entry, *ty, &access))
+                                        .map(|entry| Operand::Register(entry.value.clone()))
+                                });
+                            if let Some(src) = source {
                                 replacement = Some(Instruction::Copy {
                                     ty: *ty,
                                     dst: dst.clone(),
-                                    src: stored_val.clone(),
+                                    src,
                                 });
-                                // record latest load destination
-                                last_load.insert(key, dst.clone());
-                            } else if let Some(prev_reg) = last_load.get(&key) {
-                                // Redundant load: reuse previous loaded register
-                                replacement = Some(Instruction::Copy {
-                                    ty: *ty,
-                                    dst: dst.clone(),
-                                    src: Operand::Register(prev_reg.clone()),
-                                });
-                                // record latest load destination
-                                last_load.insert(key, dst.clone());
-                            } else {
-                                // first load of this address
-                                last_load.insert(key, dst.clone());
                             }
-                        } else {
-                            // Unknown addressing, be conservative
-                            last_store.clear();
-                            last_load.clear();
+                            loads.retain(|entry| {
+                                entry.ty != *ty
+                                    || alias(&entry.access, &access) != AliasResult::SameRange
+                            });
+                            loads.push(Cached {
+                                base: base.clone(),
+                                access,
+                                ty: *ty,
+                                value: dst.clone(),
+                            });
+                            if stores.len() + loads.len() > MAX_CACHED {
+                                stores.clear();
+                                loads.clear();
+                            }
                         }
+                        _ => {
+                            stores.clear();
+                            loads.clear();
+                        }
+                    },
+                    Instruction::Store { .. } | Instruction::Load { .. } => {
+                        stores.clear();
+                        loads.clear();
                     }
                     Instruction::Call { .. }
                     | Instruction::CallIndirect { .. }
                     | Instruction::TailCall { .. } => {
                         // Calls may read/write memory; conservatively invalidate
-                        last_store.clear();
-                        last_load.clear();
+                        stores.clear();
+                        loads.clear();
                     }
                     Instruction::AtomicLoad { .. }
                     | Instruction::AtomicStore { .. }
@@ -149,14 +183,14 @@ impl MemoryOptimization {
                     | Instruction::VaCopy { .. }
                     | Instruction::InlineAsm { .. }
                     | Instruction::Fence { .. } => {
-                        last_store.clear();
-                        last_load.clear();
+                        stores.clear();
+                        loads.clear();
                     }
                     _ => {}
                 }
 
                 if let Some(new_inst) = replacement {
-                    *inst = new_inst;
+                    *inst = new_inst.into();
                     changed = true;
                 }
             }
@@ -230,7 +264,7 @@ mod tests {
         assert!(changed, "second load should have been replaced");
         let entry = func.get_block("entry").unwrap();
         let second = &entry.instructions[1];
-        assert!(matches!(second, Instruction::Copy { .. }));
+        assert!(matches!(&second.instr, Instruction::Copy { .. }));
     }
 
     #[test]
@@ -265,7 +299,10 @@ mod tests {
             "load after store to same address should be forwarded"
         );
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(&entry.instructions[1], Instruction::Copy { .. }));
+        assert!(matches!(
+            &entry.instructions[1].instr,
+            Instruction::Copy { .. }
+        ));
     }
 
     #[test]
@@ -299,7 +336,7 @@ mod tests {
                 .build();
             assert!(!apply_pass(&MemoryOptimization, &mut func));
             assert!(matches!(
-                func.blocks[0].instructions[2],
+                &func.blocks[0].instructions[2].instr,
                 Instruction::Load { .. }
             ));
         }
@@ -383,7 +420,7 @@ mod tests {
 
         assert!(!apply_pass(&MemoryOptimization, &mut func));
         assert!(matches!(
-            func.blocks[0].instructions[1],
+            &func.blocks[0].instructions[1].instr,
             Instruction::Load { .. }
         ));
     }
@@ -415,7 +452,7 @@ mod tests {
 
         assert!(!apply_pass(&MemoryOptimization, &mut func));
         assert!(matches!(
-            func.blocks[0].instructions[1],
+            &func.blocks[0].instructions[1].instr,
             Instruction::Load { .. }
         ));
     }
@@ -454,7 +491,10 @@ mod tests {
         let changed = apply_pass(&MemoryOptimization, &mut func);
         assert!(!changed, "call should have invalidated forwarding state");
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(&entry.instructions[2], Instruction::Load { .. }));
+        assert!(matches!(
+            &entry.instructions[2].instr,
+            Instruction::Load { .. }
+        ));
     }
 
     #[test]
@@ -492,7 +532,7 @@ mod tests {
 
         assert!(!apply_pass(&MemoryOptimization, &mut func));
         assert!(matches!(
-            func.blocks[0].instructions[2],
+            &func.blocks[0].instructions[2].instr,
             Instruction::Load { .. }
         ));
     }
@@ -528,8 +568,131 @@ mod tests {
 
         assert!(!apply_pass(&MemoryOptimization, &mut func));
         assert!(matches!(
-            func.blocks[0].instructions[2],
+            &func.blocks[0].instructions[2].instr,
             Instruction::Load { .. }
         ));
+    }
+
+    fn stack_addr(dst: u32, slot: u32) -> Instruction {
+        Instruction::StackAddr {
+            dst: VirtualReg::gpr(dst).into(),
+            slot: VirtualReg::gpr(100 + slot),
+        }
+    }
+
+    fn store_imm(base: u32, offset: i16, value: i64) -> Instruction {
+        Instruction::Store {
+            ty: i64(),
+            src: Operand::Immediate(Immediate::I64(value)),
+            addr: base_offset(VirtualReg::gpr(base).into(), offset),
+            attrs: non_volatile(),
+        }
+    }
+
+    fn load_into(dst: u32, base: u32, offset: i16) -> Instruction {
+        Instruction::Load {
+            ty: i64(),
+            dst: VirtualReg::gpr(dst).into(),
+            addr: base_offset(VirtualReg::gpr(base).into(), offset),
+            attrs: non_volatile(),
+        }
+    }
+
+    fn forwarded_block(instructions: Vec<Instruction>) -> Vec<Instruction> {
+        forwarded_block_with(instructions, &[])
+    }
+
+    fn forwarded_block_with(
+        instructions: Vec<Instruction>,
+        words: &[(u32, usize)],
+    ) -> Vec<Instruction> {
+        let mut func = FunctionBuilder::new("f").block("entry");
+        for inst in instructions {
+            func = func.instr(inst);
+        }
+        let mut func = func.build();
+        for &(slot, extra) in words {
+            func.stack_reservations
+                .insert(VirtualReg::gpr(100 + slot), extra);
+        }
+        apply_pass(&MemoryOptimization, &mut func);
+        func.blocks[0]
+            .instructions
+            .iter()
+            .map(|i| i.instr.clone())
+            .collect()
+    }
+
+    #[test]
+    fn store_to_disjoint_field_keeps_forwarding() {
+        let out = forwarded_block_with(
+            vec![
+                stack_addr(0, 0),
+                store_imm(0, 0, 7),
+                store_imm(0, 8, 8),
+                load_into(1, 0, 0),
+            ],
+            &[(0, 1)],
+        );
+        assert!(matches!(out[3], Instruction::Copy { .. }));
+    }
+
+    #[test]
+    fn store_to_another_slot_keeps_forwarding() {
+        let out = forwarded_block(vec![
+            stack_addr(0, 0),
+            stack_addr(1, 1),
+            store_imm(0, 0, 7),
+            store_imm(1, 0, 8),
+            load_into(2, 0, 0),
+        ]);
+        assert!(matches!(out[4], Instruction::Copy { .. }));
+    }
+
+    #[test]
+    fn overlapping_field_store_kills_forwarding() {
+        let out = forwarded_block(vec![
+            stack_addr(0, 0),
+            store_imm(0, 0, 7),
+            store_imm(0, 4, 8),
+            load_into(1, 0, 0),
+        ]);
+        assert!(matches!(out[3], Instruction::Load { .. }));
+    }
+
+    #[test]
+    fn store_through_unrelated_pointer_kills_forwarding() {
+        let out = forwarded_block(vec![
+            store_imm(0, 0, 7),
+            store_imm(1, 8, 8),
+            load_into(2, 0, 0),
+        ]);
+        assert!(matches!(out[2], Instruction::Load { .. }));
+    }
+
+    #[test]
+    fn redefined_stored_value_is_not_forwarded() {
+        let out = forwarded_block(vec![
+            stack_addr(0, 0),
+            Instruction::Copy {
+                ty: i64(),
+                dst: VirtualReg::gpr(5).into(),
+                src: Operand::Immediate(Immediate::I64(5)),
+            },
+            Instruction::Store {
+                ty: i64(),
+                src: Operand::Register(VirtualReg::gpr(5).into()),
+                addr: base_offset(VirtualReg::gpr(0).into(), 0),
+                attrs: non_volatile(),
+            },
+            Instruction::Copy {
+                ty: i64(),
+                dst: VirtualReg::gpr(5).into(),
+                src: Operand::Immediate(Immediate::I64(9)),
+            },
+            store_imm(0, 8, 1),
+            load_into(1, 0, 0),
+        ]);
+        assert!(matches!(out[5], Instruction::Load { .. }));
     }
 }

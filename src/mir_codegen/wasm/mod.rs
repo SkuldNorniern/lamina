@@ -507,7 +507,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         .values()
         .flat_map(|func| &func.blocks)
         .flat_map(|block| &block.instructions)
-        .filter_map(|inst| match inst {
+        .filter_map(|inst| match &inst.instr {
             MirInst::CallIndirect { args, ret_ty, .. } => Some((args.len(), ret_ty.is_some())),
             _ => None,
         })
@@ -518,7 +518,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         .flat_map(|func| &func.blocks)
         .flat_map(|block| &block.instructions)
         .any(|inst| {
-            matches!(inst, MirInst::SymbolAddress { symbol, .. }
+            matches!(&inst.instr, MirInst::SymbolAddress { symbol, .. }
                 if addresses.functions.contains_key(symbol))
         });
     for (arity, returns) in &indirect {
@@ -1028,7 +1028,7 @@ fn stack_frame_layout(func: &Function) -> StackFrame {
         .blocks
         .iter()
         .flat_map(|block| &block.instructions)
-        .filter_map(|inst| match inst {
+        .filter_map(|inst| match &inst.instr {
             MirInst::StackAddr { slot, .. } => Some(slot),
             _ => None,
         })

@@ -12,6 +12,7 @@ use crate::mir::{
     ScalarType, VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_mir::Located;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 
@@ -215,7 +216,7 @@ fn split(func: &mut Function) -> bool {
             for used in inst.use_regs() {
                 mentioned.insert(used.clone());
             }
-            if let Instruction::StackAddr { dst, slot } = inst {
+            if let Instruction::StackAddr { dst, slot } = &inst.instr {
                 stack_addrs.push((dst.clone(), *slot));
             }
         }
@@ -232,7 +233,7 @@ fn split(func: &mut Function) -> bool {
         let mut grew = false;
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let Instruction::Lea { dst, base, offset } = inst
+                if let Instruction::Lea { dst, base, offset } = &inst.instr
                     && !derived.contains_key(dst)
                     && let Some(&(slot, base_offset)) = derived.get(base)
                 {
@@ -376,9 +377,12 @@ fn rewrite_block(
     retarget: &impl Fn(AddressMode) -> AddressMode,
 ) {
     let instructions = mem::take(&mut block.instructions);
-    let mut rewritten = Vec::with_capacity(instructions.len());
+    let mut rewritten_blocks: Vec<Located> = Vec::with_capacity(instructions.len());
     for inst in instructions {
-        match inst {
+        let loc = inst.loc;
+        let mut pieces: Vec<Instruction> = Vec::new();
+        let rewritten = &mut pieces;
+        match inst.instr {
             Instruction::StackAddr { slot, .. } if split_slots.contains(&slot) => {
                 for (piece_slot, pointer) in pieces_by_slot.get(&slot).into_iter().flatten() {
                     rewritten.push(Instruction::StackAddr {
@@ -412,8 +416,9 @@ fn rewrite_block(
             }),
             other => rewritten.push(other),
         }
+        rewritten_blocks.extend(pieces.into_iter().map(|i| Located::at(i, loc)));
     }
-    block.instructions = rewritten;
+    block.instructions = rewritten_blocks;
 }
 
 #[cfg(test)]
@@ -519,7 +524,7 @@ mod tests {
         func.blocks
             .iter()
             .flat_map(|b| &b.instructions)
-            .filter_map(|i| match i {
+            .filter_map(|i| match &i.instr {
                 Instruction::StackAddr { slot, .. } => Some(*slot),
                 _ => None,
             })

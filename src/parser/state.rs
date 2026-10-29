@@ -2,7 +2,7 @@
 
 use crate::{
     Identifier, Label, LaminaError,
-    ir::{Literal, Type},
+    ir::{Literal, SourceLoc, Type},
 };
 
 /// A type written before a `call` argument, checked once the callee's signature is known.
@@ -548,6 +548,16 @@ impl<'a> ParserState<'a> {
         };
 
         LaminaError::ParsingError(error_msg)
+    }
+
+    /// The source position of the current parse position, for attaching to an
+    /// instruction as debug information.
+    pub fn source_loc(&self) -> Option<SourceLoc> {
+        let (line, column) = self.get_line_column();
+        SourceLoc::new(
+            u32::try_from(line).ok()?,
+            u32::try_from(column).unwrap_or(0),
+        )
     }
 
     /// Gets the line and column number for the current position.

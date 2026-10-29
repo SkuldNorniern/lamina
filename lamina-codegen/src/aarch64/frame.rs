@@ -23,7 +23,7 @@ impl FrameMap {
                 if let Some(d) = ins.def_reg() {
                     regs.insert(d.clone());
                 }
-                if let Instruction::StackAddr { slot, .. } = ins {
+                if let Instruction::StackAddr { slot, .. } = &ins.instr {
                     regs.insert(Register::Virtual(*slot));
                 }
                 for u in ins.use_regs() {

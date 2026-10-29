@@ -91,26 +91,26 @@ impl TailCallOptimization {
                     .use_regs()
                     .iter()
                     .any(|r| addresses.contains(*r));
-                if matches!(instruction, Instruction::Store { src: Operand::Register(r), .. } if addresses.contains(r))
+                if matches!(&instruction.instr, Instruction::Store { src: Operand::Register(r), .. } if addresses.contains(r))
                     || matches!(
-                        instruction,
+                        &instruction.instr,
                         Instruction::AtomicStore { src: Operand::Register(r), .. }
                             | Instruction::AtomicBinary { value: Operand::Register(r), .. }
                         if addresses.contains(r)
                     )
                     || matches!(
-                        instruction,
+                        &instruction.instr,
                         Instruction::Call { .. } | Instruction::CallIndirect { .. }
                         if uses_address
                     )
                 {
                     escaped = true;
                 }
-                if (matches!(instruction, Instruction::StackAddr { .. })
+                if (matches!(&instruction.instr, Instruction::StackAddr { .. })
                     || uses_address
                     || (escaped
                         && matches!(
-                            instruction,
+                            &instruction.instr,
                             Instruction::Load { .. }
                                 | Instruction::AtomicLoad { .. }
                                 | Instruction::AtomicBinary { .. }
@@ -139,14 +139,14 @@ impl TailCallOptimization {
 
         // Find the last instruction in the block
         if let Some(last_instr) = block.instructions.last()
-            && let Instruction::Ret { value } = last_instr
+            && let Instruction::Ret { value } = &last_instr.instr
         {
             // Check if there's a call instruction before the return
             if block.instructions.len() >= 2 {
                 let second_last_idx = block.instructions.len() - 2;
                 let second_last_instr = &block.instructions[second_last_idx];
 
-                if let Instruction::Call { name, args, ret } = second_last_instr {
+                if let Instruction::Call { name, args, ret } = &second_last_instr.instr {
                     // Check if this is a tail call (return value matches call result)
                     if !args.iter().any(
                         |arg| matches!(arg, Operand::Register(r) if stack_addresses.contains(r)),
@@ -280,6 +280,7 @@ mod tests {
         FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
         transform::ReturnShape,
     };
+    use lamina_mir::Located;
 
     #[test]
     fn stack_derived_arguments_keep_caller_frame() {
@@ -367,20 +368,25 @@ mod tests {
                         slot: VirtualReg::gpr(20),
                     })
                     .build();
-                function.blocks[0].instructions.extend(derivation.clone());
-                function.blocks[0].instructions.extend([
-                    Instruction::Call {
-                        name: name.into(),
-                        args: vec![operand(argument)],
-                        ret: Some(reg(10)),
-                    },
-                    Instruction::Ret {
-                        value: Some(operand(10)),
-                    },
-                ]);
+                function.blocks[0]
+                    .instructions
+                    .extend(derivation.iter().cloned().map(Located::from));
+                function.blocks[0].instructions.extend(
+                    [
+                        Instruction::Call {
+                            name: name.into(),
+                            args: vec![operand(argument)],
+                            ret: Some(reg(10)),
+                        },
+                        Instruction::Ret {
+                            value: Some(operand(10)),
+                        },
+                    ]
+                    .map(Located::from),
+                );
                 assert!(!TailCallOptimization.apply(&mut function).expect("optimize"));
                 assert!(matches!(
-                    function.blocks[0].instructions.last(),
+                    &function.blocks[0].instructions.last().map(|i| &i.instr),
                     Some(Instruction::Ret { .. })
                 ));
             }
@@ -402,7 +408,7 @@ mod tests {
         assert!(!optimization.apply(&mut function).expect("optimize barrier"));
         function.validate().expect("barrier retains one terminator");
         assert!(matches!(
-            function.blocks[0].instructions[0],
+            &function.blocks[0].instructions[0].instr,
             Instruction::Call { .. }
         ));
     }
@@ -513,7 +519,7 @@ mod tests {
 
         // Verify the call instruction is unchanged
         let entry = func.get_block("entry").expect("entry block exists");
-        if let Some(Instruction::Call { name, .. }) = entry.instructions.first() {
+        if let Some(Instruction::Call { name, .. }) = entry.instructions.first().map(|i| &i.instr) {
             assert_eq!(name, "other_func");
         } else {
             panic!("Expected Call instruction first");
@@ -567,11 +573,11 @@ mod tests {
     fn assert_stays_call(func: &Function) {
         let instructions = &func.blocks[0].instructions;
         assert!(matches!(
-            instructions[instructions.len() - 2],
+            &instructions[instructions.len() - 2].instr,
             Instruction::Call { .. }
         ));
         assert!(matches!(
-            instructions[instructions.len() - 1],
+            &instructions[instructions.len() - 1].instr,
             Instruction::Ret { .. }
         ));
     }
@@ -579,7 +585,7 @@ mod tests {
     fn assert_becomes_tail_call(func: &Function) {
         let instructions = &func.blocks[0].instructions;
         assert!(matches!(
-            instructions.last(),
+            &instructions.last().map(|i| &i.instr),
             Some(Instruction::TailCall { .. })
         ));
     }

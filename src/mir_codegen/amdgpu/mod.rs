@@ -87,7 +87,7 @@ impl Kernel {
             target,
             group_ids: false,
             dispatch_ptr: function.blocks.iter().flat_map(|block| &block.instructions).any(|inst|
-                matches!(inst, Instruction::Call { name, .. }
+                matches!(&inst.instr, Instruction::Call { name, .. }
                     if matches!(GpuIntrinsic::from_name(name), Some(GpuIntrinsic::BlockDim(_) | GpuIntrinsic::GridDim(_))))),
         };
         if kernel.dispatch_ptr {

@@ -310,16 +310,16 @@ mod tests {
         assert!(changed);
         let entry = func.get_block("entry").expect("entry block exists");
         assert!(matches!(
-            entry.instructions[0],
-            Instruction::IntBinary { ref dst, .. } if dst == &VirtualReg::gpr(1).into()
+            &entry.instructions[0].instr,
+            Instruction::IntBinary { dst, .. } if dst == &VirtualReg::gpr(1).into()
         ));
         assert!(matches!(
-            entry.instructions.last(),
+            &entry.instructions.last().map(|i| &i.instr),
             Some(Instruction::Ret { .. })
         ));
 
         // Check that the second instruction was modified to use v0 directly
-        match &entry.instructions[1] {
+        match &entry.instructions[1].instr {
             Instruction::IntBinary { dst, lhs, rhs, .. } => {
                 assert_eq!(dst, &VirtualReg::gpr(2).into());
                 assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));
@@ -375,16 +375,16 @@ mod tests {
         assert!(changed);
         let entry = func.get_block("entry").expect("entry block exists");
         assert!(matches!(
-            entry.instructions[1],
-            Instruction::IntBinary { ref lhs, .. } if lhs == &Operand::Register(VirtualReg::gpr(3).into())
+            &entry.instructions[1].instr,
+            Instruction::IntBinary { lhs, .. } if lhs == &Operand::Register(VirtualReg::gpr(3).into())
         ));
         assert!(matches!(
-            entry.instructions.last(),
+            &entry.instructions.last().map(|i| &i.instr),
             Some(Instruction::Ret { .. })
         ));
 
         // Check that the third instruction was NOT modified (still uses v1)
-        match &entry.instructions[2] {
+        match &entry.instructions[2].instr {
             Instruction::IntBinary { dst, lhs, rhs, .. } => {
                 assert_eq!(dst, &VirtualReg::gpr(2).into());
                 assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(1).into())); // Should still be v1
@@ -477,7 +477,7 @@ mod tests {
 
         // Second instruction should now use v0 directly
         let entry = get_block(&func, "entry");
-        match &entry.instructions[1] {
+        match &entry.instructions[1].instr {
             Instruction::IntBinary { lhs, .. } => {
                 assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));
             }
@@ -598,7 +598,7 @@ mod tests {
 
         // Final add should use v0 directly (all copies should chain)
         let entry = get_block(&func, "entry");
-        match &entry.instructions[3] {
+        match &entry.instructions[3].instr {
             Instruction::IntBinary { lhs, .. } => {
                 // After propagation, should trace back to v0
                 assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));

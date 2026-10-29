@@ -2350,7 +2350,7 @@ entry:
         )
         .ptrtoint("pi", &var("s"), PrimitiveType::I64)
         .inttoptr("ip", &var("pi"), PrimitiveType::Ptr)
-        .zext("z", PrimitiveType::I8, PrimitiveType::I32, &var("l"))
+        .zext("z", PrimitiveType::U8, PrimitiveType::I32, &var("l"))
         .sext("sx", PrimitiveType::I8, PrimitiveType::I64, &var("l"))
         .trunc("tr", PrimitiveType::I64, PrimitiveType::I32, &var("sum"))
         .bitcast("bc", PrimitiveType::I64, PrimitiveType::F64, &var("sum"))

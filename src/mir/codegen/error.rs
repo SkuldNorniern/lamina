@@ -41,6 +41,8 @@ pub enum FromIRError {
     ConflictingDefinitions(String),
     /// A stack allocation requests an alignment the frame cannot provide yet.
     UnsupportedAlignment(String),
+    /// A value wider than a register cannot be split into registers of this target.
+    NotLegalizable(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -72,6 +74,9 @@ impl fmt::Display for FromIRError {
                     f,
                     "Variable reference cannot be resolved in current context"
                 )
+            }
+            FromIRError::NotLegalizable(reason) => {
+                write!(f, "cannot be lowered to register pairs: {reason}")
             }
             FromIRError::UnsupportedGlobal(reason) => {
                 write!(f, "global not yet supported: {reason}")

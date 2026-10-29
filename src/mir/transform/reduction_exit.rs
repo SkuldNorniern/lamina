@@ -1,3 +1,4 @@
+use lamina_mir::Located;
 use std::collections::HashSet;
 
 use crate::mir::{
@@ -34,7 +35,7 @@ impl Transform for ReductionExit {
             .blocks
             .iter()
             .flat_map(|b| &b.instructions)
-            .any(|i| matches!(i, Instruction::InlineAsm { .. }))
+            .any(|i| matches!(&i.instr, Instruction::InlineAsm { .. }))
         {
             return Ok(changed);
         }
@@ -93,7 +94,7 @@ fn match_pair(func: &Function, info: &LoopInfo, body: &str, test: &str) -> Optio
         dst: flag,
         lhs: Operand::Register(iv),
         rhs: Operand::Register(end),
-    } = cmp
+    } = &cmp.instr
     else {
         return None;
     };
@@ -101,7 +102,7 @@ fn match_pair(func: &Function, info: &LoopInfo, body: &str, test: &str) -> Optio
         cond,
         true_target: exit,
         false_target,
-    } = br
+    } = &br.instr
     else {
         return None;
     };
@@ -116,7 +117,7 @@ fn match_pair(func: &Function, info: &LoopInfo, body: &str, test: &str) -> Optio
     }
 
     let (last, updates) = body_block.instructions.split_last()?;
-    let Instruction::Jmp { target } = last else {
+    let Instruction::Jmp { target } = &last.instr else {
         return None;
     };
     if target != test {
@@ -135,7 +136,7 @@ fn match_pair(func: &Function, info: &LoopInfo, body: &str, test: &str) -> Optio
             ty: add_ty,
             lhs,
             rhs,
-        } = instr
+        } = &instr.instr
         else {
             return None;
         };
@@ -298,7 +299,7 @@ fn guarded_entry(
                     dst,
                     lhs,
                     rhs,
-                } = &pred_block.instructions[cmp_index]
+                } = &pred_block.instructions[cmp_index].instr
                 else {
                     return false;
                 };
@@ -462,7 +463,9 @@ fn rewrite(func: &mut Function, shape: &Shape, next: &mut u32) {
 
     if let Some(entry) = func.get_block_mut(&shape.entry) {
         entry.instructions.pop();
-        entry.instructions.extend(sequence);
+        entry
+            .instructions
+            .extend(sequence.into_iter().map(Located::from));
     }
     func.blocks
         .retain(|b: &Block| b.label != shape.body && b.label != shape.test);

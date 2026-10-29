@@ -220,7 +220,7 @@
 //! let module = builder.build();
 //! ```
 
-use std::{collections::HashMap, fmt, iter};
+use std::{collections::HashMap, fmt, iter, num::NonZeroU32};
 
 use crate::{
     instruction::Instruction,
@@ -561,10 +561,48 @@ pub struct FunctionSignature<'a> {
 /// let entry_block = &func.basic_blocks["entry"];
 /// // entry_block.instructions contains: [Binary, WriteByte, Ret]
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BasicBlock<'a> {
     /// Instructions in this block (must end with a terminator)
     pub instructions: Vec<Instruction<'a>>,
+    /// Source position of each instruction, parallel to `instructions`. A shorter
+    /// vector, or a `None` entry, means the position is unknown.
+    pub instruction_locs: Vec<Option<SourceLoc>>,
+}
+
+/// A position in the `.lamina` source an instruction was parsed from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourceLoc {
+    pub line: NonZeroU32,
+    pub column: u32,
+}
+
+impl SourceLoc {
+    pub fn new(line: u32, column: u32) -> Option<Self> {
+        NonZeroU32::new(line).map(|line| Self { line, column })
+    }
+}
+
+/// Debug positions are metadata, so two blocks holding the same instructions are equal
+/// whether or not their positions were recorded.
+impl PartialEq for BasicBlock<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.instructions == other.instructions
+    }
+}
+
+impl<'a> BasicBlock<'a> {
+    pub fn new(instructions: Vec<Instruction<'a>>) -> Self {
+        Self {
+            instructions,
+            instruction_locs: Vec::new(),
+        }
+    }
+
+    /// The source position of instruction `index`, if one was recorded.
+    pub fn loc_at(&self, index: usize) -> Option<SourceLoc> {
+        self.instruction_locs.get(index).copied().flatten()
+    }
 }
 
 /// A complete function definition.
@@ -1148,6 +1186,7 @@ mod tests {
                 instructions: vec![Instruction::Jmp {
                     target_label: "loop",
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         blocks.insert(
@@ -1175,6 +1214,7 @@ mod tests {
                         false_label: "loop",
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let func = Function {
@@ -1273,6 +1313,7 @@ mod tests {
                     target_label: "next_block",
                 },
             ],
+            instruction_locs: Vec::new(),
         };
         // Expect leading spaces on ALL instruction lines due to writeln!
         let expected_output = "  %p = stackalloc.i32\n  store.i32 %p, 10\n  jmp next_block\n";
@@ -1308,6 +1349,7 @@ mod tests {
                         value: Some(Value::Variable("tmp")),
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
 
@@ -1346,6 +1388,7 @@ mod tests {
                     true_label: "if_true",
                     false_label: "if_false",
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         blocks.insert(
@@ -1355,6 +1398,7 @@ mod tests {
                     ty: Type::Primitive(PrimitiveType::I32),
                     value: Some(Value::Constant(Literal::I32(1))),
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         blocks.insert(
@@ -1364,6 +1408,7 @@ mod tests {
                     ty: Type::Primitive(PrimitiveType::I32),
                     value: Some(Value::Constant(Literal::I32(0))),
                 }],
+                instruction_locs: Vec::new(),
             },
         );
 
@@ -1447,6 +1492,7 @@ mod tests {
                     binary_def("x", PrimitiveType::I32),
                     ret_void(),
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1464,6 +1510,7 @@ mod tests {
                     binary_def("x", PrimitiveType::I64),
                     ret_void(),
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1481,6 +1528,7 @@ mod tests {
             "entry",
             BasicBlock {
                 instructions: vec![binary_def("a", PrimitiveType::U64), ret_void()],
+                instruction_locs: Vec::new(),
             },
         );
         let params = vec![FunctionParameter {
@@ -1514,6 +1562,7 @@ mod tests {
                     },
                     ret_void(),
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1538,6 +1587,7 @@ mod tests {
                     ty: Type::Void,
                     value: None,
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1564,6 +1614,7 @@ mod tests {
                     lhs: Value::Constant(Literal::I32(1)),
                     rhs: Value::Constant(Literal::I32(2)),
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1580,6 +1631,7 @@ mod tests {
                 instructions: vec![Instruction::Jmp {
                     target_label: "nonexistent",
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1597,6 +1649,7 @@ mod tests {
                     ty: Type::Void,
                     value: None,
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
@@ -1623,6 +1676,7 @@ mod tests {
                         value: None,
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1649,6 +1703,7 @@ mod tests {
                         value: Some(Value::Variable("sum")),
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
@@ -1673,6 +1728,7 @@ mod tests {
                         target_label: "next",
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         blocks.insert(
@@ -1682,6 +1738,7 @@ mod tests {
                     ty: Type::Primitive(PrimitiveType::I32),
                     value: Some(Value::Variable("sum")),
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
@@ -1714,6 +1771,7 @@ mod tests {
                         value: None,
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1731,6 +1789,7 @@ mod tests {
                     ty: Type::Primitive(PrimitiveType::I64),
                     value: Some(Value::Constant(Literal::I64(0))),
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
@@ -1747,6 +1806,7 @@ mod tests {
                 instructions: vec![Instruction::Jmp {
                     target_label: "join",
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         blocks.insert(
@@ -1766,6 +1826,7 @@ mod tests {
                         value: Some(Value::Variable("p")),
                     },
                 ],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
@@ -1785,6 +1846,7 @@ mod tests {
                     default: "done",
                     cases: vec![(Literal::I32(1), "done"), (Literal::I32(1), "done")],
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         blocks.insert(
@@ -1794,6 +1856,7 @@ mod tests {
                     ty: Type::Void,
                     value: None,
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Void, blocks, "entry");
@@ -1811,6 +1874,7 @@ mod tests {
                     ty: Type::Primitive(PrimitiveType::I64),
                     value: Some(Value::Constant(Literal::I64(0))),
                 }],
+                instruction_locs: Vec::new(),
             },
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::Ptr), blocks, "entry");
@@ -1849,7 +1913,15 @@ mod tests {
     fn da_func<'a>(blocks: Vec<(&'a str, Vec<Instruction<'a>>)>) -> Function<'a> {
         let basic_blocks = blocks
             .into_iter()
-            .map(|(label, instructions)| (label, BasicBlock { instructions }))
+            .map(|(label, instructions)| {
+                (
+                    label,
+                    BasicBlock {
+                        instructions,
+                        instruction_locs: Vec::new(),
+                    },
+                )
+            })
             .collect();
         simple_func(
             vec![],

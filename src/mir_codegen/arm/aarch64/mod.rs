@@ -10,6 +10,8 @@ mod util;
 
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::arm::{float_condition, int_condition, invert_condition};
+use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::unsupported_io;
@@ -20,6 +22,7 @@ use crate::mir_codegen::common::{
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
 use crate::mir_codegen::simd::reserve_vector_slots;
+use lamina_mir::SourceLoc;
 
 use std::{
     collections::HashMap, collections::HashSet, io::Error as IoError, io::Write, slice, str,
@@ -31,9 +34,9 @@ use util::{emit_mov_imm64, imm_to_u64};
 use crate::{
     error::LaminaError,
     mir::{
-        AddressMode, Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
-        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
-        Register, ScalarType, Signature, VirtualReg, register::RegisterClass,
+        AddressMode, Aggregate, FloatBinOp, FloatUnOp, Function, Global, Instruction as MirInst,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
+        VirtualReg, register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -216,6 +219,12 @@ fn classify_aarch64_arguments(
 /// Every caller frees the scratch it takes, so an empty pool means one lowering path
 /// holds more at once than the pool has. Falling back to a callee-saved register would
 /// hide that behind a register nothing saves.
+fn unknown_condition(cond: &str) -> LaminaError {
+    LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(format!(
+        "unknown AArch64 condition {cond}"
+    )))
+}
+
 fn scratch_error() -> CodegenError {
     CodegenError::UnsupportedFeature("aarch64 scratch registers exhausted".to_string())
 }
@@ -429,7 +438,12 @@ fn compile_single_function_aarch64_with(
         .blocks
         .iter()
         .flat_map(|b| b.instructions.iter())
-        .any(|i| matches!(i, MirInst::Call { .. } | MirInst::CallIndirect { .. }));
+        .any(|i| {
+            matches!(
+                &i.instr,
+                MirInst::Call { .. } | MirInst::CallIndirect { .. }
+            )
+        });
     let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
         if settings.regalloc != RegallocStrategy::Incremental && !makes_calls {
             let pool = A64RegAlloc::gpr_pool_for_global_allocation();
@@ -471,7 +485,7 @@ fn compile_single_function_aarch64_with(
         .blocks
         .iter()
         .flat_map(|b| b.instructions.iter())
-        .filter(|i| matches!(i, MirInst::IntBinary { .. }))
+        .filter(|i| matches!(&i.instr, MirInst::IntBinary { .. }))
         .count()
         > 100;
     let adjusted_frame_size = if has_many_vars {
@@ -637,7 +651,6 @@ fn compile_single_function_aarch64_with(
     }
 
     let plan = FunctionEmissionPlan::new(func);
-    let mut debug_line: u32 = 0;
     if plan
         .order
         .first()
@@ -653,10 +666,7 @@ fn compile_single_function_aarch64_with(
             .get(slot + 1)
             .map(|&i| func.blocks[i].label.as_str())
             .unwrap_or("");
-        let emit = |output: &mut Vec<u8>,
-                    ra: &mut A64RegAlloc,
-                    debug_line: &mut u32|
-         -> Result<(), LaminaError> {
+        let emit = |output: &mut Vec<u8>, ra: &mut A64RegAlloc| -> Result<(), LaminaError> {
             if plan.aligned_headers.contains(&index) {
                 writeln!(output, "    .p2align 4,,12")?;
             }
@@ -704,8 +714,9 @@ fn compile_single_function_aarch64_with(
                             false_target,
                             ..
                         },
-                    ) = (inst, &block.instructions[position + 1])
+                    ) = (&inst.instr, &block.instructions[position + 1].instr)
                     {
+                        emit_source_loc(output, settings, inst.loc)?;
                         emit_materialize_operand(output, lhs, "x16", &frame, ra)?;
                         emit_materialize_operand(output, rhs, "x17", &frame, ra)?;
                         let unsigned = matches!(
@@ -717,17 +728,11 @@ fn compile_single_function_aarch64_with(
                         writeln!(output, "    cmp x16, x17")?;
                         let (invert, taken, other) =
                             plan.branch(func, index, next, true_target, false_target);
-                        let cond = match (op, invert) {
-                            (IntCmpOp::Eq, false) | (IntCmpOp::Ne, true) => "eq",
-                            (IntCmpOp::Ne, false) | (IntCmpOp::Eq, true) => "ne",
-                            (IntCmpOp::SLt, false) | (IntCmpOp::SGe, true) => "lt",
-                            (IntCmpOp::SLe, false) | (IntCmpOp::SGt, true) => "le",
-                            (IntCmpOp::SGt, false) | (IntCmpOp::SLe, true) => "gt",
-                            (IntCmpOp::SGe, false) | (IntCmpOp::SLt, true) => "ge",
-                            (IntCmpOp::ULt, false) | (IntCmpOp::UGe, true) => "lo",
-                            (IntCmpOp::ULe, false) | (IntCmpOp::UGt, true) => "ls",
-                            (IntCmpOp::UGt, false) | (IntCmpOp::ULe, true) => "hi",
-                            (IntCmpOp::UGe, false) | (IntCmpOp::ULt, true) => "hs",
+                        let direct = int_condition(*op);
+                        let cond = if invert {
+                            invert_condition(direct).ok_or_else(|| unknown_condition(direct))?
+                        } else {
+                            direct
                         };
                         emit_branch_if(
                             output,
@@ -740,7 +745,7 @@ fn compile_single_function_aarch64_with(
                         }
                     }
                     position += 1;
-                } else if matches!(inst, MirInst::Jmp { target } if target == next) {
+                } else if matches!(&inst.instr, MirInst::Jmp { target } if target == next) {
                 } else {
                     emit_block(
                         slice::from_ref(inst),
@@ -751,7 +756,7 @@ fn compile_single_function_aarch64_with(
                         &epilogue_label,
                         &block_prefix,
                         settings,
-                        debug_line,
+                        inst.loc,
                         long_branches,
                         signatures,
                         func.sig.ret_aggregate,
@@ -764,7 +769,7 @@ fn compile_single_function_aarch64_with(
             }
             Ok(())
         };
-        emit(&mut output, &mut ra, &mut debug_line).map_err(lamina_to_codegen_error)?;
+        emit(&mut output, &mut ra).map_err(lamina_to_codegen_error)?;
     }
 
     writeln!(output, "{epilogue_label}:")
@@ -937,7 +942,7 @@ fn emit_block<W: Write>(
     epilogue_label: &str,
     block_prefix: &str,
     settings: &MirCodegenSettings,
-    debug_line: &mut u32,
+    loc: Option<SourceLoc>,
     long_branches: bool,
     signatures: &AggregateSignatures,
     ret_aggregate: Option<Aggregate>,
@@ -946,9 +951,10 @@ fn emit_block<W: Write>(
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     for inst in insts {
-        if settings.emit_asm_debug_lines {
-            *debug_line = debug_line.saturating_add(1);
-            writeln!(w, "    .loc 1 {} 0", *debug_line)?;
+        if settings.emit_asm_debug_lines
+            && let Some(loc) = loc
+        {
+            writeln!(w, "    .loc 1 {} {}", loc.line, loc.column)?;
         }
         match inst {
             MirInst::SymbolAddress { dst, symbol } => {
@@ -978,7 +984,7 @@ fn emit_block<W: Write>(
                         epilogue_label,
                         block_prefix,
                         settings,
-                        debug_line,
+                        None,
                         long_branches,
                         signatures,
                         ret_aggregate,
@@ -1240,18 +1246,7 @@ fn emit_block<W: Write>(
                     extend_integer(w, s_r, ty, false, pointer_width)?;
                 }
                 writeln!(w, "    cmp {}, {}", x_alias(s_l), x_alias(s_r))?;
-                let cond = match op {
-                    IntCmpOp::Eq => "eq",
-                    IntCmpOp::Ne => "ne",
-                    IntCmpOp::SLt => "lt",
-                    IntCmpOp::SLe => "le",
-                    IntCmpOp::SGt => "gt",
-                    IntCmpOp::SGe => "ge",
-                    IntCmpOp::ULt => "lo",
-                    IntCmpOp::ULe => "ls",
-                    IntCmpOp::UGt => "hi",
-                    IntCmpOp::UGe => "hs",
-                };
+                let cond = int_condition(*op);
                 writeln!(w, "    cset {}, {}", x_alias(s_d), cond)?;
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
                 ra.free_scratch(s_l);
@@ -1283,14 +1278,7 @@ fn emit_block<W: Write>(
                     writeln!(w, "    fcmp d0, d1")?;
                 }
 
-                let cond = match op {
-                    FloatCmpOp::Eq => "eq",
-                    FloatCmpOp::Ne => "ne",
-                    FloatCmpOp::Lt => "mi",
-                    FloatCmpOp::Le => "ls",
-                    FloatCmpOp::Gt => "gt",
-                    FloatCmpOp::Ge => "ge",
-                };
+                let cond = float_condition(*op);
 
                 writeln!(w, "    cset {}, {}", x_alias(s_d), cond)?;
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
@@ -2147,23 +2135,7 @@ fn emit_branch_if<W: Write>(
         writeln!(w, "    b.{cond} {target}")?;
         return Ok(());
     }
-    let inverse = match cond {
-        "eq" => "ne",
-        "ne" => "eq",
-        "lt" => "ge",
-        "ge" => "lt",
-        "le" => "gt",
-        "gt" => "le",
-        "lo" => "hs",
-        "hs" => "lo",
-        "ls" => "hi",
-        "hi" => "ls",
-        other => {
-            return Err(LaminaError::CodegenError(
-                CodegenError::InvalidCodegenOptions(format!("unknown AArch64 condition {other}")),
-            ));
-        }
-    };
+    let inverse = invert_condition(cond).ok_or_else(|| unknown_condition(cond))?;
     writeln!(w, "    b.{inverse} 9f")?;
     writeln!(w, "    b {target}")?;
     writeln!(w, "9:")?;

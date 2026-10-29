@@ -108,7 +108,7 @@ pub(super) fn register_eligible_vectors(func: &Function) -> HashSet<VirtualReg> 
         .collect();
     for inst in func.blocks.iter().flat_map(|b| &b.instructions) {
         let mut values: Vec<&Register> = Vec::new();
-        match inst {
+        match &inst.instr {
             Instruction::Load { ty, dst, .. } if ty.is_vector() => values.push(dst),
             Instruction::Store {
                 ty,
@@ -786,7 +786,7 @@ mod tests {
                     ),
                 };
                 for inst in &mut f.blocks[0].instructions {
-                    if let Instruction::VectorOp { op, operands, .. } = inst {
+                    if let Instruction::VectorOp { op, operands, .. } = &mut inst.instr {
                         match op {
                             VectorOp::VSplat => operands[0] = value.clone(),
                             VectorOp::VInsertLane => operands[1] = value.clone(),
@@ -979,7 +979,10 @@ mod tests {
                 let mut m = Module::new("negative");
                 let mut f = function("bad", MirType::Vector(VectorType::V256(lane)), op, 0);
                 f.blocks[0].instructions.retain(|i| {
-                    matches!(i, Instruction::VectorOp { .. } | Instruction::Ret { .. })
+                    matches!(
+                        &i.instr,
+                        Instruction::VectorOp { .. } | Instruction::Ret { .. }
+                    )
                 });
                 declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V256(lane)), lane);
                 m.add_function(f);
@@ -996,9 +999,12 @@ mod tests {
                 );
                 f.blocks[0].instructions.retain(|i| {
                     if store {
-                        matches!(i, Instruction::Store { .. } | Instruction::Ret { .. })
+                        matches!(
+                            &i.instr,
+                            Instruction::Store { .. } | Instruction::Ret { .. }
+                        )
                     } else {
-                        matches!(i, Instruction::Load { .. } | Instruction::Ret { .. })
+                        matches!(&i.instr, Instruction::Load { .. } | Instruction::Ret { .. })
                     }
                 });
                 declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V256(lane)), lane);
@@ -1016,7 +1022,7 @@ mod tests {
                     let mut m = Module::new("negative");
                     let mut f = function("bad", MirType::Vector(VectorType::V128(lane)), op, 0);
                     for i in &mut f.blocks[0].instructions {
-                        if let Instruction::VectorOp { operands, .. } = i {
+                        if let Instruction::VectorOp { operands, .. } = &mut i.instr {
                             *operands.last_mut().expect("index") = index.clone();
                         }
                     }
