@@ -1,0 +1,41 @@
+@extern
+fn @__umodti3(i128 %n, i128 %d) -> i128
+
+@export
+fn @__modti3(i128 %n, i128 %d) -> i128 {
+entry:
+  %minv = shl.i128 1, 127
+  %a_min = eq.i128 %n, %minv
+  br %a_min, chk, go
+
+chk:
+  %b_m1 = eq.i128 %d, -1
+  br %b_m1, trap, go
+
+trap:
+  %dl = trunc.i128.i64 %d
+  %zero = add.i64 %dl, 1
+  %t = div.i64 1, %zero
+  ret.i128 %d
+
+go:
+  %nneg = lt.i128 %n, 0
+  %dneg = lt.i128 %d, 0
+  %na0 = sub.i128 0, %n
+  %na = select.i128 %nneg, %na0, %n
+  %nb0 = sub.i128 0, %d
+  %nb = select.i128 %dneg, %nb0, %d
+  %r = call @__umodti3(%na, %nb)
+  %rn = sub.i128 0, %r
+  br %nneg, neg, pos
+
+pos:
+  jmp done
+
+neg:
+  jmp done
+
+done:
+  %res = phi.i128 [%r, pos], [%rn, neg]
+  ret.i128 %res
+}

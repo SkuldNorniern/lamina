@@ -1,0 +1,60 @@
+@export
+fn @__umodti3(u128 %n, u128 %d) -> u128 {
+entry:
+  %dlo = trunc.u128.u64 %d
+  %dhs = shr.u128 %d, 64
+  %dhi = trunc.u128.u64 %dhs
+  %dor = or.u64 %dlo, %dhi
+  %trap = div.u64 1, %dor
+  %nhs = shr.u128 %n, 64
+  %nhi = trunc.u128.u64 %nhs
+  %nlo = trunc.u128.u64 %n
+  %wide = or.u64 %nhi, %dhi
+  %small = eq.u64 %wide, 0
+  br %small, fast, loop
+
+fast:
+  %q64 = rem.u64 %nlo, %dlo
+  %q = extend.u64.u128 %q64
+  ret.u128 %q
+
+loop:
+  %nn = phi.u128 [%n, entry], [%nn2, next]
+  %qv = phi.u128 [0, entry], [%q2, next]
+  %rv = phi.u128 [0, entry], [%r3, next]
+  %kv = phi.u64 [128, entry], [%k2, next]
+  %done = eq.u64 %kv, 0
+  br %done, exit, body
+
+body:
+  %top = shr.u128 %nn, 127
+  %nn2 = shl.u128 %nn, 1
+  %rtop = shr.u128 %rv, 127
+  %r1 = shl.u128 %rv, 1
+  %r2 = or.u128 %r1, %top
+  %ov = ne.u128 %rtop, 0
+  br %ov, take, cmp
+
+cmp:
+  %ge = ge.u128 %r2, %d
+  br %ge, take, keep
+
+take:
+  %rt = sub.u128 %r2, %d
+  %qs = shl.u128 %qv, 1
+  %qt = or.u128 %qs, 1
+  jmp next
+
+keep:
+  %qk = shl.u128 %qv, 1
+  jmp next
+
+next:
+  %r3 = phi.u128 [%rt, take], [%r2, keep]
+  %q2 = phi.u128 [%qt, take], [%qk, keep]
+  %k2 = sub.u64 %kv, 1
+  jmp loop
+
+exit:
+  ret.u128 %rv
+}
