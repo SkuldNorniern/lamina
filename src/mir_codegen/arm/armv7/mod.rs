@@ -7,7 +7,7 @@
 //!
 //! The calling convention is AAPCS in its VFP hard-float variant: see `abi`.
 
-mod abi;
+pub(crate) mod abi;
 mod call;
 mod emit;
 mod operand;
@@ -322,7 +322,7 @@ fn compile_function(
 }
 
 /// `@` starts a comment in ARM assembly, so an ELF section type is spelled with `%`.
-fn arm_section_types(assembly: Vec<u8>) -> Vec<u8> {
+pub(crate) fn arm_section_types(assembly: Vec<u8>) -> Vec<u8> {
     let needle = b",\"ax\",@progbits";
     let mut out = assembly;
     let mut at = 0;

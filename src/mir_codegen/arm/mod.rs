@@ -1,5 +1,6 @@
 pub mod aarch64;
 pub mod armv7;
+pub mod cortexm;
 
 use crate::mir::{FloatCmpOp, IntCmpOp};
 

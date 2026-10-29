@@ -35,6 +35,12 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
             )
         }
         TargetArchitecture::Armv7 => os == TargetOperatingSystem::Linux,
+        TargetArchitecture::Thumbv6m | TargetArchitecture::Thumbv7m => {
+            matches!(
+                os,
+                TargetOperatingSystem::Unknown | TargetOperatingSystem::Linux
+            )
+        }
         TargetArchitecture::PowerPC64 | TargetArchitecture::Arm32 | TargetArchitecture::Unknown => {
             false
         }

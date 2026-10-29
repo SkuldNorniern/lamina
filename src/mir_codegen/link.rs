@@ -308,6 +308,8 @@ fn build_arch_emulation_flags(
         | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Armv7
+        | TargetArchitecture::Thumbv6m
+        | TargetArchitecture::Thumbv7m
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
         | TargetArchitecture::Nvptx64
@@ -378,7 +380,9 @@ fn build_dynamic_linker_arg(
         TargetArchitecture::I686 => "/lib/ld-linux.so.2",
         TargetArchitecture::Riscv64 => "/lib/ld-linux-riscv64-lp64d.so.1",
         TargetArchitecture::LoongArch64 => "/lib64/ld-linux-loongarch-lp64d.so.1",
-        TargetArchitecture::Arx64
+        TargetArchitecture::Thumbv6m
+        | TargetArchitecture::Thumbv7m
+        | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64

@@ -343,6 +343,16 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 settings,
             )?;
         }
+        TargetArchitecture::Thumbv6m | TargetArchitecture::Thumbv7m => {
+            arm::cortexm::generate_mir_cortexm_with_units_and_settings(
+                module,
+                writer,
+                target_arch,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
+        }
         TargetArchitecture::Arm32 => {
             return Err(not_implemented(target_arch, target_os));
         }

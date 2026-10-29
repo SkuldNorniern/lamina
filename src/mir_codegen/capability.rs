@@ -293,6 +293,9 @@ impl CapabilitySet {
                 .with(CodegenCapability::MemoryOperations),
             TargetArchitecture::I686 => i686::capabilities(),
             TargetArchitecture::Armv7 => arm::armv7::capabilities(),
+            TargetArchitecture::Thumbv6m | TargetArchitecture::Thumbv7m => {
+                arm::cortexm::capabilities()
+            }
             TargetArchitecture::Arm32 | TargetArchitecture::Unknown => Self::new(),
             #[cfg(feature = "nightly")]
             TargetArchitecture::Lisa => Self::new(),

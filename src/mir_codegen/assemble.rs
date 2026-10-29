@@ -427,7 +427,10 @@ fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
         TargetArchitecture::PowerPC64 => Some("powerpc64le-linux-gnu"),
         TargetArchitecture::Armv7 => Some("arm-linux-gnueabihf"),
         TargetArchitecture::I686 => Some("i686-linux-gnu"),
-        TargetArchitecture::Arx64
+        // The Cortex-M toolchain is `arm-none-eabi`, not a Linux GNU triple.
+        TargetArchitecture::Thumbv6m
+        | TargetArchitecture::Thumbv7m
+        | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Wasm32
         | TargetArchitecture::Wasm64
@@ -450,7 +453,9 @@ pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
         // An x86_64 host assembles and links i686 with its own binutils, given
         // `--32` and `-m elf_i386`.
         TargetArchitecture::I686 => cfg!(any(target_arch = "x86", target_arch = "x86_64")),
-        TargetArchitecture::Arx64
+        TargetArchitecture::Thumbv6m
+        | TargetArchitecture::Thumbv7m
+        | TargetArchitecture::Arx64
         | TargetArchitecture::Arm32
         | TargetArchitecture::Riscv32
         | TargetArchitecture::Wasm32

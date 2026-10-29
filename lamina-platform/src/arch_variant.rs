@@ -167,6 +167,18 @@ pub struct Armv7Variant {
 }
 
 impl Armv7Variant {
+    /// What a bare `thumbv7m` means: a Cortex-M3, which has `sdiv`/`udiv` and no FPU.
+    /// An M4F or M7 adds a single-precision VFP, which this backend does not use.
+    pub const fn cortex_m3() -> Self {
+        Self {
+            profile: Armv7Profile::M,
+            hard_float: false,
+            fpu: None,
+            neon: false,
+            hardware_divide: true,
+        }
+    }
+
     /// What a bare `armv7`, `armv7a` or `armv7hf` has always meant.
     pub const fn cortex_a7() -> Self {
         Self {

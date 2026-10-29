@@ -194,6 +194,10 @@ pub enum TargetArchitecture {
     Arx64,
     Arm32,
     Armv7,
+    /// ARMv6-M, Thumb-1 only: Cortex-M0 and M0+.
+    Thumbv6m,
+    /// ARMv7-M, Thumb-2: Cortex-M3, M4 and M7.
+    Thumbv7m,
     I686,
     Riscv32,
     Riscv64,
@@ -225,9 +229,13 @@ impl TargetArchitecture {
             | Self::Nvptx64
             | Self::Amdgcn
             | Self::Unknown => PointerWidth::Bits64,
-            Self::Arm32 | Self::Armv7 | Self::I686 | Self::Riscv32 | Self::Wasm32 => {
-                PointerWidth::Bits32
-            }
+            Self::Arm32
+            | Self::Armv7
+            | Self::Thumbv6m
+            | Self::Thumbv7m
+            | Self::I686
+            | Self::Riscv32
+            | Self::Wasm32 => PointerWidth::Bits32,
             #[cfg(feature = "nightly")]
             Self::Riscv128 => {
                 panic!("rv128 needs 16-byte pointers, and PointerWidth has no 128-bit variant yet")
@@ -253,7 +261,12 @@ impl TargetArchitecture {
             | Self::Nvptx64
             | Self::Amdgcn
             | Self::Unknown => 64,
-            Self::Arm32 | Self::Armv7 | Self::I686 | Self::Riscv32 => 32,
+            Self::Arm32
+            | Self::Armv7
+            | Self::Thumbv6m
+            | Self::Thumbv7m
+            | Self::I686
+            | Self::Riscv32 => 32,
             #[cfg(feature = "nightly")]
             Self::Riscv128 => 128,
             #[cfg(feature = "nightly")]
@@ -277,6 +290,8 @@ impl TargetArchitecture {
             | Self::Arx64
             | Self::Arm32
             | Self::Armv7
+            | Self::Thumbv6m
+            | Self::Thumbv7m
             | Self::I686
             | Self::Riscv32
             | Self::Riscv64
@@ -306,7 +321,7 @@ impl TargetArchitecture {
             | Self::PowerPC64
             | Self::LoongArch64
             | Self::Unknown => 16,
-            Self::Arm32 => 8,
+            Self::Arm32 | Self::Thumbv6m | Self::Thumbv7m => 8,
             Self::Wasm32 | Self::Wasm64 | Self::Nvptx64 | Self::Amdgcn => 1,
             #[cfg(feature = "nightly")]
             Self::Riscv128 => 16,
@@ -328,6 +343,8 @@ impl TargetArchitecture {
             Self::Arx64
             | Self::Arm32
             | Self::Armv7
+            | Self::Thumbv6m
+            | Self::Thumbv7m
             | Self::I686
             | Self::Riscv32
             | Self::Riscv64
@@ -352,6 +369,8 @@ impl TargetArchitecture {
             | Self::Arx64
             | Self::Arm32
             | Self::Armv7
+            | Self::Thumbv6m
+            | Self::Thumbv7m
             | Self::I686
             | Self::Riscv32
             | Self::Riscv64
@@ -381,11 +400,13 @@ impl TargetArchitecture {
             Self::Riscv32 => ArchVariant::Riscv(RiscvIsa::general(32)),
             Self::Riscv64 => ArchVariant::Riscv(RiscvIsa::general(64)),
             Self::Armv7 => ArchVariant::Armv7(Armv7Variant::cortex_a7()),
+            Self::Thumbv7m => ArchVariant::Armv7(Armv7Variant::cortex_m3()),
             Self::Aarch64 => ArchVariant::Aarch64(Aarch64Level::V8_0),
             Self::PowerPC64 => ArchVariant::PowerPC64(PowerLevel::Power8),
             Self::X86_64
             | Self::Arx64
             | Self::Arm32
+            | Self::Thumbv6m
             | Self::I686
             | Self::Wasm32
             | Self::Wasm64
@@ -427,16 +448,6 @@ const VARIANT_SPELLINGS: &[(&str, TargetArchitecture, ArchVariant)] = &[
         TargetArchitecture::Armv7,
         ArchVariant::Armv7(Armv7Variant {
             profile: Armv7Profile::R,
-            hard_float: false,
-            fpu: None,
-            ..Armv7Variant::cortex_a7()
-        }),
-    ),
-    (
-        "armv7m",
-        TargetArchitecture::Armv7,
-        ArchVariant::Armv7(Armv7Variant {
-            profile: Armv7Profile::M,
             hard_float: false,
             fpu: None,
             ..Armv7Variant::cortex_a7()
@@ -497,6 +508,8 @@ impl FromStr for TargetArchitecture {
             "arx64" => Ok(Self::Arx64),
             "arm32" => Ok(Self::Arm32),
             "armv7" | "armv7a" | "armv7hf" => Ok(Self::Armv7),
+            "thumbv6m" | "armv6m" | "cortex-m0" => Ok(Self::Thumbv6m),
+            "thumbv7m" | "armv7m" | "cortex-m3" => Ok(Self::Thumbv7m),
             "i686" | "i386" | "x86" => Ok(Self::I686),
             "riscv32" => Ok(Self::Riscv32),
             "riscv64" | "riscv64gc" => Ok(Self::Riscv64),
@@ -598,6 +611,8 @@ impl fmt::Display for TargetArchitecture {
             Self::Arx64 => "arx64",
             Self::Arm32 => "arm32",
             Self::Armv7 => "armv7",
+            Self::Thumbv6m => "thumbv6m",
+            Self::Thumbv7m => "thumbv7m",
             Self::I686 => "i686",
             Self::Riscv32 => "riscv32",
             Self::Riscv64 => "riscv64",
@@ -695,6 +710,10 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "loongarch64_linux",
     "i686_linux",
     "armv7_linux",
+    "thumbv6m_unknown",
+    "thumbv6m_linux",
+    "thumbv7m_unknown",
+    "thumbv7m_linux",
     #[cfg(feature = "nightly")]
     "riscv128_unknown",
 ];
