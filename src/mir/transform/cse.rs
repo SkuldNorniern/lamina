@@ -1,15 +1,30 @@
 //! Common Subexpression Elimination (CSE) transform for MIR.
+//!
+//! Runs on the SSA value graph. A pure arithmetic or comparison whose operands are the
+//! same values as an earlier, dominating one becomes a copy of that result. The earlier
+//! result's register must still hold it at the duplicate, which is checked against every
+//! other definition of that register.
 
 use crate::mir::{
-    Block, FloatBinOp, Function, Instruction, IntBinOp, MirType, Operand, Register, ScalarType,
-    transform::{
-        Transform, TransformCategory, TransformError, TransformLevel, compute_back_edge_headers,
-    },
+    Function, Instruction, MirType, Operand, Register, ScalarType,
+    ssa::{SsaFunction, ValueDef, ValueId, destroy},
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
-use std::collections::{HashMap, HashSet};
+use std::{collections::HashMap, mem};
+
+/// An expression's text and the values it reads.
+type Expr = (String, Vec<ValueId>);
+/// A duplicate's block, slot index, the earlier value it copies, and the copy.
+type Rewrite = (usize, usize, ValueId, Instruction);
+
+/// A position in the graph: a block index and a slot. Slot `i + 1` is instruction `i`.
+/// `EDGE_MOVE` is the end of a block, where an edge writes the registers of its target's
+/// parameters.
+type Site = (usize, usize);
+const EDGE_MOVE: usize = usize::MAX;
 
 /// Common Subexpression Elimination (CSE)
-/// Eliminates redundant computations within basic blocks
+/// Replaces a pure computation with a copy of an earlier identical one that dominates it.
 #[derive(Default)]
 pub struct CommonSubexpressionElimination;
 
@@ -19,7 +34,7 @@ impl Transform for CommonSubexpressionElimination {
     }
 
     fn description(&self) -> &'static str {
-        "Eliminates redundant computations within basic blocks"
+        "Replaces repeated pure computations with copies of a dominating result"
     }
 
     fn category(&self) -> TransformCategory {
@@ -50,125 +65,8 @@ impl CommonSubexpressionElimination {
             Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
                 MirType::Scalar(ScalarType::I1)
             }
-            // For other instructions that don't have explicit types, default to I64
-            // This should be rare and these instructions probably shouldn't be CSE'd
             _ => MirType::Scalar(ScalarType::I64),
         }
-    }
-
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        let mut changed = false;
-        let loop_headers = compute_back_edge_headers(func);
-
-        for block in &mut func.blocks {
-            // Skip only loop header blocks to avoid complex control flow issues
-            // Allow CSE within loop bodies where it's safe and beneficial
-            if loop_headers.contains(block.label.as_str()) {
-                continue;
-            }
-
-            // Apply CSE to this block, but be conservative about loop-related blocks
-            if self.eliminate_in_block_safe(block, &loop_headers) {
-                changed = true;
-            }
-        }
-
-        Ok(changed)
-    }
-
-    fn eliminate_in_block_safe(&self, block: &mut Block, loop_headers: &HashSet<String>) -> bool {
-        // For blocks that are part of loops, be more conservative
-        // Only apply CSE if the block is small and contains simple operations
-        let is_in_loop_body = self.is_block_in_loop_body(block, loop_headers);
-        self.eliminate_in_block_conservative(block, is_in_loop_body)
-    }
-
-    fn is_block_in_loop_body(&self, block: &Block, loop_headers: &HashSet<String>) -> bool {
-        // Check if this block can reach a loop header (simplified check)
-        // This is a conservative approximation
-        for instr in &block.instructions {
-            match instr {
-                Instruction::Jmp { target }
-                | Instruction::Br {
-                    true_target: target,
-                    ..
-                } => {
-                    if loop_headers.contains(target.as_str()) {
-                        return true;
-                    }
-                }
-                #[allow(unreachable_patterns)]
-                Instruction::Br {
-                    false_target: target,
-                    ..
-                } if loop_headers.contains(target.as_str()) => {
-                    return true;
-                }
-                _ => {}
-            }
-        }
-        false
-    }
-
-    fn is_simple_cse_candidate(&self, instr: &Instruction) -> bool {
-        // Only allow simple arithmetic operations for CSE in loop bodies
-        match instr {
-            Instruction::IntBinary { op, .. } => {
-                matches!(op, IntBinOp::Add | IntBinOp::Sub | IntBinOp::Mul)
-            }
-            Instruction::FloatBinary { op, .. } => {
-                matches!(op, FloatBinOp::FAdd | FloatBinOp::FSub | FloatBinOp::FMul)
-            }
-            _ => false, // Only simple arithmetic for loop CSE
-        }
-    }
-
-    fn eliminate_in_block_conservative(&self, block: &mut Block, is_in_loop_body: bool) -> bool {
-        let mut changed = false;
-
-        // Map from expression key (including operand versions) to (destination register, dest version)
-        let mut expr_to_reg: HashMap<String, (Register, u64)> = HashMap::new();
-        // Per-register version counter to detect intervening re-definitions
-        let mut def_version: HashMap<Register, u64> = HashMap::new();
-        let mut instructions = Vec::new();
-
-        for instr in &block.instructions {
-            if let (Some(dst), Some(expr_key)) = (
-                instr.def_reg(),
-                self.expr_key_with_versions(instr, &def_version),
-            ) {
-                let loop_skip = is_in_loop_body && !self.is_simple_cse_candidate(instr);
-                let producer = expr_to_reg.get(&expr_key).filter(|(reg, ver)| {
-                    !loop_skip && def_version.get(reg).copied().unwrap_or(0) == *ver
-                });
-                if let Some((existing_reg, _)) = producer {
-                    instructions.push(Instruction::Copy {
-                        ty: self.extract_instruction_type(instr),
-                        dst: dst.clone(),
-                        src: Operand::Register(existing_reg.clone()),
-                    });
-                    changed = true;
-                    def_version
-                        .entry(dst.clone())
-                        .and_modify(|v| *v += 1)
-                        .or_insert(1);
-                    continue;
-                }
-                let ver_after_def = def_version.get(dst).copied().unwrap_or(0) + 1;
-                expr_to_reg.insert(expr_key, (dst.clone(), ver_after_def));
-            }
-
-            instructions.push(instr.clone());
-            if let Some(dst) = instr.def_reg() {
-                def_version
-                    .entry(dst.clone())
-                    .and_modify(|v| *v += 1)
-                    .or_insert(1);
-            }
-        }
-
-        block.instructions = instructions;
-        changed
     }
 
     fn expr_key(&self, instr: &Instruction) -> Option<String> {
@@ -189,21 +87,137 @@ impl CommonSubexpressionElimination {
         }
     }
 
-    fn expr_key_with_versions(
-        &self,
-        instr: &Instruction,
-        def_version: &HashMap<Register, u64>,
-    ) -> Option<String> {
-        // Base structural key
-        let base = self.expr_key(instr)?;
-        // Append operand versions to ensure no intervening re-definitions occurred
-        let mut parts = vec![base];
-        for reg in instr.use_regs() {
-            let ver = def_version.get(reg).copied().unwrap_or(0);
-            parts.push(format!("{reg}@{ver}"));
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+        let no_callee = |_: &str| -> Option<MirType> { None };
+        let Ok(mut graph) = SsaFunction::build(func, &no_callee) else {
+            return Ok(false);
+        };
+        verify_graph(&graph, "before CSE")?;
+
+        let reach = reachability(&graph);
+        let defs = definitions(&graph);
+        let mut available: HashMap<Expr, Vec<(ValueId, Site)>> = HashMap::new();
+        let mut rewrites: Vec<Rewrite> = Vec::new();
+
+        for (b, block) in graph.blocks.iter().enumerate() {
+            for (i, inst) in block.insts.iter().enumerate() {
+                let (Some(defined), Some(text)) = (inst.defines, self.expr_key(&inst.instruction))
+                else {
+                    continue;
+                };
+                let site = (b, i + 1);
+                let key = (text, inst.uses.clone());
+                let dst = &graph.values[defined.0 as usize].register;
+
+                let earlier = available.get(&key).and_then(|candidates| {
+                    candidates.iter().find(|&&(_, from)| {
+                        if from.0 == b {
+                            from.1 < site.1
+                        } else {
+                            graph.dominators.dominates(from.0, b)
+                        }
+                    })
+                });
+                match earlier {
+                    Some(&(src, from)) => {
+                        let src_reg = &graph.values[src.0 as usize].register;
+                        let clobbered = defs.get(src_reg).is_some_and(|sites| {
+                            sites
+                                .iter()
+                                .any(|&w| w != from && between(&reach, w, from, site))
+                        });
+                        if clobbered || src_reg == dst {
+                            available.entry(key).or_default().push((defined, site));
+                            continue;
+                        }
+                        let copy = Instruction::Copy {
+                            ty: self.extract_instruction_type(&inst.instruction),
+                            dst: dst.clone(),
+                            src: Operand::Register(src_reg.clone()),
+                        };
+                        rewrites.push((b, i, src, copy));
+                    }
+                    None => available.entry(key).or_default().push((defined, site)),
+                }
+            }
         }
-        Some(parts.join("|"))
+
+        if rewrites.is_empty() {
+            return Ok(false);
+        }
+        for (b, i, src, copy) in rewrites {
+            let inst = &mut graph.blocks[b].insts[i];
+            inst.instruction = copy;
+            inst.uses = vec![src];
+        }
+        verify_graph(&graph, "after CSE")?;
+        *func = destroy(&graph).map_err(|e| TransformError::Unsupported(e.to_string()))?;
+        Ok(true)
     }
+}
+
+fn verify_graph(graph: &SsaFunction, stage: &str) -> Result<(), TransformError> {
+    #[cfg(any(debug_assertions, feature = "ssa-round-trip"))]
+    graph.verify().map_err(|violations| {
+        let lines: Vec<&str> = violations.iter().map(|v| v.message.as_str()).collect();
+        TransformError::Unsupported(format!("SSA verification {stage}: {}", lines.join("; ")))
+    })?;
+    #[cfg(not(any(debug_assertions, feature = "ssa-round-trip")))]
+    let _ = (graph, stage);
+    Ok(())
+}
+
+/// `reach[a][b]`: a path of at least one edge runs from block `a` to block `b`.
+fn reachability(graph: &SsaFunction) -> Vec<Vec<bool>> {
+    let n = graph.blocks.len();
+    let mut reach = vec![vec![false; n]; n];
+    for (start, row) in reach.iter_mut().enumerate() {
+        let mut stack: Vec<usize> = graph.blocks[start]
+            .edges
+            .iter()
+            .map(|e| e.target.0 as usize)
+            .collect();
+        while let Some(b) = stack.pop() {
+            if !mem::replace(&mut row[b], true) {
+                stack.extend(graph.blocks[b].edges.iter().map(|e| e.target.0 as usize));
+            }
+        }
+    }
+    reach
+}
+
+/// Every site that writes a register: each instruction result, and each edge whose
+/// argument lives in a different register than the target parameter it feeds.
+fn definitions(graph: &SsaFunction) -> HashMap<Register, Vec<Site>> {
+    let mut defs: HashMap<Register, Vec<Site>> = HashMap::new();
+    for value in &graph.values {
+        if let ValueDef::Inst { block, inst } = value.def {
+            defs.entry(value.register.clone())
+                .or_default()
+                .push((block.0 as usize, inst as usize + 1));
+        }
+    }
+    for (b, block) in graph.blocks.iter().enumerate() {
+        for edge in &block.edges {
+            let target = &graph.blocks[edge.target.0 as usize];
+            for (&param, &arg) in target.params.iter().zip(&edge.args) {
+                let param = &graph.values[param.0 as usize];
+                if graph.values[arg.0 as usize].register != param.register {
+                    defs.entry(param.register.clone())
+                        .or_default()
+                        .push((b, EDGE_MOVE));
+                }
+            }
+        }
+    }
+    defs
+}
+
+/// Whether a write at `w` can run after `from` and before `to` on some path.
+fn between(reach: &[Vec<bool>], w: Site, from: Site, to: Site) -> bool {
+    let after_from = (w.0 == from.0 && w.1 > from.1) || reach[from.0][w.0];
+    let before_to = (w.0 == to.0 && to.1 > w.1) || reach[w.0][to.0];
+    after_from && before_to
 }
 
 #[cfg(test)]
@@ -458,6 +472,111 @@ mod tests {
             &entry.instructions[1],
             Instruction::IntBinary {
                 ty: MirType::Scalar(ScalarType::I32),
+                ..
+            }
+        ));
+    }
+
+    fn imm_copy(dst: u32, value: i64) -> Instruction {
+        Instruction::Copy {
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: VirtualReg::gpr(dst).into(),
+            src: Operand::Immediate(Immediate::I64(value)),
+        }
+    }
+
+    #[test]
+    fn cse_reuses_result_of_dominating_block() {
+        let mut func = FunctionBuilder::new("dominated")
+            .param(VirtualReg::gpr(10).into(), MirType::Scalar(ScalarType::I64))
+            .param(VirtualReg::gpr(11).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(int_add(ScalarType::I64, 0, 10, 11))
+            .instr(Instruction::Jmp {
+                target: "next".to_string(),
+            })
+            .block("next")
+            .instr(int_add(ScalarType::I64, 1, 10, 11))
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        assert!(
+            CommonSubexpressionElimination
+                .apply(&mut func)
+                .expect("should succeed")
+        );
+        let first: Register = VirtualReg::gpr(0).into();
+        let next = get_block(&func, "next");
+        assert!(matches!(
+            &next.instructions[0],
+            Instruction::Copy { src: Operand::Register(src), .. } if *src == first
+        ));
+    }
+
+    #[test]
+    fn cse_refuses_when_result_register_is_overwritten_on_the_way() {
+        let mut func = FunctionBuilder::new("clobbered")
+            .param(VirtualReg::gpr(10).into(), MirType::Scalar(ScalarType::I64))
+            .param(VirtualReg::gpr(11).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(int_add(ScalarType::I64, 0, 10, 11))
+            .instr(Instruction::Jmp {
+                target: "next".to_string(),
+            })
+            .block("next")
+            .instr(imm_copy(0, 99))
+            .instr(int_add(ScalarType::I64, 1, 10, 11))
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        assert!(
+            !CommonSubexpressionElimination
+                .apply(&mut func)
+                .expect("should succeed")
+        );
+    }
+
+    #[test]
+    fn cse_reuses_within_a_loop_header() {
+        let mut func = FunctionBuilder::new("header")
+            .param(VirtualReg::gpr(10).into(), MirType::Scalar(ScalarType::I64))
+            .param(VirtualReg::gpr(11).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "head".to_string(),
+            })
+            .block("head")
+            .instr(imm_copy(2, 0))
+            .instr(int_add(ScalarType::I64, 0, 10, 11))
+            .instr(int_add(ScalarType::I64, 1, 10, 11))
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(2).into(),
+                true_target: "head".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        assert!(
+            CommonSubexpressionElimination
+                .apply(&mut func)
+                .expect("should succeed")
+        );
+        let head = get_block(&func, "head");
+        assert!(matches!(
+            &head.instructions[2],
+            Instruction::Copy {
+                src: Operand::Register(_),
                 ..
             }
         ));

@@ -351,6 +351,7 @@ impl LoopInvariantCodeMotion {
     ) -> Result<Vec<(usize, usize)>, TransformError> {
         let mut invariant = Vec::new();
         let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
+        let dominators = calculate_dominators(func);
 
         // Count how many times each register is defined inside the loop.
         // If a register is defined more than once (e.g. accumulator %sum, induction
@@ -400,10 +401,16 @@ impl LoopInvariantCodeMotion {
                 }
                 if let Some(def) = instr.def_reg() {
                     let single_def = total_defs.get(def) == Some(&1);
-                    let reads_after_def = use_sites.get(def).is_none_or(|sites| {
-                        sites.iter().all(|&(b, i)| b == block_idx && i > instr_idx)
+                    let uses_follow_def = use_sites.get(def).is_none_or(|sites| {
+                        sites.iter().all(|&(b, i)| {
+                            if b == block_idx {
+                                i > instr_idx
+                            } else {
+                                dominators.dominates(&block.label, &func.blocks[b].label)
+                            }
+                        })
                     });
-                    if !single_def || !reads_after_def {
+                    if !single_def || !uses_follow_def {
                         continue;
                     }
                 }
