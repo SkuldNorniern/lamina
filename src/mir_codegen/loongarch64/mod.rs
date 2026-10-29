@@ -1123,6 +1123,9 @@ fn emit_call<W: Write>(
             writeln!(writer, "    addi.d $a0, $zero, -1")?;
             writeln!(writer, "{done}:")?;
         }
+        if let Some(ret) = ret {
+            store_call_result(writer, ret, None, slots)?;
+        }
         return Ok(());
     }
     if name == "lamina.writebyte" && args.len() == 1 {
@@ -1138,6 +1141,9 @@ fn emit_call<W: Write>(
         writeln!(writer, "    addi.d $a0, $zero, -2")?;
         writeln!(writer, "{done}:")?;
         writeln!(writer, "    addi.d $sp, $sp, 16")?;
+        if let Some(ret) = ret {
+            store_call_result(writer, ret, None, slots)?;
+        }
         return Ok(());
     }
     if name == "lamina.readbyte" && args.is_empty() {
@@ -1161,6 +1167,9 @@ fn emit_call<W: Write>(
         writeln!(writer, "    ld.bu $a0, $sp, 0")?;
         writeln!(writer, "{done}:")?;
         writeln!(writer, "    addi.d $sp, $sp, 16")?;
+        if let Some(ret) = ret {
+            store_call_result(writer, ret, None, slots)?;
+        }
         return Ok(());
     }
 
