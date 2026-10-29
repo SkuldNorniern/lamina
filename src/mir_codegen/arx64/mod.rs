@@ -447,6 +447,9 @@ fn emit_instruction<W: Write>(
         | Instruction::VaCopy { .. } => {
             unsupported("ARX64 backend does not support variadic arguments yet")
         }
+        Instruction::InlineAsm { .. } => {
+            unsupported("ARX64 backend does not support inline assembly; it is x86_64 Linux only")
+        }
         other => unsupported(format!("ARX64 backend does not support MIR op {other:?}")),
     }
 }

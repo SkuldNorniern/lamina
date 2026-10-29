@@ -2069,6 +2069,12 @@ fn emit_instruction_riscv<W: Write>(
                 "RISC-V backend does not support integer rotates yet".to_string(),
             )));
         }
+        MirInst::InlineAsm { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "inline assembly is not supported by the RISC-V backend; it is x86_64 Linux only"
+                    .to_string(),
+            )));
+        }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }

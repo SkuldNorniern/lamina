@@ -636,6 +636,11 @@ impl Kernel {
                     "atomic instruction `{instruction}` is not yet supported by the AMDGPU backend"
                 )));
             }
+            Instruction::InlineAsm { .. } => {
+                return Err(error(
+                    "inline assembly is not supported by the AMDGPU backend; it is x86_64 Linux only",
+                ));
+            }
             Instruction::VaStart { .. }
             | Instruction::VaArg { .. }
             | Instruction::VaEnd { .. }

@@ -1843,6 +1843,11 @@ fn emit_instruction_ppc64<W: Write>(
                 ),
             )));
         }
+        MirInst::InlineAsm { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "inline assembly is not supported by the PowerPC64 backend; it is x86_64 Linux only".to_string(),
+            )));
+        }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }

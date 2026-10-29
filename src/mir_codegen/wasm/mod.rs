@@ -1635,6 +1635,12 @@ fn emit_instruction_wasm(
                 "WASM backend does not support integer rotates yet".to_string(),
             )));
         }
+        MirInst::InlineAsm { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "inline assembly is not supported by the WASM backend; it is x86_64 Linux only"
+                    .to_string(),
+            )));
+        }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }

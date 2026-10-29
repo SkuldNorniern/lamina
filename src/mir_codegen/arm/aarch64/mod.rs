@@ -1904,6 +1904,11 @@ fn emit_block<W: Write>(
                     ),
                 )));
             }
+            MirInst::InlineAsm { .. } => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "inline assembly is not yet supported by the AArch64 backend; it is x86_64 Linux only".to_owned(),
+                )));
+            }
             #[cfg(feature = "nightly")]
             MirInst::SimdBinary { .. }
             | MirInst::SimdUnary { .. }

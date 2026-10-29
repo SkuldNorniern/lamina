@@ -6,6 +6,9 @@
 mod atomic;
 pub mod constants;
 mod function;
+mod inline_asm;
+#[cfg(test)]
+mod inline_asm_tests;
 mod instruction;
 mod moves;
 mod selection;

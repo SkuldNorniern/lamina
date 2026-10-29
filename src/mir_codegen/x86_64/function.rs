@@ -62,6 +62,7 @@ pub(super) fn instruction_clobbers(
         MirInst::VaStart { .. } | MirInst::VaArg { .. } | MirInst::VaCopy { .. } => {
             vec!["rcx", "rdx"]
         }
+        MirInst::InlineAsm { .. } => super::inline_asm::touched_registers(inst),
         _ => Vec::new(),
     }
 }
@@ -225,6 +226,16 @@ pub(super) fn compile_single_function_x86_64(
     // An aggregate too large for the return registers travels through a hidden pointer
     // the caller passes in the first argument register. The callee keeps it in a slot
     // of its own, since the calls it makes would clobber that register.
+    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+        for reg in super::inline_asm::touched_registers(inst) {
+            if callee_saved(reg, target_os) {
+                saved_regs.push(reg);
+            }
+        }
+    }
+    saved_regs.sort_unstable();
+    saved_regs.dedup();
+
     let sret = func
         .sig
         .ret_aggregate

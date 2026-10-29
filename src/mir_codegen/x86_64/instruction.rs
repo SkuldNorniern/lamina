@@ -1722,6 +1722,9 @@ pub(super) fn emit_instruction_x86_64(
         | MirInst::Fence { .. } => {
             super::atomic::emit(inst, writer, reg_alloc, stack_slots)?;
         }
+        MirInst::InlineAsm { .. } => {
+            super::inline_asm::emit(inst, writer, reg_alloc, stack_slots, target_os)?;
+        }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }
