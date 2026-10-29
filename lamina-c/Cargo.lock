@@ -6,10 +6,10 @@ version = 4
 name = "lamina"
 version = "0.2.0"
 dependencies = [
- "lamina-codegen 0.2.0",
+ "lamina-codegen",
  "lamina-ir",
- "lamina-mir 0.2.0",
- "lamina-platform 0.2.0",
+ "lamina-mir",
+ "lamina-platform",
  "lamina-ras",
 ]
 
@@ -19,25 +19,15 @@ version = "0.2.0"
 dependencies = [
  "lamina",
  "lamina-ir",
- "lamina-platform 0.2.0",
-]
-
-[[package]]
-name = "lamina-codegen"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6804ab87113ab0711820189a864777f767c5168b5f3aa9d4102566f3df0151ff"
-dependencies = [
- "lamina-mir 0.1.1",
- "lamina-platform 0.1.2",
+ "lamina-platform",
 ]
 
 [[package]]
 name = "lamina-codegen"
 version = "0.2.0"
 dependencies = [
- "lamina-mir 0.2.0",
- "lamina-platform 0.2.0",
+ "lamina-mir",
+ "lamina-platform",
 ]
 
 [[package]]
@@ -46,19 +36,7 @@ version = "0.2.0"
 
 [[package]]
 name = "lamina-mir"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "950209b06825fd6f792de09dd8d3cef5b4422ddc3f5e2980b4dc6f14b756206d"
-
-[[package]]
-name = "lamina-mir"
 version = "0.2.0"
-
-[[package]]
-name = "lamina-platform"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae40425fa52543eb8e47b6813ddb03448517059513f22a582606bcd05afa6a7c"
 
 [[package]]
 name = "lamina-platform"
@@ -66,13 +44,11 @@ version = "0.2.0"
 
 [[package]]
 name = "lamina-ras"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be8cbacab7d5273198b95e6559b74ac2bfc01c6203344bde99a211a89b9adec"
+version = "0.2.0"
 dependencies = [
- "lamina-codegen 0.1.2",
- "lamina-mir 0.1.1",
- "lamina-platform 0.1.2",
+ "lamina-codegen",
+ "lamina-mir",
+ "lamina-platform",
  "libc",
  "log",
 ]

@@ -42,7 +42,7 @@ static const char MAX_IR[] =
 static const char DOUBLE_IR[] =
     "fn @double(i64 %x) -> i64 {\n"
     "entry:\n"
-    "  %slot = alloc.ptr.stack i64\n"
+    "  %slot = stackalloc.i64\n"
     "  store.i64 %slot, %x\n"
     "  %val  = load.i64 %slot\n"
     "  %out  = mul.i64 %val, 2\n"
