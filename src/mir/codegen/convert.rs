@@ -664,6 +664,9 @@ fn convert_function<'a>(
     mir_sig.weak = f.annotations.contains(&FunctionAnnotation::Weak);
     // A weak definition may be overridden at link time, so calls must reach the symbol.
     mir_sig.no_inline |= mir_sig.weak;
+    mir_sig.naked = f.annotations.contains(&FunctionAnnotation::Naked);
+    // A naked body is exactly what the author wrote, so it must not be inlined.
+    mir_sig.no_inline |= mir_sig.naked;
     mir_sig.section = f.annotations.iter().find_map(|a| match a {
         FunctionAnnotation::Section(name) => Some(name.clone()),
         _ => None,
@@ -793,11 +796,15 @@ fn convert_function<'a>(
         let mut defined_in_block: HashSet<Register> = HashSet::new();
         for instr in &ir_block.instructions {
             let mut resolved;
-            let instr = if matches!(instr, IRInst::Alloc { .. } | IRInst::GetElemPtr { .. }) {
+            let instr = if matches!(
+                instr,
+                IRInst::Alloc { .. } | IRInst::GetElemPtr { .. } | IRInst::GetFieldPtr { .. }
+            ) {
                 resolved = instr.clone();
                 let ty = match &mut resolved {
                     IRInst::Alloc { allocated_ty, .. } => allocated_ty,
                     IRInst::GetElemPtr { element_type, .. } => element_type,
+                    IRInst::GetFieldPtr { struct_type, .. } => struct_type,
                     _ => unreachable!(),
                 };
                 *ty = resolve_type_names(ty, &module.type_declarations)
@@ -1900,22 +1907,17 @@ fn convert_instruction<'a>(
         IRInst::GetFieldPtr {
             result,
             struct_ptr,
+            struct_type,
             field_index,
-            field_byte_offset,
         } => {
+            let IRType::Struct(fields) = struct_type else {
+                return Err(FromIRError::UnsupportedType);
+            };
             let base = pointer_base(struct_ptr, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
-            // Without the struct type the text syntax leaves no layout to read, so
-            // the fallback is one 8-byte slot per field.
-            let offset = match field_byte_offset {
-                Some(bytes) => {
-                    i64::try_from(*bytes).map_err(|_| FromIRError::UnsupportedInstruction)?
-                }
-                None => i64::try_from(*field_index)
-                    .ok()
-                    .and_then(|index: i64| index.checked_mul(8))
-                    .ok_or(FromIRError::UnsupportedInstruction)?,
-            };
+            let offset = struct_field_byte_offset(fields, *field_index)
+                .and_then(|bytes| i64::try_from(bytes).ok())
+                .ok_or(FromIRError::UnsupportedType)?;
             Ok(displace_pointer(dst, base, offset, vreg_alloc))
         }
         IRInst::GetElemPtr {

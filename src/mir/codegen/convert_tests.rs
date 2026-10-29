@@ -209,8 +209,7 @@ fn constant_gep_preserves_pointer_width_offsets() {
 
 #[test]
 fn offsets_past_i32_reach_their_address() {
-    let source =
-        "fn @field(ptr %p) -> ptr {\nentry:\n%q = getfieldptr %p, 300000000\nret.ptr %q\n}";
+    let source = "fn @field(ptr %p) -> ptr {\nentry:\n%q = getfieldptr.struct { pad: [2400000000 x i8], tail: i64 } %p, 1\nret.ptr %q\n}";
     let ir = parse_module(source).expect("parse wide field index");
     let mir = from_ir(&ir, "field").expect("lower wide field index");
     mir.validate().expect("address arithmetic verifies");
@@ -289,7 +288,7 @@ fn straight_line_reassignment_reads_previous_definition() {
 #[test]
 fn integer_aggregate_parameter_arrives_as_pointer_to_its_own_slot() {
     let ir = parse_module(
-        "fn @sum(struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n%ap = getfieldptr %p, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
+        "fn @sum(struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n%ap = getfieldptr.struct { a: i64, b: i64 } %p, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
     )
     .expect("parse aggregate parameter");
     let mir = from_ir(&ir, "sum").expect("lower aggregate parameter");
@@ -364,7 +363,7 @@ fn float_and_oversized_aggregates_are_rejected_by_name() {
 #[test]
 fn integer_aggregate_return_lands_in_slot_the_caller_addresses() {
     let ir = parse_module(
-        "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64 }\nret.ptr %p\n}\nfn @use() -> i64 {\nentry:\n%r = call @make()\n%ap = getfieldptr %r, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
+        "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64 }\nret.ptr %p\n}\nfn @use() -> i64 {\nentry:\n%r = call @make()\n%ap = getfieldptr.struct { a: i64, b: i64 } %r, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
     )
     .expect("parse aggregate return");
     let mir = from_ir(&ir, "returns").expect("lower aggregate return");
