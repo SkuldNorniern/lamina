@@ -3,6 +3,9 @@
 //! This module provides methods for SIMD (Single Instruction, Multiple Data)
 //! operations including vector arithmetic, shuffling, and element extraction.
 //! These operations are only available when the `nightly` feature is enabled.
+//!
+//! SIMD instructions have no text form in Lamina IR yet, so the methods here panic
+//! instead of emitting IR the parser cannot read.
 
 #[cfg(feature = "nightly")]
 use crate::builder::IRBuilder;
@@ -155,21 +158,8 @@ impl<'a> IRBuilder<'a> {
 
     /// Performs SIMD addition: `result = lhs + rhs` (element-wise).
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
-    /// # use lamina_ir::builder::var;
-    /// # #[cfg(feature = "nightly")]
-    /// # {
-    /// let mut builder = IRBuilder::new();
-    /// let vec_type = Type::Vector {
-    ///     element_type: PrimitiveType::I32,
-    ///     lanes: 4,
-    /// };
-    /// builder.simd_add("sum", vec_type, var("a"), var("b"));
-    /// # }
-    /// ```
+    /// # Panics
+    /// Panics: SIMD instructions have no text form in Lamina IR yet.
     pub fn simd_add(
         &mut self,
         result: &'a str,
@@ -284,22 +274,8 @@ impl<'a> IRBuilder<'a> {
     ///
     /// This creates a vector where all lanes contain the same scalar value.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
-    /// # use lamina_ir::builder::i32;
-    /// # #[cfg(feature = "nightly")]
-    /// # {
-    /// let mut builder = IRBuilder::new();
-    /// let vec_type = Type::Vector {
-    ///     element_type: PrimitiveType::I32,
-    ///     lanes: 4,
-    /// };
-    /// builder.simd_splat("vec", vec_type, i32(42));
-    /// // Creates <4 x i32> with all lanes set to 42
-    /// # }
-    /// ```
+    /// # Panics
+    /// Panics: SIMD instructions have no text form in Lamina IR yet.
     pub fn simd_splat(
         &mut self,
         result: &'a str,

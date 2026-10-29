@@ -4,13 +4,19 @@
 //! sign-extension, truncation, bitcasting, and conditional selection.
 
 use crate::{
-    builder::IRBuilder,
+    builder::{
+        IRBuilder,
+        checks::{check_bitcast, check_sext, check_trunc, check_zext, integer_signedness},
+    },
     instruction::Instruction,
     types::{PrimitiveType, Type, Value},
 };
 
 impl<'a> IRBuilder<'a> {
-    /// Creates a zero-extension instruction
+    /// Zero-extends an unsigned or bool integer to a wider integer (`extend.<src>.<dst>`).
+    ///
+    /// # Panics
+    /// Panics if `source_type` is signed (use `sext`), or if the widths do not grow.
     pub fn zext(
         &mut self,
         result: &'a str,
@@ -18,6 +24,7 @@ impl<'a> IRBuilder<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     ) -> &mut Self {
+        check_zext(source_type, target_type);
         self.inst(Instruction::ZeroExtend {
             result,
             source_type,
@@ -26,23 +33,10 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Creates an integer truncation instruction
-    pub fn trunc(
-        &mut self,
-        result: &'a str,
-        source_type: PrimitiveType,
-        target_type: PrimitiveType,
-        value: Value<'a>,
-    ) -> &mut Self {
-        self.inst(Instruction::Trunc {
-            result,
-            source_type,
-            target_type,
-            value,
-        })
-    }
-
-    /// Creates a sign-extension instruction
+    /// Sign-extends a signed integer to a wider integer (`extend.<src>.<dst>`).
+    ///
+    /// # Panics
+    /// Panics if `source_type` is not signed (use `zext`), or if the widths do not grow.
     pub fn sext(
         &mut self,
         result: &'a str,
@@ -50,6 +44,7 @@ impl<'a> IRBuilder<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     ) -> &mut Self {
+        check_sext(source_type, target_type);
         self.inst(Instruction::SignExtend {
             result,
             source_type,
@@ -58,7 +53,30 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
+    /// Creates an integer truncation instruction
+    ///
+    /// # Panics
+    /// Panics unless both types are integers and the target is narrower.
+    pub fn trunc(
+        &mut self,
+        result: &'a str,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    ) -> &mut Self {
+        check_trunc(source_type, target_type);
+        self.inst(Instruction::Trunc {
+            result,
+            source_type,
+            target_type,
+            value,
+        })
+    }
+
     /// Creates a bitcast instruction between equally-sized primitive types.
+    ///
+    /// # Panics
+    /// Panics if both types have a known width and the widths differ.
     pub fn bitcast(
         &mut self,
         result: &'a str,
@@ -66,6 +84,7 @@ impl<'a> IRBuilder<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     ) -> &mut Self {
+        check_bitcast(source_type, target_type);
         self.inst(Instruction::Bitcast {
             result,
             source_type,
@@ -177,21 +196,5 @@ impl<'a> IRBuilder<'a> {
             target_type,
             value,
         })
-    }
-}
-
-fn integer_signedness(ty: PrimitiveType) -> Option<bool> {
-    match ty {
-        PrimitiveType::I8
-        | PrimitiveType::I16
-        | PrimitiveType::I32
-        | PrimitiveType::I64
-        | PrimitiveType::I128 => Some(true),
-        PrimitiveType::U8
-        | PrimitiveType::U16
-        | PrimitiveType::U32
-        | PrimitiveType::U64
-        | PrimitiveType::U128 => Some(false),
-        _ => None,
     }
 }

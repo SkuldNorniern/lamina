@@ -4,36 +4,33 @@
 //! within functions. Basic blocks are sequences of instructions with
 //! a single entry and exit point.
 
-use crate::builder::IRBuilder;
+use crate::builder::{IRBuilder, PendingBlock};
 
 impl<'a> IRBuilder<'a> {
-    /// Creates a new basic block in the current function
+    /// Opens a new basic block in the current function and makes it the current block.
     ///
-    /// Parameters:
-    /// - `name`: The block label (used for branching)
-    ///
-    /// Creates a new basic block and sets it as the current block for
-    /// subsequent instruction additions. Must be called while a function
-    /// is active.
+    /// Panics when the label is already defined in the function.
     pub fn block(&mut self, name: &'a str) -> &mut Self {
-        if self.current_function.is_some() {
-            self.current_block = Some(name);
-            self.block_instructions.insert(name, vec![]);
-        }
+        let function = self.open_body();
+        assert!(
+            function.blocks.iter().all(|block| block.name != name),
+            "block '{name}' is already defined in '@{}'",
+            function.name
+        );
+        function.blocks.push(PendingBlock {
+            name,
+            instructions: vec![],
+        });
+        let index = function.blocks.len() - 1;
+        self.current_block = Some(index);
         self
     }
 
-    /// Sets the entry block for the current function
+    /// Chooses which block of the current function runs first.
     ///
-    /// Parameters:
-    /// - `name`: The block name to use as entry point
-    ///
-    /// By default, the first block created ("entry") will be the entry point.
-    /// Use this method to override that behavior.
+    /// Defaults to `entry`. The label must be defined by the time `build()` runs.
     pub fn set_entry_block(&mut self, name: &'a str) -> &mut Self {
-        if let Some(func_name) = self.current_function {
-            self.function_entry_blocks.insert(func_name, name);
-        }
+        self.open_body().entry = Some(name);
         self
     }
 }

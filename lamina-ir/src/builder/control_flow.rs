@@ -69,23 +69,29 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Creates a typed value copy (`%result = copy.<ty> <value>`).
+    /// Creates a scalar value copy (`%result = copy.<ty> <value>`).
+    ///
+    /// # Panics
+    /// Panics unless `ty` is a primitive type. Aggregates move through memory one scalar at a time.
     pub fn copy(&mut self, result: &'a str, ty: Type<'a>, value: Value<'a>) -> &mut Self {
+        assert!(
+            matches!(ty, Type::Primitive(_)),
+            "copy moves one scalar value, found {ty}; move an aggregate through memory with getfieldptr and load/store"
+        );
         self.inst(Instruction::Copy { result, ty, value })
     }
 
-    /// Creates a phi node that merges values from incoming edges.
+    /// Removed: `phi` is not part of the text IR.
+    ///
+    /// # Panics
+    /// Always. Assign the value with `copy` in each predecessor instead.
     pub fn phi(
         &mut self,
-        result: &'a str,
-        ty: Type<'a>,
-        incoming: Vec<(Value<'a>, &'a str)>,
+        _result: &'a str,
+        _ty: Type<'a>,
+        _incoming: Vec<(Value<'a>, &'a str)>,
     ) -> &mut Self {
-        self.inst(Instruction::Phi {
-            result,
-            ty,
-            incoming,
-        })
+        panic!("phi was removed from Lamina IR; assign the value with copy in each predecessor");
     }
 
     /// Creates a function call instruction

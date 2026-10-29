@@ -8,142 +8,175 @@ use crate::module::ModuleAnnotation;
 use crate::{builder::IRBuilder, function::FunctionAnnotation};
 
 impl<'a> IRBuilder<'a> {
-    /// Adds an annotation to the current function
+    /// Adds a function annotation to the current function.
+    ///
+    /// Panics when the annotation has no text form, is already applied, or conflicts with
+    /// an annotation already applied.
     pub fn annotate(&mut self, annotation: FunctionAnnotation) -> &mut Self {
-        if let Some(func_name) = self.current_function
-            && let Some(annotations) = self.function_annotations.get_mut(func_name)
+        assert!(
+            has_text_form(&annotation),
+            "{annotation} has no text form in Lamina IR; use one of the annotations the text IR lists"
+        );
+        let function = self.open_function();
+        assert!(
+            !function.annotations.contains(&annotation),
+            "{annotation} is applied twice to '@{}'",
+            function.name
+        );
+        if let Some(other) = function
+            .annotations
+            .iter()
+            .find(|other| annotations_conflict(other, &annotation))
         {
-            annotations.push(annotation);
+            panic!(
+                "{annotation} and {other} cannot be used together on '@{}'",
+                function.name
+            );
         }
+        function.annotations.push(annotation);
         self
     }
 
-    /// Marks the current function as inline
+    /// Adds the `@inline` annotation.
     pub fn inline(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Inline)
     }
 
-    /// Marks the current function as exported
+    /// Adds the `@export` annotation.
     pub fn export(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Export)
     }
 
-    /// Marks the current function as external (imported)
+    /// Adds the `@extern` annotation.
     pub fn external(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Extern)
     }
 
-    /// Marks the current function as having no return
+    /// Adds the `@noreturn` annotation.
     pub fn no_return(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::NoReturn)
     }
 
-    /// Marks the current function as cold (rarely executed)
+    /// Adds the `@cold` annotation.
     pub fn cold(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Cold)
     }
 
-    /// Marks the current function as hot (frequently executed)
+    /// Adds the `@hot` annotation.
     pub fn hot(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Hot)
     }
 
-    /// Marks the current function as pure (no side effects)
+    /// Adds the `@pure` annotation.
     pub fn pure(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Pure)
     }
 
-    /// Marks the current function as internal (private to module)
+    /// Adds the `@internal` annotation.
     pub fn internal(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Internal)
     }
 
-    /// Marks the current function as having private linkage (ELF-specific)
+    /// Adds the `@private` annotation.
     pub fn private(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Private)
     }
 
-    /// Marks the current function as having hidden visibility (ELF-specific)
+    /// Adds the `@hidden` annotation.
     pub fn hidden(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Hidden)
     }
 
-    /// Marks the current function as having protected visibility (ELF-specific)
+    /// Adds the `@protected` annotation.
     pub fn protected(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Protected)
     }
 
-    /// Marks the current function as unsafe
-    pub fn unsafe_fn(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::Unsafe)
-    }
-
-    /// Sets the C calling convention for the current function (system default).
-    pub fn cc_c(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::CCc)
-    }
-
-    /// Sets the fastcall calling convention for the current function.
-    pub fn cc_fast(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::CCfast)
-    }
-
-    /// Sets the cold calling convention for the current function.
-    pub fn cc_cold(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::CCcold)
-    }
-
-    /// Sets the preserve_most calling convention for the current function.
-    pub fn cc_preserve_most(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::CCpreserveMost)
-    }
-
-    /// Sets the preserve_all calling convention for the current function.
-    pub fn cc_preserve_all(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::CCpreserveAll)
-    }
-
-    /// Sets the swift calling convention for the current function.
-    pub fn cc_swift(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::CCswift)
-    }
-
-    /// Sets the tail calling convention for the current function.
-    pub fn cc_tail(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::CCtail)
-    }
-
-    /// Sets a custom calling convention for the current function.
-    pub fn calling_convention(&mut self, cc: &str) -> &mut Self {
-        self.annotate(FunctionAnnotation::CallingConvention(cc.to_string()))
-    }
-
-    /// Sets the section for the current function
+    /// Adds the `@section("name")` annotation.
     pub fn section(&mut self, section: &str) -> &mut Self {
         self.annotate(FunctionAnnotation::Section(section.to_string()))
     }
 
-    /// Sets the alignment for the current function
+    /// Adds the `@align(bytes)` annotation. `alignment` must be a power of two.
     pub fn align(&mut self, alignment: u32) -> &mut Self {
         self.annotate(FunctionAnnotation::Align(alignment))
     }
 
-    /// Annotates the module with a global attribute.
     #[cfg(feature = "nightly")]
     pub fn annotate_module(&mut self, annotation: ModuleAnnotation) -> &mut Self {
         self.module.annotations.push(annotation);
         self
     }
 
-    /// Enables position-independent code generation for this module.
     #[cfg(feature = "nightly")]
     pub fn pic(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::PositionIndependentCode)
     }
 
-    /// Enables position-independent executable generation for this module.
     #[cfg(feature = "nightly")]
     pub fn pie(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::PositionIndependentExecutable)
     }
+}
+
+fn has_text_form(annotation: &FunctionAnnotation) -> bool {
+    match annotation {
+        FunctionAnnotation::Section(name) => !name.is_empty() && !name.contains(['\\', '"']),
+        FunctionAnnotation::Align(bytes) => bytes.is_power_of_two(),
+        FunctionAnnotation::Kernel
+        | FunctionAnnotation::Inline
+        | FunctionAnnotation::Export
+        | FunctionAnnotation::Extern
+        | FunctionAnnotation::NoReturn
+        | FunctionAnnotation::NoInline
+        | FunctionAnnotation::Cold
+        | FunctionAnnotation::Hot
+        | FunctionAnnotation::Pure
+        | FunctionAnnotation::Internal
+        | FunctionAnnotation::Private
+        | FunctionAnnotation::Hidden
+        | FunctionAnnotation::Protected
+        | FunctionAnnotation::Weak
+        | FunctionAnnotation::Naked
+        | FunctionAnnotation::NoRedZone => true,
+        _ => false,
+    }
+}
+
+fn annotations_conflict(a: &FunctionAnnotation, b: &FunctionAnnotation) -> bool {
+    use FunctionAnnotation::{Export, Extern, Hot, Naked, NoInline};
+    let visibility = |x: &FunctionAnnotation| {
+        matches!(
+            x,
+            FunctionAnnotation::Internal
+                | FunctionAnnotation::Private
+                | FunctionAnnotation::Hidden
+                | FunctionAnnotation::Protected
+        )
+    };
+    let local = |x: &FunctionAnnotation| {
+        matches!(
+            x,
+            FunctionAnnotation::Internal | FunctionAnnotation::Private
+        )
+    };
+    let pair = |x: &FunctionAnnotation,
+                y: &FunctionAnnotation,
+                p: &FunctionAnnotation,
+                q: &FunctionAnnotation| { (x == p && y == q) || (x == q && y == p) };
+    (visibility(a) && visibility(b))
+        || pair(a, b, &FunctionAnnotation::Cold, &Hot)
+        || matches!(
+            (a, b),
+            (
+                FunctionAnnotation::Section(_),
+                FunctionAnnotation::Section(_)
+            ) | (FunctionAnnotation::Align(_), FunctionAnnotation::Align(_))
+        )
+        || (local(a) && *b == Export)
+        || (*a == Export && local(b))
+        || pair(a, b, &FunctionAnnotation::Inline, &NoInline)
+        || pair(a, b, &Extern, &Export)
+        || pair(a, b, &Naked, &FunctionAnnotation::Inline)
+        || pair(a, b, &Naked, &FunctionAnnotation::Pure)
 }

@@ -144,8 +144,13 @@ pub(crate) fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 }
 
 pub(crate) fn catch<F: FnOnce() -> LaminaStatus + UnwindSafe>(f: F) -> LaminaStatus {
-    catch_unwind(f).unwrap_or_else(|_| {
-        error::set_error("internal panic in Lamina C API");
+    catch_unwind(f).unwrap_or_else(|payload| {
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or("internal panic in Lamina C API");
+        error::set_error(message);
         LaminaStatus::ErrorInternal
     })
 }

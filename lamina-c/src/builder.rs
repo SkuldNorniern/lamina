@@ -99,7 +99,7 @@ pub unsafe extern "C" fn lia_type_free(ty: *mut LaminaType) {
     }
 }
 
-/// Named type reference (`@TypeName`).
+/// Named type reference (`!TypeName`). Declare it with `lia_builder_declare_type` before use.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_type_named(name: *const c_char) -> *mut LaminaType {
     match cstr_to_str(name) {
@@ -136,23 +136,41 @@ pub unsafe extern "C" fn lia_type_struct(
     fields: *const LaminaStructField,
     count: usize,
 ) -> *mut LaminaType {
+    match unsafe { owned_struct_fields(fields, count) } {
+        Some(owned_fields) => Box::into_raw(Box::new(LaminaType(OwnedType::Struct(owned_fields)))),
+        None => null_mut(),
+    }
+}
+
+/// Packed struct type with named fields, laid out without padding. Clones all field types.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_type_packed_struct(
+    fields: *const LaminaStructField,
+    count: usize,
+) -> *mut LaminaType {
+    match unsafe { owned_struct_fields(fields, count) } {
+        Some(owned_fields) => {
+            Box::into_raw(Box::new(LaminaType(OwnedType::PackedStruct(owned_fields))))
+        }
+        None => null_mut(),
+    }
+}
+
+unsafe fn owned_struct_fields(
+    fields: *const LaminaStructField,
+    count: usize,
+) -> Option<Vec<OwnedStructField>> {
     if count > 0 && fields.is_null() {
-        return null_mut();
+        return None;
     }
     let mut owned_fields = Vec::with_capacity(count);
     for i in 0..count {
         let f = unsafe { &*fields.add(i) };
-        let name = match cstr_to_str(f.name) {
-            Some(s) => s.to_string(),
-            None => return null_mut(),
-        };
-        let ty = match unsafe { f.ty.as_ref() } {
-            Some(t) => t.0.clone(),
-            None => return null_mut(),
-        };
+        let name = cstr_to_str(f.name)?.to_string();
+        let ty = unsafe { f.ty.as_ref() }?.0.clone();
         owned_fields.push(OwnedStructField { name, ty });
     }
-    Box::into_raw(Box::new(LaminaType(OwnedType::Struct(owned_fields))))
+    Some(owned_fields)
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +357,23 @@ pub unsafe extern "C" fn lia_builder_finish(
         }
         let ir_text = b.0.build_ir_text();
         *module_out = Box::into_raw(Box::new(LaminaModule(ir_text)));
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+/// Declares a named type (`type !name = ty`) for `lia_type_named` references.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_declare_type(
+    builder: *mut LaminaBuilder,
+    name: *const c_char,
+    ty: *const LaminaType,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let name = require_str!(name, "name");
+        let t = require_ref!(ty, "ty");
+        b.0.declare_type(name.to_string(), t.0.clone());
         clear_error();
         LaminaStatus::Ok
     }))
@@ -734,7 +769,7 @@ pub unsafe extern "C" fn lia_builder_getfieldptr_typed(
         let sp = require_ref!(struct_ptr, "struct_ptr");
         let st = require_ref!(struct_type, "struct_type");
         match &st.0 {
-            OwnedType::Struct(_) | OwnedType::Named(_) => {
+            OwnedType::Struct(_) | OwnedType::PackedStruct(_) | OwnedType::Named(_) => {
                 b.0.getfieldptr(r, &sp.0, st.0.clone(), field_index);
                 clear_error();
                 LaminaStatus::Ok

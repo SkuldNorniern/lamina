@@ -2,8 +2,6 @@
 #[allow(clippy::module_inception)]
 mod tests {
     #[cfg(feature = "nightly")]
-    use crate::instruction::SimdOp;
-    #[cfg(feature = "nightly")]
     use crate::module::ModuleAnnotation;
     use crate::{
         builder::{IRBuilder, values::*},
@@ -242,9 +240,9 @@ mod tests {
             .export()
             .hot()
             .pure()
-            .cc_c()
             .section(".text.fast")
-            .align(16);
+            .align(16)
+            .ret_void();
 
         let module = builder.build();
 
@@ -256,7 +254,6 @@ mod tests {
         assert!(func.annotations.contains(&FunctionAnnotation::Export));
         assert!(func.annotations.contains(&FunctionAnnotation::Hot));
         assert!(func.annotations.contains(&FunctionAnnotation::Pure));
-        assert!(func.annotations.contains(&FunctionAnnotation::CCc));
         assert!(
             func.annotations
                 .contains(&FunctionAnnotation::Section(".text.fast".to_string()))
@@ -277,7 +274,7 @@ mod tests {
                 vec![param1, param2],
                 Type::Primitive(PrimitiveType::I64),
             )
-            .zext(
+            .sext(
                 "x_extended",
                 PrimitiveType::I32,
                 PrimitiveType::I64,
@@ -444,7 +441,7 @@ mod tests {
             .function("conversions", Type::Primitive(PrimitiveType::I64))
             .zext(
                 "zext_result",
-                PrimitiveType::I32,
+                PrimitiveType::U32,
                 PrimitiveType::I64,
                 i32(42),
             )
@@ -489,7 +486,7 @@ mod tests {
         } = &entry.instructions[0]
         {
             assert_eq!(*result, "zext_result");
-            assert_eq!(*source_type, PrimitiveType::I32);
+            assert_eq!(*source_type, PrimitiveType::U32);
             assert_eq!(*target_type, PrimitiveType::I64);
         } else {
             panic!("Expected ZeroExtend instruction");
@@ -559,7 +556,8 @@ mod tests {
         let mut builder = IRBuilder::new();
         builder
             .function("row", Type::Primitive(PrimitiveType::Ptr))
-            .getelem("row_ptr", var("matrix"), i32(1), row.clone());
+            .getelem("row_ptr", var("matrix"), i32(1), row.clone())
+            .ret_void();
         let module = builder.build();
         let inst = &module.functions["row"].basic_blocks["entry"].instructions[0];
         assert!(
@@ -734,61 +732,16 @@ mod tests {
     }
 
     #[test]
-    fn test_phi_node() {
+    #[should_panic(expected = "phi was removed from Lamina IR")]
+    fn test_phi_is_rejected() {
         let mut builder = IRBuilder::new();
-
         builder
             .function("phi_test", Type::Primitive(PrimitiveType::I32))
-            .cmp(CmpOp::Gt, "cond", PrimitiveType::I32, var("x"), i32(0))
-            .branch(var("cond"), "positive", "negative")
-            .block("positive")
-            .binary(
-                BinaryOp::Add,
-                "pos_val",
-                PrimitiveType::I32,
-                var("x"),
-                i32(1),
-            )
-            .jump("merge")
-            .block("negative")
-            .binary(
-                BinaryOp::Sub,
-                "neg_val",
-                PrimitiveType::I32,
-                var("x"),
-                i32(1),
-            )
-            .jump("merge")
-            .block("merge")
             .phi(
                 "result",
                 Type::Primitive(PrimitiveType::I32),
-                vec![(var("pos_val"), "positive"), (var("neg_val"), "negative")],
-            )
-            .ret(Type::Primitive(PrimitiveType::I32), var("result"));
-
-        let module = builder.build();
-
-        assert!(module.functions.contains_key("phi_test"));
-
-        let func = &module.functions["phi_test"];
-
-        assert!(func.basic_blocks.contains_key("merge"));
-
-        let merge = &func.basic_blocks["merge"];
-
-        if let Instruction::Phi {
-            result,
-            ty,
-            incoming,
-        } = &merge.instructions[0]
-        {
-            assert_eq!(*result, "result");
-            assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
-            assert_eq!(incoming.len(), 2);
-        } else {
-            panic!("Expected Phi instruction");
-        }
+                vec![(i32(1), "entry")],
+            );
     }
 
     #[test]
@@ -990,7 +943,7 @@ mod tests {
 
         builder
             .function("custom_entry", Type::Primitive(PrimitiveType::I32))
-            .block("entry")
+            .jump("actual_start")
             .block("actual_start")
             .set_entry_block("actual_start")
             .ret(Type::Primitive(PrimitiveType::I32), i32(42));
@@ -1170,62 +1123,15 @@ mod tests {
 
     #[cfg(feature = "nightly")]
     #[test]
-    fn test_simd_operations() {
+    #[should_panic(expected = "SIMD instructions have no text form")]
+    fn test_simd_has_no_text_form() {
         let mut builder = IRBuilder::new();
-
-        let vector_type = Type::Array {
-            element_type: Box::new(Type::Primitive(PrimitiveType::F32)),
-            size: 4,
-        };
-
-        builder
-            .function("simd_test", Type::Void)
-            .stackalloc("vec1", vector_type.clone())
-            .stackalloc("vec2", vector_type.clone())
-            .simd_binary(
-                SimdOp::Add,
-                "result",
-                vector_type.clone(),
-                var("vec1"),
-                var("vec2"),
-            )
-            .simd_unary(
-                SimdOp::Sqrt,
-                "sqrt_result",
-                vector_type.clone(),
-                var("result"),
-            )
-            .simd_extract("scalar", PrimitiveType::F32, var("sqrt_result"), i32(0))
-            .simd_insert(
-                "new_vec",
-                vector_type.clone(),
-                var("sqrt_result"),
-                f32(PI),
-                i32(1),
-            )
-            .simd_load("loaded_vec", vector_type.clone(), var("vec1"), Some(16))
-            .simd_store(vector_type.clone(), var("vec1"), var("new_vec"), Some(16))
-            .ret_void();
-
-        let module = builder.build();
-
-        assert!(module.functions.contains_key("simd_test"));
-
-        let func = &module.functions["simd_test"];
-
-        assert!(func.basic_blocks.contains_key("entry"));
-
-        let entry = &func.basic_blocks["entry"];
-
-        assert_eq!(entry.instructions.len(), 9);
-
-        // Verify SIMD binary operation
-        if let Instruction::SimdBinary { op, result, .. } = &entry.instructions[2] {
-            assert!(matches!(op, SimdOp::Add));
-            assert_eq!(*result, "result");
-        } else {
-            panic!("Expected SimdBinary instruction");
-        }
+        builder.function("simd_test", Type::Void).simd_add(
+            "result",
+            Type::Primitive(PrimitiveType::F32),
+            var("a"),
+            var("b"),
+        );
     }
 
     #[test]
@@ -1347,10 +1253,12 @@ mod tests {
         for ty in signed_sources.into_iter().chain(unsigned_sources) {
             builder.inttofp("r", ty, PrimitiveType::F32, var("v"));
         }
+        builder.ret_void();
         let module = builder.build();
         let instructions = &module.functions["signedness"].basic_blocks["entry"].instructions;
         let signs: Vec<bool> = instructions
             .iter()
+            .take(instructions.len() - 1)
             .map(|inst| match inst {
                 Instruction::IntToFloat { signed, .. } => *signed,
                 other => panic!("Expected IntToFloat instruction, found {other:?}"),
@@ -1362,7 +1270,8 @@ mod tests {
         builder
             .function("from_u32", Type::Primitive(PrimitiveType::F64))
             .inttofp("u", PrimitiveType::U32, PrimitiveType::F64, var("x"))
-            .inttofp("s", PrimitiveType::I32, PrimitiveType::F64, var("x"));
+            .inttofp("s", PrimitiveType::I32, PrimitiveType::F64, var("x"))
+            .ret_void();
         let module = builder.build();
         let instructions = &module.functions["from_u32"].basic_blocks["entry"].instructions;
         assert!(matches!(
@@ -1381,7 +1290,8 @@ mod tests {
         builder
             .function("to_int", Type::Primitive(PrimitiveType::I64))
             .fptoint("a", PrimitiveType::F64, PrimitiveType::U16, var("x"))
-            .fptoint("b", PrimitiveType::F64, PrimitiveType::I64, var("x"));
+            .fptoint("b", PrimitiveType::F64, PrimitiveType::I64, var("x"))
+            .ret_void();
         let module = builder.build();
         let instructions = &module.functions["to_int"].basic_blocks["entry"].instructions;
         assert!(matches!(
@@ -1460,7 +1370,8 @@ mod tests {
                     (Type::Primitive(PrimitiveType::F64), var("x")),
                 ],
                 Some(1),
-            );
+            )
+            .ret_void();
         let module = builder.build();
         let instructions = &module.functions["indirect"].basic_blocks["entry"].instructions;
         assert_eq!(
@@ -1510,5 +1421,182 @@ mod tests {
                 vec![(Type::Primitive(PrimitiveType::I32), i32(1))],
                 Some(2),
             );
+    }
+
+    #[test]
+    fn test_each_function_keeps_its_own_blocks() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("one", Type::Primitive(PrimitiveType::I32))
+            .ret(Type::Primitive(PrimitiveType::I32), i32(1));
+        builder
+            .function("two", Type::Primitive(PrimitiveType::I32))
+            .ret(Type::Primitive(PrimitiveType::I32), i32(2));
+
+        let module = builder.build();
+
+        let one = &module.functions["one"];
+        let two = &module.functions["two"];
+        assert_eq!(one.basic_blocks.len(), 1);
+        assert_eq!(two.basic_blocks.len(), 1);
+        assert_eq!(one.basic_blocks["entry"].instructions.len(), 1);
+        assert_eq!(
+            one.basic_blocks["entry"].instructions[0].to_string(),
+            "ret.i32 1"
+        );
+        assert_eq!(
+            two.basic_blocks["entry"].instructions[0].to_string(),
+            "ret.i32 2"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "block 'entry' is already defined in '@f'")]
+    fn test_duplicate_block_label_panics() {
+        let mut builder = IRBuilder::new();
+        builder.function("f", Type::Void).block("entry");
+    }
+
+    #[test]
+    #[should_panic(expected = "zext zero-extends an unsigned or bool source")]
+    fn test_zext_rejects_signed_source() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("f", Type::Primitive(PrimitiveType::I64))
+            .zext("r", PrimitiveType::I32, PrimitiveType::I64, var("x"));
+    }
+
+    #[test]
+    #[should_panic(expected = "sext sign-extends a signed source")]
+    fn test_sext_rejects_unsigned_source() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("f", Type::Primitive(PrimitiveType::I64))
+            .sext("r", PrimitiveType::U8, PrimitiveType::I64, var("x"));
+    }
+
+    #[test]
+    fn test_extend_picks_instruction_from_source_signedness() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("f", Type::Primitive(PrimitiveType::I64))
+            .zext("z", PrimitiveType::U8, PrimitiveType::I64, var("u"))
+            .sext("s", PrimitiveType::I8, PrimitiveType::I64, var("i"))
+            .ret(Type::Primitive(PrimitiveType::I64), var("s"));
+
+        let module = builder.build();
+        let instructions = &module.functions["f"].basic_blocks["entry"].instructions;
+        assert!(matches!(instructions[0], Instruction::ZeroExtend { .. }));
+        assert!(matches!(instructions[1], Instruction::SignExtend { .. }));
+    }
+
+    #[test]
+    #[should_panic(expected = "copy moves one scalar value")]
+    fn test_copy_rejects_aggregate() {
+        let mut builder = IRBuilder::new();
+        builder.function("f", Type::Void).copy(
+            "r",
+            Type::Array {
+                element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
+                size: 2,
+            },
+            var("x"),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "bitcast reinterprets equal widths")]
+    fn test_bitcast_rejects_width_change() {
+        let mut builder = IRBuilder::new();
+        builder.function("f", Type::Void).bitcast(
+            "r",
+            PrimitiveType::I32,
+            PrimitiveType::F64,
+            var("x"),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "no open function")]
+    fn test_instruction_without_function_panics() {
+        let mut builder = IRBuilder::new();
+        builder.ret_void();
+    }
+
+    #[test]
+    #[should_panic(expected = "extern function '@printf' has no body")]
+    fn test_extern_function_has_no_body() {
+        let mut builder = IRBuilder::new();
+        builder
+            .external_function("printf", vec![], Type::Void)
+            .ret_void();
+    }
+
+    #[test]
+    #[should_panic(expected = "has no text form")]
+    fn test_annotation_without_text_form_panics() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("f", Type::Void)
+            .annotate(FunctionAnnotation::Deprecated(None));
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot be used together")]
+    fn test_conflicting_annotations_panic() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("f", Type::Void)
+            .inline()
+            .annotate(FunctionAnnotation::NoInline);
+    }
+
+    #[test]
+    fn test_declare_type_is_kept_in_module() {
+        let mut builder = IRBuilder::new();
+        builder
+            .declare_type(
+                "Pair",
+                Type::Struct {
+                    fields: vec![StructField {
+                        name: "a",
+                        ty: Type::Primitive(PrimitiveType::I32),
+                    }],
+                    packed: false,
+                },
+            )
+            .function("f", Type::Void)
+            .ret_void();
+
+        let module = builder.build();
+        assert!(module.type_declarations.contains_key("Pair"));
+    }
+
+    #[test]
+    #[should_panic(expected = "already ends with a terminator")]
+    fn test_instruction_after_terminator_panics() {
+        let mut builder = IRBuilder::new();
+        builder.function("f", Type::Void).ret_void().binary(
+            BinaryOp::Add,
+            "r",
+            PrimitiveType::I32,
+            i32(1),
+            i32(2),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "must end with a terminator")]
+    fn test_block_without_terminator_panics_at_build() {
+        let mut builder = IRBuilder::new();
+        builder.function("f", Type::Void).binary(
+            BinaryOp::Add,
+            "r",
+            PrimitiveType::I32,
+            i32(1),
+            i32(2),
+        );
+        builder.build();
     }
 }

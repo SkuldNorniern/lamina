@@ -95,6 +95,8 @@ lia_type_t *lia_type_bool(void); lia_type_t *lia_type_ptr(void);
 lia_type_t *lia_type_named(const char *name);
 lia_type_t *lia_type_array(const lia_type_t *element_type, uint64_t size);
 lia_type_t *lia_type_struct(const lia_struct_field_t *fields, size_t count);
+/* Packed struct: fields laid out without padding. */
+lia_type_t *lia_type_packed_struct(const lia_struct_field_t *fields, size_t count);
 
 void lia_type_free(lia_type_t *ty);
 
@@ -118,6 +120,9 @@ lia_status_t lia_builder_external_function(lia_builder_t *b, const char *name,
     const lia_param_t *params, size_t n, const lia_type_t *ret);
 lia_status_t lia_builder_block(lia_builder_t *b, const char *name);
 lia_status_t lia_builder_set_entry_block(lia_builder_t *b, const char *name);
+/* Declares `type !name = ty`; lia_type_named(name) refers to it. */
+lia_status_t lia_builder_declare_type(lia_builder_t *b, const char *name,
+    const lia_type_t *ty);
 lia_status_t lia_builder_finish(lia_builder_t *b, lia_module_t **out);
 
 lia_status_t lia_builder_binary(lia_builder_t *b, lia_binary_op_t op,
@@ -134,9 +139,11 @@ lia_status_t lia_builder_switch(lia_builder_t *b,
     const lia_switch_case_t *cases, size_t case_count);
 lia_status_t lia_builder_call(lia_builder_t *b, const char *result,
     const char *fn_name, const lia_value_t *const *args, size_t n);
+/* Always fails: phi is not part of Lamina IR. Assign with lia_builder_copy in each predecessor. */
 lia_status_t lia_builder_phi(lia_builder_t *b, const char *result,
     const lia_type_t *ty, const lia_value_t *const *vals,
     const char *const *labels, size_t n);
+/* Copies one scalar value; a primitive type is required, aggregates fail. */
 lia_status_t lia_builder_copy(lia_builder_t *b, const char *result,
     const lia_type_t *ty, const lia_value_t *val);
 lia_status_t lia_builder_return(lia_builder_t *b,

@@ -7,6 +7,7 @@
 use std::fmt;
 
 use crate::{
+    builder::checks::{check_bitcast, check_sext, check_trunc, check_zext},
     instruction::{BinaryOp, CmpOp},
     types::PrimitiveType,
 };
@@ -27,6 +28,7 @@ pub enum OwnedType {
         size: u64,
     },
     Struct(Vec<OwnedStructField>),
+    PackedStruct(Vec<OwnedStructField>),
 }
 
 impl From<PrimitiveType> for OwnedType {
@@ -54,7 +56,10 @@ impl fmt::Display for OwnedType {
             OwnedType::Array { element_type, size } => {
                 write!(f, "[{size} x {element_type}]")
             }
-            OwnedType::Struct(fields) => {
+            OwnedType::Struct(fields) | OwnedType::PackedStruct(fields) => {
+                if matches!(self, OwnedType::PackedStruct(_)) {
+                    write!(f, "packed ")?;
+                }
                 write!(f, "struct {{ ")?;
                 for (i, field) in fields.iter().enumerate() {
                     write!(f, "{}: {}", field.name, field.ty)?;
@@ -148,6 +153,7 @@ struct OwnedFunction {
 /// serialises to Lamina IR text via [`build_ir_text`]. Callers feed that text
 /// into [`lamina::parser::parse_module`] and the codegen pipeline.
 pub struct OwnedIRBuilder {
+    types: Vec<(String, OwnedType)>,
     functions: Vec<OwnedFunction>,
     current_function: Option<usize>,
     current_block: Option<usize>,
@@ -163,6 +169,7 @@ impl OwnedIRBuilder {
     /// Creates an empty builder.
     pub fn new() -> Self {
         OwnedIRBuilder {
+            types: Vec::new(),
             functions: Vec::new(),
             current_function: None,
             current_block: None,
@@ -178,15 +185,33 @@ impl OwnedIRBuilder {
         self.function_with_params(name, vec![], return_type)
     }
 
+    /// Declares a named type (`type !name = ty`) that instructions can refer to as `OwnedType::Named`.
+    ///
+    /// # Panics
+    /// Panics when the name is already declared.
+    pub fn declare_type(&mut self, name: impl Into<String>, ty: OwnedType) -> &mut Self {
+        let name = name.into();
+        assert!(
+            self.types.iter().all(|(other, _)| *other != name),
+            "type '!{name}' is already declared"
+        );
+        self.types.push((name, ty));
+        self
+    }
+
     /// Begins a new function with the given parameters.
+    ///
+    /// # Panics
+    /// Panics when a function with the same name is already defined.
     pub fn function_with_params(
         &mut self,
         name: impl Into<String>,
         params: Vec<OwnedParam>,
         return_type: OwnedType,
     ) -> &mut Self {
+        let name = self.unused_function_name(name.into());
         let func = OwnedFunction {
-            name: name.into(),
+            name,
             params,
             return_type,
             is_extern: false,
@@ -208,8 +233,9 @@ impl OwnedIRBuilder {
         params: Vec<OwnedParam>,
         return_type: OwnedType,
     ) -> &mut Self {
+        let name = self.unused_function_name(name.into());
         let func = OwnedFunction {
-            name: name.into(),
+            name,
             params,
             return_type,
             is_extern: true,
@@ -227,26 +253,57 @@ impl OwnedIRBuilder {
     // -----------------------------------------------------------------------
 
     /// Adds a basic block to the current function and makes it current.
+    ///
+    /// # Panics
+    /// Panics when no function is open, when the function is an extern declaration, or when
+    /// the label is already defined in the function.
     pub fn block(&mut self, name: impl Into<String>) -> &mut Self {
-        if let Some(fi) = self.current_function {
-            let block_name = name.into();
-            self.functions[fi].blocks.push((
-                block_name,
-                OwnedBlock {
-                    instructions: Vec::new(),
-                },
-            ));
-            self.current_block = Some(self.functions[fi].blocks.len() - 1);
-        }
+        let fi = self.open_body_index();
+        let block_name = name.into();
+        assert!(
+            self.functions[fi]
+                .blocks
+                .iter()
+                .all(|(existing, _)| *existing != block_name),
+            "block '{block_name}' is already defined in '@{}'",
+            self.functions[fi].name
+        );
+        self.functions[fi].blocks.push((
+            block_name,
+            OwnedBlock {
+                instructions: Vec::new(),
+            },
+        ));
+        self.current_block = Some(self.functions[fi].blocks.len() - 1);
         self
     }
 
     /// Overrides the entry block for the current function.
     pub fn set_entry_block(&mut self, name: impl Into<String>) -> &mut Self {
-        if let Some(fi) = self.current_function {
-            self.functions[fi].entry_block = name.into();
-        }
+        let fi = self.open_body_index();
+        self.functions[fi].entry_block = name.into();
         self
+    }
+
+    #[allow(clippy::expect_used)]
+    fn open_body_index(&self) -> usize {
+        let fi = self
+            .current_function
+            .expect("no open function; call function() or external_function() first");
+        assert!(
+            !self.functions[fi].is_extern,
+            "extern function '@{}' has no body; declare the body with function() instead",
+            self.functions[fi].name
+        );
+        fi
+    }
+
+    fn unused_function_name(&self, name: String) -> String {
+        assert!(
+            self.functions.iter().all(|func| func.name != name),
+            "function '@{name}' is already defined"
+        );
+        name
     }
 
     // -----------------------------------------------------------------------
@@ -254,12 +311,27 @@ impl OwnedIRBuilder {
     // -----------------------------------------------------------------------
 
     fn push(&mut self, text: impl AsRef<str>) {
-        if let (Some(fi), Some(bi)) = (self.current_function, self.current_block) {
-            self.functions[fi].blocks[bi]
-                .1
+        let text = text.as_ref();
+        assert!(
+            !text.contains('"'),
+            "string literals only initialize globals, not instruction operands: {text}"
+        );
+        let fi = self.open_body_index();
+        let bi = self.current_block.unwrap_or_else(|| {
+            panic!(
+                "no open block in '@{}'; call block() first",
+                self.functions[fi].name
+            )
+        });
+        let (name, block) = &mut self.functions[fi].blocks[bi];
+        assert!(
+            block
                 .instructions
-                .push(text.as_ref().to_owned());
-        }
+                .last()
+                .is_none_or(|last| !is_terminator_text(last)),
+            "block '{name}' already ends with a terminator; start a new block with block()"
+        );
+        block.instructions.push(text.to_owned());
     }
 
     // -----------------------------------------------------------------------
@@ -580,12 +652,20 @@ impl OwnedIRBuilder {
     }
 
     /// Appends a typed value copy (`%result = copy.<ty> <value>`).
+    /// Appends a scalar copy.
+    ///
+    /// # Panics
+    /// Panics unless `ty` is a primitive type. Aggregates move through memory one scalar at a time.
     pub fn copy(
         &mut self,
         result: impl AsRef<str>,
         ty: &OwnedType,
         value: &OwnedValue,
     ) -> &mut Self {
+        assert!(
+            matches!(ty, OwnedType::Primitive(_)),
+            "copy moves one scalar value, found {ty}; move an aggregate through memory with getfieldptr and load/store"
+        );
         let t = format!("%{} = copy.{} {}", result.as_ref(), ty, value);
         self.push(t);
         self
@@ -760,7 +840,10 @@ impl OwnedIRBuilder {
     // Type conversions
     // -----------------------------------------------------------------------
 
-    /// Appends an extend instruction. The source type's signedness picks sign or zero extension.
+    /// Appends a zero-extension (`extend.<src>.<dst>`) of an unsigned or bool source.
+    ///
+    /// # Panics
+    /// Panics if `source` is signed (use `sext`), or if the widths do not grow.
     pub fn zext(
         &mut self,
         result: impl AsRef<str>,
@@ -768,6 +851,7 @@ impl OwnedIRBuilder {
         target: PrimitiveType,
         value: &OwnedValue,
     ) -> &mut Self {
+        check_zext(source, target);
         let t = format!(
             "%{} = extend.{}.{} {}",
             result.as_ref(),
@@ -779,7 +863,10 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends an extend instruction. The source type's signedness picks sign or zero extension.
+    /// Appends a sign-extension (`extend.<src>.<dst>`) of a signed source.
+    ///
+    /// # Panics
+    /// Panics if `source` is not signed (use `zext`), or if the widths do not grow.
     pub fn sext(
         &mut self,
         result: impl AsRef<str>,
@@ -787,6 +874,7 @@ impl OwnedIRBuilder {
         target: PrimitiveType,
         value: &OwnedValue,
     ) -> &mut Self {
+        check_sext(source, target);
         let t = format!(
             "%{} = extend.{}.{} {}",
             result.as_ref(),
@@ -799,6 +887,9 @@ impl OwnedIRBuilder {
     }
 
     /// Appends an integer truncation instruction.
+    ///
+    /// # Panics
+    /// Panics unless both types are integers and the target is narrower.
     pub fn trunc(
         &mut self,
         result: impl AsRef<str>,
@@ -806,6 +897,7 @@ impl OwnedIRBuilder {
         target: PrimitiveType,
         value: &OwnedValue,
     ) -> &mut Self {
+        check_trunc(source, target);
         let t = format!(
             "%{} = trunc.{}.{} {}",
             result.as_ref(),
@@ -818,6 +910,9 @@ impl OwnedIRBuilder {
     }
 
     /// Appends a bitcast instruction.
+    ///
+    /// # Panics
+    /// Panics if both types have a known width and the widths differ.
     pub fn bitcast(
         &mut self,
         result: impl AsRef<str>,
@@ -825,6 +920,7 @@ impl OwnedIRBuilder {
         target: PrimitiveType,
         value: &OwnedValue,
     ) -> &mut Self {
+        check_bitcast(source, target);
         let t = format!(
             "%{} = bitcast.{}.{} {}",
             result.as_ref(),
@@ -1019,6 +1115,12 @@ impl OwnedIRBuilder {
     /// Serialise the accumulated state to Lamina IR text.
     pub fn build_ir_text(&self) -> String {
         let mut out = String::new();
+        for (name, ty) in &self.types {
+            out.push_str(&format!("type !{name} = {ty}\n"));
+        }
+        if !self.types.is_empty() {
+            out.push('\n');
+        }
         for func in &self.functions {
             self.emit_function(&mut out, func);
             out.push('\n');
@@ -1046,6 +1148,16 @@ impl OwnedIRBuilder {
             return;
         }
         out.push_str(&format!(") -> {} {{\n", func.return_type));
+        for (name, block) in &func.blocks {
+            assert!(
+                block
+                    .instructions
+                    .last()
+                    .is_some_and(|last| is_terminator_text(last)),
+                "block '{name}' of '@{}' must end with a terminator (ret, jmp, br, switch, unreachable)",
+                func.name
+            );
+        }
 
         // entry block first, then rest
         let entry = &func.entry_block;
@@ -1069,6 +1181,14 @@ impl OwnedIRBuilder {
 
         out.push_str("}\n");
     }
+}
+
+fn is_terminator_text(instruction: &str) -> bool {
+    instruction == "unreachable"
+        || instruction.starts_with("ret.")
+        || instruction.starts_with("jmp ")
+        || instruction.starts_with("br ")
+        || instruction.starts_with("switch.")
 }
 
 fn is_integer(ty: PrimitiveType) -> bool {
@@ -1151,7 +1271,8 @@ mod tests {
                     size: 3,
                 },
             )
-            .getelem("element", &array, &index, PrimitiveType::I32);
+            .getelem("element", &array, &index, PrimitiveType::I32)
+            .ret_void();
         let text = builder.build_ir_text();
         assert!(text.contains("%row_ptr = getelem.[3 x i32] %matrix, 1"));
         assert!(text.contains("%element = getelem.i32 %matrix, 1"));
