@@ -26,7 +26,7 @@ use moves::*;
 use selection::*;
 pub mod util;
 
-use constants::{fd, linux, macos, stack, windows};
+use constants::{fd, freebsd, linux, macos, stack, windows};
 use lamina_codegen::LocalRegisterAllocator;
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
 use lamina_codegen::{os_uses_elf, os_uses_macho};

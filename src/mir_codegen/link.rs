@@ -325,7 +325,7 @@ fn build_crt_args(
     target_os: TargetOperatingSystem,
     before_user_object: bool,
 ) -> Vec<String> {
-    if os_uses_macho(target_os) || !host_matches(target_arch) {
+    if os_uses_macho(target_os) || !host_matches(target_arch) || cross_os(target_os) {
         return Vec::new();
     }
 
@@ -347,10 +347,25 @@ fn build_entry_point_arg(target_os: TargetOperatingSystem) -> Vec<String> {
     }
 }
 
+/// FreeBSD's run-time linker lives at one path on every architecture it supports.
+const FREEBSD_INTERPRETER: &str = "/libexec/ld-elf.so.1";
+
+/// True when the host toolchain's C runtime objects and libraries belong to a
+/// different operating system than the target, so linking them in would be wrong.
+fn cross_os(target_os: TargetOperatingSystem) -> bool {
+    target_os == TargetOperatingSystem::FreeBSD && !cfg!(target_os = "freebsd")
+}
+
 fn build_dynamic_linker_arg(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> Vec<String> {
+    if target_os == TargetOperatingSystem::FreeBSD {
+        return vec![
+            "--dynamic-linker".to_string(),
+            FREEBSD_INTERPRETER.to_string(),
+        ];
+    }
     if target_os != TargetOperatingSystem::Linux {
         return Vec::new();
     }
@@ -396,7 +411,7 @@ fn build_library_args(
             }
         }
         args.push("-lSystem".to_string());
-    } else {
+    } else if !cross_os(target_os) {
         args.push("-lc".to_string());
         if host_matches(target_arch)
             && let Some(libgcc) =
@@ -523,8 +538,76 @@ pub enum LinkerBackend {
     Custom(&'static str),
 }
 
+/// ELF `e_ident[EI_OSABI]` for FreeBSD. FreeBSD's image activator brands a binary by
+/// this byte, by an ABI note, or by a recognised interpreter path, and `kern.elf64.
+/// fallback_brand` is -1, so an unbranded static executable is refused by the kernel.
+const ELFOSABI_FREEBSD: u8 = 9;
+const EI_OSABI: u64 = 7;
+
 /// Link object files to create final executable
 pub fn link(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    backend: Option<LinkerBackend>,
+    additional_flags: &[String],
+    verbose: bool,
+) -> Result<(), LaminaError> {
+    link_object(
+        input_path,
+        output_path,
+        target_arch,
+        target_os,
+        backend,
+        additional_flags,
+        verbose,
+    )?;
+    if target_os == TargetOperatingSystem::FreeBSD {
+        brand_freebsd(output_path)?;
+    }
+    Ok(())
+}
+
+/// Stamp `ELFOSABI_FREEBSD` into the linked executable, as `brandelf -t FreeBSD` does.
+/// Host linkers emit `ELFOSABI_NONE`, which FreeBSD's loader does not recognise.
+fn brand_freebsd(output_path: &Path) -> Result<(), LaminaError> {
+    use std::io::{Seek, SeekFrom, Write};
+
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(output_path)
+        .map_err(|e| {
+            LaminaError::ValidationError(format!(
+                "cannot open {} to brand it for FreeBSD: {e}",
+                output_path.display()
+            ))
+        })?;
+    let mut magic = [0u8; 4];
+    io::Read::read_exact(&mut file, &mut magic).map_err(|e| {
+        LaminaError::ValidationError(format!(
+            "cannot read the ELF header of {}: {e}",
+            output_path.display()
+        ))
+    })?;
+    if magic != *b"\x7fELF" {
+        return Err(LaminaError::ValidationError(format!(
+            "{} is not an ELF file, so it cannot be branded for FreeBSD",
+            output_path.display()
+        )));
+    }
+    file.seek(SeekFrom::Start(EI_OSABI))
+        .and_then(|_| file.write_all(&[ELFOSABI_FREEBSD]))
+        .map_err(|e| {
+            LaminaError::ValidationError(format!(
+                "cannot write the FreeBSD ELF brand into {}: {e}",
+                output_path.display()
+            ))
+        })
+}
+
+fn link_object(
     input_path: &Path,
     output_path: &Path,
     target_arch: TargetArchitecture,
@@ -901,6 +984,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use crate::test_support::TempDir;
 
     #[test]
     fn macos_x86_64_link_args_use_arch_not_elf() {
@@ -1012,6 +1096,55 @@ mod tests {
         // No CRT objects or dynamic-linker args — weld handles those itself.
         assert!(!args.iter().any(|a| a == "--dynamic-linker"));
         assert!(!args.iter().any(|a| a.contains("crt1.o")));
+    }
+
+    #[test]
+    fn freebsd_uses_the_rtld_elf_interpreter() {
+        assert_eq!(FREEBSD_INTERPRETER, "/libexec/ld-elf.so.1");
+        for arch in [TargetArchitecture::X86_64, TargetArchitecture::Aarch64] {
+            assert_eq!(
+                build_dynamic_linker_arg(arch, TargetOperatingSystem::FreeBSD),
+                ["--dynamic-linker", "/libexec/ld-elf.so.1"],
+                "{arch:?}"
+            );
+        }
+        assert_eq!(
+            build_dynamic_linker_arg(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
+            ["--dynamic-linker", "/lib64/ld-linux-x86-64.so.2"]
+        );
+    }
+
+    #[test]
+    fn freebsd_link_args_leave_out_the_host_c_runtime() {
+        let arch = TargetArchitecture::X86_64;
+        let os = TargetOperatingSystem::FreeBSD;
+        if cfg!(target_os = "freebsd") {
+            return;
+        }
+        assert!(build_crt_args(arch, os, true).is_empty());
+        assert!(build_crt_args(arch, os, false).is_empty());
+        assert!(!build_library_args(arch, os).iter().any(|a| a == "-lc"));
+    }
+
+    #[test]
+    fn freebsd_brand_is_written_into_the_elf_header() {
+        let dir = TempDir::new("lamina-freebsd-brand");
+        let path = dir.path().join("stub.elf");
+        let mut header = vec![0u8; 64];
+        header[..4].copy_from_slice(b"\x7fELF");
+        header[4] = 2;
+        header[5] = 1;
+        header[6] = 1;
+        fs::write(&path, &header).expect("write stub elf");
+        brand_freebsd(&path).expect("brand the stub");
+        let branded = fs::read(&path).expect("read back");
+        assert_eq!(branded[EI_OSABI as usize], ELFOSABI_FREEBSD);
+        assert_eq!(branded[..7], header[..7]);
+        assert_eq!(branded.len(), header.len());
+
+        fs::write(&path, b"not an elf file at all").expect("write non-elf");
+        let error = brand_freebsd(&path).expect_err("a non-ELF file cannot be branded");
+        assert!(error.to_string().contains("not an ELF file"));
     }
 
     #[test]

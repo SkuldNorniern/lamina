@@ -222,7 +222,14 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                     HOST_ARCH_LIST.contains(&bare.to_string().as_str())
                 });
                 if !requested_target.contains('_') || !listed {
-                    let reason = parsed.err().map_or_else(String::new, |e| format!(": {e}"));
+                    let reason = parsed.as_ref().map_or_else(
+                        |e| format!(": {e}"),
+                        |_| {
+                            ": the architecture and the operating system are each known, but \
+                             lamina has no backend for them together"
+                                .to_string()
+                        },
+                    );
                     return Err(format!(
                         "Unsupported target '{}'{reason}. Supported values:\n{}\n\
                          A sub-architecture may be named instead: rv32imac, rv64gc, armv7r, \
@@ -371,6 +378,28 @@ mod tests {
         let mut all = vec!["lamina".to_string(), "prog.lamina".to_string()];
         all.extend(args.iter().map(ToString::to_string));
         parse_args_from(all)
+    }
+
+    #[test]
+    fn freebsd_is_accepted_by_the_driver() {
+        let options = parse(&["--target", "x86_64_freebsd"]).expect("x86_64_freebsd is a target");
+        assert_eq!(options.target_arch.as_deref(), Some("x86_64_freebsd"));
+        parse(&["--target", "x86_64_bsd"]).expect("the bsd alias resolves to freebsd");
+    }
+
+    #[test]
+    fn a_refused_target_names_the_reason() {
+        let error = parse(&["--target", "x86_64_openbsd"])
+            .err()
+            .expect("openbsd is refused");
+        assert!(error.contains("is not implemented"), "{error}");
+        assert!(error.contains("Hint:"), "{error}");
+        assert!(error.contains("freebsd"), "{error}");
+
+        let error = parse(&["--target", "aarch64_freebsd"])
+            .err()
+            .expect("aarch64 freebsd has no backend");
+        assert!(error.contains("no backend for them together"), "{error}");
     }
 
     #[test]

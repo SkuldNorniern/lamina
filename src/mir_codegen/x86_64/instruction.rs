@@ -1306,6 +1306,14 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    syscall")?;
                         emit_io_result(writer, false, false)?;
                     }
+                    TargetOperatingSystem::FreeBSD => {
+                        writeln!(writer, "    movq ${}, %rax", freebsd::SYS_WRITE)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                        emit_io_result(writer, true, false)?;
+                    }
                     other => {
                         return Err(unsupported_io(name, other));
                     }
@@ -1339,6 +1347,15 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    call _read")?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    movslq %eax, %rax")?;
+                    }
+                    TargetOperatingSystem::FreeBSD => {
+                        writeln!(writer, "    movq ${}, %rax", freebsd::SYS_READ)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDIN)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                        writeln!(writer, "    movq $-2, %rdx")?;
+                        writeln!(writer, "    cmovcq %rdx, %rax")?;
                     }
                     _ => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_READ)?;
@@ -1430,6 +1447,23 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    movq ${syscall}, %rax")?;
                         writeln!(writer, "    syscall")?;
                         emit_io_result(writer, false, !writing)?;
+                    }
+                    TargetOperatingSystem::FreeBSD => {
+                        writeln!(writer, "    movq %rax, %rdx")?;
+                        writeln!(writer, "    movq %r10, %rsi")?;
+                        writeln!(
+                            writer,
+                            "    movq ${}, %rdi",
+                            if writing { fd::STDOUT } else { fd::STDIN }
+                        )?;
+                        let syscall = if writing {
+                            freebsd::SYS_WRITE
+                        } else {
+                            freebsd::SYS_READ
+                        };
+                        writeln!(writer, "    movq ${syscall}, %rax")?;
+                        writeln!(writer, "    syscall")?;
+                        emit_io_result(writer, true, !writing)?;
                     }
                     other => {
                         return Err(unsupported_io(name, other));

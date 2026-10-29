@@ -1393,7 +1393,7 @@ entry:
  store.i64 %pa, %x
  %y = add.i64 %x, 1
  store.i64 %pb, %y
- ret.ptr %p
+ ret.struct { a: i64, b: i64 } %p
 }
 @export fn @make_small(i32 %x) -> struct { a: i32, b: i32 } {
 entry:
@@ -1402,12 +1402,12 @@ entry:
  %pb = getfieldptr.struct { a: i32, b: i32 } %p, 1
  store.i32 %pa, %x
  store.i32 %pb, 9
- ret.ptr %p
+ ret.struct { a: i32, b: i32 } %p
 }
 @extern fn @c_make(i64 %x) -> struct { a: i64, b: i64 } {
 entry:
  %p = stackalloc.struct { a: i64, b: i64 }
- ret.ptr %p
+ ret.struct { a: i64, b: i64 } %p
 }
 @export fn @take_c() -> i64 {
 entry:
@@ -1702,4 +1702,43 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() {
     generate_mir_x86_64(&mir, &mut linux, TargetOperatingSystem::Linux).expect("emit linux io");
     let linux = String::from_utf8(linux).expect("utf8 assembly");
     assert!(!linux.contains("cmovcq"), "{linux}");
+}
+
+#[test]
+fn freebsd_io_intrinsics_use_the_bsd_syscall_numbers() {
+    let source = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %w = write %p, 4\n  %r = read %p, 4\n  %b = writebyte 65\n  %c = readbyte\n  ret.i64 %w\n}\n";
+    let ir = parse_module(source).expect("parse io");
+    let mir = from_ir(&ir, "io").expect("lower io");
+    let mut output = Vec::new();
+    generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::FreeBSD).expect("emit freebsd");
+    let asm = String::from_utf8(output).expect("utf8 assembly");
+
+    assert_eq!(constants::freebsd::SYS_WRITE, 4);
+    assert_eq!(constants::freebsd::SYS_READ, 3);
+
+    // Number in %rax, arguments in %rdi %rsi %rdx, as on Linux; only the numbers differ.
+    let expected = [
+        "    movq %r10, %rsi\n    movq $1, %rdi\n    movq $4, %rax\n    syscall\n",
+        "    movq %r10, %rsi\n    movq $0, %rdi\n    movq $3, %rax\n    syscall\n",
+        "    movq $4, %rax\n    movq $1, %rdi\n    movq %rsp, %rsi\n    movq $1, %rdx\n    syscall\n",
+        "    movq $3, %rax\n    movq $0, %rdi\n    movq %rsp, %rsi\n    movq $1, %rdx\n    syscall\n",
+    ];
+    for sequence in expected {
+        assert_eq!(asm.matches(sequence).count(), 1, "{sequence}\n{asm}");
+    }
+
+    // FreeBSD reports a failed syscall in the carry flag, never as a negative count.
+    assert_eq!(
+        asm.matches("    syscall\n    movq $-2, %rcx\n    cmovcq %rcx, %rax\n")
+            .count(),
+        3,
+        "{asm}"
+    );
+    assert_eq!(
+        asm.matches("    syscall\n    movq $-2, %rdx\n    cmovcq %rdx, %rax\n")
+            .count(),
+        1,
+        "{asm}"
+    );
+    assert!(!asm.contains("cmovsq"), "{asm}");
 }

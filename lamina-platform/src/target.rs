@@ -176,8 +176,7 @@ impl FromStr for Target {
             return Err("Invalid target format: expected 'architecture_os'");
         }
         let (architecture, variant) = parse_arch_token(parts[1])?;
-        let os =
-            TargetOperatingSystem::from_str(parts[0]).map_err(|_| "Invalid operating system")?;
+        let os = TargetOperatingSystem::from_str(parts[0])?;
         Ok(Self::new(architecture, os).with_variant(variant))
     }
 }
@@ -563,9 +562,15 @@ impl FromStr for TargetOperatingSystem {
             "watchos" => Ok(Self::WatchOS),
             "visionos" => Ok(Self::VisionOS),
             "freebsd" => Ok(Self::FreeBSD),
-            "openbsd" => Ok(Self::OpenBSD),
-            "netbsd" => Ok(Self::NetBSD),
-            "dragonfly" => Ok(Self::DragonFly),
+            "openbsd" => Err(
+                "Operating system 'openbsd' is not implemented\n  Hint: lamina has no OpenBSD syscall table, dynamic linker path or ELF brand. FreeBSD is the BSD that is implemented: write 'freebsd' (e.g. x86_64_freebsd)",
+            ),
+            "netbsd" => Err(
+                "Operating system 'netbsd' is not implemented\n  Hint: lamina has no NetBSD syscall table, dynamic linker path or ELF brand. FreeBSD is the BSD that is implemented: write 'freebsd' (e.g. x86_64_freebsd)",
+            ),
+            "dragonfly" => Err(
+                "Operating system 'dragonfly' is not implemented\n  Hint: lamina has no DragonFly syscall table, dynamic linker path or ELF brand. FreeBSD is the BSD that is implemented: write 'freebsd' (e.g. x86_64_freebsd)",
+            ),
             "redox" => Ok(Self::Redox),
             "horizon" => Ok(Self::Horizon),
             "psp" => Ok(Self::Psp),
@@ -659,6 +664,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "x86_64_ios",
     "x86_64_tvos",
     "x86_64_watchos",
+    "x86_64_freebsd",
     "aarch64_unknown",
     "aarch64_macos",
     "aarch64_linux",
@@ -696,6 +702,34 @@ pub const HOST_ARCH_LIST: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn freebsd_is_a_target_the_driver_also_accepts() {
+        let target: Target = "x86_64_freebsd".parse().expect("freebsd parses");
+        assert_eq!(target.architecture, TargetArchitecture::X86_64);
+        assert_eq!(target.operating_system, TargetOperatingSystem::FreeBSD);
+        assert!(HOST_ARCH_LIST.contains(&"x86_64_freebsd"));
+        assert_eq!(
+            "bsd".parse::<TargetOperatingSystem>(),
+            Ok(TargetOperatingSystem::FreeBSD)
+        );
+    }
+
+    #[test]
+    fn the_other_bsds_refuse_with_a_reason() {
+        for name in ["openbsd", "netbsd", "dragonfly"] {
+            let error = name
+                .parse::<TargetOperatingSystem>()
+                .expect_err("this BSD is not implemented");
+            assert!(error.contains("is not implemented"), "{name}: {error}");
+            assert!(error.contains("Hint:"), "{name}: {error}");
+            assert!(error.contains("freebsd"), "{name}: {error}");
+            assert!(
+                !HOST_ARCH_LIST.contains(&format!("x86_64_{name}").as_str()),
+                "{name}"
+            );
+        }
+    }
 
     #[test]
     fn gpu_targets_round_trip() {

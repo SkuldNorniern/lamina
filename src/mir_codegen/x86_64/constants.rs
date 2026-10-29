@@ -16,6 +16,14 @@ pub mod linux {
     pub const SYS_READ: i64 = 0;
 }
 
+/// FreeBSD syscall numbers, from `sys/sys/syscall.h` in the FreeBSD source tree.
+pub mod freebsd {
+    /// write syscall on FreeBSD
+    pub const SYS_WRITE: i64 = 4;
+    /// read syscall on FreeBSD
+    pub const SYS_READ: i64 = 3;
+}
+
 /// Standard file descriptors
 pub mod fd {
     /// Standard output
