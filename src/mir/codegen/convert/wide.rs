@@ -675,6 +675,7 @@ fn touches_wide(instr: &IRInst<'_>, vars: &VarBindings<'_>, module: &IRModule<'_
         IRInst::Select { ty, .. }
         | IRInst::Ret { ty, .. }
         | IRInst::Phi { ty, .. }
+        | IRInst::Copy { ty, .. }
         | IRInst::Load { ty, .. }
         | IRInst::Store { ty, .. }
         | IRInst::AtomicLoad { ty, .. }
@@ -967,6 +968,11 @@ pub(super) fn lower_instruction<'a>(
         IRInst::Phi { result, ty, .. } if is_wide_type(ty) => {
             cx.result_pair(result);
         }
+        IRInst::Copy { result, ty, value } if is_wide_type(ty) => {
+            let words = cx.operand_words(value)?;
+            let pair = cx.result_pair(result);
+            cx.write_pair(pair, words);
+        }
         IRInst::Ret { ty, value } if is_wide_type(ty) => {
             let Some(value) = value else {
                 return Err(FromIRError::InvalidIR);
@@ -1101,6 +1107,7 @@ pub(super) fn lower_instruction<'a>(
         | IRInst::Load { .. }
         | IRInst::Store { .. }
         | IRInst::Phi { .. }
+        | IRInst::Copy { .. }
         | IRInst::Ret { .. }
         | IRInst::IntToFloat { .. }
         | IRInst::FloatToInt { .. }
