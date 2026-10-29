@@ -9,6 +9,7 @@
 //! - Custom linkers
 
 use crate::error::LaminaError;
+use crate::mir_codegen::assemble::{gnu_tool, host_matches, no_gnu_tool, targets_elf};
 use lamina_codegen::os_uses_macho;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{
@@ -278,14 +279,26 @@ fn build_arch_emulation_flags(
                 }
             ));
         }
+        TargetArchitecture::PowerPC64 if !os_uses_macho(target_os) => {
+            args.push("-m".to_string());
+            args.push("elf64lppc".to_string());
+        }
+        TargetArchitecture::LoongArch64 => {
+            args.push("-m".to_string());
+            args.push("elf64loongarch".to_string());
+        }
         _ => {}
     }
 
     args
 }
 
-fn build_crt_args(target_os: TargetOperatingSystem, before_user_object: bool) -> Vec<String> {
-    if os_uses_macho(target_os) {
+fn build_crt_args(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    before_user_object: bool,
+) -> Vec<String> {
+    if os_uses_macho(target_os) || !host_matches(target_arch) {
         return Vec::new();
     }
 
@@ -320,13 +333,17 @@ fn build_dynamic_linker_arg(
         TargetArchitecture::Aarch64 => "/lib/ld-linux-aarch64.so.1",
         TargetArchitecture::Riscv32 => "/lib/ld-linux-riscv32-ilp32d.so.1",
         TargetArchitecture::Riscv64 => "/lib/ld-linux-riscv64-lp64d.so.1",
+        TargetArchitecture::LoongArch64 => "/lib64/ld-linux-loongarch-lp64d.so.1",
         _ => return Vec::new(),
     };
 
     vec!["--dynamic-linker".to_string(), interpreter.to_string()]
 }
 
-fn build_library_args(target_os: TargetOperatingSystem) -> Vec<String> {
+fn build_library_args(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Vec<String> {
     let mut args = Vec::new();
 
     if os_uses_macho(target_os) {
@@ -343,7 +360,9 @@ fn build_library_args(target_os: TargetOperatingSystem) -> Vec<String> {
         args.push("-lSystem".to_string());
     } else {
         args.push("-lc".to_string());
-        if let Some(libgcc) = detect_compiler().and_then(get_libgcc_file) {
+        if host_matches(target_arch)
+            && let Some(libgcc) = detect_compiler().and_then(get_libgcc_file)
+        {
             args.push(libgcc);
         }
     }
@@ -374,11 +393,11 @@ fn build_unix_linker_args(
 
     args.extend(build_arch_emulation_flags(target_arch, target_os));
     args.extend(build_dynamic_linker_arg(target_arch, target_os));
-    args.extend(build_crt_args(target_os, true));
+    args.extend(build_crt_args(target_arch, target_os, true));
     args.push(input_path.to_string_lossy().to_string());
-    args.extend(build_crt_args(target_os, false));
+    args.extend(build_crt_args(target_arch, target_os, false));
     args.extend(build_entry_point_arg(target_os));
-    args.extend(build_library_args(target_os));
+    args.extend(build_library_args(target_arch, target_os));
     args.extend(additional_flags.iter().cloned());
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
@@ -492,6 +511,20 @@ pub fn link(
 
     let defaulted = backend.is_none();
     let backend = backend.unwrap_or_else(|| detect_linker_backend(target_arch, target_os));
+    if defaulted
+        && backend == LinkerBackend::Weld
+        && let Some(gap) = weld_gap(target_arch, target_os)
+    {
+        return link_with_gnu(
+            input_path,
+            output_path,
+            target_arch,
+            target_os,
+            additional_flags,
+            verbose,
+            &gap,
+        );
+    }
     let backend = validate_linker_backend_for_target(backend, target_arch, target_os)?;
 
     let (cmd, args) = match backend {
@@ -502,6 +535,8 @@ pub fn link(
                         .to_string(),
                 ));
             }
+            let cmd = gnu_tool(target_arch, "ld")
+                .ok_or_else(|| LaminaError::ValidationError(no_gnu_tool("ld", target_arch)))?;
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
@@ -509,7 +544,7 @@ pub fn link(
                 target_os,
                 additional_flags,
             );
-            ("ld", args)
+            (cmd, args)
         }
         LinkerBackend::Lld => {
             if target_os == TargetOperatingSystem::Windows {
@@ -546,7 +581,7 @@ pub fn link(
             } else {
                 "lld"
             };
-            (cmd, args)
+            (cmd.to_string(), args)
         }
         LinkerBackend::Mold => {
             if target_os == TargetOperatingSystem::Windows {
@@ -562,33 +597,25 @@ pub fn link(
                 target_os,
                 additional_flags,
             );
-            ("mold", args)
+            ("mold".to_string(), args)
         }
         LinkerBackend::Weld => {
             let args = build_weld_linker_args(input_path, output_path, target_os, additional_flags);
-            match run_weld(&args, verbose)? {
-                WeldRun::Linked => return Ok(()),
-                WeldRun::UndefinedSymbol(symbol) if defaulted => {
-                    eprintln!(
-                        "[WARN] weld cannot resolve `{symbol}` (a compiler runtime helper); linking this program with GNU ld instead"
-                    );
-                    (
-                        "ld",
-                        build_unix_linker_args(
-                            input_path,
-                            output_path,
-                            target_arch,
-                            target_os,
-                            additional_flags,
-                        ),
-                    )
-                }
-                WeldRun::UndefinedSymbol(symbol) => {
-                    return Err(LaminaError::ValidationError(format!(
-                        "weld cannot resolve `{symbol}` (a compiler runtime helper); select another toolchain with -c gnu"
-                    )));
-                }
-            }
+            return match run_weld(&args, verbose) {
+                WeldRun::Linked => Ok(()),
+                WeldRun::Failed(reason) if defaulted => link_with_gnu(
+                    input_path,
+                    output_path,
+                    target_arch,
+                    target_os,
+                    additional_flags,
+                    verbose,
+                    &reason,
+                ),
+                WeldRun::Failed(reason) => Err(LaminaError::ValidationError(format!(
+                    "{reason}; select another toolchain with -c gnu or -c clang"
+                ))),
+            };
         }
         LinkerBackend::Msvc => {
             if target_os != TargetOperatingSystem::Windows {
@@ -628,62 +655,69 @@ pub fn link(
                 target_os,
                 additional_flags,
             );
-            (name, args)
+            (name.to_string(), args)
         }
     };
 
-    if verbose {
-        println!("[VERBOSE] Linking with {cmd}: {args:?}");
-    }
+    run_linker(&cmd, args, verbose)
+}
 
-    let output = Command::new(cmd).args(&args).output().map_err(|e| {
-        LaminaError::ValidationError(format!("Failed to spawn linker '{cmd}': {e}"))
-    })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+fn link_with_gnu(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    additional_flags: &[String],
+    verbose: bool,
+    reason: &str,
+) -> Result<(), LaminaError> {
+    if !targets_elf(target_os) {
         return Err(LaminaError::ValidationError(format!(
-            "Linker '{cmd}' failed:\nstdout: {stdout}\nstderr: {stderr}"
+            "{reason}; GNU ld cannot produce {target_os:?} executables, so select -c clang or -c msvc"
         )));
     }
-
-    Ok(())
+    let tool = gnu_tool(target_arch, "ld").ok_or_else(|| {
+        LaminaError::ValidationError(format!("{reason}; {}", no_gnu_tool("ld", target_arch)))
+    })?;
+    eprintln!("[WARN] {reason}; linking with GNU {tool} instead");
+    let args = build_unix_linker_args(
+        input_path,
+        output_path,
+        target_arch,
+        target_os,
+        additional_flags,
+    );
+    run_linker(&tool, args, verbose)
 }
 
 /// Outcome of running the weld binary.
 enum WeldRun {
     Linked,
-    UndefinedSymbol(String),
+    Failed(String),
 }
 
-/// Run the weld binary, found beside the lamina executable or on PATH.
-fn run_weld(args: &[String], verbose: bool) -> Result<WeldRun, LaminaError> {
+fn run_weld(args: &[String], verbose: bool) -> WeldRun {
     let cmd = resolve_toolchain_command("weld");
     if verbose {
         println!("[VERBOSE] Linking with {cmd}: {args:?}");
     }
-    let output = Command::new(&cmd).args(args).output().map_err(|e| {
-        if e.kind() == io::ErrorKind::NotFound {
-            LaminaError::ValidationError(
-                "weld not found beside the lamina executable or on PATH. ras, weld and lamina install together as one toolchain; install weld next to lamina".to_string(),
-            )
-        } else {
-            LaminaError::ValidationError(format!("Failed to spawn linker '{cmd}': {e}"))
+    let output = match Command::new(&cmd).args(args).output() {
+        Ok(output) => output,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return WeldRun::Failed("weld is not installed beside lamina or on PATH".to_string());
         }
-    })?;
+        Err(e) => return WeldRun::Failed(format!("failed to run weld: {e}")),
+    };
     if output.status.success() {
-        return Ok(WeldRun::Linked);
+        return WeldRun::Linked;
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if let Some(rest) = stderr.split("undefined symbol ").nth(1) {
-        let symbol = rest.split_whitespace().next().unwrap_or("").to_string();
-        return Ok(WeldRun::UndefinedSymbol(symbol));
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Err(LaminaError::ValidationError(format!(
-        "Linker 'weld' failed:\nstdout: {stdout}\nstderr: {stderr}"
-    )))
+    let detail = stderr
+        .lines()
+        .map(|line| line.trim().trim_start_matches("weld: "))
+        .find(|line| !line.is_empty())
+        .unwrap_or("no diagnostic");
+    WeldRun::Failed(format!("weld cannot link: {detail}"))
 }
 
 /// Find a toolchain binary beside the current executable, falling back to PATH.
@@ -729,9 +763,7 @@ fn run_linker(cmd: &str, args: Vec<String>, verbose: bool) -> Result<(), LaminaE
     Ok(())
 }
 
-/// The linker used when none is named: weld, linked in-process, so no host
-/// tool is needed. Whether weld can handle the target is checked by
-/// `validate_linker_backend_for_target`.
+/// The linker used when none is named: weld, linked in-process, so no host tool is needed.
 pub fn detect_linker_backend(
     _target_arch: TargetArchitecture,
     _target_os: TargetOperatingSystem,
@@ -739,13 +771,22 @@ pub fn detect_linker_backend(
     LinkerBackend::Weld
 }
 
-/// Targets weld has been verified to link. Anything else is refused by name
-/// rather than handed to a host linker.
 fn weld_supports(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> bool {
     matches!(
         (target_arch, target_os),
-        (TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+        (
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Linux
+                | TargetOperatingSystem::Windows
+                | TargetOperatingSystem::MacOS
+        ) | (TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS)
+            | (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux)
     )
+}
+
+fn weld_gap(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Option<String> {
+    (!weld_supports(target_arch, target_os))
+        .then(|| format!("weld cannot link {target_arch:?} {target_os:?} yet"))
 }
 
 fn validate_linker_backend_for_target(
@@ -875,14 +916,33 @@ mod tests {
     }
 
     #[test]
-    fn weld_refused_for_windows_target() {
+    fn weld_refused_for_aarch64_windows() {
         let error = validate_linker_backend_for_target(
             LinkerBackend::Weld,
-            TargetArchitecture::X86_64,
+            TargetArchitecture::Aarch64,
             TargetOperatingSystem::Windows,
         )
-        .expect_err("weld has no PE writer yet");
+        .expect_err("weld links only x86-64 PE objects");
         assert!(error.to_string().contains("weld cannot link"));
+    }
+
+    #[test]
+    fn weld_gate_matches_measured_targets() {
+        for (arch, os) in [
+            (TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
+            (TargetArchitecture::X86_64, TargetOperatingSystem::Windows),
+            (TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS),
+            (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux),
+        ] {
+            assert!(weld_gap(arch, os).is_none(), "{arch:?} {os:?}");
+        }
+        for (arch, os) in [
+            (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
+            (TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux),
+            (TargetArchitecture::Aarch64, TargetOperatingSystem::Windows),
+        ] {
+            assert!(weld_gap(arch, os).is_some(), "{arch:?} {os:?}");
+        }
     }
 
     #[test]
@@ -937,10 +997,11 @@ mod tests {
                 ["-arch", "x86_64"],
                 "{os:?}"
             );
-            assert!(build_crt_args(os, true).is_empty(), "{os:?}");
-            assert!(build_crt_args(os, false).is_empty(), "{os:?}");
+            let arch = TargetArchitecture::Aarch64;
+            assert!(build_crt_args(arch, os, true).is_empty(), "{os:?}");
+            assert!(build_crt_args(arch, os, false).is_empty(), "{os:?}");
             assert_eq!(build_entry_point_arg(os), ["-e", "_main"], "{os:?}");
-            let libs = build_library_args(os);
+            let libs = build_library_args(arch, os);
             assert!(libs.iter().any(|a| a == "-lSystem"), "{os:?}");
             assert!(!libs.iter().any(|a| a == "-lc"), "{os:?}");
             assert!(!libs.iter().any(|a| a == "-syslibroot"), "{os:?}");

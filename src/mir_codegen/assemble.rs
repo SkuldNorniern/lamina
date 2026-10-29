@@ -179,55 +179,53 @@ fn assemble_native(
 ) -> Result<AssembleResult, LaminaError> {
     let defaulted = backend.is_none();
     let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
-    let backend = validate_assembler_backend_for_target(backend, target_arch, target_os)?;
 
     if backend == AssemblerBackend::Ras {
-        if verbose {
-            println!(
-                "[VERBOSE] Assembling with ras (as/GAS alternative): {} -> {}",
-                input_path.display(),
-                output_path.display()
-            );
+        let reason = match ras_gap(target_arch, target_os) {
+            Some(gap) => gap,
+            None => match ras_assemble(
+                input_path,
+                output_path,
+                target_arch,
+                target_os,
+                ras_object_write_options,
+                verbose,
+            ) {
+                Ok(result) => return Ok(result),
+                Err(reason) => reason,
+            },
+        };
+        if !defaulted {
+            return Err(LaminaError::ValidationError(format!(
+                "{reason}; select another toolchain with -c gnu or -c clang"
+            )));
         }
-        let assembly = fs::read_to_string(input_path).map_err(|e| {
-            LaminaError::ValidationError(format!("Failed to read {}: {e}", input_path.display()))
-        })?;
-        if assembly
-            .lines()
-            .any(|line| line.trim_start().starts_with(".loc "))
-        {
-            return Err(LaminaError::ValidationError(
-                "ras does not implement the .loc directive; use --assembler gas or clang, or drop -g"
-                    .to_string(),
-            ));
-        }
-        let mut ras =
-            Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
-                .map_err(|e| {
-                    LaminaError::ValidationError(format!("Failed to create ras assembler: {e}"))
-                })?;
-        ras.assemble_file(input_path, output_path).map_err(|e| {
-            let hint = if defaulted {
-                "; ras is the default assembler and cannot encode this input, so re-run with --assembler gas (or -c gnu)"
-            } else {
-                ""
-            };
-            LaminaError::ValidationError(format!("ras assembly failed: {e}{hint}"))
-        })?;
-        return Ok(AssembleResult {
-            output_path: output_path.to_path_buf(),
-            needs_linking: true,
-        });
+        return assemble_with_gnu(
+            input_path,
+            output_path,
+            target_arch,
+            target_os,
+            additional_flags,
+            verbose,
+            &reason,
+        );
     }
+
+    let backend = validate_assembler_backend_for_target(backend, target_arch, target_os)?;
 
     let (cmd, args) = match backend {
         AssemblerBackend::Gas => {
-            let mut args = gas_arch_flags(target_arch, target_os);
-            args.push(input_path.to_string_lossy().to_string());
-            args.push("-o".to_string());
-            args.push(output_path.to_string_lossy().to_string());
-            args.extend(additional_flags.iter().cloned());
-            ("as", args)
+            let tool = gnu_tool(target_arch, "as")
+                .ok_or_else(|| LaminaError::ValidationError(no_gnu_tool("as", target_arch)))?;
+            return run_gnu_as(
+                &tool,
+                input_path,
+                output_path,
+                target_arch,
+                target_os,
+                additional_flags,
+                verbose,
+            );
         }
         AssemblerBackend::Lld => {
             let mut args = vec!["-c".to_string()];
@@ -252,6 +250,9 @@ fn assemble_native(
                 (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux) => {
                     "riscv64-unknown-linux-gnu"
                 }
+                (TargetArchitecture::LoongArch64, TargetOperatingSystem::Linux) => {
+                    "loongarch64-unknown-linux-gnu"
+                }
                 _ => {
                     return Err(LaminaError::ValidationError(format!(
                         "Unsupported target combination for clang assembler: {target_arch:?} {target_os:?}"
@@ -265,7 +266,7 @@ fn assemble_native(
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
-            ("clang", args)
+            ("clang".to_string(), args)
         }
         AssemblerBackend::Custom(name) => {
             let args = vec![
@@ -273,7 +274,7 @@ fn assemble_native(
                 "-o".to_string(),
                 output_path.to_string_lossy().to_string(),
             ];
-            (name, args)
+            (name.to_string(), args)
         }
         AssemblerBackend::Ras => unreachable!("Ras handled above"),
         AssemblerBackend::Wat2Wasm => {
@@ -287,7 +288,7 @@ fn assemble_native(
         println!("[VERBOSE] Assembling with {cmd}: {args:?}");
     }
 
-    let output = Command::new(cmd).args(&args).output().map_err(|e| {
+    let output = Command::new(&cmd).args(&args).output().map_err(|e| {
         LaminaError::ValidationError(format!("Failed to spawn assembler '{cmd}': {e}"))
     })?;
 
@@ -305,9 +306,167 @@ fn assemble_native(
     })
 }
 
-/// The assembler used when none is named: ras, linked in-process, so no host
-/// tool is needed. Targets ras cannot encode are refused by
-/// `validate_assembler_backend_for_target`; they are never sent to a host assembler.
+fn ras_assemble(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    ras_object_write_options: ObjectWriteOptions,
+    verbose: bool,
+) -> Result<AssembleResult, String> {
+    if verbose {
+        println!(
+            "[VERBOSE] Assembling with ras (as/GAS alternative): {} -> {}",
+            input_path.display(),
+            output_path.display()
+        );
+    }
+    let assembly = fs::read_to_string(input_path)
+        .map_err(|e| format!("failed to read {}: {e}", input_path.display()))?;
+    if assembly
+        .lines()
+        .any(|line| line.trim_start().starts_with(".loc "))
+    {
+        return Err("ras does not implement the .loc directive (needed by -g)".to_string());
+    }
+    let mut ras = Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
+        .map_err(|e| format!("failed to create ras assembler: {e}"))?;
+    ras.assemble_file(input_path, output_path)
+        .map_err(|e| format!("ras cannot assemble this input: {e}"))?;
+    Ok(AssembleResult {
+        output_path: output_path.to_path_buf(),
+        needs_linking: true,
+    })
+}
+
+fn assemble_with_gnu(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    additional_flags: &[String],
+    verbose: bool,
+    reason: &str,
+) -> Result<AssembleResult, LaminaError> {
+    if !targets_elf(target_os) {
+        return Err(LaminaError::ValidationError(format!(
+            "{reason}; GNU as cannot produce {target_os:?} objects, so select -c clang"
+        )));
+    }
+    let tool = gnu_tool(target_arch, "as").ok_or_else(|| {
+        LaminaError::ValidationError(format!("{reason}; {}", no_gnu_tool("as", target_arch)))
+    })?;
+    eprintln!("[WARN] {reason}; assembling with GNU {tool} instead");
+    run_gnu_as(
+        &tool,
+        input_path,
+        output_path,
+        target_arch,
+        target_os,
+        additional_flags,
+        verbose,
+    )
+}
+
+fn run_gnu_as(
+    tool: &str,
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    additional_flags: &[String],
+    verbose: bool,
+) -> Result<AssembleResult, LaminaError> {
+    let mut args = gas_arch_flags(target_arch, target_os);
+    args.push(input_path.to_string_lossy().to_string());
+    args.push("-o".to_string());
+    args.push(output_path.to_string_lossy().to_string());
+    args.extend(additional_flags.iter().cloned());
+
+    if verbose {
+        println!("[VERBOSE] Assembling with {tool}: {args:?}");
+    }
+
+    let output = Command::new(tool).args(&args).output().map_err(|e| {
+        LaminaError::ValidationError(format!("Failed to spawn assembler '{tool}': {e}"))
+    })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(LaminaError::ValidationError(format!(
+            "Assembler '{tool}' failed:\nstdout: {stdout}\nstderr: {stderr}"
+        )));
+    }
+
+    Ok(AssembleResult {
+        output_path: output_path.to_path_buf(),
+        needs_linking: true,
+    })
+}
+
+pub(crate) fn no_gnu_tool(tool: &str, target_arch: TargetArchitecture) -> String {
+    match gnu_triple(target_arch) {
+        Some(triple) => {
+            format!("no GNU {tool} is installed for {target_arch:?} (looked for {triple}-{tool})")
+        }
+        None => format!("no GNU {tool} is installed for {target_arch:?}"),
+    }
+}
+
+pub(crate) fn gnu_tool(target_arch: TargetArchitecture, tool: &str) -> Option<String> {
+    let name = if host_matches(target_arch) {
+        tool.to_string()
+    } else {
+        format!("{}-{tool}", gnu_triple(target_arch)?)
+    };
+    Command::new(&name)
+        .arg("--version")
+        .output()
+        .ok()
+        .map(|_| name)
+}
+
+fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
+    match target_arch {
+        TargetArchitecture::X86_64 => Some("x86_64-linux-gnu"),
+        TargetArchitecture::Aarch64 => Some("aarch64-linux-gnu"),
+        TargetArchitecture::Riscv32 => Some("riscv32-linux-gnu"),
+        TargetArchitecture::Riscv64 => Some("riscv64-linux-gnu"),
+        TargetArchitecture::LoongArch64 => Some("loongarch64-linux-gnu"),
+        TargetArchitecture::PowerPC64 => Some("powerpc64le-linux-gnu"),
+        _ => None,
+    }
+}
+
+pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
+    match target_arch {
+        TargetArchitecture::X86_64 => cfg!(target_arch = "x86_64"),
+        TargetArchitecture::Aarch64 => cfg!(target_arch = "aarch64"),
+        TargetArchitecture::Riscv64 => cfg!(target_arch = "riscv64"),
+        TargetArchitecture::LoongArch64 => cfg!(target_arch = "loongarch64"),
+        TargetArchitecture::PowerPC64 => cfg!(target_arch = "powerpc64"),
+        _ => false,
+    }
+}
+
+pub(crate) fn targets_elf(target_os: TargetOperatingSystem) -> bool {
+    !os_uses_macho(target_os) && target_os != TargetOperatingSystem::Windows
+}
+
+fn ras_gap(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Option<String> {
+    if matches!(target_arch, TargetArchitecture::PowerPC64) {
+        return Some("ras has no PowerPC encoder".to_string());
+    }
+    if !is_assembly_target_supported(target_arch, target_os)
+        || !is_object_file_supported(target_arch, target_os)
+    {
+        return Some(format!("ras cannot assemble {target_arch:?} {target_os:?}"));
+    }
+    None
+}
+
+/// The assembler used when none is named: ras, linked in-process, so no host tool is needed.
 pub fn detect_assembler_backend(
     _target_arch: TargetArchitecture,
     _target_os: TargetOperatingSystem,
@@ -343,12 +502,12 @@ fn gas_arch_flags(
                 args.push("-arch".to_string());
                 args.push("arm64".to_string());
             } else {
-                args.push("-march=aarch64".to_string());
+                args.push("-march=armv8-a".to_string());
             }
         }
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
             args.push(format!(
-                "-march=rv{}",
+                "-march=rv{}gc",
                 if matches!(target_arch, TargetArchitecture::Riscv64) {
                     "64"
                 } else {
@@ -396,22 +555,12 @@ fn validate_assembler_backend_for_target(
                 ))
             }
         }
-        AssemblerBackend::Ras => {
-            if matches!(target_arch, TargetArchitecture::PowerPC64) {
-                return Err(LaminaError::ValidationError(
-                    "ras has no PowerPC encoder; select another toolchain with -c gnu or -c clang"
-                        .to_string(),
-                ));
-            }
-            if !is_assembly_target_supported(target_arch, target_os)
-                || !is_object_file_supported(target_arch, target_os)
-            {
-                return Err(LaminaError::ValidationError(format!(
-                    "ras cannot assemble {target_arch:?} {target_os:?} yet; select another toolchain with -c gnu or -c clang"
-                )));
-            }
-            Ok(backend)
-        }
+        AssemblerBackend::Ras => match ras_gap(target_arch, target_os) {
+            Some(gap) => Err(LaminaError::ValidationError(format!(
+                "{gap}; select another toolchain with -c gnu or -c clang"
+            ))),
+            None => Ok(backend),
+        },
         AssemblerBackend::Gas => {
             if target_os == TargetOperatingSystem::Windows {
                 return Err(LaminaError::ValidationError(
@@ -475,6 +624,15 @@ mod tests {
     }
 
     #[test]
+    fn ras_gap_covers_powerpc_and_gnu_cannot_write_mach_o_or_coff() {
+        assert!(ras_gap(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux).is_some());
+        assert!(ras_gap(TargetArchitecture::X86_64, TargetOperatingSystem::Linux).is_none());
+        assert!(targets_elf(TargetOperatingSystem::Linux));
+        assert!(!targets_elf(TargetOperatingSystem::MacOS));
+        assert!(!targets_elf(TargetOperatingSystem::Windows));
+    }
+
+    #[test]
     fn gas_flags_follow_mach_o_predicate() {
         for os in [
             TargetOperatingSystem::MacOS,
@@ -499,7 +657,7 @@ mod tests {
         );
         assert_eq!(
             gas_arch_flags(TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
-            ["-march=aarch64"]
+            ["-march=armv8-a"]
         );
     }
 }

@@ -90,7 +90,7 @@ pub fn print_usage() {
     eprintln!("  -o, --output <file>     Specify output executable name");
     eprintln!("  -v, --verbose           Enable verbose output");
     eprintln!(
-        "  -c, --compiler <n>      Toolchain: lamina (default: ras + weld) | gnu | clang | msvc. Or linker only: ld, lld, mold, weld, link, cl"
+        "  -c, --compiler <n>      Toolchain: lamina (default: ras + weld, falling back to GNU as/ld with a [WARN]) | gnu | clang | msvc. Or linker only: ld, lld, mold, weld, link, cl"
     );
     eprintln!("  --assembler <n>         Override assembler: ras (default), gas, clang");
     eprintln!("  -Wl,<flag>              Pass flag(s) to linker (GCC/Clang compatible)");
