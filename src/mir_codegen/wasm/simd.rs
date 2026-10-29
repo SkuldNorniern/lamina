@@ -169,6 +169,7 @@ pub(super) fn emit(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
+    use crate::test_support::TempDir;
 
     use crate::mir_codegen::simd_support::*;
     use crate::{
@@ -176,10 +177,7 @@ mod tests {
         mir_codegen::RegallocStrategy,
     };
     use lamina_platform::PointerWidth;
-    use std::{
-        array, env, fs,
-        process::{self, Command},
-    };
+    use std::{array, fs, process::Command};
 
     #[test]
     fn wasm_executes_every_supported_pair() {
@@ -266,8 +264,9 @@ mod tests {
             }
         }
 
-        let dir = env::temp_dir().join(format!("lamina-wasm-simd-{}", process::id()));
-        fs::create_dir_all(&dir).expect("directory");
+        let guard = TempDir::new("lamina-wasm-simd");
+
+        let dir = guard.path();
         for imm in [false, true] {
             let mut module = Module::new("simd");
             let mut data = Vec::new();
@@ -338,7 +337,6 @@ for i in range(len(data)//50):
                 .args(["run", "--with", "wasmtime", "python"])
                 .arg(dir.join("run.py")));
         }
-        fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]

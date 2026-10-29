@@ -1,15 +1,11 @@
 use super::test_support::{PRINT_I64_HELPERS, compile};
-use std::{
-    env::temp_dir,
-    error::Error,
-    fs,
-    process::{self, Command},
-};
+use crate::test_support::TempDir;
+use std::{error::Error, fs, process::Command};
 
 #[test]
 fn float_comparisons_match_gcc() -> Result<(), Box<dyn Error>> {
-    let dir = temp_dir().join(format!("lamina-float-comparisons-{}", process::id()));
-    fs::create_dir_all(&dir)?;
+    let guard = TempDir::new("lamina-float-comparisons");
+    let dir = guard.path();
     let c = dir.join("oracle.c");
     fs::write(
         &c,
@@ -82,6 +78,5 @@ int main(void) { CHECK(float); CHECK(double); return 0; }
             "O{level}"
         );
     }
-    fs::remove_dir_all(dir)?;
     Ok(())
 }

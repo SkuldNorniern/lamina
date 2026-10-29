@@ -3,6 +3,7 @@ use crate::mir::FunctionBuilder;
 use crate::mir::codegen::from_ir_for_target;
 use crate::mir_codegen::test_support::cross_assembler_ready;
 use crate::parser::parse_module;
+use crate::test_support::TempDir;
 use lamina_mir::Located;
 use lamina_platform::PointerWidth;
 use std::error::Error;
@@ -108,13 +109,9 @@ fn lea_offset_beyond_the_immediate_range_reaches_the_element() -> Result<(), Box
 
 #[test]
 fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
-    use std::{
-        env::temp_dir,
-        fs,
-        process::{self, Command},
-    };
-    let directory = temp_dir().join(format!("lamina-rv32-scalar-{}", process::id()));
-    fs::create_dir_all(&directory)?;
+    use std::{fs, process::Command};
+    let guard = TempDir::new("lamina-rv32-scalar");
+    let directory = guard.path();
     let reg = |id| Register::Virtual(VirtualReg::gpr(id));
     let operand = |id| Operand::Register(reg(id));
     let addr = AddressMode::BaseOffset {
@@ -302,10 +299,9 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
     }
     module.add_function(function);
     if !cross_assembler_ready(
-        &directory,
+        directory,
         &["--target=riscv32-unknown-elf", "-march=rv32imafd"],
     ) {
-        fs::remove_dir_all(&directory)?;
         return Ok(());
     }
     for allocator in [
@@ -349,7 +345,6 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    fs::remove_dir_all(directory)?;
     Ok(())
 }
 

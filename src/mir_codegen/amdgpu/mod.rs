@@ -782,20 +782,16 @@ pub fn emit_with_target<W: Write>(
 
 #[cfg(test)]
 mod emission_tests {
+    use crate::test_support::TempDir;
     use lamina_platform::PointerWidth;
 
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
-    use std::{
-        env,
-        error::Error,
-        fs,
-        process::{self, Command},
-    };
+    use std::{error::Error, fs, process::Command};
 
     #[test]
     fn gpu_cli_emits_text_without_native_tools() -> Result<(), Box<dyn Error>> {
-        let directory = env::temp_dir().join(format!("lamina-amdgpu-cli-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-amdgpu-cli");
+        let directory = guard.path();
         let source = directory.join("kernel.lamina");
         fs::write(
             &source,
@@ -814,8 +810,6 @@ mod emission_tests {
                 fs::remove_file(artifact)?;
             }
         }
-        fs::remove_file(source)?;
-        fs::remove_dir(directory)?;
         Ok(())
     }
 
@@ -829,8 +823,8 @@ mod emission_tests {
             eprintln!("skipping AMDGPU assembly: clang lacks amdgcn target");
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-amdgpu-asm-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-amdgpu-asm");
+        let directory = guard.path();
         let source = directory.join("barrier.lamina");
         fs::write(&source, include_str!("amdgpu.lamina"))?;
         for cpu in ["gfx1200", "gfx900"] {
@@ -911,8 +905,6 @@ mod emission_tests {
                 fs::remove_file(object)?;
             }
         }
-        fs::remove_file(source)?;
-        fs::remove_dir(directory)?;
         Ok(())
     }
 

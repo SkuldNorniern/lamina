@@ -1,4 +1,5 @@
 use super::interpret_mir_function;
+use crate::test_support::TempDir;
 use crate::{
     mir::{
         Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Module, Operand,
@@ -11,11 +12,10 @@ use crate::{
 };
 use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use std::{
-    env::temp_dir,
     error::Error,
     fs,
     os::unix::process::ExitStatusExt,
-    path::{Path, PathBuf},
+    path::Path,
     process::{self, Command},
 };
 
@@ -266,10 +266,8 @@ try {
     Ok(())
 }
 
-fn directory(name: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let path = temp_dir().join(format!("lamina-integer-{name}-{}", process::id()));
-    fs::create_dir_all(&path)?;
-    Ok(path)
+fn directory(name: &str) -> TempDir {
+    TempDir::new(&format!("lamina-integer-{name}"))
 }
 
 #[test]
@@ -381,14 +379,15 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
                 Some(0)
             );
             if available("cc") {
-                let directory = directory("values")?;
+                let guard = directory("values");
+                let directory = guard.path();
                 for target in targets(false) {
                     for allocator in [
                         RegallocStrategy::Incremental,
                         RegallocStrategy::LinearScanGlobal,
                         RegallocStrategy::GraphColorGlobal,
                     ] {
-                        let output = run(&module, &target, allocator, &directory)?;
+                        let output = run(&module, &target, allocator, directory)?;
                         assert_eq!(
                             output.status.code(),
                             Some(0),
@@ -397,8 +396,7 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
                         );
                     }
                 }
-                check_wasm(&module, &directory, false)?;
-                fs::remove_dir_all(directory)?;
+                check_wasm(&module, directory, false)?;
             }
         }
     }
@@ -408,7 +406,8 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
 #[test]
 fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
     let native = available("cc");
-    let directory = directory("traps")?;
+    let guard = directory("traps");
+    let directory = guard.path();
     let targets = targets(false);
     for ty in [
         MirType::i8(),
@@ -458,11 +457,11 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
                     }
                     let result = interpret_mir_function(&module.functions["main"], &[]);
                     assert!(result.is_err(), "{ty} {op} {lhs} {rhs}");
-                    check_wasm(&module, &directory, true)?;
+                    check_wasm(&module, directory, true)?;
                     if native {
                         for target in &targets {
                             let output =
-                                run(&module, target, RegallocStrategy::Incremental, &directory)?;
+                                run(&module, target, RegallocStrategy::Incremental, directory)?;
                             let signal = output.status.signal();
                             assert!(
                                 matches!(signal, Some(4 | 5 | 8)),
@@ -478,7 +477,6 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
             }
         }
     }
-    fs::remove_dir_all(directory)?;
     Ok(())
 }
 
@@ -581,7 +579,8 @@ fn division_traps_stay_inside_unentered_loops() -> TestResult {
 
 #[test]
 fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
-    let directory = directory("comparisons")?;
+    let guard = directory("comparisons");
+    let directory = guard.path();
     for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
         let width = ty.size_bytes(PointerWidth::Bits64) * 8;
         let modulus = 1i64 << width;
@@ -693,7 +692,7 @@ fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
                 RegallocStrategy::Incremental,
                 RegallocStrategy::LinearScanGlobal,
             ] {
-                let output = run(&module, &targets(false)[0], allocator, &directory)?;
+                let output = run(&module, &targets(false)[0], allocator, directory)?;
                 assert_eq!(
                     output.status.code(),
                     Some(0),
@@ -702,13 +701,13 @@ fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
             }
         }
     }
-    fs::remove_dir_all(directory)?;
     Ok(())
 }
 
 #[test]
 fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResult {
-    let directory = directory("conversions")?;
+    let guard = directory("conversions");
+    let directory = guard.path();
     let mut block = Block::new("entry");
     let mut id = 0;
     let mut failures = imm(0);
@@ -818,9 +817,8 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
         RegallocStrategy::Incremental,
         RegallocStrategy::LinearScanGlobal,
     ] {
-        let output = run(&module, &targets(false)[0], allocator, &directory)?;
+        let output = run(&module, &targets(false)[0], allocator, directory)?;
         assert_eq!(output.status.code(), Some(0), "{output:?}");
     }
-    fs::remove_dir_all(directory)?;
     Ok(())
 }

@@ -1,6 +1,9 @@
 #![allow(clippy::expect_used)]
 
-use std::{env, fs, process, process::Command};
+mod common;
+
+use common::TempDir;
+use std::{fs, process, process::Command};
 
 const PROGRAM: &str = r#"
 @extern
@@ -30,7 +33,8 @@ fn @main() -> i32 {
 const OVERRIDES: &str = "malloc=k_alloc,dealloc=k_free,memcpy=k_cpy,memmove=k_mv,memset=k_set";
 
 fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
-    let dir = env::temp_dir();
+    let guard = TempDir::new("lamina-builtins");
+    let dir = guard.path();
     let stem = format!("lamina-builtins-{}-{tag}", process::id());
     let input = dir.join(format!("{stem}.lamina"));
     let output = dir.join(format!("{stem}.s"));
@@ -52,10 +56,7 @@ fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
         String::from_utf8_lossy(&run.stderr)
     );
 
-    let asm = fs::read_to_string(&output).expect("read asm");
-    let _ = fs::remove_file(&input);
-    let _ = fs::remove_file(&output);
-    asm
+    fs::read_to_string(&output).expect("read asm")
 }
 
 #[test]

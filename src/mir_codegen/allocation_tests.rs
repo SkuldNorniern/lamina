@@ -1,3 +1,4 @@
+use crate::test_support::TempDir;
 use crate::{mir::codegen::from_ir, parser::parse_module};
 use std::error::Error;
 
@@ -7,16 +8,12 @@ mod native {
     use super::*;
     use crate::mir_codegen::test_support::PRINT_I64_HELPERS;
     use crate::{mir::Instruction, mir_codegen::test_support::compile};
-    use std::{
-        env::temp_dir,
-        fs,
-        process::{self, Command},
-    };
+    use std::{fs, process::Command};
 
     #[test]
     fn aggregate_stack_storage_preserves_live_neighbors() -> Result<(), Box<dyn Error>> {
-        let dir = temp_dir().join(format!("lamina-aggregate-storage-{}", process::id()));
-        fs::create_dir_all(&dir)?;
+        let guard = TempDir::new("lamina-aggregate-storage");
+        let dir = guard.path();
         let cases = [
             ("!Pair", "%last = getfieldptr.!Pair %p, 1"),
             (
@@ -89,7 +86,6 @@ mod native {
                 );
             }
         }
-        fs::remove_dir_all(dir)?;
         Ok(())
     }
 }

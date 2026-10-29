@@ -299,6 +299,9 @@ pub mod mir; // Re-exports from lamina-mir for backward compatibility
 pub mod parser;
 pub mod runtime;
 
+#[cfg(test)]
+mod test_support;
+
 /// Macro for inline Lamina IR code compilation (similar to `asm!`).
 ///
 /// This macro allows you to write Lamina IR code directly in Rust and have it

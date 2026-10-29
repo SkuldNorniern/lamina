@@ -455,6 +455,7 @@ fn lane_access<W: Write>(
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 #[allow(clippy::expect_used)]
 mod tests {
+    use crate::test_support::TempDir;
 
     use crate::mir_codegen::simd_support::{declare_uses_as_params, run, tools_available};
 
@@ -467,7 +468,7 @@ mod tests {
         mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
     };
     use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
-    use std::{array, env, fmt::Write as _, fs, path::Path, process, process::Command};
+    use std::{array, fmt::Write as _, fs, path::Path, process::Command};
 
     const LANES: [VectorLane; 6] = [
         VectorLane::I8,
@@ -915,18 +916,17 @@ mod tests {
                 }
             }
         }
-        let dir = env::temp_dir().join(format!("lamina-simd-{}", process::id()));
-        fs::create_dir_all(&dir).expect("create temp directory");
+        let guard = TempDir::new("lamina-simd");
+        let dir = guard.path();
         for strategy in [
             RegallocStrategy::Incremental,
             RegallocStrategy::LinearScanGlobal,
             RegallocStrategy::GraphColorGlobal,
         ] {
             for immediate in [false, true] {
-                execute(&cases, strategy, &dir, immediate, PointerWidth::Bits64);
+                execute(&cases, strategy, dir, immediate, PointerWidth::Bits64);
             }
         }
-        fs::remove_dir_all(dir).expect("remove temp directory");
     }
 
     #[test]

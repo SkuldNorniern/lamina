@@ -388,12 +388,13 @@ pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError
 #[cfg(test)]
 mod emission_tests {
     use crate::mir_codegen::test_support::compile;
-    use std::{env, error::Error, fs, process};
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs};
 
     #[test]
     fn gpu_cli_emits_text_without_native_tools() -> Result<(), Box<dyn Error>> {
-        let directory = env::temp_dir().join(format!("lamina-ptx-cli-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-ptx-cli");
+        let directory = guard.path();
         let source = directory.join("kernel.lamina");
         fs::write(
             &source,
@@ -412,8 +413,6 @@ mod emission_tests {
                 fs::remove_file(artifact)?;
             }
         }
-        fs::remove_file(source)?;
-        fs::remove_dir(directory)?;
         Ok(())
     }
 

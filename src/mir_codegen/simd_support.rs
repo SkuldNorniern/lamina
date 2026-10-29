@@ -1,4 +1,5 @@
 #![allow(dead_code, clippy::expect_used)]
+use crate::test_support::TempDir;
 use crate::{
     mir::{
         AddressMode, AddressSpace, Block, Function, Immediate, Instruction, IntBinOp, MemoryAttrs,
@@ -8,7 +9,7 @@ use crate::{
     mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
 };
 use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
-use std::{env, fs, process, process::Command, process::Stdio};
+use std::{fs, process::Command, process::Stdio};
 
 pub const LANES: [VectorLane; 6] = [
     VectorLane::I8,
@@ -481,8 +482,8 @@ pub fn native(
     if !tools_available(&["clang", "llvm-objdump-18"]) {
         return;
     }
-    let dir = env::temp_dir().join(format!("lamina-{backend:?}-{}", process::id()));
-    fs::create_dir_all(&dir).expect("directory");
+    let guard = TempDir::new(&format!("lamina-{backend:?}"));
+    let dir = guard.path();
     for strategy in [
         RegallocStrategy::Incremental,
         RegallocStrategy::LinearScanGlobal,
@@ -575,5 +576,4 @@ pub fn native(
         }));
         assert!(!disasm.contains("<unknown>"));
     }
-    fs::remove_dir_all(dir).expect("cleanup");
 }

@@ -2,9 +2,10 @@ use super::*;
 use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir};
 use crate::mir_codegen::{simd_support::tool_available, test_support::PRINT_I64_HELPERS};
 use crate::parser::parse_module;
+use crate::test_support::TempDir;
 use lamina_platform::PointerWidth;
 use std::{
-    env, fs,
+    fs,
     io::Write,
     process::{Command, Stdio},
 };
@@ -131,8 +132,8 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
         PointerWidth::Bits64,
     )
     .expect("WASM codegen should succeed");
-    let dir = env::temp_dir().join(format!("lamina-wasm-{test_name}-{}", id()));
-    fs::create_dir_all(&dir).expect("create test dir");
+    let guard = TempDir::new(&format!("lamina-wasm-{test_name}"));
+    let dir = guard.path();
     let wat_path = dir.join("module.wat");
     let run_path = dir.join("run.py");
     fs::write(&wat_path, wat).expect("write wat");
@@ -143,7 +144,6 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
         .arg(&wat_path)
         .output()
         .expect("run uv");
-    fs::remove_dir_all(&dir).expect("cleanup");
     assert!(
         output.status.success(),
         "wasm run failed: {}",
@@ -383,8 +383,8 @@ fn wasi_writes_without_a_console_import() {
     if !tool_available("wasmtime") {
         return;
     }
-    let dir = env::temp_dir().join(format!("lamina-wasi-{}", id()));
-    fs::create_dir_all(&dir).expect("create test dir");
+    let guard = TempDir::new("lamina-wasi");
+    let dir = guard.path();
     let path = dir.join("module.wat");
     fs::write(&path, &wat).expect("write wat");
     let output = Command::new("wasmtime")
@@ -392,7 +392,6 @@ fn wasi_writes_without_a_console_import() {
         .arg(&path)
         .output()
         .expect("run wasmtime");
-    fs::remove_dir_all(&dir).expect("cleanup");
     assert!(output.status.success(), "{output:?}");
     assert_eq!(String::from_utf8_lossy(&output.stdout), "OK\n");
 }
@@ -471,8 +470,8 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         PointerWidth::Bits64,
     )
     .expect("codegen");
-    let dir = env::temp_dir().join(format!("lamina-narrow-{}", id()));
-    fs::create_dir_all(&dir).expect("create test dir");
+    let guard = TempDir::new("lamina-narrow");
+    let dir = guard.path();
     let path = dir.join("module.wat");
     fs::write(&path, wat).expect("write wat");
     let output = Command::new("wasmtime")
@@ -480,7 +479,6 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         .arg(&path)
         .output()
         .expect("run wasmtime");
-    fs::remove_dir_all(&dir).expect("cleanup");
     assert_eq!(String::from_utf8_lossy(&output.stdout), "-1\n");
 }
 
@@ -569,8 +567,8 @@ fn wasi_writebyte_reaches_stdout() {
         "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, 72\n  %v = load.i8 %p\n  %a = writebyte %v\n  %b = writebyte 105\n  %c = writebyte 10\n  ret.i64 0\n}\n",
     )
     .expect("WASI codegen should succeed");
-    let dir = env::temp_dir().join(format!("lamina-wasi-io-{}", id()));
-    fs::create_dir_all(&dir).expect("create test dir");
+    let guard = TempDir::new("lamina-wasi-io");
+    let dir = guard.path();
     let path = dir.join("module.wat");
     fs::write(&path, &wat).expect("write wat");
     let output = Command::new("wasmtime")
@@ -578,7 +576,6 @@ fn wasi_writebyte_reaches_stdout() {
         .arg(&path)
         .output()
         .expect("run wasmtime");
-    fs::remove_dir_all(&dir).expect("cleanup");
     assert!(output.status.success(), "{output:?}");
     assert_eq!(String::from_utf8_lossy(&output.stdout), "Hi\n");
 }
@@ -602,8 +599,8 @@ fn wasi_memcpy_and_memset_fill_the_module_memory() {
     if !tool_available("wasmtime") {
         return;
     }
-    let dir = env::temp_dir().join(format!("lamina-wasi-mem-{}", id()));
-    fs::create_dir_all(&dir).expect("create test dir");
+    let guard = TempDir::new("lamina-wasi-mem");
+    let dir = guard.path();
     let path = dir.join("module.wat");
     fs::write(&path, &wat).expect("write wat");
     let output = Command::new("wasmtime")
@@ -611,7 +608,6 @@ fn wasi_memcpy_and_memset_fill_the_module_memory() {
         .arg(&path)
         .output()
         .expect("run wasmtime");
-    fs::remove_dir_all(&dir).expect("cleanup");
     assert!(output.status.success(), "{output:?}");
     let expected = format!("{}\n", 0xA5A5_A5A5_0403_0201u64 as i64);
     assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
@@ -642,8 +638,8 @@ fn wasi_io_outcomes_reach_stdout_as_their_low_byte() {
     ];
     for (tag, source, stdin, expected) in cases {
         let wat = emit_wasi(source).expect("WASI codegen should succeed");
-        let dir = env::temp_dir().join(format!("lamina-wasi-io-{tag}-{}", id()));
-        fs::create_dir_all(&dir).expect("create test dir");
+        let guard = TempDir::new(&format!("lamina-wasi-io-{tag}"));
+        let dir = guard.path();
         let path = dir.join("module.wat");
         fs::write(&path, &wat).expect("write wat");
         let mut child = Command::new("wasmtime")
@@ -660,7 +656,6 @@ fn wasi_io_outcomes_reach_stdout_as_their_low_byte() {
             .write_all(stdin)
             .expect("write stdin");
         let output = child.wait_with_output().expect("wait for wasmtime");
-        fs::remove_dir_all(&dir).expect("cleanup");
         assert!(output.status.success(), "{tag}: {output:?}");
         assert_eq!(output.stdout, expected, "{tag}");
     }

@@ -4,13 +4,9 @@ use crate::mir::{
     Parameter, Register, Signature, VirtualReg,
 };
 use crate::mir_codegen::simd_support::tool_available;
+use crate::test_support::TempDir;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::{
-    env::temp_dir,
-    error::Error,
-    fs,
-    process::{self, Command},
-};
+use std::{error::Error, fs, process::Command};
 
 fn unary_module(register_inputs: bool) -> Module {
     let mut module = Module::new("float_unary");
@@ -73,8 +69,8 @@ fn unary_module(register_inputs: bool) -> Module {
 
 #[test]
 fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
-    let dir = temp_dir().join(format!("lamina-float-unary-{}", process::id()));
-    fs::create_dir_all(&dir)?;
+    let guard = TempDir::new("lamina-float-unary");
+    let dir = guard.path();
     let module = unary_module(false);
     for (arch, triple) in [
         (TargetArchitecture::PowerPC64, "powerpc64-linux-gnu"),
@@ -90,7 +86,7 @@ fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
             module.clone()
         };
         let target_flag = format!("--target={triple}");
-        if !cross_assembler_ready(&dir, &[target_flag.as_str()]) {
+        if !cross_assembler_ready(dir, &[target_flag.as_str()]) {
             continue;
         }
         let mut assembly = Vec::new();
@@ -133,7 +129,6 @@ fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
             assert!(text.contains("\tfsqrt "), "{text}");
         }
     }
-    fs::remove_dir_all(dir)?;
     Ok(())
 }
 
@@ -144,8 +139,8 @@ fn float_unary_wasm_output_validates() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let module = unary_module(false);
-    let dir = temp_dir().join(format!("lamina-float-unary-wasm-{}", process::id()));
-    fs::create_dir_all(&dir)?;
+    let guard = TempDir::new("lamina-float-unary-wasm");
+    let dir = guard.path();
     for arch in [TargetArchitecture::Wasm32, TargetArchitecture::Wasm64] {
         let mut assembly = Vec::new();
         generate_mir_to_target(
@@ -166,6 +161,5 @@ fn float_unary_wasm_output_validates() -> Result<(), Box<dyn Error>> {
             String::from_utf8_lossy(&result.stderr)
         );
     }
-    fs::remove_dir_all(dir)?;
     Ok(())
 }

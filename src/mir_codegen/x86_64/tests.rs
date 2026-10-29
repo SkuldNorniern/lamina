@@ -499,12 +499,8 @@ fn stack_copy_cycle_preserves_saved_value() -> Result<(), Box<dyn StdError>> {
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod c_caller_abi_tests {
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
-    use std::{
-        env,
-        error::Error,
-        fs,
-        process::{self, Command},
-    };
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs, process::Command};
 
     const LAMINA: &str = r#"
 @export fn @i8_is_negative(i8 %x) -> i64 {
@@ -660,8 +656,8 @@ int main(void) {
         if !tools_available(&["cc"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-c-abi-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-c-abi");
+        let directory = guard.path();
         let source = directory.join("narrow.lamina");
         fs::write(&source, LAMINA)?;
         let base = directory.join("narrow");
@@ -682,7 +678,6 @@ int main(void) {
         assert!(linked.status.success(), "link failed: {linked:?}");
         let output = Command::new(&executable).output()?;
         assert_eq!(String::from_utf8_lossy(&output.stdout), EXPECTED);
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 }
@@ -693,12 +688,8 @@ mod debug_line_tests {
         simd_support::tools_available,
         test_support::{PRINT_I64_HELPERS, compile},
     };
-    use std::{
-        env,
-        error::Error,
-        fs,
-        process::{self, Command},
-    };
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs, process::Command};
 
     const SOURCE: &str = r#"
 fn @double(i64 %x) -> i64 {
@@ -726,8 +717,8 @@ entry:
         if !tools_available(&["as", "clang", "gcc", "timeout"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-debug-lines-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-debug-lines");
+        let directory = guard.path();
         let source = directory.join("two_functions.lamina");
         fs::write(&source, format!("{SOURCE}{PRINT_I64_HELPERS}"))?;
 
@@ -772,7 +763,6 @@ entry:
                 "missing .loc for line {expected}: {text}"
             );
         }
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 }
@@ -821,7 +811,8 @@ mod c_abi_harness {
 mod narrow_c_abi_tests {
     use super::c_abi_harness::build_and_run;
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
-    use std::{env, error::Error, fs, process};
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs};
 
     /// Each `raw_*` callee returns the full 64-bit register it received, so the caller
     /// sees exactly the upper bits lamina left behind.
@@ -1042,11 +1033,11 @@ int main(void) {
         if !tools_available(&["cc"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-narrow-abi-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-narrow-abi");
+        let directory = guard.path();
 
         let outgoing = build_and_run(
-            &directory,
+            directory,
             "outgoing",
             OUTGOING,
             &[
@@ -1068,7 +1059,7 @@ int main(void) {
         assert_eq!(outgoing, OUTGOING_EXPECTED);
 
         let incoming = build_and_run(
-            &directory,
+            directory,
             "incoming",
             INCOMING,
             &[
@@ -1078,7 +1069,6 @@ int main(void) {
         )?;
         assert_eq!(incoming, INCOMING_EXPECTED);
 
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 
@@ -1095,8 +1085,8 @@ int main(void) {
     /// sign-extended whatever the declared signedness; unsigned consumers re-extend.
     #[test]
     fn narrow_parameter_prologue_normalizes_to_the_canonical_form() -> Result<(), Box<dyn Error>> {
-        let directory = env::temp_dir().join(format!("lamina-param-widths-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-param-widths");
+        let directory = guard.path();
         let source = directory.join("widths.lamina");
         fs::write(&source, PARAM_WIDTHS)?;
         let base = directory.join("widths");
@@ -1124,7 +1114,6 @@ int main(void) {
             );
         }
 
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 }
@@ -1133,7 +1122,8 @@ int main(void) {
 mod float_c_abi_tests {
     use super::c_abi_harness::build_and_run;
     use crate::mir_codegen::simd_support::tools_available;
-    use std::{env, error::Error, fs, process};
+    use crate::test_support::TempDir;
+    use std::error::Error;
 
     const OUTGOING: &str = r#"
 @extern fn @c_mix(i64 %a, f64 %x, i64 %b, f32 %y, f64 %z) -> f64 {
@@ -1237,11 +1227,11 @@ int main(void) {
         if !tools_available(&["cc"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-float-abi-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-float-abi");
+        let directory = guard.path();
 
         let outgoing = build_and_run(
-            &directory,
+            directory,
             "outgoing",
             OUTGOING,
             &["run_mix", "run_spill", "run_f32"],
@@ -1253,7 +1243,7 @@ int main(void) {
         );
 
         let incoming = build_and_run(
-            &directory,
+            directory,
             "incoming",
             INCOMING,
             &["l_mix", "l_f32", "l_spill"],
@@ -1264,7 +1254,6 @@ int main(void) {
             "6.000000 6.000000\n1.500000 1.500000\n3.750000 3.750000\n64.250000 64.250000\n6.500000 6.500000\n"
         );
 
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 }
@@ -1273,7 +1262,8 @@ int main(void) {
 mod aggregate_c_abi_tests {
     use super::c_abi_harness::build_and_run;
     use crate::mir_codegen::simd_support::tools_available;
-    use std::{env, error::Error, fs, process};
+    use crate::test_support::TempDir;
+    use std::error::Error;
 
     /// Two words, one packed word, a padded twelve bytes, and an aggregate pushed past
     /// the last argument register.
@@ -1452,11 +1442,11 @@ int main(void) {
         if !tools_available(&["cc"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-aggregate-abi-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-aggregate-abi");
+        let directory = guard.path();
 
         let incoming = build_and_run(
-            &directory,
+            directory,
             "incoming",
             INCOMING,
             &["take_pair", "take_small", "take_three", "take_spilled"],
@@ -1465,7 +1455,7 @@ int main(void) {
         assert_eq!(incoming, "42 7 6 63\n");
 
         let outgoing = build_and_run(
-            &directory,
+            directory,
             "outgoing",
             OUTGOING,
             &["send_pair", "send_spilled"],
@@ -1474,7 +1464,7 @@ int main(void) {
         assert_eq!(outgoing, "107 100028\n");
 
         let returns = build_and_run(
-            &directory,
+            directory,
             "returns",
             RETURNS,
             &["make_pair", "make_small", "take_c"],
@@ -1482,7 +1472,6 @@ int main(void) {
         )?;
         assert_eq!(returns, "41 42 5 9 80\n");
 
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 }
@@ -1518,17 +1507,17 @@ fn external_declarations_come_out_in_one_order() {
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod edge_move_tests {
     use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
-    use std::{env, error::Error, fs, process, process::Command};
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs, process::Command};
 
     fn run(name: &str, lamina: &str) -> Result<String, Box<dyn Error>> {
-        let directory = env::temp_dir().join(format!("lamina-edge-{name}-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new(&format!("lamina-edge-{name}"));
+        let directory = guard.path();
         let source = directory.join(format!("{name}.lamina"));
         fs::write(&source, format!("{lamina}{PRINT_I64_HELPERS}"))?;
         let executable = directory.join(name);
         compile(&source, &executable, &[])?;
         let output = Command::new(&executable).output()?;
-        fs::remove_dir_all(&directory)?;
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
@@ -1558,12 +1547,13 @@ mod edge_move_tests {
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod intrinsic_namespace_tests {
     use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
-    use std::{env, error::Error, fs, process, process::Command};
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs, process::Command};
 
     #[test]
     fn a_function_may_take_an_intrinsic_name() -> Result<(), Box<dyn Error>> {
-        let directory = env::temp_dir().join(format!("lamina-intrinsic-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-intrinsic");
+        let directory = guard.path();
         for name in ["write", "read", "writebyte", "readbyte"] {
             let lamina = format!(
                 "fn @{name}(i64 %x) -> i64 {{\nentry:\n  %r = add.i64 %x, 100\n  ret.i64 %r\n}}\n\nfn @main() -> i64 {{\nentry:\n  %v = call @{name}(5)\n  call @print_i64(%v)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
@@ -1575,7 +1565,6 @@ mod intrinsic_namespace_tests {
             let output = Command::new(&executable).output()?;
             assert_eq!(String::from_utf8_lossy(&output.stdout), "105\n", "@{name}");
         }
-        fs::remove_dir_all(&directory)?;
         Ok(())
     }
 }

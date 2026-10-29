@@ -2744,21 +2744,16 @@ mod narrow_integer_tests {
         simd_support::tools_available,
         test_support::{PRINT_I64_HELPERS, compile},
     };
-    use std::{
-        env,
-        error::Error,
-        fmt::Write as _,
-        fs,
-        process::{self, Command},
-    };
+    use crate::test_support::TempDir;
+    use std::{error::Error, fmt::Write as _, fs, process::Command};
 
     #[test]
     fn narrow_signed_operations_at_every_optimization_level() -> Result<(), Box<dyn Error>> {
         if !tools_available(&["as", "gcc", "timeout"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-narrow-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-narrow");
+        let directory = guard.path();
         let mut functions = String::new();
         let mut body = String::new();
         let mut expected = String::new();
@@ -2842,7 +2837,6 @@ mod narrow_integer_tests {
                 );
             }
         }
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 
@@ -2852,8 +2846,8 @@ mod narrow_integer_tests {
         if !tools_available(&["as", "gcc", "timeout"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-narrow-unsigned-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-narrow-unsigned");
+        let directory = guard.path();
         let mut functions = String::new();
         let mut body = String::new();
         let mut expected = String::new();
@@ -2900,7 +2894,6 @@ mod narrow_integer_tests {
                 );
             }
         }
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 }
@@ -2911,20 +2904,16 @@ mod variadic_pointer_call_tests {
         simd_support::tools_available,
         test_support::{PRINT_I64_HELPERS, compile},
     };
-    use std::{
-        env,
-        error::Error,
-        fs,
-        process::{self, Command},
-    };
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs, process::Command};
 
     #[test]
     fn callptr_passes_float_varargs_like_a_direct_call() -> Result<(), Box<dyn Error>> {
         if !tools_available(&["as", "gcc", "timeout"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-callptr-variadic-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let guard = TempDir::new("lamina-callptr-variadic");
+        let directory = guard.path();
         let source = directory.join("variadic.lamina");
         fs::write(
             &source,
@@ -2998,7 +2987,6 @@ entry:
                 "O{level}"
             );
         }
-        fs::remove_dir_all(directory)?;
         Ok(())
     }
 }
