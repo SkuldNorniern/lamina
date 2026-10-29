@@ -1,0 +1,825 @@
+# Atomic loads, stores, read-modify-writes and fences under every ordering.
+
+fn @main() -> i64 {
+entry:
+    %cell_i8 = stackalloc.i8
+    store.i8 %cell_i8, 7
+    %o0 = atomic_add.i8 %cell_i8, 5, relaxed
+    %p0 = extend.i8.i64 %o0
+    call @print_i64(%p0)
+    %l0 = atomic_load.i8 %cell_i8, relaxed
+    %q0 = extend.i8.i64 %l0
+    call @print_i64(%q0)
+    %o1 = atomic_add.i8 %cell_i8, 5, acquire
+    %p1 = extend.i8.i64 %o1
+    call @print_i64(%p1)
+    %l1 = atomic_load.i8 %cell_i8, acquire
+    %q1 = extend.i8.i64 %l1
+    call @print_i64(%q1)
+    %o2 = atomic_add.i8 %cell_i8, 5, release
+    %p2 = extend.i8.i64 %o2
+    call @print_i64(%p2)
+    %l2 = atomic_load.i8 %cell_i8, seqcst
+    %q2 = extend.i8.i64 %l2
+    call @print_i64(%q2)
+    %o3 = atomic_add.i8 %cell_i8, 5, acqrel
+    %p3 = extend.i8.i64 %o3
+    call @print_i64(%p3)
+    %l3 = atomic_load.i8 %cell_i8, relaxed
+    %q3 = extend.i8.i64 %l3
+    call @print_i64(%q3)
+    %o4 = atomic_add.i8 %cell_i8, 5, seqcst
+    %p4 = extend.i8.i64 %o4
+    call @print_i64(%p4)
+    %l4 = atomic_load.i8 %cell_i8, acquire
+    %q4 = extend.i8.i64 %l4
+    call @print_i64(%q4)
+    %o5 = atomic_sub.i8 %cell_i8, 3, relaxed
+    %p5 = extend.i8.i64 %o5
+    call @print_i64(%p5)
+    %l5 = atomic_load.i8 %cell_i8, seqcst
+    %q5 = extend.i8.i64 %l5
+    call @print_i64(%q5)
+    %o6 = atomic_sub.i8 %cell_i8, 3, acquire
+    %p6 = extend.i8.i64 %o6
+    call @print_i64(%p6)
+    %l6 = atomic_load.i8 %cell_i8, relaxed
+    %q6 = extend.i8.i64 %l6
+    call @print_i64(%q6)
+    %o7 = atomic_sub.i8 %cell_i8, 3, release
+    %p7 = extend.i8.i64 %o7
+    call @print_i64(%p7)
+    %l7 = atomic_load.i8 %cell_i8, acquire
+    %q7 = extend.i8.i64 %l7
+    call @print_i64(%q7)
+    %o8 = atomic_sub.i8 %cell_i8, 3, acqrel
+    %p8 = extend.i8.i64 %o8
+    call @print_i64(%p8)
+    %l8 = atomic_load.i8 %cell_i8, seqcst
+    %q8 = extend.i8.i64 %l8
+    call @print_i64(%q8)
+    %o9 = atomic_sub.i8 %cell_i8, 3, seqcst
+    %p9 = extend.i8.i64 %o9
+    call @print_i64(%p9)
+    %l9 = atomic_load.i8 %cell_i8, relaxed
+    %q9 = extend.i8.i64 %l9
+    call @print_i64(%q9)
+    %o10 = atomic_and.i8 %cell_i8, 6, relaxed
+    %p10 = extend.i8.i64 %o10
+    call @print_i64(%p10)
+    %l10 = atomic_load.i8 %cell_i8, acquire
+    %q10 = extend.i8.i64 %l10
+    call @print_i64(%q10)
+    %o11 = atomic_and.i8 %cell_i8, 6, acquire
+    %p11 = extend.i8.i64 %o11
+    call @print_i64(%p11)
+    %l11 = atomic_load.i8 %cell_i8, seqcst
+    %q11 = extend.i8.i64 %l11
+    call @print_i64(%q11)
+    %o12 = atomic_and.i8 %cell_i8, 6, release
+    %p12 = extend.i8.i64 %o12
+    call @print_i64(%p12)
+    %l12 = atomic_load.i8 %cell_i8, relaxed
+    %q12 = extend.i8.i64 %l12
+    call @print_i64(%q12)
+    %o13 = atomic_and.i8 %cell_i8, 6, acqrel
+    %p13 = extend.i8.i64 %o13
+    call @print_i64(%p13)
+    %l13 = atomic_load.i8 %cell_i8, acquire
+    %q13 = extend.i8.i64 %l13
+    call @print_i64(%q13)
+    %o14 = atomic_and.i8 %cell_i8, 6, seqcst
+    %p14 = extend.i8.i64 %o14
+    call @print_i64(%p14)
+    %l14 = atomic_load.i8 %cell_i8, seqcst
+    %q14 = extend.i8.i64 %l14
+    call @print_i64(%q14)
+    %o15 = atomic_or.i8 %cell_i8, 9, relaxed
+    %p15 = extend.i8.i64 %o15
+    call @print_i64(%p15)
+    %l15 = atomic_load.i8 %cell_i8, relaxed
+    %q15 = extend.i8.i64 %l15
+    call @print_i64(%q15)
+    %o16 = atomic_or.i8 %cell_i8, 9, acquire
+    %p16 = extend.i8.i64 %o16
+    call @print_i64(%p16)
+    %l16 = atomic_load.i8 %cell_i8, acquire
+    %q16 = extend.i8.i64 %l16
+    call @print_i64(%q16)
+    %o17 = atomic_or.i8 %cell_i8, 9, release
+    %p17 = extend.i8.i64 %o17
+    call @print_i64(%p17)
+    %l17 = atomic_load.i8 %cell_i8, seqcst
+    %q17 = extend.i8.i64 %l17
+    call @print_i64(%q17)
+    %o18 = atomic_or.i8 %cell_i8, 9, acqrel
+    %p18 = extend.i8.i64 %o18
+    call @print_i64(%p18)
+    %l18 = atomic_load.i8 %cell_i8, relaxed
+    %q18 = extend.i8.i64 %l18
+    call @print_i64(%q18)
+    %o19 = atomic_or.i8 %cell_i8, 9, seqcst
+    %p19 = extend.i8.i64 %o19
+    call @print_i64(%p19)
+    %l19 = atomic_load.i8 %cell_i8, acquire
+    %q19 = extend.i8.i64 %l19
+    call @print_i64(%q19)
+    %o20 = atomic_xor.i8 %cell_i8, 12, relaxed
+    %p20 = extend.i8.i64 %o20
+    call @print_i64(%p20)
+    %l20 = atomic_load.i8 %cell_i8, seqcst
+    %q20 = extend.i8.i64 %l20
+    call @print_i64(%q20)
+    %o21 = atomic_xor.i8 %cell_i8, 12, acquire
+    %p21 = extend.i8.i64 %o21
+    call @print_i64(%p21)
+    %l21 = atomic_load.i8 %cell_i8, relaxed
+    %q21 = extend.i8.i64 %l21
+    call @print_i64(%q21)
+    %o22 = atomic_xor.i8 %cell_i8, 12, release
+    %p22 = extend.i8.i64 %o22
+    call @print_i64(%p22)
+    %l22 = atomic_load.i8 %cell_i8, acquire
+    %q22 = extend.i8.i64 %l22
+    call @print_i64(%q22)
+    %o23 = atomic_xor.i8 %cell_i8, 12, acqrel
+    %p23 = extend.i8.i64 %o23
+    call @print_i64(%p23)
+    %l23 = atomic_load.i8 %cell_i8, seqcst
+    %q23 = extend.i8.i64 %l23
+    call @print_i64(%q23)
+    %o24 = atomic_xor.i8 %cell_i8, 12, seqcst
+    %p24 = extend.i8.i64 %o24
+    call @print_i64(%p24)
+    %l24 = atomic_load.i8 %cell_i8, relaxed
+    %q24 = extend.i8.i64 %l24
+    call @print_i64(%q24)
+    %o25 = atomic_exchange.i8 %cell_i8, -2, relaxed
+    %p25 = extend.i8.i64 %o25
+    call @print_i64(%p25)
+    %l25 = atomic_load.i8 %cell_i8, acquire
+    %q25 = extend.i8.i64 %l25
+    call @print_i64(%q25)
+    %o26 = atomic_exchange.i8 %cell_i8, -2, acquire
+    %p26 = extend.i8.i64 %o26
+    call @print_i64(%p26)
+    %l26 = atomic_load.i8 %cell_i8, seqcst
+    %q26 = extend.i8.i64 %l26
+    call @print_i64(%q26)
+    %o27 = atomic_exchange.i8 %cell_i8, -2, release
+    %p27 = extend.i8.i64 %o27
+    call @print_i64(%p27)
+    %l27 = atomic_load.i8 %cell_i8, relaxed
+    %q27 = extend.i8.i64 %l27
+    call @print_i64(%q27)
+    %o28 = atomic_exchange.i8 %cell_i8, -2, acqrel
+    %p28 = extend.i8.i64 %o28
+    call @print_i64(%p28)
+    %l28 = atomic_load.i8 %cell_i8, acquire
+    %q28 = extend.i8.i64 %l28
+    call @print_i64(%q28)
+    %o29 = atomic_exchange.i8 %cell_i8, -2, seqcst
+    %p29 = extend.i8.i64 %o29
+    call @print_i64(%p29)
+    %l29 = atomic_load.i8 %cell_i8, seqcst
+    %q29 = extend.i8.i64 %l29
+    call @print_i64(%q29)
+    atomic_store.i8 %cell_i8, -5, relaxed
+    %s30 = atomic_load.i8 %cell_i8, acquire
+    %t30 = extend.i8.i64 %s30
+    call @print_i64(%t30)
+    atomic_store.i8 %cell_i8, -5, release
+    %s31 = atomic_load.i8 %cell_i8, acquire
+    %t31 = extend.i8.i64 %s31
+    call @print_i64(%t31)
+    atomic_store.i8 %cell_i8, -5, seqcst
+    %s32 = atomic_load.i8 %cell_i8, acquire
+    %t32 = extend.i8.i64 %s32
+    call @print_i64(%t32)
+    %cell_i16 = stackalloc.i16
+    store.i16 %cell_i16, 7
+    %o33 = atomic_add.i16 %cell_i16, 5, relaxed
+    %p33 = extend.i16.i64 %o33
+    call @print_i64(%p33)
+    %l33 = atomic_load.i16 %cell_i16, relaxed
+    %q33 = extend.i16.i64 %l33
+    call @print_i64(%q33)
+    %o34 = atomic_add.i16 %cell_i16, 5, acquire
+    %p34 = extend.i16.i64 %o34
+    call @print_i64(%p34)
+    %l34 = atomic_load.i16 %cell_i16, acquire
+    %q34 = extend.i16.i64 %l34
+    call @print_i64(%q34)
+    %o35 = atomic_add.i16 %cell_i16, 5, release
+    %p35 = extend.i16.i64 %o35
+    call @print_i64(%p35)
+    %l35 = atomic_load.i16 %cell_i16, seqcst
+    %q35 = extend.i16.i64 %l35
+    call @print_i64(%q35)
+    %o36 = atomic_add.i16 %cell_i16, 5, acqrel
+    %p36 = extend.i16.i64 %o36
+    call @print_i64(%p36)
+    %l36 = atomic_load.i16 %cell_i16, relaxed
+    %q36 = extend.i16.i64 %l36
+    call @print_i64(%q36)
+    %o37 = atomic_add.i16 %cell_i16, 5, seqcst
+    %p37 = extend.i16.i64 %o37
+    call @print_i64(%p37)
+    %l37 = atomic_load.i16 %cell_i16, acquire
+    %q37 = extend.i16.i64 %l37
+    call @print_i64(%q37)
+    %o38 = atomic_sub.i16 %cell_i16, 3, relaxed
+    %p38 = extend.i16.i64 %o38
+    call @print_i64(%p38)
+    %l38 = atomic_load.i16 %cell_i16, seqcst
+    %q38 = extend.i16.i64 %l38
+    call @print_i64(%q38)
+    %o39 = atomic_sub.i16 %cell_i16, 3, acquire
+    %p39 = extend.i16.i64 %o39
+    call @print_i64(%p39)
+    %l39 = atomic_load.i16 %cell_i16, relaxed
+    %q39 = extend.i16.i64 %l39
+    call @print_i64(%q39)
+    %o40 = atomic_sub.i16 %cell_i16, 3, release
+    %p40 = extend.i16.i64 %o40
+    call @print_i64(%p40)
+    %l40 = atomic_load.i16 %cell_i16, acquire
+    %q40 = extend.i16.i64 %l40
+    call @print_i64(%q40)
+    %o41 = atomic_sub.i16 %cell_i16, 3, acqrel
+    %p41 = extend.i16.i64 %o41
+    call @print_i64(%p41)
+    %l41 = atomic_load.i16 %cell_i16, seqcst
+    %q41 = extend.i16.i64 %l41
+    call @print_i64(%q41)
+    %o42 = atomic_sub.i16 %cell_i16, 3, seqcst
+    %p42 = extend.i16.i64 %o42
+    call @print_i64(%p42)
+    %l42 = atomic_load.i16 %cell_i16, relaxed
+    %q42 = extend.i16.i64 %l42
+    call @print_i64(%q42)
+    %o43 = atomic_and.i16 %cell_i16, 6, relaxed
+    %p43 = extend.i16.i64 %o43
+    call @print_i64(%p43)
+    %l43 = atomic_load.i16 %cell_i16, acquire
+    %q43 = extend.i16.i64 %l43
+    call @print_i64(%q43)
+    %o44 = atomic_and.i16 %cell_i16, 6, acquire
+    %p44 = extend.i16.i64 %o44
+    call @print_i64(%p44)
+    %l44 = atomic_load.i16 %cell_i16, seqcst
+    %q44 = extend.i16.i64 %l44
+    call @print_i64(%q44)
+    %o45 = atomic_and.i16 %cell_i16, 6, release
+    %p45 = extend.i16.i64 %o45
+    call @print_i64(%p45)
+    %l45 = atomic_load.i16 %cell_i16, relaxed
+    %q45 = extend.i16.i64 %l45
+    call @print_i64(%q45)
+    %o46 = atomic_and.i16 %cell_i16, 6, acqrel
+    %p46 = extend.i16.i64 %o46
+    call @print_i64(%p46)
+    %l46 = atomic_load.i16 %cell_i16, acquire
+    %q46 = extend.i16.i64 %l46
+    call @print_i64(%q46)
+    %o47 = atomic_and.i16 %cell_i16, 6, seqcst
+    %p47 = extend.i16.i64 %o47
+    call @print_i64(%p47)
+    %l47 = atomic_load.i16 %cell_i16, seqcst
+    %q47 = extend.i16.i64 %l47
+    call @print_i64(%q47)
+    %o48 = atomic_or.i16 %cell_i16, 9, relaxed
+    %p48 = extend.i16.i64 %o48
+    call @print_i64(%p48)
+    %l48 = atomic_load.i16 %cell_i16, relaxed
+    %q48 = extend.i16.i64 %l48
+    call @print_i64(%q48)
+    %o49 = atomic_or.i16 %cell_i16, 9, acquire
+    %p49 = extend.i16.i64 %o49
+    call @print_i64(%p49)
+    %l49 = atomic_load.i16 %cell_i16, acquire
+    %q49 = extend.i16.i64 %l49
+    call @print_i64(%q49)
+    %o50 = atomic_or.i16 %cell_i16, 9, release
+    %p50 = extend.i16.i64 %o50
+    call @print_i64(%p50)
+    %l50 = atomic_load.i16 %cell_i16, seqcst
+    %q50 = extend.i16.i64 %l50
+    call @print_i64(%q50)
+    %o51 = atomic_or.i16 %cell_i16, 9, acqrel
+    %p51 = extend.i16.i64 %o51
+    call @print_i64(%p51)
+    %l51 = atomic_load.i16 %cell_i16, relaxed
+    %q51 = extend.i16.i64 %l51
+    call @print_i64(%q51)
+    %o52 = atomic_or.i16 %cell_i16, 9, seqcst
+    %p52 = extend.i16.i64 %o52
+    call @print_i64(%p52)
+    %l52 = atomic_load.i16 %cell_i16, acquire
+    %q52 = extend.i16.i64 %l52
+    call @print_i64(%q52)
+    %o53 = atomic_xor.i16 %cell_i16, 12, relaxed
+    %p53 = extend.i16.i64 %o53
+    call @print_i64(%p53)
+    %l53 = atomic_load.i16 %cell_i16, seqcst
+    %q53 = extend.i16.i64 %l53
+    call @print_i64(%q53)
+    %o54 = atomic_xor.i16 %cell_i16, 12, acquire
+    %p54 = extend.i16.i64 %o54
+    call @print_i64(%p54)
+    %l54 = atomic_load.i16 %cell_i16, relaxed
+    %q54 = extend.i16.i64 %l54
+    call @print_i64(%q54)
+    %o55 = atomic_xor.i16 %cell_i16, 12, release
+    %p55 = extend.i16.i64 %o55
+    call @print_i64(%p55)
+    %l55 = atomic_load.i16 %cell_i16, acquire
+    %q55 = extend.i16.i64 %l55
+    call @print_i64(%q55)
+    %o56 = atomic_xor.i16 %cell_i16, 12, acqrel
+    %p56 = extend.i16.i64 %o56
+    call @print_i64(%p56)
+    %l56 = atomic_load.i16 %cell_i16, seqcst
+    %q56 = extend.i16.i64 %l56
+    call @print_i64(%q56)
+    %o57 = atomic_xor.i16 %cell_i16, 12, seqcst
+    %p57 = extend.i16.i64 %o57
+    call @print_i64(%p57)
+    %l57 = atomic_load.i16 %cell_i16, relaxed
+    %q57 = extend.i16.i64 %l57
+    call @print_i64(%q57)
+    %o58 = atomic_exchange.i16 %cell_i16, -2, relaxed
+    %p58 = extend.i16.i64 %o58
+    call @print_i64(%p58)
+    %l58 = atomic_load.i16 %cell_i16, acquire
+    %q58 = extend.i16.i64 %l58
+    call @print_i64(%q58)
+    %o59 = atomic_exchange.i16 %cell_i16, -2, acquire
+    %p59 = extend.i16.i64 %o59
+    call @print_i64(%p59)
+    %l59 = atomic_load.i16 %cell_i16, seqcst
+    %q59 = extend.i16.i64 %l59
+    call @print_i64(%q59)
+    %o60 = atomic_exchange.i16 %cell_i16, -2, release
+    %p60 = extend.i16.i64 %o60
+    call @print_i64(%p60)
+    %l60 = atomic_load.i16 %cell_i16, relaxed
+    %q60 = extend.i16.i64 %l60
+    call @print_i64(%q60)
+    %o61 = atomic_exchange.i16 %cell_i16, -2, acqrel
+    %p61 = extend.i16.i64 %o61
+    call @print_i64(%p61)
+    %l61 = atomic_load.i16 %cell_i16, acquire
+    %q61 = extend.i16.i64 %l61
+    call @print_i64(%q61)
+    %o62 = atomic_exchange.i16 %cell_i16, -2, seqcst
+    %p62 = extend.i16.i64 %o62
+    call @print_i64(%p62)
+    %l62 = atomic_load.i16 %cell_i16, seqcst
+    %q62 = extend.i16.i64 %l62
+    call @print_i64(%q62)
+    atomic_store.i16 %cell_i16, 21, relaxed
+    %s63 = atomic_load.i16 %cell_i16, acquire
+    %t63 = extend.i16.i64 %s63
+    call @print_i64(%t63)
+    atomic_store.i16 %cell_i16, 21, release
+    %s64 = atomic_load.i16 %cell_i16, acquire
+    %t64 = extend.i16.i64 %s64
+    call @print_i64(%t64)
+    atomic_store.i16 %cell_i16, 21, seqcst
+    %s65 = atomic_load.i16 %cell_i16, acquire
+    %t65 = extend.i16.i64 %s65
+    call @print_i64(%t65)
+    %cell_i32 = stackalloc.i32
+    store.i32 %cell_i32, 7
+    %o66 = atomic_add.i32 %cell_i32, 5, relaxed
+    %p66 = extend.i32.i64 %o66
+    call @print_i64(%p66)
+    %l66 = atomic_load.i32 %cell_i32, relaxed
+    %q66 = extend.i32.i64 %l66
+    call @print_i64(%q66)
+    %o67 = atomic_add.i32 %cell_i32, 5, acquire
+    %p67 = extend.i32.i64 %o67
+    call @print_i64(%p67)
+    %l67 = atomic_load.i32 %cell_i32, acquire
+    %q67 = extend.i32.i64 %l67
+    call @print_i64(%q67)
+    %o68 = atomic_add.i32 %cell_i32, 5, release
+    %p68 = extend.i32.i64 %o68
+    call @print_i64(%p68)
+    %l68 = atomic_load.i32 %cell_i32, seqcst
+    %q68 = extend.i32.i64 %l68
+    call @print_i64(%q68)
+    %o69 = atomic_add.i32 %cell_i32, 5, acqrel
+    %p69 = extend.i32.i64 %o69
+    call @print_i64(%p69)
+    %l69 = atomic_load.i32 %cell_i32, relaxed
+    %q69 = extend.i32.i64 %l69
+    call @print_i64(%q69)
+    %o70 = atomic_add.i32 %cell_i32, 5, seqcst
+    %p70 = extend.i32.i64 %o70
+    call @print_i64(%p70)
+    %l70 = atomic_load.i32 %cell_i32, acquire
+    %q70 = extend.i32.i64 %l70
+    call @print_i64(%q70)
+    %o71 = atomic_sub.i32 %cell_i32, 3, relaxed
+    %p71 = extend.i32.i64 %o71
+    call @print_i64(%p71)
+    %l71 = atomic_load.i32 %cell_i32, seqcst
+    %q71 = extend.i32.i64 %l71
+    call @print_i64(%q71)
+    %o72 = atomic_sub.i32 %cell_i32, 3, acquire
+    %p72 = extend.i32.i64 %o72
+    call @print_i64(%p72)
+    %l72 = atomic_load.i32 %cell_i32, relaxed
+    %q72 = extend.i32.i64 %l72
+    call @print_i64(%q72)
+    %o73 = atomic_sub.i32 %cell_i32, 3, release
+    %p73 = extend.i32.i64 %o73
+    call @print_i64(%p73)
+    %l73 = atomic_load.i32 %cell_i32, acquire
+    %q73 = extend.i32.i64 %l73
+    call @print_i64(%q73)
+    %o74 = atomic_sub.i32 %cell_i32, 3, acqrel
+    %p74 = extend.i32.i64 %o74
+    call @print_i64(%p74)
+    %l74 = atomic_load.i32 %cell_i32, seqcst
+    %q74 = extend.i32.i64 %l74
+    call @print_i64(%q74)
+    %o75 = atomic_sub.i32 %cell_i32, 3, seqcst
+    %p75 = extend.i32.i64 %o75
+    call @print_i64(%p75)
+    %l75 = atomic_load.i32 %cell_i32, relaxed
+    %q75 = extend.i32.i64 %l75
+    call @print_i64(%q75)
+    %o76 = atomic_and.i32 %cell_i32, 6, relaxed
+    %p76 = extend.i32.i64 %o76
+    call @print_i64(%p76)
+    %l76 = atomic_load.i32 %cell_i32, acquire
+    %q76 = extend.i32.i64 %l76
+    call @print_i64(%q76)
+    %o77 = atomic_and.i32 %cell_i32, 6, acquire
+    %p77 = extend.i32.i64 %o77
+    call @print_i64(%p77)
+    %l77 = atomic_load.i32 %cell_i32, seqcst
+    %q77 = extend.i32.i64 %l77
+    call @print_i64(%q77)
+    %o78 = atomic_and.i32 %cell_i32, 6, release
+    %p78 = extend.i32.i64 %o78
+    call @print_i64(%p78)
+    %l78 = atomic_load.i32 %cell_i32, relaxed
+    %q78 = extend.i32.i64 %l78
+    call @print_i64(%q78)
+    %o79 = atomic_and.i32 %cell_i32, 6, acqrel
+    %p79 = extend.i32.i64 %o79
+    call @print_i64(%p79)
+    %l79 = atomic_load.i32 %cell_i32, acquire
+    %q79 = extend.i32.i64 %l79
+    call @print_i64(%q79)
+    %o80 = atomic_and.i32 %cell_i32, 6, seqcst
+    %p80 = extend.i32.i64 %o80
+    call @print_i64(%p80)
+    %l80 = atomic_load.i32 %cell_i32, seqcst
+    %q80 = extend.i32.i64 %l80
+    call @print_i64(%q80)
+    %o81 = atomic_or.i32 %cell_i32, 9, relaxed
+    %p81 = extend.i32.i64 %o81
+    call @print_i64(%p81)
+    %l81 = atomic_load.i32 %cell_i32, relaxed
+    %q81 = extend.i32.i64 %l81
+    call @print_i64(%q81)
+    %o82 = atomic_or.i32 %cell_i32, 9, acquire
+    %p82 = extend.i32.i64 %o82
+    call @print_i64(%p82)
+    %l82 = atomic_load.i32 %cell_i32, acquire
+    %q82 = extend.i32.i64 %l82
+    call @print_i64(%q82)
+    %o83 = atomic_or.i32 %cell_i32, 9, release
+    %p83 = extend.i32.i64 %o83
+    call @print_i64(%p83)
+    %l83 = atomic_load.i32 %cell_i32, seqcst
+    %q83 = extend.i32.i64 %l83
+    call @print_i64(%q83)
+    %o84 = atomic_or.i32 %cell_i32, 9, acqrel
+    %p84 = extend.i32.i64 %o84
+    call @print_i64(%p84)
+    %l84 = atomic_load.i32 %cell_i32, relaxed
+    %q84 = extend.i32.i64 %l84
+    call @print_i64(%q84)
+    %o85 = atomic_or.i32 %cell_i32, 9, seqcst
+    %p85 = extend.i32.i64 %o85
+    call @print_i64(%p85)
+    %l85 = atomic_load.i32 %cell_i32, acquire
+    %q85 = extend.i32.i64 %l85
+    call @print_i64(%q85)
+    %o86 = atomic_xor.i32 %cell_i32, 12, relaxed
+    %p86 = extend.i32.i64 %o86
+    call @print_i64(%p86)
+    %l86 = atomic_load.i32 %cell_i32, seqcst
+    %q86 = extend.i32.i64 %l86
+    call @print_i64(%q86)
+    %o87 = atomic_xor.i32 %cell_i32, 12, acquire
+    %p87 = extend.i32.i64 %o87
+    call @print_i64(%p87)
+    %l87 = atomic_load.i32 %cell_i32, relaxed
+    %q87 = extend.i32.i64 %l87
+    call @print_i64(%q87)
+    %o88 = atomic_xor.i32 %cell_i32, 12, release
+    %p88 = extend.i32.i64 %o88
+    call @print_i64(%p88)
+    %l88 = atomic_load.i32 %cell_i32, acquire
+    %q88 = extend.i32.i64 %l88
+    call @print_i64(%q88)
+    %o89 = atomic_xor.i32 %cell_i32, 12, acqrel
+    %p89 = extend.i32.i64 %o89
+    call @print_i64(%p89)
+    %l89 = atomic_load.i32 %cell_i32, seqcst
+    %q89 = extend.i32.i64 %l89
+    call @print_i64(%q89)
+    %o90 = atomic_xor.i32 %cell_i32, 12, seqcst
+    %p90 = extend.i32.i64 %o90
+    call @print_i64(%p90)
+    %l90 = atomic_load.i32 %cell_i32, relaxed
+    %q90 = extend.i32.i64 %l90
+    call @print_i64(%q90)
+    %o91 = atomic_exchange.i32 %cell_i32, -2, relaxed
+    %p91 = extend.i32.i64 %o91
+    call @print_i64(%p91)
+    %l91 = atomic_load.i32 %cell_i32, acquire
+    %q91 = extend.i32.i64 %l91
+    call @print_i64(%q91)
+    %o92 = atomic_exchange.i32 %cell_i32, -2, acquire
+    %p92 = extend.i32.i64 %o92
+    call @print_i64(%p92)
+    %l92 = atomic_load.i32 %cell_i32, seqcst
+    %q92 = extend.i32.i64 %l92
+    call @print_i64(%q92)
+    %o93 = atomic_exchange.i32 %cell_i32, -2, release
+    %p93 = extend.i32.i64 %o93
+    call @print_i64(%p93)
+    %l93 = atomic_load.i32 %cell_i32, relaxed
+    %q93 = extend.i32.i64 %l93
+    call @print_i64(%q93)
+    %o94 = atomic_exchange.i32 %cell_i32, -2, acqrel
+    %p94 = extend.i32.i64 %o94
+    call @print_i64(%p94)
+    %l94 = atomic_load.i32 %cell_i32, acquire
+    %q94 = extend.i32.i64 %l94
+    call @print_i64(%q94)
+    %o95 = atomic_exchange.i32 %cell_i32, -2, seqcst
+    %p95 = extend.i32.i64 %o95
+    call @print_i64(%p95)
+    %l95 = atomic_load.i32 %cell_i32, seqcst
+    %q95 = extend.i32.i64 %l95
+    call @print_i64(%q95)
+    atomic_store.i32 %cell_i32, 21, relaxed
+    %s96 = atomic_load.i32 %cell_i32, acquire
+    %t96 = extend.i32.i64 %s96
+    call @print_i64(%t96)
+    atomic_store.i32 %cell_i32, 21, release
+    %s97 = atomic_load.i32 %cell_i32, acquire
+    %t97 = extend.i32.i64 %s97
+    call @print_i64(%t97)
+    atomic_store.i32 %cell_i32, 21, seqcst
+    %s98 = atomic_load.i32 %cell_i32, acquire
+    %t98 = extend.i32.i64 %s98
+    call @print_i64(%t98)
+    %cell_i64 = stackalloc.i64
+    store.i64 %cell_i64, 7
+    %o99 = atomic_add.i64 %cell_i64, 5, relaxed
+    %p99 = bitcast.i64.i64 %o99
+    call @print_i64(%p99)
+    %l99 = atomic_load.i64 %cell_i64, relaxed
+    %q99 = bitcast.i64.i64 %l99
+    call @print_i64(%q99)
+    %o100 = atomic_add.i64 %cell_i64, 5, acquire
+    %p100 = bitcast.i64.i64 %o100
+    call @print_i64(%p100)
+    %l100 = atomic_load.i64 %cell_i64, acquire
+    %q100 = bitcast.i64.i64 %l100
+    call @print_i64(%q100)
+    %o101 = atomic_add.i64 %cell_i64, 5, release
+    %p101 = bitcast.i64.i64 %o101
+    call @print_i64(%p101)
+    %l101 = atomic_load.i64 %cell_i64, seqcst
+    %q101 = bitcast.i64.i64 %l101
+    call @print_i64(%q101)
+    %o102 = atomic_add.i64 %cell_i64, 5, acqrel
+    %p102 = bitcast.i64.i64 %o102
+    call @print_i64(%p102)
+    %l102 = atomic_load.i64 %cell_i64, relaxed
+    %q102 = bitcast.i64.i64 %l102
+    call @print_i64(%q102)
+    %o103 = atomic_add.i64 %cell_i64, 5, seqcst
+    %p103 = bitcast.i64.i64 %o103
+    call @print_i64(%p103)
+    %l103 = atomic_load.i64 %cell_i64, acquire
+    %q103 = bitcast.i64.i64 %l103
+    call @print_i64(%q103)
+    %o104 = atomic_sub.i64 %cell_i64, 3, relaxed
+    %p104 = bitcast.i64.i64 %o104
+    call @print_i64(%p104)
+    %l104 = atomic_load.i64 %cell_i64, seqcst
+    %q104 = bitcast.i64.i64 %l104
+    call @print_i64(%q104)
+    %o105 = atomic_sub.i64 %cell_i64, 3, acquire
+    %p105 = bitcast.i64.i64 %o105
+    call @print_i64(%p105)
+    %l105 = atomic_load.i64 %cell_i64, relaxed
+    %q105 = bitcast.i64.i64 %l105
+    call @print_i64(%q105)
+    %o106 = atomic_sub.i64 %cell_i64, 3, release
+    %p106 = bitcast.i64.i64 %o106
+    call @print_i64(%p106)
+    %l106 = atomic_load.i64 %cell_i64, acquire
+    %q106 = bitcast.i64.i64 %l106
+    call @print_i64(%q106)
+    %o107 = atomic_sub.i64 %cell_i64, 3, acqrel
+    %p107 = bitcast.i64.i64 %o107
+    call @print_i64(%p107)
+    %l107 = atomic_load.i64 %cell_i64, seqcst
+    %q107 = bitcast.i64.i64 %l107
+    call @print_i64(%q107)
+    %o108 = atomic_sub.i64 %cell_i64, 3, seqcst
+    %p108 = bitcast.i64.i64 %o108
+    call @print_i64(%p108)
+    %l108 = atomic_load.i64 %cell_i64, relaxed
+    %q108 = bitcast.i64.i64 %l108
+    call @print_i64(%q108)
+    %o109 = atomic_and.i64 %cell_i64, 6, relaxed
+    %p109 = bitcast.i64.i64 %o109
+    call @print_i64(%p109)
+    %l109 = atomic_load.i64 %cell_i64, acquire
+    %q109 = bitcast.i64.i64 %l109
+    call @print_i64(%q109)
+    %o110 = atomic_and.i64 %cell_i64, 6, acquire
+    %p110 = bitcast.i64.i64 %o110
+    call @print_i64(%p110)
+    %l110 = atomic_load.i64 %cell_i64, seqcst
+    %q110 = bitcast.i64.i64 %l110
+    call @print_i64(%q110)
+    %o111 = atomic_and.i64 %cell_i64, 6, release
+    %p111 = bitcast.i64.i64 %o111
+    call @print_i64(%p111)
+    %l111 = atomic_load.i64 %cell_i64, relaxed
+    %q111 = bitcast.i64.i64 %l111
+    call @print_i64(%q111)
+    %o112 = atomic_and.i64 %cell_i64, 6, acqrel
+    %p112 = bitcast.i64.i64 %o112
+    call @print_i64(%p112)
+    %l112 = atomic_load.i64 %cell_i64, acquire
+    %q112 = bitcast.i64.i64 %l112
+    call @print_i64(%q112)
+    %o113 = atomic_and.i64 %cell_i64, 6, seqcst
+    %p113 = bitcast.i64.i64 %o113
+    call @print_i64(%p113)
+    %l113 = atomic_load.i64 %cell_i64, seqcst
+    %q113 = bitcast.i64.i64 %l113
+    call @print_i64(%q113)
+    %o114 = atomic_or.i64 %cell_i64, 9, relaxed
+    %p114 = bitcast.i64.i64 %o114
+    call @print_i64(%p114)
+    %l114 = atomic_load.i64 %cell_i64, relaxed
+    %q114 = bitcast.i64.i64 %l114
+    call @print_i64(%q114)
+    %o115 = atomic_or.i64 %cell_i64, 9, acquire
+    %p115 = bitcast.i64.i64 %o115
+    call @print_i64(%p115)
+    %l115 = atomic_load.i64 %cell_i64, acquire
+    %q115 = bitcast.i64.i64 %l115
+    call @print_i64(%q115)
+    %o116 = atomic_or.i64 %cell_i64, 9, release
+    %p116 = bitcast.i64.i64 %o116
+    call @print_i64(%p116)
+    %l116 = atomic_load.i64 %cell_i64, seqcst
+    %q116 = bitcast.i64.i64 %l116
+    call @print_i64(%q116)
+    %o117 = atomic_or.i64 %cell_i64, 9, acqrel
+    %p117 = bitcast.i64.i64 %o117
+    call @print_i64(%p117)
+    %l117 = atomic_load.i64 %cell_i64, relaxed
+    %q117 = bitcast.i64.i64 %l117
+    call @print_i64(%q117)
+    %o118 = atomic_or.i64 %cell_i64, 9, seqcst
+    %p118 = bitcast.i64.i64 %o118
+    call @print_i64(%p118)
+    %l118 = atomic_load.i64 %cell_i64, acquire
+    %q118 = bitcast.i64.i64 %l118
+    call @print_i64(%q118)
+    %o119 = atomic_xor.i64 %cell_i64, 12, relaxed
+    %p119 = bitcast.i64.i64 %o119
+    call @print_i64(%p119)
+    %l119 = atomic_load.i64 %cell_i64, seqcst
+    %q119 = bitcast.i64.i64 %l119
+    call @print_i64(%q119)
+    %o120 = atomic_xor.i64 %cell_i64, 12, acquire
+    %p120 = bitcast.i64.i64 %o120
+    call @print_i64(%p120)
+    %l120 = atomic_load.i64 %cell_i64, relaxed
+    %q120 = bitcast.i64.i64 %l120
+    call @print_i64(%q120)
+    %o121 = atomic_xor.i64 %cell_i64, 12, release
+    %p121 = bitcast.i64.i64 %o121
+    call @print_i64(%p121)
+    %l121 = atomic_load.i64 %cell_i64, acquire
+    %q121 = bitcast.i64.i64 %l121
+    call @print_i64(%q121)
+    %o122 = atomic_xor.i64 %cell_i64, 12, acqrel
+    %p122 = bitcast.i64.i64 %o122
+    call @print_i64(%p122)
+    %l122 = atomic_load.i64 %cell_i64, seqcst
+    %q122 = bitcast.i64.i64 %l122
+    call @print_i64(%q122)
+    %o123 = atomic_xor.i64 %cell_i64, 12, seqcst
+    %p123 = bitcast.i64.i64 %o123
+    call @print_i64(%p123)
+    %l123 = atomic_load.i64 %cell_i64, relaxed
+    %q123 = bitcast.i64.i64 %l123
+    call @print_i64(%q123)
+    %o124 = atomic_exchange.i64 %cell_i64, -2, relaxed
+    %p124 = bitcast.i64.i64 %o124
+    call @print_i64(%p124)
+    %l124 = atomic_load.i64 %cell_i64, acquire
+    %q124 = bitcast.i64.i64 %l124
+    call @print_i64(%q124)
+    %o125 = atomic_exchange.i64 %cell_i64, -2, acquire
+    %p125 = bitcast.i64.i64 %o125
+    call @print_i64(%p125)
+    %l125 = atomic_load.i64 %cell_i64, seqcst
+    %q125 = bitcast.i64.i64 %l125
+    call @print_i64(%q125)
+    %o126 = atomic_exchange.i64 %cell_i64, -2, release
+    %p126 = bitcast.i64.i64 %o126
+    call @print_i64(%p126)
+    %l126 = atomic_load.i64 %cell_i64, relaxed
+    %q126 = bitcast.i64.i64 %l126
+    call @print_i64(%q126)
+    %o127 = atomic_exchange.i64 %cell_i64, -2, acqrel
+    %p127 = bitcast.i64.i64 %o127
+    call @print_i64(%p127)
+    %l127 = atomic_load.i64 %cell_i64, acquire
+    %q127 = bitcast.i64.i64 %l127
+    call @print_i64(%q127)
+    %o128 = atomic_exchange.i64 %cell_i64, -2, seqcst
+    %p128 = bitcast.i64.i64 %o128
+    call @print_i64(%p128)
+    %l128 = atomic_load.i64 %cell_i64, seqcst
+    %q128 = bitcast.i64.i64 %l128
+    call @print_i64(%q128)
+    atomic_store.i64 %cell_i64, 21, relaxed
+    %s129 = atomic_load.i64 %cell_i64, acquire
+    %t129 = bitcast.i64.i64 %s129
+    call @print_i64(%t129)
+    atomic_store.i64 %cell_i64, 21, release
+    %s130 = atomic_load.i64 %cell_i64, acquire
+    %t130 = bitcast.i64.i64 %s130
+    call @print_i64(%t130)
+    atomic_store.i64 %cell_i64, 21, seqcst
+    %s131 = atomic_load.i64 %cell_i64, acquire
+    %t131 = bitcast.i64.i64 %s131
+    call @print_i64(%t131)
+    fence relaxed
+    fence acquire
+    fence release
+    fence acqrel
+    fence seqcst
+    ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
