@@ -113,6 +113,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
             &ir_mod,
             input_path.to_string_lossy().as_ref(),
             target_for_extensions.pointer_width(),
+            target_for_extensions.has_64bit_int_registers(),
         )
         .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
@@ -171,6 +172,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         &ir_mod,
         input_path.to_string_lossy().as_ref(),
         target.pointer_width(),
+        target.has_64bit_int_registers(),
     )
     .map_err(|e| format!("MIR lowering failed: {e}"))?;
 

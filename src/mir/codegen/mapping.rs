@@ -75,14 +75,15 @@ pub fn classify_aggregate(
     ty: &IRType<'_>,
     what: &str,
     pointer: PointerWidth,
+    int64_regs: bool,
 ) -> Result<Option<Aggregate>, FromIRError> {
-    classify_aggregate_within(ty, what, None, pointer)
+    classify_aggregate_within(ty, what, None, pointer, int64_regs)
 }
 
 /// The ABI of the integer that takes two registers, crossing a boundary: two words,
 /// aligned to its own size, one INTEGER aggregate, as System V classifies `__int128`.
-pub fn wide_aggregate(pointer: PointerWidth) -> Aggregate {
-    let size = 2 * pointer.bytes();
+pub fn wide_aggregate(int64_regs: bool) -> Aggregate {
+    let size = if int64_regs { 16 } else { 8 };
     Aggregate {
         size,
         align: size,
@@ -95,16 +96,16 @@ fn classify_aggregate_within(
     what: &str,
     max: Option<u64>,
     pointer: PointerWidth,
+    int64_regs: bool,
 ) -> Result<Option<Aggregate>, FromIRError> {
     if matches!(ty, IRType::Primitive(IRPrim::I128 | IRPrim::U128)) {
-        if pointer == PointerWidth::Bits32 {
+        if !int64_regs {
             return Err(FromIRError::UnsupportedType);
         }
-        return Ok(Some(wide_aggregate(pointer)));
+        return Ok(Some(wide_aggregate(int64_regs)));
     }
-    if pointer == PointerWidth::Bits32 && matches!(ty, IRType::Primitive(IRPrim::I64 | IRPrim::U64))
-    {
-        return Ok(Some(wide_aggregate(pointer)));
+    if !int64_regs && matches!(ty, IRType::Primitive(IRPrim::I64 | IRPrim::U64)) {
+        return Ok(Some(wide_aggregate(int64_regs)));
     }
     if !is_aggregate(ty) {
         return Ok(None);

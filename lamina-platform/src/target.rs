@@ -38,6 +38,10 @@ impl Target {
         self.architecture.pointer_width()
     }
 
+    pub fn has_64bit_int_registers(&self) -> bool {
+        self.architecture.has_64bit_int_registers()
+    }
+
     pub fn gpu_triple(&self) -> Option<&'static str> {
         match (self.architecture, self.operating_system) {
             (TargetArchitecture::Nvptx64, TargetOperatingSystem::Cuda) => {
@@ -145,6 +149,29 @@ impl TargetArchitecture {
             }
             #[cfg(feature = "nightly")]
             Self::Lisa => PointerWidth::Bits64,
+        }
+    }
+
+    /// Whether an integer register holds 64 bits. Decides whether an `i64` is one
+    /// register or a pair of 32-bit words, which is a different question from
+    /// [`TargetArchitecture::pointer_width`]: wasm32 has 32-bit pointers and 64-bit
+    /// integer registers. Exhaustive on purpose, like `pointer_width`.
+    pub const fn has_64bit_int_registers(self) -> bool {
+        match self {
+            Self::X86_64
+            | Self::Aarch64
+            | Self::Arx64
+            | Self::Riscv64
+            | Self::PowerPC64
+            | Self::LoongArch64
+            | Self::Wasm32
+            | Self::Wasm64
+            | Self::Nvptx64
+            | Self::Amdgcn
+            | Self::Unknown => true,
+            Self::Arm32 | Self::Armv7 | Self::I686 | Self::Riscv32 => false,
+            #[cfg(feature = "nightly")]
+            Self::Riscv128 | Self::Lisa => true,
         }
     }
 }
@@ -443,5 +470,16 @@ mod tests {
         assert_eq!(width("wasm64_unknown"), PointerWidth::Bits64);
         assert_eq!(PointerWidth::Bits32.bytes(), 4);
         assert_eq!(PointerWidth::Bits64.bytes(), 8);
+    }
+
+    #[test]
+    fn int_registers_are_not_pointers() {
+        let regs = |name: &str| name.parse::<Target>().unwrap().has_64bit_int_registers();
+        assert!(regs("wasm32_wasi"));
+        assert!(regs("wasm64_unknown"));
+        assert!(regs("x86_64_linux"));
+        assert!(!regs("riscv32_linux"));
+        assert!(!regs("i686_linux"));
+        assert!(!regs("armv7_linux"));
     }
 }

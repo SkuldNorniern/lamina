@@ -3,7 +3,6 @@
 //! a backedge into the real entry never stands in for the first invocation.
 
 use crate::loc::Located;
-use lamina_platform::PointerWidth;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -175,11 +174,11 @@ pub struct SsaViolation {
 fn result_type(
     instruction: &Instruction,
     callee_return: &dyn Fn(&str) -> Option<MirType>,
-    pointer: PointerWidth,
+    int64_regs: bool,
 ) -> Option<MirType> {
     match instruction {
         Instruction::Call { name, .. } => {
-            callee_return(name).or_else(|| io_intrinsic_result_type(name, pointer))
+            callee_return(name).or_else(|| io_intrinsic_result_type(name, int64_regs))
         }
         Instruction::CallIndirect { ret_ty, .. } => *ret_ty,
         Instruction::AtomicLoad { ty, .. }
@@ -410,7 +409,7 @@ impl SsaFunction {
         let mut inst_types: Vec<Vec<Option<MirType>>> = vec![Vec::new(); block_count];
         for &b in &order {
             for instr in &function.blocks[b].instructions {
-                let ty = result_type(instr, callee_return, function.pointer_width);
+                let ty = result_type(instr, callee_return, function.int64_regs);
                 if let (Some(reg), Some(ty)) = (instr.def_reg(), ty) {
                     unify(regs.get(reg), ty)?;
                 }

@@ -18,54 +18,51 @@ use crate::mir::codegen::mapping::wide_aggregate;
 use lamina_codegen::abi::BuiltinLibrary;
 use lamina_platform::{PointerWidth, TargetOperatingSystem};
 
-/// The integer that takes two registers on a target of this pointer width: `i128` where
-/// a register holds 64 bits, `i64` where it holds 32.
-pub(super) fn is_wide_prim(ty: IRPrim, pointer: PointerWidth) -> bool {
-    match pointer {
-        PointerWidth::Bits32 => matches!(ty, IRPrim::I64 | IRPrim::U64),
-        PointerWidth::Bits64 => matches!(ty, IRPrim::I128 | IRPrim::U128),
+/// The integer that takes two registers on a target with this register width: `i128`
+/// where a register holds 64 bits, `i64` where it holds 32.
+pub(super) fn is_wide_prim(ty: IRPrim, int64_regs: bool) -> bool {
+    if int64_regs {
+        matches!(ty, IRPrim::I128 | IRPrim::U128)
+    } else {
+        matches!(ty, IRPrim::I64 | IRPrim::U64)
     }
 }
 
-pub(super) fn is_wide_type(ty: &IRType<'_>, pointer: PointerWidth) -> bool {
-    matches!(ty, IRType::Primitive(p) if is_wide_prim(*p, pointer))
+pub(super) fn is_wide_type(ty: &IRType<'_>, int64_regs: bool) -> bool {
+    matches!(ty, IRType::Primitive(p) if is_wide_prim(*p, int64_regs))
 }
 
 /// A 128-bit integer needs four registers on a 32-bit target, which this lowering does
 /// not build, so it is refused by name rather than truncated.
-pub(super) fn is_quad_prim(ty: IRPrim, pointer: PointerWidth) -> bool {
-    pointer == PointerWidth::Bits32 && matches!(ty, IRPrim::I128 | IRPrim::U128)
+pub(super) fn is_quad_prim(ty: IRPrim, int64_regs: bool) -> bool {
+    !int64_regs && matches!(ty, IRPrim::I128 | IRPrim::U128)
 }
 
-pub(super) fn is_quad_type(ty: &IRType<'_>, pointer: PointerWidth) -> bool {
-    matches!(ty, IRType::Primitive(p) if is_quad_prim(*p, pointer))
+pub(super) fn is_quad_type(ty: &IRType<'_>, int64_regs: bool) -> bool {
+    matches!(ty, IRType::Primitive(p) if is_quad_prim(*p, int64_regs))
 }
 
-pub(super) fn word_ty(pointer: PointerWidth) -> MirType {
-    match pointer {
-        PointerWidth::Bits32 => MirType::Scalar(ScalarType::I32),
-        PointerWidth::Bits64 => MirType::Scalar(ScalarType::I64),
+pub(super) fn word_ty(int64_regs: bool) -> MirType {
+    if int64_regs {
+        MirType::Scalar(ScalarType::I64)
+    } else {
+        MirType::Scalar(ScalarType::I32)
     }
 }
 
-const fn word_bits(pointer: PointerWidth) -> i64 {
-    match pointer {
-        PointerWidth::Bits32 => 32,
-        PointerWidth::Bits64 => 64,
-    }
+const fn word_bits(int64_regs: bool) -> i64 {
+    if int64_regs { 64 } else { 32 }
 }
 
-const fn word_bytes(pointer: PointerWidth) -> i32 {
-    match pointer {
-        PointerWidth::Bits32 => 4,
-        PointerWidth::Bits64 => 8,
-    }
+const fn word_bytes(int64_regs: bool) -> i32 {
+    if int64_regs { 8 } else { 4 }
 }
 
-fn word_imm(pointer: PointerWidth, value: i64) -> Operand {
-    match pointer {
-        PointerWidth::Bits32 => Operand::Immediate(Immediate::I32(value as i32)),
-        PointerWidth::Bits64 => Operand::Immediate(Immediate::I64(value)),
+fn word_imm(int64_regs: bool, value: i64) -> Operand {
+    if int64_regs {
+        Operand::Immediate(Immediate::I64(value))
+    } else {
+        Operand::Immediate(Immediate::I32(value as i32))
     }
 }
 
@@ -89,7 +86,7 @@ pub(super) struct LibCall {
 }
 
 impl LibCall {
-    pub(super) fn declaration(&self, pointer: PointerWidth) -> Function {
+    pub(super) fn declaration(&self, int64_regs: bool) -> Function {
         let mut sig = Signature::new(self.name.clone());
         for (index, param) in self.params.iter().enumerate() {
             let slot = u32::try_from(index).unwrap_or(u32::MAX);
@@ -98,7 +95,7 @@ impl LibCall {
                     Register::Virtual(VirtualReg::gpr(slot)),
                     MirType::Scalar(ScalarType::Ptr),
                 )
-                .with_aggregate(wide_aggregate(pointer)),
+                .with_aggregate(wide_aggregate(int64_regs)),
                 Abi::Scalar(ty) => {
                     let class = if ty.is_float() {
                         RegisterClass::Fpr
@@ -115,7 +112,7 @@ impl LibCall {
             Some(Abi::Wide) => {
                 sig = sig
                     .with_return(MirType::Scalar(ScalarType::Ptr))
-                    .with_return_aggregate(wide_aggregate(pointer));
+                    .with_return_aggregate(wide_aggregate(int64_regs));
             }
             Some(Abi::Scalar(ty)) => sig = sig.with_return(ty),
         }
@@ -130,20 +127,21 @@ pub(super) struct Cx<'c, 'a> {
     pub(super) globals: &'c mut GlobalAddresses<'a>,
     pub(super) module: &'c IRModule<'a>,
     pub(super) pointer: PointerWidth,
+    pub(super) int64_regs: bool,
     pub(super) out: Vec<Instruction>,
 }
 
 impl<'c, 'a> Cx<'c, 'a> {
     fn word(&self) -> MirType {
-        word_ty(self.pointer)
+        word_ty(self.int64_regs)
     }
 
     fn bits(&self) -> i64 {
-        word_bits(self.pointer)
+        word_bits(self.int64_regs)
     }
 
     fn imm(&self, value: i64) -> Operand {
-        word_imm(self.pointer, value)
+        word_imm(self.int64_regs, value)
     }
 
     fn temp(&mut self) -> Register {
@@ -154,7 +152,7 @@ impl<'c, 'a> Cx<'c, 'a> {
         if let (Some(a), Some(b)) = (lhs.integer_constant(), rhs.integer_constant())
             && matches!(lhs, Operand::Immediate(_))
             && matches!(rhs, Operand::Immediate(_))
-            && let Some(value) = fold(op, a, b, self.pointer)
+            && let Some(value) = fold(op, a, b, self.int64_regs)
         {
             return self.imm(value);
         }
@@ -413,7 +411,7 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn flip_sign(&mut self, a: Words) -> Words {
-        let sign = self.imm(sign_bit(self.pointer));
+        let sign = self.imm(sign_bit(self.int64_regs));
         Words {
             lo: a.lo,
             hi: self.bin(IntBinOp::Xor, a.hi, sign),
@@ -434,7 +432,7 @@ impl<'c, 'a> Cx<'c, 'a> {
 
     fn store_words(&mut self, base: Register, words: Words) {
         let attrs = MemoryAttrs {
-            align: word_bytes(self.pointer) as u8,
+            align: word_bytes(self.int64_regs) as u8,
             volatile: false,
         };
         let ty = self.word();
@@ -448,7 +446,7 @@ impl<'c, 'a> Cx<'c, 'a> {
             },
             attrs,
         });
-        let high = self.word_address(&base, word_bytes(self.pointer));
+        let high = self.word_address(&base, word_bytes(self.int64_regs));
         self.out.push(Instruction::Store {
             ty,
             src: words.hi,
@@ -463,7 +461,7 @@ impl<'c, 'a> Cx<'c, 'a> {
 
     fn load_words(&mut self, base: Register) -> Words {
         let attrs = MemoryAttrs {
-            align: word_bytes(self.pointer) as u8,
+            align: word_bytes(self.int64_regs) as u8,
             volatile: false,
         };
         let ty = self.word();
@@ -478,7 +476,7 @@ impl<'c, 'a> Cx<'c, 'a> {
             },
             attrs,
         });
-        let high = self.word_address(&base, word_bytes(self.pointer));
+        let high = self.word_address(&base, word_bytes(self.int64_regs));
         let hi = self.temp();
         self.out.push(Instruction::Load {
             ty,
@@ -563,7 +561,7 @@ impl<'c, 'a> Cx<'c, 'a> {
     /// The operand a non-pair instruction reads from this value: its low word when the
     /// value is a pair, otherwise the value itself.
     fn narrow(&mut self, value: &IRVal<'a>) -> Result<Operand, FromIRError> {
-        if is_wide_value(value, self.vars, self.pointer) {
+        if is_wide_value(value, self.vars, self.int64_regs) {
             return Ok(self.operand_words(value)?.lo);
         }
         resolve_operand(value, self.vregs, self.vars, self.globals)
@@ -584,7 +582,7 @@ impl<'c, 'a> Cx<'c, 'a> {
     fn operand_words(&mut self, value: &IRVal<'a>) -> Result<Words, FromIRError> {
         match value {
             IRVal::Constant(literal) => {
-                let (lo, hi) = literal_words(literal, self.pointer)?;
+                let (lo, hi) = literal_words(literal, self.int64_regs)?;
                 Ok(Words {
                     lo: self.imm(lo),
                     hi: self.imm(hi),
@@ -640,7 +638,7 @@ impl<'c, 'a> Cx<'c, 'a> {
         let joined = self.bin(IntBinOp::Or, b.lo.clone(), b.hi.clone());
         let nonzero_divisor = self.nonzero(joined);
         let divisor = if signed {
-            let sign = self.imm(sign_bit(self.pointer));
+            let sign = self.imm(sign_bit(self.int64_regs));
             let sign_flipped = self.bin(IntBinOp::Xor, a.hi.clone(), sign);
             let a_min_hi = self.is_zero(sign_flipped);
             let a_min_lo = self.is_zero(a.lo.clone());
@@ -674,15 +672,15 @@ impl<'c, 'a> Cx<'c, 'a> {
             rhs: divisor,
         });
 
-        let symbol = match (self.pointer, signed, remainder) {
-            (PointerWidth::Bits64, true, false) => RuntimeSymbol::Divti3,
-            (PointerWidth::Bits64, false, false) => RuntimeSymbol::Udivti3,
-            (PointerWidth::Bits64, true, true) => RuntimeSymbol::Modti3,
-            (PointerWidth::Bits64, false, true) => RuntimeSymbol::Umodti3,
-            (PointerWidth::Bits32, true, false) => RuntimeSymbol::Divdi3,
-            (PointerWidth::Bits32, false, false) => RuntimeSymbol::Udivdi3,
-            (PointerWidth::Bits32, true, true) => RuntimeSymbol::Moddi3,
-            (PointerWidth::Bits32, false, true) => RuntimeSymbol::Umoddi3,
+        let symbol = match (self.int64_regs, signed, remainder) {
+            (true, true, false) => RuntimeSymbol::Divti3,
+            (true, false, false) => RuntimeSymbol::Udivti3,
+            (true, true, true) => RuntimeSymbol::Modti3,
+            (true, false, true) => RuntimeSymbol::Umodti3,
+            (false, true, false) => RuntimeSymbol::Divdi3,
+            (false, false, false) => RuntimeSymbol::Udivdi3,
+            (false, true, true) => RuntimeSymbol::Moddi3,
+            (false, false, true) => RuntimeSymbol::Umoddi3,
         };
         let name = self.libcall_name(symbol, vec![Abi::Wide, Abi::Wide], Some(Abi::Wide));
         let pa = self.spill(a);
@@ -692,17 +690,18 @@ impl<'c, 'a> Cx<'c, 'a> {
 }
 
 /// The value of the word's sign bit, as the word-width immediate that carries it.
-const fn sign_bit(pointer: PointerWidth) -> i64 {
-    match pointer {
-        PointerWidth::Bits32 => i32::MIN as i64,
-        PointerWidth::Bits64 => i64::MIN,
+const fn sign_bit(int64_regs: bool) -> i64 {
+    if int64_regs {
+        i64::MIN
+    } else {
+        i32::MIN as i64
     }
 }
 
 /// Folds an operation on two literal words at the word's width, with the same wrapping
 /// and masking the backends use. Operations that can trap are left to run.
-fn fold(op: IntBinOp, a: i64, b: i64, pointer: PointerWidth) -> Option<i64> {
-    if pointer == PointerWidth::Bits32 {
+fn fold(op: IntBinOp, a: i64, b: i64, int64_regs: bool) -> Option<i64> {
+    if !int64_regs {
         let (a, b) = (a as i32, b as i32);
         let count = b as u32 & 31;
         return Some(i64::from(match op {
@@ -733,8 +732,8 @@ fn fold(op: IntBinOp, a: i64, b: i64, pointer: PointerWidth) -> Option<i64> {
     })
 }
 
-fn literal_words(literal: &Literal<'_>, pointer: PointerWidth) -> Result<(i64, i64), FromIRError> {
-    if pointer == PointerWidth::Bits32 {
+fn literal_words(literal: &Literal<'_>, int64_regs: bool) -> Result<(i64, i64), FromIRError> {
+    if !int64_regs {
         let value: i64 = match literal {
             Literal::I8(v) => i64::from(*v),
             Literal::I16(v) => i64::from(*v),
@@ -782,12 +781,11 @@ fn split(value: u128) -> (i64, i64) {
 /// Whether a value already stands for a pair. A literal is only self-evidently wide at
 /// 128 bits; at 64 bits on a 32-bit target the literal's own type says nothing, so the
 /// callee signature decides and a bare literal stays scalar here.
-fn is_wide_value(value: &IRVal<'_>, vars: &VarBindings<'_>, pointer: PointerWidth) -> bool {
+fn is_wide_value(value: &IRVal<'_>, vars: &VarBindings<'_>, int64_regs: bool) -> bool {
     match value {
         IRVal::Variable(name) => vars.wide.contains_key(name),
         IRVal::Constant(literal) => {
-            pointer == PointerWidth::Bits64
-                && matches!(literal, Literal::I128(_) | Literal::U128(_))
+            int64_regs && matches!(literal, Literal::I128(_) | Literal::U128(_))
         }
         IRVal::Global(_) => false,
     }
@@ -799,11 +797,11 @@ fn touches_wide(
     instr: &IRInst<'_>,
     vars: &VarBindings<'_>,
     module: &IRModule<'_>,
-    pointer: PointerWidth,
+    int64_regs: bool,
 ) -> bool {
     let typed = match instr {
         IRInst::Binary { ty, .. } | IRInst::Unary { ty, .. } | IRInst::Cmp { ty, .. } => {
-            is_wide_prim(*ty, pointer)
+            is_wide_prim(*ty, int64_regs)
         }
         IRInst::ZeroExtend {
             source_type,
@@ -829,12 +827,12 @@ fn touches_wide(
             source_type,
             target_type,
             ..
-        } => is_wide_prim(*source_type, pointer) || is_wide_prim(*target_type, pointer),
-        IRInst::IntToFloat { source_type, .. } => is_wide_prim(*source_type, pointer),
+        } => is_wide_prim(*source_type, int64_regs) || is_wide_prim(*target_type, int64_regs),
+        IRInst::IntToFloat { source_type, .. } => is_wide_prim(*source_type, int64_regs),
         IRInst::FloatToInt { target_type, .. }
         | IRInst::PtrToInt { target_type, .. }
-        | IRInst::IntToPtr { target_type, .. } => is_wide_prim(*target_type, pointer),
-        IRInst::Switch { ty, .. } => is_wide_prim(*ty, pointer),
+        | IRInst::IntToPtr { target_type, .. } => is_wide_prim(*target_type, int64_regs),
+        IRInst::Switch { ty, .. } => is_wide_prim(*ty, int64_regs),
         IRInst::Select { ty, .. }
         | IRInst::Ret { ty, .. }
         | IRInst::Phi { ty, .. }
@@ -844,31 +842,31 @@ fn touches_wide(
         | IRInst::AtomicLoad { ty, .. }
         | IRInst::AtomicStore { ty, .. }
         | IRInst::AtomicBinary { ty, .. }
-        | IRInst::AtomicCompareExchange { ty, .. } => is_wide_type(ty, pointer),
-        IRInst::VaArg { ty, .. } => is_wide_prim(*ty, pointer),
+        | IRInst::AtomicCompareExchange { ty, .. } => is_wide_type(ty, int64_regs),
+        IRInst::VaArg { ty, .. } => is_wide_prim(*ty, int64_regs),
         IRInst::InlineAsm {
             result, operands, ..
         } => {
-            result.as_ref().is_some_and(|(_, ty)| is_wide_prim(*ty, pointer))
+            result.as_ref().is_some_and(|(_, ty)| is_wide_prim(*ty, int64_regs))
                 || operands.iter().any(|operand| {
-                    matches!(operand, IRAsmOperand::In { value, .. } if is_wide_value(value, vars, pointer))
+                    matches!(operand, IRAsmOperand::In { value, .. } if is_wide_value(value, vars, int64_regs))
                 })
         }
         IRInst::CallIndirect {
             args, return_type, ..
-        } => is_wide_type(return_type, pointer) || args.iter().any(|(ty, _)| is_wide_type(ty, pointer)),
+        } => is_wide_type(return_type, int64_regs) || args.iter().any(|(ty, _)| is_wide_type(ty, int64_regs)),
         IRInst::Call {
             func_name, args, ..
         } => {
             module.functions.get(func_name).is_some_and(|callee| {
-                is_wide_type(&callee.signature.return_type, pointer)
-                    || callee.signature.params.iter().any(|p| is_wide_type(&p.ty, pointer))
-            }) || args.iter().any(|arg| is_wide_value(arg, vars, pointer))
+                is_wide_type(&callee.signature.return_type, int64_regs)
+                    || callee.signature.params.iter().any(|p| is_wide_type(&p.ty, int64_regs))
+            }) || args.iter().any(|arg| is_wide_value(arg, vars, int64_regs))
         }
         IRInst::Write { .. }
         | IRInst::Read { .. }
         | IRInst::WriteByte { .. }
-        | IRInst::ReadByte { .. } => pointer == PointerWidth::Bits32,
+        | IRInst::ReadByte { .. } => !int64_regs,
         IRInst::Alloc { .. }
         | IRInst::FuncAddr { .. }
         | IRInst::Br { .. }
@@ -881,7 +879,7 @@ fn touches_wide(
         | IRInst::VaEnd { .. }
         | IRInst::VaCopy { .. } => false,
         #[cfg(feature = "nightly")]
-        IRInst::SimdExtract { scalar_type, .. } => is_wide_prim(*scalar_type, pointer),
+        IRInst::SimdExtract { scalar_type, .. } => is_wide_prim(*scalar_type, int64_regs),
         #[cfg(feature = "nightly")]
         IRInst::SimdBinary { .. }
         | IRInst::SimdUnary { .. }
@@ -900,8 +898,8 @@ fn touches_wide(
 
 /// Whether the instruction names a 128-bit type on a target whose registers are 32 bits
 /// wide. Four-word integers are not lowered, so the compile stops here by name.
-fn quad_mention(instr: &IRInst<'_>, module: &IRModule<'_>, pointer: PointerWidth) -> bool {
-    if pointer != PointerWidth::Bits32 {
+fn quad_mention(instr: &IRInst<'_>, module: &IRModule<'_>, int64_regs: bool) -> bool {
+    if int64_regs {
         return false;
     }
     match instr {
@@ -909,7 +907,7 @@ fn quad_mention(instr: &IRInst<'_>, module: &IRModule<'_>, pointer: PointerWidth
         | IRInst::Unary { ty, .. }
         | IRInst::Cmp { ty, .. }
         | IRInst::Switch { ty, .. }
-        | IRInst::VaArg { ty, .. } => is_quad_prim(*ty, pointer),
+        | IRInst::VaArg { ty, .. } => is_quad_prim(*ty, int64_regs),
         IRInst::ZeroExtend {
             source_type,
             target_type,
@@ -944,9 +942,9 @@ fn quad_mention(instr: &IRInst<'_>, module: &IRModule<'_>, pointer: PointerWidth
             source_type,
             target_type,
             ..
-        } => is_quad_prim(*source_type, pointer) || is_quad_prim(*target_type, pointer),
+        } => is_quad_prim(*source_type, int64_regs) || is_quad_prim(*target_type, int64_regs),
         IRInst::PtrToInt { target_type, .. } | IRInst::IntToPtr { target_type, .. } => {
-            is_quad_prim(*target_type, pointer)
+            is_quad_prim(*target_type, int64_regs)
         }
         IRInst::Select { ty, .. }
         | IRInst::Ret { ty, .. }
@@ -956,20 +954,20 @@ fn quad_mention(instr: &IRInst<'_>, module: &IRModule<'_>, pointer: PointerWidth
         | IRInst::Store { ty, .. }
         | IRInst::Alloc {
             allocated_ty: ty, ..
-        } => is_quad_type(ty, pointer),
+        } => is_quad_type(ty, int64_regs),
         IRInst::Call { func_name, .. } => module.functions.get(func_name).is_some_and(|callee| {
-            is_quad_type(&callee.signature.return_type, pointer)
+            is_quad_type(&callee.signature.return_type, int64_regs)
                 || callee
                     .signature
                     .params
                     .iter()
-                    .any(|p| is_quad_type(&p.ty, pointer))
+                    .any(|p| is_quad_type(&p.ty, int64_regs))
         }),
         IRInst::CallIndirect {
             args, return_type, ..
         } => {
-            is_quad_type(return_type, pointer)
-                || args.iter().any(|(ty, _)| is_quad_type(ty, pointer))
+            is_quad_type(return_type, int64_regs)
+                || args.iter().any(|(ty, _)| is_quad_type(ty, int64_regs))
         }
         _ => false,
     }
@@ -979,12 +977,12 @@ pub(super) fn lower_instruction<'a>(
     instr: &IRInst<'a>,
     cx: &mut Cx<'_, 'a>,
 ) -> Result<bool, FromIRError> {
-    if quad_mention(instr, cx.module, cx.pointer) {
+    if quad_mention(instr, cx.module, cx.int64_regs) {
         return Err(FromIRError::NotLegalizable(format!(
             "`{instr}` names a 128-bit integer on a 32-bit target: that takes four registers, and only pairs are split"
         )));
     }
-    if !touches_wide(instr, cx.vars, cx.module, cx.pointer) {
+    if !touches_wide(instr, cx.vars, cx.module, cx.int64_regs) {
         return Ok(false);
     }
     match instr {
@@ -994,7 +992,7 @@ pub(super) fn lower_instruction<'a>(
             ty,
             lhs,
             rhs,
-        } if is_wide_prim(*ty, cx.pointer) => {
+        } if is_wide_prim(*ty, cx.int64_regs) => {
             let signed = matches!(*ty, IRPrim::I128 | IRPrim::I64);
             let a = cx.operand_words(lhs)?;
             let b = cx.operand_words(rhs)?;
@@ -1029,7 +1027,7 @@ pub(super) fn lower_instruction<'a>(
             result,
             ty,
             value,
-        } if is_wide_prim(*ty, cx.pointer) => {
+        } if is_wide_prim(*ty, cx.int64_regs) => {
             let a = cx.operand_words(value)?;
             let value = match op {
                 UnaryOp::Neg => {
@@ -1061,7 +1059,7 @@ pub(super) fn lower_instruction<'a>(
             ty,
             lhs,
             rhs,
-        } if is_wide_prim(*ty, cx.pointer) => {
+        } if is_wide_prim(*ty, cx.int64_regs) => {
             let signed = matches!(*ty, IRPrim::I128 | IRPrim::I64);
             let a = cx.operand_words(lhs)?;
             let b = cx.operand_words(rhs)?;
@@ -1125,7 +1123,9 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*target_type, cx.pointer) && !is_wide_prim(*source_type, cx.pointer) => {
+        } if is_wide_prim(*target_type, cx.int64_regs)
+            && !is_wide_prim(*source_type, cx.int64_regs) =>
+        {
             extend_to_wide(cx, result, *source_type, value, false)?;
         }
         IRInst::SignExtend {
@@ -1133,7 +1133,9 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*target_type, cx.pointer) && !is_wide_prim(*source_type, cx.pointer) => {
+        } if is_wide_prim(*target_type, cx.int64_regs)
+            && !is_wide_prim(*source_type, cx.int64_regs) =>
+        {
             extend_to_wide(cx, result, *source_type, value, true)?;
         }
         IRInst::Trunc {
@@ -1141,7 +1143,9 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*source_type, cx.pointer) && !is_wide_prim(*target_type, cx.pointer) => {
+        } if is_wide_prim(*source_type, cx.int64_regs)
+            && !is_wide_prim(*target_type, cx.int64_regs) =>
+        {
             let a = cx.operand_words(value)?;
             let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
             let word = cx.word();
@@ -1203,7 +1207,7 @@ pub(super) fn lower_instruction<'a>(
             ty,
             ptr,
             volatile: _,
-        } if is_wide_type(ty, cx.pointer) => {
+        } if is_wide_type(ty, cx.int64_regs) => {
             let base = address_base(ptr, cx)?;
             let loaded = cx.load_words(base);
             let pair = cx.result_pair(result);
@@ -1214,20 +1218,20 @@ pub(super) fn lower_instruction<'a>(
             ptr,
             value,
             volatile: _,
-        } if is_wide_type(ty, cx.pointer) => {
+        } if is_wide_type(ty, cx.int64_regs) => {
             let base = address_base(ptr, cx)?;
             let words = cx.operand_words(value)?;
             cx.store_words(base, words);
         }
-        IRInst::Phi { result, ty, .. } if is_wide_type(ty, cx.pointer) => {
+        IRInst::Phi { result, ty, .. } if is_wide_type(ty, cx.int64_regs) => {
             cx.result_pair(result);
         }
-        IRInst::Copy { result, ty, value } if is_wide_type(ty, cx.pointer) => {
+        IRInst::Copy { result, ty, value } if is_wide_type(ty, cx.int64_regs) => {
             let words = cx.operand_words(value)?;
             let pair = cx.result_pair(result);
             cx.write_pair(pair, words);
         }
-        IRInst::Ret { ty, value } if is_wide_type(ty, cx.pointer) => {
+        IRInst::Ret { ty, value } if is_wide_type(ty, cx.int64_regs) => {
             let Some(value) = value else {
                 return Err(FromIRError::InvalidIR);
             };
@@ -1247,8 +1251,8 @@ pub(super) fn lower_instruction<'a>(
             for (index, arg) in args.iter().enumerate() {
                 let param_wide = callee
                     .and_then(|f| f.signature.params.get(index))
-                    .is_some_and(|p| is_wide_type(&p.ty, cx.pointer));
-                if param_wide || is_wide_value(arg, cx.vars, cx.pointer) {
+                    .is_some_and(|p| is_wide_type(&p.ty, cx.int64_regs));
+                if param_wide || is_wide_value(arg, cx.vars, cx.int64_regs) {
                     let words = cx.operand_words(arg)?;
                     mir_args.push(cx.spill(words));
                 } else {
@@ -1256,7 +1260,7 @@ pub(super) fn lower_instruction<'a>(
                 }
             }
             let ret_wide =
-                callee.is_some_and(|f| is_wide_type(&f.signature.return_type, cx.pointer));
+                callee.is_some_and(|f| is_wide_type(&f.signature.return_type, cx.int64_regs));
             if ret_wide {
                 let placeholder = cx.temp();
                 cx.out.push(Instruction::Call {
@@ -1292,10 +1296,10 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*source_type, cx.pointer) => {
+        } if is_wide_prim(*source_type, cx.int64_regs) => {
             let words = cx.operand_words(value)?;
             let arg = cx.spill(words);
-            let wide = cx.pointer == PointerWidth::Bits64;
+            let wide = cx.int64_regs;
             let (symbol, ret_ty) = match target_type {
                 IRPrim::F64 if *signed && wide => {
                     (RuntimeSymbol::Floattidf, MirType::Scalar(ScalarType::F64))
@@ -1344,8 +1348,8 @@ pub(super) fn lower_instruction<'a>(
             source_type,
             target_type,
             value,
-        } if is_wide_prim(*target_type, cx.pointer) => {
-            let wide = cx.pointer == PointerWidth::Bits64;
+        } if is_wide_prim(*target_type, cx.int64_regs) => {
+            let wide = cx.int64_regs;
             let (symbol, param_ty) = match source_type {
                 IRPrim::F64 if *signed && wide => {
                     (RuntimeSymbol::Fixdfti, MirType::Scalar(ScalarType::F64))
@@ -1417,8 +1421,8 @@ pub(super) fn lower_instruction<'a>(
             target_type,
             value,
         } => {
-            let from_pair = is_wide_prim(*source_type, cx.pointer);
-            let to_pair = is_wide_prim(*target_type, cx.pointer);
+            let from_pair = is_wide_prim(*source_type, cx.int64_regs);
+            let to_pair = is_wide_prim(*target_type, cx.int64_regs);
             match (from_pair, to_pair) {
                 (true, true) => {
                     let words = cx.operand_words(value)?;
@@ -1427,7 +1431,7 @@ pub(super) fn lower_instruction<'a>(
                 }
                 (false, true) => {
                     if let IRVal::Constant(literal) = value {
-                        let (lo, hi) = float_literal_words(literal, cx.pointer)?;
+                        let (lo, hi) = float_literal_words(literal, cx.int64_regs)?;
                         let words = Words {
                             lo: cx.imm(lo),
                             hi: cx.imm(hi),
@@ -1447,7 +1451,7 @@ pub(super) fn lower_instruction<'a>(
                                 address_space: Default::default(),
                             },
                             attrs: MemoryAttrs {
-                                align: word_bytes(cx.pointer) as u8,
+                                align: word_bytes(cx.int64_regs) as u8,
                                 volatile: false,
                             },
                         });
@@ -1471,7 +1475,7 @@ pub(super) fn lower_instruction<'a>(
                             address_space: Default::default(),
                         },
                         attrs: MemoryAttrs {
-                            align: word_bytes(cx.pointer) as u8,
+                            align: word_bytes(cx.int64_regs) as u8,
                             volatile: false,
                         },
                     });
@@ -1483,7 +1487,7 @@ pub(super) fn lower_instruction<'a>(
             result,
             ptr_value,
             target_type,
-        } if is_wide_prim(*target_type, cx.pointer) => {
+        } if is_wide_prim(*target_type, cx.int64_regs) => {
             let src = resolve_operand(ptr_value, cx.vregs, cx.vars, cx.globals)?;
             let lo = cx.temp();
             let to = cx.word();
@@ -1505,7 +1509,7 @@ pub(super) fn lower_instruction<'a>(
             result,
             int_value,
             target_type,
-        } if is_wide_prim(*target_type, cx.pointer) => {
+        } if is_wide_prim(*target_type, cx.int64_regs) => {
             let src = cx.narrow(int_value)?;
             let from = cx.word();
             let dst = resolve_or_alloc(result, cx.vregs, cx.vars);
@@ -1623,16 +1627,13 @@ fn io_call<'a>(cx: &mut Cx<'_, 'a>, name: &str, args: Vec<Operand>, result: &'a 
 }
 
 /// The words of a float literal reinterpreted as an integer of the same width.
-fn float_literal_words(
-    literal: &Literal<'_>,
-    pointer: PointerWidth,
-) -> Result<(i64, i64), FromIRError> {
+fn float_literal_words(literal: &Literal<'_>, int64_regs: bool) -> Result<(i64, i64), FromIRError> {
     let bits = match literal {
         Literal::F64(value) => value.to_bits() as i64,
         Literal::F32(value) => i64::from(value.to_bits()),
-        other => return literal_words(other, pointer),
+        other => return literal_words(other, int64_regs),
     };
-    literal_words(&Literal::I64(bits), pointer)
+    literal_words(&Literal::I64(bits), int64_regs)
 }
 
 fn extend_to_wide<'a>(
@@ -1663,6 +1664,7 @@ fn address_base<'a>(ptr: &IRVal<'a>, cx: &mut Cx<'_, 'a>) -> Result<Register, Fr
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn phi_words<'a>(
     value: &IRVal<'a>,
     vregs: &mut VirtualRegAllocator,
@@ -1671,6 +1673,7 @@ pub(super) fn phi_words<'a>(
     reservations: &mut HashMap<VirtualReg, usize>,
     module: &IRModule<'a>,
     pointer: PointerWidth,
+    int64_regs: bool,
 ) -> Result<(Operand, Operand), FromIRError> {
     let mut cx = Cx {
         vregs,
@@ -1679,6 +1682,7 @@ pub(super) fn phi_words<'a>(
         globals,
         module,
         pointer,
+        int64_regs,
         out: Vec::new(),
     };
     let words = cx.operand_words(value)?;
@@ -1689,13 +1693,13 @@ pub(super) fn load_wide_parameter(
     address: Register,
     vregs: &mut VirtualRegAllocator,
     prelude: &mut Vec<Instruction>,
-    pointer: PointerWidth,
+    int64_regs: bool,
 ) -> [Register; 2] {
     let lo = Register::Virtual(vregs.allocate_gpr());
     let hi = Register::Virtual(vregs.allocate_gpr());
-    let word = word_ty(pointer);
+    let word = word_ty(int64_regs);
     let attrs = MemoryAttrs {
-        align: word_bytes(pointer) as u8,
+        align: word_bytes(int64_regs) as u8,
         volatile: false,
     };
     prelude.push(Instruction::Load {
@@ -1712,7 +1716,7 @@ pub(super) fn load_wide_parameter(
     prelude.push(Instruction::Lea {
         dst: high.clone(),
         base: address,
-        offset: word_bytes(pointer),
+        offset: word_bytes(int64_regs),
     });
     prelude.push(Instruction::Load {
         ty: word,

@@ -143,6 +143,7 @@ pub fn handle_jit_compilation(
         &ir_mod,
         input_path.to_string_lossy().as_ref(),
         target.pointer_width(),
+        target.has_64bit_int_registers(),
     )
     .map_err(|e| LaminaError::MirError(format!("MIR lowering failed: {e}")))?;
 

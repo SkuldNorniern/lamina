@@ -393,6 +393,7 @@ macro_rules! lamina {
                 &ir_module,
                 "lamina_macro",
                 $crate::target::Target::detect_host().pointer_width(),
+                $crate::target::Target::detect_host().has_64bit_int_registers(),
             )
                 .map_err(|e| format!("lamina!: Failed to lower to MIR: {}", e))?;
 
@@ -526,8 +527,12 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         )));
     }
 
-    let mir_module =
-        mir::codegen::from_ir_for_target(&module, "module", target_obj.pointer_width())?;
+    let mir_module = mir::codegen::from_ir_for_target(
+        &module,
+        "module",
+        target_obj.pointer_width(),
+        target_obj.has_64bit_int_registers(),
+    )?;
 
     match target_obj.architecture {
         TargetArchitecture::X86_64
@@ -635,8 +640,12 @@ pub fn compile_module_to_object_with_options(
         )));
     }
 
-    let mut mir_module =
-        mir::codegen::from_ir_for_target(module, "module", target.pointer_width())?;
+    let mut mir_module = mir::codegen::from_ir_for_target(
+        module,
+        "module",
+        target.pointer_width(),
+        target.has_64bit_int_registers(),
+    )?;
     if options.opt_level > 0 {
         TransformPipeline::default_for_opt_level(options.opt_level)
             .apply_to_module(&mut mir_module)

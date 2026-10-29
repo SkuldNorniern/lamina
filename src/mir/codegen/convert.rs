@@ -39,7 +39,10 @@ use crate::{
         SymbolVisibility, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
-            mapping::{classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of},
+            mapping::{
+                classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of,
+                wide_aggregate,
+            },
         },
         io_intrinsic_result_type,
         verify::{PhiVerification, verify_before_phi_lowering},
@@ -272,13 +275,14 @@ fn declared_align(align: Option<u32>) -> usize {
 /// [`FromIRError`] naming the value.
 /// Lowers for a 64-bit target. Use [`from_ir_for_target`] to lower for another width.
 pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
-    from_ir_for_target(ir, name, PointerWidth::Bits64)
+    from_ir_for_target(ir, name, PointerWidth::Bits64, true)
 }
 
 pub fn from_ir_for_target(
     ir: &IRModule<'_>,
     name: &str,
     pointer: PointerWidth,
+    int64_regs: bool,
 ) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
     #[cfg(feature = "nightly")]
@@ -313,10 +317,10 @@ pub fn from_ir_for_target(
                     "@{global_name} is a 128-bit integer; globals of i128 and u128 are not lowered yet"
                 )));
             }
-            if wide::is_wide_type(&resolved, pointer) {
+            if wide::is_wide_type(&resolved, int64_regs) {
                 // Two words, addressed as bytes: the scalar type would name a register
                 // the target does not have.
-                let size = 2 * pointer.bytes();
+                let size = wide_aggregate(int64_regs).size;
                 let align = size.max(declared_align(decl.align));
                 let bytes = wide_global_bytes(global_name, decl.initializer.as_ref(), size)?;
                 let mut global =
@@ -357,14 +361,21 @@ pub fn from_ir_for_target(
             mir_module.mark_exported(*func_name);
         }
 
-        let mir_func = convert_function(func_name, ir_func, ir, &mut libcalls, pointer)?
-            .with_pointer_width(pointer);
+        let mir_func =
+            convert_function(func_name, ir_func, ir, &mut libcalls, pointer, int64_regs)?
+                .with_pointer_width(pointer)
+                .with_int64_regs(int64_regs);
         mir_module.add_function(mir_func);
     }
     for (name, libcall) in libcalls {
         if !mir_module.functions.contains_key(&name) {
             mir_module.mark_external(name.clone());
-            mir_module.add_function(libcall.declaration(pointer).with_pointer_width(pointer));
+            mir_module.add_function(
+                libcall
+                    .declaration(int64_regs)
+                    .with_pointer_width(pointer)
+                    .with_int64_regs(int64_regs),
+            );
         }
     }
 
@@ -707,6 +718,7 @@ fn convert_function<'a>(
     module: &IRModule<'a>,
     libcalls: &mut BTreeMap<String, wide::LibCall>,
     pointer: PointerWidth,
+    int64_regs: bool,
 ) -> Result<Function, FromIRError> {
     if !f.signature.variadic
         && f.basic_blocks
@@ -771,9 +783,12 @@ fn convert_function<'a>(
         other => {
             let resolved = resolve_type_names(other, &module.type_declarations)
                 .ok_or(FromIRError::UnsupportedType)?;
-            if let Some(aggregate) =
-                classify_aggregate(&resolved, &format!("return of @{name}"), pointer)?
-            {
+            if let Some(aggregate) = classify_aggregate(
+                &resolved,
+                &format!("return of @{name}"),
+                pointer,
+                int64_regs,
+            )? {
                 mir_sig = mir_sig
                     .with_return(MirType::Scalar(ScalarType::Ptr))
                     .with_return_aggregate(aggregate);
@@ -799,9 +814,12 @@ fn convert_function<'a>(
     for param in &f.signature.params {
         let resolved = resolve_type_names(&param.ty, &module.type_declarations)
             .ok_or(FromIRError::UnsupportedType)?;
-        if let Some(aggregate) =
-            classify_aggregate(&resolved, &format!("%{} of @{name}", param.name), pointer)?
-        {
+        if let Some(aggregate) = classify_aggregate(
+            &resolved,
+            &format!("%{} of @{name}", param.name),
+            pointer,
+            int64_regs,
+        )? {
             let slot = vreg_alloc.allocate_gpr();
             let words = aggregate.words();
             if words > 1 {
@@ -817,12 +835,12 @@ fn convert_function<'a>(
                 dst: addr.clone(),
                 slot,
             });
-            if wide::is_wide_type(&resolved, pointer) {
+            if wide::is_wide_type(&resolved, int64_regs) {
                 let pair = wide::load_wide_parameter(
                     addr,
                     &mut vreg_alloc,
                     &mut aggregate_prelude,
-                    pointer,
+                    int64_regs,
                 );
                 var_to_reg.wide.insert(param.name, pair);
             } else {
@@ -858,7 +876,8 @@ fn convert_function<'a>(
 
     let mut mir_func = Function::new(mir_sig)
         .with_entry(f.entry_block)
-        .with_pointer_width(pointer);
+        .with_pointer_width(pointer)
+        .with_int64_regs(int64_regs);
 
     let mut names: HashSet<&str> = f.signature.params.iter().map(|p| p.name).collect();
     let mut reassigned_names = HashSet::new();
@@ -925,6 +944,7 @@ fn convert_function<'a>(
                 },
                 &mut globals,
                 pointer,
+                int64_regs,
             )
             .map_err(|error| match error {
                 FromIRError::UnsupportedInstruction => FromIRError::UnsupportedInstructionIn {
@@ -964,8 +984,12 @@ fn convert_function<'a>(
                     && let Some(callee) = module.functions.get(name.as_str())
                     && let Some(resolved) =
                         resolve_type_names(&callee.signature.return_type, &module.type_declarations)
-                    && let Some(aggregate) =
-                        classify_aggregate(&resolved, &format!("return of @{name}"), pointer)?
+                    && let Some(aggregate) = classify_aggregate(
+                        &resolved,
+                        &format!("return of @{name}"),
+                        pointer,
+                        int64_regs,
+                    )?
                 {
                     let slot = vreg_alloc.allocate_gpr();
                     let words = aggregate.words();
@@ -986,10 +1010,10 @@ fn convert_function<'a>(
                 {
                     for (argument, parameter) in args.iter_mut().zip(&callee.signature.params) {
                         if is_aggregate(&parameter.ty)
-                            || wide::is_wide_type(&parameter.ty, pointer)
+                            || wide::is_wide_type(&parameter.ty, int64_regs)
                             || resolve_type_names(&parameter.ty, &module.type_declarations)
                                 .is_some_and(|ty| {
-                                    is_aggregate(&ty) || wide::is_wide_type(&ty, pointer)
+                                    is_aggregate(&ty) || wide::is_wide_type(&ty, int64_regs)
                                 })
                         {
                             continue;
@@ -1025,7 +1049,7 @@ fn convert_function<'a>(
                             .functions
                             .get(name.as_str())
                             .and_then(|callee| map_ir_type(&callee.signature.return_type).ok())
-                            .or_else(|| io_intrinsic_result_type(name, pointer)),
+                            .or_else(|| io_intrinsic_result_type(name, int64_regs)),
                         Instruction::Lea { .. } | Instruction::StackAddr { .. } => {
                             Some(MirType::Scalar(ScalarType::Ptr))
                         }
@@ -1103,7 +1127,7 @@ fn convert_function<'a>(
                     ty,
                     incoming,
                 } = instr
-                    && wide::is_wide_type(ty, pointer)
+                    && wide::is_wide_type(ty, int64_regs)
                     && let Some(pair) = var_to_reg.wide.get(result).cloned()
                 {
                     let mut halves: Vec<PhiVerification> = pair
@@ -1111,7 +1135,7 @@ fn convert_function<'a>(
                         .map(|dst| PhiVerification {
                             block: (*succ_label).to_string(),
                             dst: dst.clone(),
-                            ty: wide::word_ty(pointer),
+                            ty: wide::word_ty(int64_regs),
                             incoming: Vec::new(),
                         })
                         .collect();
@@ -1127,6 +1151,7 @@ fn convert_function<'a>(
                             &mut reservations,
                             module,
                             pointer,
+                            int64_regs,
                         )?;
                         for ((half, dst), src) in halves.iter_mut().zip(&pair).zip([lo, hi]) {
                             half.incoming.push(((*pred_label).to_string(), src.clone()));
@@ -1134,7 +1159,7 @@ fn convert_function<'a>(
                                 .entry(((*pred_label).to_string(), (*succ_label).to_string()))
                                 .or_default()
                                 .push(Instruction::Copy {
-                                    ty: wide::word_ty(pointer),
+                                    ty: wide::word_ty(int64_regs),
                                     dst: dst.clone(),
                                     src,
                                 });
@@ -1239,6 +1264,7 @@ fn convert_instruction<'a>(
     facts: &ValueFacts<'_, 'a>,
     globals: &mut GlobalAddresses<'a>,
     pointer: PointerWidth,
+    int64_regs: bool,
 ) -> Result<Vec<Instruction>, FromIRError> {
     let mut wide_cx = wide::Cx {
         vregs: &mut *vreg_alloc,
@@ -1247,6 +1273,7 @@ fn convert_instruction<'a>(
         globals: &mut *globals,
         module: facts.module,
         pointer,
+        int64_regs,
         out: Vec::new(),
     };
     if wide::lower_instruction(instr, &mut wide_cx)? {

@@ -222,6 +222,11 @@ pub struct Function {
     /// Width of data pointers on the target this function is lowered for. Sizes of
     /// pointer-typed values derive from it.
     pub pointer_width: PointerWidth,
+
+    /// Whether integer registers on the target this function is lowered for are 64 bits.
+    /// Sets the register type of an I/O intrinsic's result, which is an i64 wherever
+    /// registers are 64 bits.
+    pub int64_regs: bool,
 }
 
 impl Function {
@@ -235,11 +240,17 @@ impl Function {
             stack_reservations: HashMap::new(),
             stack_alignments: HashMap::new(),
             pointer_width: PointerWidth::Bits64,
+            int64_regs: true,
         }
     }
 
     pub fn with_pointer_width(mut self, pointer_width: PointerWidth) -> Self {
         self.pointer_width = pointer_width;
+        self
+    }
+
+    pub fn with_int64_regs(mut self, int64_regs: bool) -> Self {
+        self.int64_regs = int64_regs;
         self
     }
 

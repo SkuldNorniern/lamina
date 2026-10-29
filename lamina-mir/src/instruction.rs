@@ -13,14 +13,17 @@ use std::fmt;
 use lamina_platform::PointerWidth;
 
 /// Result type of the I/O intrinsics: a byte count, -1 at end of input, or -2 on error.
-pub fn io_intrinsic_result_type(name: &str, pointer: PointerWidth) -> Option<MirType> {
+pub fn io_intrinsic_result_type(name: &str, int64_regs: bool) -> Option<MirType> {
     matches!(
         name,
         "lamina.write" | "lamina.read" | "lamina.writebyte" | "lamina.readbyte"
     )
-    .then(|| match pointer {
-        PointerWidth::Bits32 => MirType::Scalar(ScalarType::I32),
-        PointerWidth::Bits64 => MirType::Scalar(ScalarType::I64),
+    .then(|| {
+        if int64_regs {
+            MirType::Scalar(ScalarType::I64)
+        } else {
+            MirType::Scalar(ScalarType::I32)
+        }
     })
 }
 

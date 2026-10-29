@@ -354,7 +354,7 @@ fn collect_definitions(
                             Instruction::Call { name, .. } => module
                                 .and_then(|m| m.functions.get(name))
                                 .and_then(|callee| callee.sig.ret_ty)
-                                .or_else(|| io_intrinsic_result_type(name, function.pointer_width)),
+                                .or_else(|| io_intrinsic_result_type(name, function.int64_regs)),
                             _ => instruction_definition_type(instruction),
                         },
                     });
