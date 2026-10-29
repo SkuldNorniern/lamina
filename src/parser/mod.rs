@@ -592,7 +592,7 @@ mod tests {
 
         let vec2 = module.type_declarations.get("Vec2").unwrap();
         assert_eq!(vec2.name, "Vec2");
-        if let Type::Struct(fields) = &vec2.ty {
+        if let Type::Struct { fields, .. } = &vec2.ty {
             assert_eq!(fields.len(), 2);
             assert_eq!(fields[0].name, "x");
             assert_eq!(fields[0].ty, Type::Primitive(PrimitiveType::F32));
@@ -1977,9 +1977,28 @@ ret.i64 0
         let input = entry_body("%f = getfieldptr.struct { a: i8, b: i32 } %p, 1");
         assert!(matches!(
             &entry_instructions(&input)[0],
-            Instruction::GetFieldPtr { field_index: 1, struct_type: Type::Struct(fields), .. }
+            Instruction::GetFieldPtr { field_index: 1, struct_type: Type::Struct { fields, .. }, .. }
                 if fields.len() == 2
         ));
+    }
+
+    #[test]
+    fn test_packed_struct_parses_as_packed() {
+        let input = entry_body("%f = getfieldptr.packed struct { a: i8, b: i32 } %p, 1");
+        assert!(matches!(
+            &entry_instructions(&input)[0],
+            Instruction::GetFieldPtr {
+                field_index: 1,
+                struct_type: Type::Struct { packed: true, .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_packed_applies_only_to_structs() {
+        let err = parse_error("%p = stackalloc.packed [2 x i8]");
+        assert!(err.contains("'packed' applies to a struct only"), "{err}");
     }
 
     #[test]
@@ -1999,7 +2018,7 @@ ret.i64 0
             entry_instructions(&input)[0],
             Instruction::Alloc {
                 alloc_type: AllocType::Stack,
-                allocated_ty: Type::Struct(_),
+                allocated_ty: Type::Struct { .. },
                 ..
             }
         ));

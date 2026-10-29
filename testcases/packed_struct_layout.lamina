@@ -1,0 +1,158 @@
+# Packed structs place each field at the running sum of the sizes before it, and the
+# struct's alignment is 1. Every number printed is a byte distance between two
+# addresses, so the output can be checked against C offsetof and sizeof with
+# __attribute__((packed)). Each packed struct has a padded twin, so the difference
+# is visible in the output.
+
+type !Byte_Word = packed struct { a: i8, b: i32 }
+type !Short_Mid = packed struct { x: i32, s: i16, y: i32 }
+type !Odd_Tail = packed struct { a: i64, b: i8 }
+type !Padded_Tail = struct { a: i64, b: i8 }
+type !Nested = packed struct { c: i8, inner: !Padded_Tail }
+type !Outer = struct { c: i8, tail: !Odd_Tail }
+
+global $packed_init: !Byte_Word = {7, 305419896}
+
+fn @read_word(packed struct { a: i8, b: i32 } %p) -> i64 {
+entry:
+  %pb = getfieldptr.!Byte_Word %p, 1
+  %w = load.i32 %pb
+  %wide = extend.i32.i64 %w
+  ret.i64 %wide
+}
+
+fn @delta(ptr %from, ptr %to) -> i64 {
+entry:
+  %a = ptrtoint.i64 %from
+  %b = ptrtoint.i64 %to
+  %d = sub.i64 %b, %a
+  ret.i64 %d
+}
+
+fn @main() -> i64 {
+entry:
+  %bw = stackalloc.!Byte_Word
+  %bw_a = getfieldptr.!Byte_Word %bw, 0
+  %bw_b = getfieldptr.!Byte_Word %bw, 1
+  %bw_next = getelem.!Byte_Word %bw, 1
+  %bw_off_b = call @delta(%bw, %bw_b)
+  %bw_size = call @delta(%bw, %bw_next)
+  %bw_off_a = call @delta(%bw, %bw_a)
+  call @print_i64(%bw_off_a)
+  call @print_i64(%bw_off_b)
+  call @print_i64(%bw_size)
+
+  %sm = stackalloc.!Short_Mid
+  %sm_s = getfieldptr.!Short_Mid %sm, 1
+  %sm_y = getfieldptr.!Short_Mid %sm, 2
+  %sm_next = getelem.!Short_Mid %sm, 1
+  %sm_off_s = call @delta(%sm, %sm_s)
+  %sm_off_y = call @delta(%sm, %sm_y)
+  %sm_size = call @delta(%sm, %sm_next)
+  call @print_i64(%sm_off_s)
+  call @print_i64(%sm_off_y)
+  call @print_i64(%sm_size)
+
+  %ot = stackalloc.!Odd_Tail
+  %ot_b = getfieldptr.!Odd_Tail %ot, 1
+  %ot_next = getelem.!Odd_Tail %ot, 1
+  %ot_off_b = call @delta(%ot, %ot_b)
+  %ot_size = call @delta(%ot, %ot_next)
+  call @print_i64(%ot_off_b)
+  call @print_i64(%ot_size)
+
+  %pt = stackalloc.!Padded_Tail
+  %pt_b = getfieldptr.!Padded_Tail %pt, 1
+  %pt_next = getelem.!Padded_Tail %pt, 1
+  %pt_off_b = call @delta(%pt, %pt_b)
+  %pt_size = call @delta(%pt, %pt_next)
+  call @print_i64(%pt_off_b)
+  call @print_i64(%pt_size)
+
+  %nt = stackalloc.!Nested
+  %nt_inner = getfieldptr.!Nested %nt, 1
+  %nt_inner_a = getfieldptr.!Padded_Tail %nt_inner, 0
+  %nt_inner_b = getfieldptr.!Padded_Tail %nt_inner, 1
+  %nt_a_off = call @delta(%nt, %nt_inner_a)
+  %nt_b_off = call @delta(%nt, %nt_inner_b)
+  %nt_next = getelem.!Nested %nt, 1
+  %nt_size = call @delta(%nt, %nt_next)
+  call @print_i64(%nt_a_off)
+  call @print_i64(%nt_b_off)
+  call @print_i64(%nt_size)
+
+  %ou = stackalloc.!Outer
+  %ou_tail = getfieldptr.!Outer %ou, 1
+  %ou_tail_b = getfieldptr.!Odd_Tail %ou_tail, 1
+  %ou_b_off = call @delta(%ou, %ou_tail_b)
+  %ou_next = getelem.!Outer %ou, 1
+  %ou_size = call @delta(%ou, %ou_next)
+  call @print_i64(%ou_b_off)
+  call @print_i64(%ou_size)
+
+  store.i32 %bw_b, 305419896
+  %bw_v = load.i32 %bw_b
+  %bw_w = extend.i32.i64 %bw_v
+  call @print_i64(%bw_w)
+
+  store.i16 %sm_s, 1234
+  store.i32 %sm_y, 77
+  %sm_sv = load.i16 %sm_s
+  %sm_sw = extend.i16.i64 %sm_sv
+  %sm_yv = load.i32 %sm_y
+  %sm_yw = extend.i32.i64 %sm_yv
+  call @print_i64(%sm_sw)
+  call @print_i64(%sm_yw)
+
+  %ot_av = getfieldptr.!Odd_Tail %ot, 0
+  store.i64 %ot_av, 4096
+  store.i8 %ot_b, 9
+  %ot_read = load.i64 %ot_av
+  %ot_byte = load.i8 %ot_b
+  %ot_bw = extend.i8.i64 %ot_byte
+  call @print_i64(%ot_read)
+  call @print_i64(%ot_bw)
+  %gi_a = getfieldptr.!Byte_Word $packed_init, 0
+  %gi_b = getfieldptr.!Byte_Word $packed_init, 1
+  %gi_av = load.i8 %gi_a
+  %gi_aw = extend.i8.i64 %gi_av
+  call @print_i64(%gi_aw)
+  %gi_bv = load.i32 %gi_b
+  %gi_bw = extend.i32.i64 %gi_bv
+  call @print_i64(%gi_bw)
+
+  %passed = call @read_word(%bw)
+  call @print_i64(%passed)
+  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}

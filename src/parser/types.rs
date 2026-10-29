@@ -25,9 +25,20 @@ pub fn parse_type_declaration<'a>(
     Ok(TypeDeclaration { name, ty })
 }
 
-/// Parses a composite type (struct or array).
+/// Parses a composite type (struct or array). A struct may be prefixed with `packed`,
+/// which removes the padding between its fields.
 pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
+    let packed = state.peek_slice(6) == Some("packed");
+    if packed {
+        state.consume_keyword("packed")?;
+        state.skip_whitespace_and_comments();
+        if state.peek_slice(6) != Some("struct") {
+            return Err(state.error(
+                "'packed' applies to a struct only\n  Hint: Write 'packed struct { x: i8, y: i32 }'",
+            ));
+        }
+    }
     let keyword_slice = state.peek_slice(6).unwrap_or("");
     if keyword_slice.starts_with("struct") {
         state.consume_keyword("struct")?;
@@ -67,7 +78,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
             }
             state.expect_char(',')?;
         }
-        Ok(Type::Struct(fields))
+        Ok(Type::Struct { fields, packed })
     } else if state.current_char() == Some('[') {
         state.expect_char('[')?;
         let size_val = state.parse_integer()?;
@@ -106,6 +117,7 @@ fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaE
         Some('!') => Ok(Type::Named(state.parse_named_type_identifier()?)),
         Some('[') => parse_composite_type(state),
         Some('s') if state.peek_slice(6) == Some("struct") => parse_composite_type(state),
+        Some('p') if state.peek_slice(6) == Some("packed") => parse_composite_type(state),
         _ => {
             let potential_primitive = state.parse_identifier_str()?;
             match potential_primitive {

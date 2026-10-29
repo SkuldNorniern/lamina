@@ -99,10 +99,10 @@
 //! builder
 //!     .function("use_custom_type", Type::Void)
 //!     // Allocate a struct with two i32 fields
-//!     .stackalloc("point", Type::Struct(vec![
+//!     .stackalloc("point", Type::Struct { fields: vec![
 //!         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
 //!         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) }
-//!     ]))
+//!     ], packed: false })
 //!     // Use the allocated struct
 //!     .ret_void();
 //!
@@ -156,10 +156,10 @@ use crate::{
 ///
 /// let point_type = TypeDeclaration {
 ///     name: "Point",
-///     ty: Type::Struct(vec![
+///     ty: Type::Struct { fields: vec![
 ///         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
 ///         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) },
-///     ]),
+///     ], packed: false },
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)] // Eq might be too restrictive if Type contains f32 indirectly, but should be okay here.
@@ -425,8 +425,8 @@ impl<'a> Module<'a> {
                         continue;
                     };
                     match resolve_type_names(struct_type, &self.type_declarations) {
-                        Some(Type::Struct(fields)) if *field_index < fields.len() => {}
-                        Some(Type::Struct(fields)) => errors.push(format!(
+                        Some(Type::Struct { fields, .. }) if *field_index < fields.len() => {}
+                        Some(Type::Struct { fields, .. }) => errors.push(format!(
                             "getfieldptr in '@{}' takes field {field_index}, but its struct has {} fields",
                             func.name,
                             fields.len()
@@ -468,7 +468,7 @@ fn named_type_refs<'a>(ty: &Type<'a>, out: &mut Vec<&'a str>) {
     match ty {
         Type::Named(name) => out.push(name),
         Type::Array { element_type, .. } => named_type_refs(element_type, out),
-        Type::Struct(fields) => {
+        Type::Struct { fields, .. } => {
             for field in fields {
                 named_type_refs(&field.ty, out);
             }
@@ -566,7 +566,10 @@ mod tests {
     fn test_display_type_declaration() {
         let decl = TypeDeclaration {
             name: "MyType",
-            ty: Type::Struct(vec![]), // Empty struct
+            ty: Type::Struct {
+                fields: vec![],
+                packed: false,
+            }, // Empty struct
         };
         assert_eq!(format!("{}", decl), "type !MyType = struct {  }");
     }
@@ -625,10 +628,13 @@ mod tests {
                     name,
                     TypeDeclaration {
                         name,
-                        ty: Type::Struct(vec![StructField {
-                            name: "x",
-                            ty: Type::Primitive(PrimitiveType::I32),
-                        }]),
+                        ty: Type::Struct {
+                            fields: vec![StructField {
+                                name: "x",
+                                ty: Type::Primitive(PrimitiveType::I32),
+                            }],
+                            packed: false,
+                        },
                     },
                 );
                 module.global_declarations.insert(
@@ -664,16 +670,19 @@ mod tests {
             "Vec2",
             TypeDeclaration {
                 name: "Vec2",
-                ty: Type::Struct(vec![
-                    StructField {
-                        name: "x",
-                        ty: Type::Primitive(PrimitiveType::F32),
-                    },
-                    StructField {
-                        name: "y",
-                        ty: Type::Primitive(PrimitiveType::F32),
-                    },
-                ]),
+                ty: Type::Struct {
+                    fields: vec![
+                        StructField {
+                            name: "x",
+                            ty: Type::Primitive(PrimitiveType::F32),
+                        },
+                        StructField {
+                            name: "y",
+                            ty: Type::Primitive(PrimitiveType::F32),
+                        },
+                    ],
+                    packed: false,
+                },
             },
         );
 
@@ -747,10 +756,13 @@ mod tests {
             "pair",
             TypeDeclaration {
                 name: "pair",
-                ty: Type::Struct(vec![StructField {
-                    name: "x",
-                    ty: Type::Named("missing"),
-                }]),
+                ty: Type::Struct {
+                    fields: vec![StructField {
+                        name: "x",
+                        ty: Type::Named("missing"),
+                    }],
+                    packed: false,
+                },
             },
         );
         let errs = module.validate().unwrap_err();
@@ -764,10 +776,13 @@ mod tests {
             "node",
             TypeDeclaration {
                 name: "node",
-                ty: Type::Struct(vec![StructField {
-                    name: "next",
-                    ty: Type::Named("node"),
-                }]),
+                ty: Type::Struct {
+                    fields: vec![StructField {
+                        name: "next",
+                        ty: Type::Named("node"),
+                    }],
+                    packed: false,
+                },
             },
         );
         let errs = module.validate().unwrap_err();

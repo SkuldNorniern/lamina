@@ -109,7 +109,7 @@ fn parse_initializer_list<'a>(
             Vec::new(),
             usize::try_from(*size).unwrap_or(usize::MAX),
         ),
-        Type::Struct(fields) => (
+        Type::Struct { fields, .. } => (
             '{',
             '}',
             None,

@@ -108,10 +108,10 @@
 //!         size: 10
 //!     })
 //!     // Struct type
-//!     .stackalloc("point", Type::Struct(vec![
+//!     .stackalloc("point", Type::Struct { fields: vec![
 //!         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
 //!         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) }
-//!     ]))
+//!     ], packed: false })
 //!     .ret_void();
 //! ```
 
@@ -229,7 +229,12 @@ pub enum Type<'a> {
         element_type: PrimitiveType,
         lanes: u32,
     },
-    Struct(Vec<StructField<'a>>),
+    /// A struct. Fields are laid out in order. With `packed` set there is no padding
+    /// between fields and the struct's own alignment is 1, as in C `__attribute__((packed))`.
+    Struct {
+        fields: Vec<StructField<'a>>,
+        packed: bool,
+    },
     Void,
     /// A `va_list` cursor over variadic arguments, written `valist`. It is laid out as
     /// the x86_64 System V `va_list`: 24 bytes, 8-byte aligned.
@@ -333,7 +338,10 @@ impl fmt::Display for Type<'_> {
                 element_type,
                 lanes,
             } => write!(f, "<{lanes} x {element_type}>"),
-            Type::Struct(fields) => {
+            Type::Struct { fields, packed } => {
+                if *packed {
+                    write!(f, "packed ")?;
+                }
                 write!(f, "struct {{ ")?;
                 for (i, field) in fields.iter().enumerate() {
                     write!(f, "{}: {}", field.name, field.ty)?;
@@ -425,8 +433,8 @@ pub fn resolve_type_names<'a>(
                 element_type: Box::new(resolve(element_type, declarations, visiting)?),
                 size: *size,
             },
-            Type::Struct(fields) => Type::Struct(
-                fields
+            Type::Struct { fields, packed } => Type::Struct {
+                fields: fields
                     .iter()
                     .map(|field| {
                         Some(StructField {
@@ -435,26 +443,33 @@ pub fn resolve_type_names<'a>(
                         })
                     })
                     .collect::<Option<_>>()?,
-            ),
+                packed: *packed,
+            },
             other => other.clone(),
         })
     }
     resolve(ty, declarations, &mut HashSet::new())
 }
 
-fn aggregate_layout<'a>(fields: impl Iterator<Item = &'a Type<'a>>) -> Option<(u64, u64)> {
+fn round_up(value: u64, align: u64) -> Option<u64> {
+    value.checked_add(align - 1).map(|v| v & !(align - 1))
+}
+
+fn aggregate_layout<'a>(
+    fields: impl Iterator<Item = &'a Type<'a>>,
+    packed: bool,
+) -> Option<(u64, u64)> {
     let mut size = 0u64;
     let mut alignment = 1;
     for field in fields {
         let (field_size, field_alignment) = type_layout(field)?;
-        alignment = alignment.max(field_alignment);
-        size = size.checked_add(field_alignment - 1)? & !(field_alignment - 1);
+        if !packed {
+            alignment = alignment.max(field_alignment);
+            size = round_up(size, field_alignment)?;
+        }
         size = size.checked_add(field_size)?;
     }
-    Some((
-        size.checked_add(alignment - 1)? & !(alignment - 1),
-        alignment,
-    ))
+    Some((round_up(size, alignment)?, alignment))
 }
 
 fn type_layout(ty: &Type<'_>) -> Option<(u64, u64)> {
@@ -464,7 +479,9 @@ fn type_layout(ty: &Type<'_>) -> Option<(u64, u64)> {
             let (element_size, alignment) = type_layout(element_type)?;
             Some((element_size.checked_mul(*size)?, alignment))
         }
-        Type::Struct(fields) => aggregate_layout(fields.iter().map(|field| &field.ty)),
+        Type::Struct { fields, packed } => {
+            aggregate_layout(fields.iter().map(|field| &field.ty), *packed)
+        }
         Type::VaList => Some((24, 8)),
         _ => None,
     }
@@ -480,32 +497,42 @@ pub fn align_of_type(ty: &Type<'_>) -> u64 {
     type_layout(ty).map_or(8, |(_, alignment)| alignment)
 }
 
-/// Computes the byte offset of `field_index` within a struct using standard ABI layout rules.
+/// Computes the byte offset of `field_index` within a struct.
 ///
 /// Returns `None` if `field_index` is out of bounds or a field size cannot be determined.
-/// Each field is aligned to its natural ABI alignment; padding bytes are inserted between
-/// fields when required (same rules as C `struct` layout with default alignment).
+/// A normal struct aligns each field to its natural ABI alignment, inserting padding as
+/// C `struct` layout does with default alignment. A packed struct places each field at
+/// the running sum of the sizes before it.
 ///
 /// # Example
 /// For `struct { a: i8, b: i32, c: i64 }`:
 /// - field 0 (`a`): offset 0
 /// - field 1 (`b`): offset 4  (3 bytes of padding after `a`)
 /// - field 2 (`c`): offset 8
-pub fn struct_field_byte_offset(fields: &[StructField<'_>], field_index: usize) -> Option<u64> {
+///
+/// For `packed struct { a: i8, b: i32, c: i64 }`:
+/// - field 0 (`a`): offset 0
+/// - field 1 (`b`): offset 1
+/// - field 2 (`c`): offset 5
+pub fn struct_field_byte_offset(
+    fields: &[StructField<'_>],
+    packed: bool,
+    field_index: usize,
+) -> Option<u64> {
     if field_index >= fields.len() {
         return None;
     }
     let mut offset = 0u64;
-    for field in &fields[..field_index] {
-        // Align to this field's requirement, then skip past it
-        let align = align_of_type(&field.ty);
-        offset = (offset + align - 1) & !(align - 1);
-        offset = offset.saturating_add(sizeof_type(&field.ty)?);
+    for (index, field) in fields.iter().enumerate() {
+        if !packed {
+            offset = round_up(offset, align_of_type(&field.ty))?;
+        }
+        if index == field_index {
+            return Some(offset);
+        }
+        offset = offset.checked_add(sizeof_type(&field.ty)?)?;
     }
-    // Align the cursor to the target field's own alignment
-    let target_align = align_of_type(&fields[field_index].ty);
-    offset = (offset + target_align - 1) & !(target_align - 1);
-    Some(offset)
+    None
 }
 
 #[cfg(test)]
@@ -537,7 +564,7 @@ mod tests {
             size: 10,
         };
         assert_eq!(format!("{}", arr_type), "[10 x i8]");
-        let struct_type = Type::Struct(vec![
+        let fields = vec![
             StructField {
                 name: "x",
                 ty: Type::Primitive(PrimitiveType::F32),
@@ -546,8 +573,20 @@ mod tests {
                 name: "y",
                 ty: Type::Primitive(PrimitiveType::F32),
             },
-        ]);
+        ];
+        let struct_type = Type::Struct {
+            fields: fields.clone(),
+            packed: false,
+        };
         assert_eq!(format!("{}", struct_type), "struct { x: f32, y: f32 }");
+        let packed_type = Type::Struct {
+            fields,
+            packed: true,
+        };
+        assert_eq!(
+            format!("{}", packed_type),
+            "packed struct { x: f32, y: f32 }"
+        );
         assert_eq!(format!("{}", Type::Void), "void");
         #[cfg(feature = "nightly")]
         {
@@ -562,6 +601,72 @@ mod tests {
             };
             assert_eq!(format!("{}", vec_f32), "<8 x f32>");
         }
+    }
+
+    #[test]
+    fn test_packed_struct_offsets_and_size() {
+        let byte_word = [
+            StructField {
+                name: "a",
+                ty: Type::Primitive(PrimitiveType::I8),
+            },
+            StructField {
+                name: "b",
+                ty: Type::Primitive(PrimitiveType::I32),
+            },
+        ];
+        assert_eq!(struct_field_byte_offset(&byte_word, false, 1), Some(4));
+        assert_eq!(struct_field_byte_offset(&byte_word, true, 1), Some(1));
+        let packed = Type::Struct {
+            fields: byte_word.to_vec(),
+            packed: true,
+        };
+        assert_eq!(sizeof_type(&packed), Some(5));
+        assert_eq!(align_of_type(&packed), 1);
+        let padded = Type::Struct {
+            fields: byte_word.to_vec(),
+            packed: false,
+        };
+        assert_eq!(sizeof_type(&padded), Some(8));
+        assert_eq!(align_of_type(&padded), 4);
+    }
+
+    #[test]
+    fn test_packed_struct_odd_tail_and_nesting() {
+        let tail = [
+            StructField {
+                name: "a",
+                ty: Type::Primitive(PrimitiveType::I64),
+            },
+            StructField {
+                name: "b",
+                ty: Type::Primitive(PrimitiveType::I8),
+            },
+        ];
+        let packed_tail = Type::Struct {
+            fields: tail.to_vec(),
+            packed: true,
+        };
+        assert_eq!(sizeof_type(&packed_tail), Some(9));
+        let outer = [
+            StructField {
+                name: "c",
+                ty: Type::Primitive(PrimitiveType::I8),
+            },
+            StructField {
+                name: "tail",
+                ty: packed_tail,
+            },
+        ];
+        assert_eq!(struct_field_byte_offset(&outer, false, 1), Some(1));
+        assert_eq!(
+            sizeof_type(&Type::Struct {
+                fields: outer.to_vec(),
+                packed: false,
+            }),
+            Some(10)
+        );
+        assert_eq!(struct_field_byte_offset(&outer, false, 2), None);
     }
 
     #[test]

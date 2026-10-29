@@ -55,13 +55,13 @@ pub fn map_ir_type(ty: &IRType<'_>) -> Result<MirType, FromIRError> {
 
 /// Whether an IR type is an aggregate, after named types have been resolved.
 pub fn is_aggregate(ty: &IRType<'_>) -> bool {
-    matches!(ty, IRType::Struct(_) | IRType::Array { .. })
+    matches!(ty, IRType::Struct { .. } | IRType::Array { .. })
 }
 
 fn integer_fields_only(ty: &IRType<'_>) -> bool {
     match ty {
         IRType::Primitive(p) => !matches!(p, IRPrim::F32 | IRPrim::F64),
-        IRType::Struct(fields) => fields.iter().all(|field| integer_fields_only(&field.ty)),
+        IRType::Struct { fields, .. } => fields.iter().all(|field| integer_fields_only(&field.ty)),
         IRType::Array { element_type, .. } => integer_fields_only(element_type),
         _ => false,
     }

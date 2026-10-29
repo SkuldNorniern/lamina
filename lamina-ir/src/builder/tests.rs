@@ -572,16 +572,19 @@ mod tests {
     fn test_getfieldptr() {
         let mut builder = IRBuilder::new();
 
-        let point_ty = Type::Struct(vec![
-            StructField {
-                name: "x",
-                ty: Type::Primitive(PrimitiveType::I32),
-            },
-            StructField {
-                name: "y",
-                ty: Type::Primitive(PrimitiveType::I32),
-            },
-        ]);
+        let point_ty = Type::Struct {
+            fields: vec![
+                StructField {
+                    name: "x",
+                    ty: Type::Primitive(PrimitiveType::I32),
+                },
+                StructField {
+                    name: "y",
+                    ty: Type::Primitive(PrimitiveType::I32),
+                },
+            ],
+            packed: false,
+        };
 
         builder
             .function("struct_ops", Type::Primitive(PrimitiveType::I32))
@@ -1136,7 +1139,10 @@ mod tests {
                 ty: Type::Primitive(PrimitiveType::I32),
             },
         ];
-        let layout = Type::Struct(fields);
+        let layout = Type::Struct {
+            fields,
+            packed: false,
+        };
 
         builder
             .function("typed_gep", Type::Void)
