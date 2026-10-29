@@ -55,7 +55,11 @@ pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 pub use unroll::LoopUnrolling;
 
-use crate::mir::{Aggregate, Function, MirType, Module, Signature, verify_function_in_pipeline};
+use crate::mir::{
+    Aggregate, Function, MirType, Module, Signature,
+    ssa::{SsaFunction, destroy},
+    verify_function_in_pipeline,
+};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -232,6 +236,74 @@ pub trait Transform {
     ) -> Result<bool, TransformError> {
         self.apply(func)
     }
+
+    /// The SSA entry point of this pass, when it has one. A pass that answers `Some`
+    /// runs on the pipeline's graph and never sees mutable MIR.
+    fn ssa(&self) -> Option<&dyn SsaTransform> {
+        None
+    }
+}
+
+/// A pass that reads and rewrites the optimizing SSA form the pipeline owns.
+pub trait SsaTransform {
+    fn apply_ssa(&self, graph: &mut SsaFunction) -> Result<bool, TransformError>;
+}
+
+/// The one authoritative form of a function inside the optimizing region. The graph is
+/// built the first time an SSA pass asks for it and lowered again the first time a
+/// mutable pass does, so construction and destruction belong to the pipeline rather
+/// than to any pass.
+struct OptimizingForm<'a> {
+    func: &'a mut Function,
+    graph: Option<SsaFunction>,
+    callees: &'a CalleeSignatures,
+    unbuildable: bool,
+}
+
+impl<'a> OptimizingForm<'a> {
+    fn new(func: &'a mut Function, callees: &'a CalleeSignatures) -> Self {
+        Self {
+            func,
+            graph: None,
+            callees,
+            unbuildable: false,
+        }
+    }
+
+    fn ssa(&mut self) -> Option<&mut SsaFunction> {
+        if self.graph.is_none() && !self.unbuildable {
+            let callees = self.callees;
+            let returns = |name: &str| callees.get(name).and_then(|shape| shape.ret.ty);
+            match SsaFunction::build(self.func, &returns) {
+                Ok(graph) => self.graph = Some(graph),
+                Err(_) => self.unbuildable = true,
+            }
+        }
+        self.graph.as_mut()
+    }
+
+    fn mutable(&mut self) -> Result<&mut Function, TransformError> {
+        if let Some(graph) = self.graph.take() {
+            *self.func = destroy(&graph).map_err(|e| TransformError::Unsupported(e.to_string()))?;
+            self.unbuildable = false;
+        }
+        Ok(self.func)
+    }
+
+    fn verify(&self, pass: &'static str) -> Result<(), TransformError> {
+        let fail = |source| TransformError::PassFailed {
+            pass,
+            source: Box::new(source),
+        };
+        match &self.graph {
+            Some(graph) => graph.verify().map_err(|violations| {
+                let errors = violations.iter().map(|v| v.message.clone()).collect();
+                fail(TransformError::VerificationFailed { errors })
+            }),
+            None => verify_function_in_pipeline(self.func)
+                .map_err(|errors| fail(TransformError::VerificationFailed { errors })),
+        }
+    }
 }
 
 /// Stability level of a transform.
@@ -356,6 +428,7 @@ impl TransformPipeline {
     ) -> Result<TransformStats, TransformError> {
         let mut stats = TransformStats::default();
         let mut total_iterations = 0;
+        let mut form = OptimizingForm::new(func, callees);
 
         for transform in &self.transforms {
             if total_iterations >= self.max_total_iterations {
@@ -366,26 +439,34 @@ impl TransformPipeline {
             }
 
             stats.transforms_run += 1;
-            let changed = transform.apply_with_callees(func, callees).map_err(|e| {
-                TransformError::PassFailed {
-                    pass: transform.name(),
-                    source: Box::new(e),
+            let failed = |e| TransformError::PassFailed {
+                pass: transform.name(),
+                source: Box::new(e),
+            };
+            let changed = match transform.ssa() {
+                Some(pass) => match form.ssa() {
+                    Some(graph) => pass.apply_ssa(graph).map_err(failed)?,
+                    None => false,
+                },
+                None => {
+                    let func = form.mutable()?;
+                    transform
+                        .apply_with_callees(func, callees)
+                        .map_err(failed)?
                 }
-            })?;
+            };
             if changed {
                 stats.transforms_changed += 1;
             }
 
             if cfg!(debug_assertions) {
-                verify_function_in_pipeline(func).map_err(|errors| TransformError::PassFailed {
-                    pass: transform.name(),
-                    source: Box::new(TransformError::VerificationFailed { errors }),
-                })?;
+                form.verify(transform.name())?;
             }
 
             total_iterations += 1;
         }
 
+        let func = form.mutable()?;
         verify_function_in_pipeline(func)
             .map_err(|errors| TransformError::VerificationFailed { errors })?;
         stats.iterations = total_iterations;

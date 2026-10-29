@@ -36,14 +36,18 @@ pub fn destroy(graph: &SsaFunction) -> Result<Function, DestroyError> {
         message,
     };
 
-    let mut placed: Vec<(usize, Block)> = graph.unreachable.clone();
+    let mut placed: Vec<((usize, i64), Block)> = graph
+        .unreachable
+        .iter()
+        .map(|(index, block)| ((*index, 0), block.clone()))
+        .collect();
     let mut edges: Vec<((String, String), Vec<Instruction>)> = Vec::new();
     let mut entry_moves: Option<(String, Vec<Instruction>)> = None;
 
-    for block in &graph.blocks {
-        if let Some(source) = block.source {
+    for (index, block) in graph.blocks.iter().enumerate() {
+        if index != 0 {
             placed.push((
-                source,
+                block.order,
                 Block {
                     label: block.label.clone(),
                     instructions: block
@@ -79,7 +83,7 @@ pub fn destroy(graph: &SsaFunction) -> Result<Function, DestroyError> {
             if moves.is_empty() {
                 continue;
             }
-            if block.source.is_none() {
+            if index == 0 {
                 entry_moves = Some((target.label.clone(), moves));
                 continue;
             }
@@ -92,7 +96,7 @@ pub fn destroy(graph: &SsaFunction) -> Result<Function, DestroyError> {
         }
     }
 
-    placed.sort_by_key(|(index, _)| *index);
+    placed.sort_by_key(|(rank, _)| *rank);
     let mut func = graph.shell.clone();
     func.blocks = placed.into_iter().map(|(_, block)| block).collect();
 

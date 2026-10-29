@@ -8,7 +8,7 @@
 use crate::mir::{
     Function, Instruction, MirType, Operand, Register, ScalarType,
     ssa::{SsaFunction, ValueDef, ValueId, destroy},
-    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+    transform::{SsaTransform, Transform, TransformCategory, TransformError, TransformLevel},
 };
 use lamina_mir::Located;
 use std::{collections::HashMap, mem};
@@ -47,7 +47,25 @@ impl Transform for CommonSubexpressionElimination {
     }
 
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        self.apply_internal(func)
+        let no_callee = |_: &str| -> Option<MirType> { None };
+        let Ok(mut graph) = SsaFunction::build(func, &no_callee) else {
+            return Ok(false);
+        };
+        if !self.apply_ssa(&mut graph)? {
+            return Ok(false);
+        }
+        *func = destroy(&graph).map_err(|e| TransformError::Unsupported(e.to_string()))?;
+        Ok(true)
+    }
+
+    fn ssa(&self) -> Option<&dyn SsaTransform> {
+        Some(self)
+    }
+}
+
+impl SsaTransform for CommonSubexpressionElimination {
+    fn apply_ssa(&self, graph: &mut SsaFunction) -> Result<bool, TransformError> {
+        self.apply_internal(graph)
     }
 }
 
@@ -101,15 +119,11 @@ impl CommonSubexpressionElimination {
         matches!(lhs, Operand::Immediate(_)) && matches!(rhs, Operand::Immediate(_))
     }
 
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        let no_callee = |_: &str| -> Option<MirType> { None };
-        let Ok(mut graph) = SsaFunction::build(func, &no_callee) else {
-            return Ok(false);
-        };
-        verify_graph(&graph, "before CSE")?;
+    fn apply_internal(&self, graph: &mut SsaFunction) -> Result<bool, TransformError> {
+        verify_graph(graph, "before CSE")?;
 
-        let reach = reachability(&graph);
-        let defs = definitions(&graph);
+        let reach = reachability(graph);
+        let defs = definitions(graph);
         let mut available: HashMap<Expr, Vec<(ValueId, Site)>> = HashMap::new();
         let mut rewrites: Vec<Rewrite> = Vec::new();
 
@@ -167,8 +181,7 @@ impl CommonSubexpressionElimination {
             inst.instruction = Located::at(copy, inst.instruction.loc);
             inst.uses = vec![src];
         }
-        verify_graph(&graph, "after CSE")?;
-        *func = destroy(&graph).map_err(|e| TransformError::Unsupported(e.to_string()))?;
+        verify_graph(graph, "after CSE")?;
         Ok(true)
     }
 }

@@ -1087,6 +1087,24 @@ impl Instruction {
         }
     }
 
+    /// Mutable successor labels, in the order `Block::successors` reports them.
+    pub fn successors_mut(&mut self) -> Vec<&mut String> {
+        match self {
+            Instruction::Jmp { target } => vec![target],
+            Instruction::Br {
+                true_target,
+                false_target,
+                ..
+            } => vec![true_target, false_target],
+            Instruction::Switch { cases, default, .. } => {
+                let mut targets = vec![default];
+                targets.extend(cases.iter_mut().map(|(_, target)| target));
+                targets
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// Get the destination register if this instruction defines one
     pub fn def_reg(&self) -> Option<&Register> {
         match self {

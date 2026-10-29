@@ -61,6 +61,9 @@ pub struct SsaEdge {
 pub struct SsaBlock {
     pub label: String,
     pub source: Option<usize>,
+    /// Emission rank, ordered lexicographically. An original block at index `b` ranks
+    /// `(b, 0)`; a block a pass inserts before it takes the next rank below.
+    pub order: (usize, i64),
     pub params: Vec<ValueId>,
     pub insts: Vec<SsaInst>,
     pub edges: Vec<SsaEdge>,
@@ -482,6 +485,7 @@ impl SsaFunction {
         blocks.push(SsaBlock {
             label: "<entry>".to_string(),
             source: None,
+            order: (0, 0),
             params: pre_params,
             insts: Vec::new(),
             edges: vec![SsaEdge {
@@ -531,6 +535,7 @@ impl SsaFunction {
             blocks.push(SsaBlock {
                 label: block.label.clone(),
                 source: Some(b),
+                order: (b, 0),
                 params: block_params[b].clone(),
                 insts,
                 edges,
@@ -559,6 +564,46 @@ impl SsaFunction {
             shell,
             dominators,
         })
+    }
+
+    /// Recomputes the dominator tree after a pass changed the edges or added blocks.
+    pub fn recompute_dominators(&mut self) {
+        let successors: Vec<Vec<usize>> = self
+            .blocks
+            .iter()
+            .map(|block| {
+                block
+                    .edges
+                    .iter()
+                    .map(|edge| edge.target.0 as usize)
+                    .collect()
+            })
+            .collect();
+        self.dominators = dominator_tree(&successors, (!self.blocks.is_empty()).then_some(0));
+    }
+
+    /// Records a value defined by `def` that carries `register` of type `ty`.
+    pub fn add_value(&mut self, def: ValueDef, ty: Option<MirType>, register: Register) -> ValueId {
+        let id = ValueId(self.values.len() as u32);
+        self.values.push(SsaValue { def, ty, register });
+        id
+    }
+
+    /// A label no block in the graph holds, counting the unreachable blocks that
+    /// destruction places back beside them.
+    pub fn fresh_label(&self, base: &str) -> String {
+        let taken = |label: &str| {
+            self.blocks.iter().any(|block| block.label == label)
+                || self
+                    .unreachable
+                    .iter()
+                    .any(|(_, block)| block.label == label)
+        };
+        let mut label = base.to_string();
+        while taken(&label) {
+            label.push('_');
+        }
+        label
     }
 
     fn prune_trivial_parameters(&mut self) {

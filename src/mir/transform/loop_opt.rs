@@ -1,18 +1,19 @@
 //! Loop optimization transforms for MIR.
 
+#[cfg(test)]
+use crate::mir::{Block, Register};
 use crate::mir::{
-    Block, Function, Instruction, Register,
+    Function, Instruction, MirType,
+    ssa::{SsaFunction, destroy},
     transform::{
-        Dominators, Transform, TransformCategory, TransformError, TransformLevel,
+        Dominators, SsaTransform, Transform, TransformCategory, TransformError, TransformLevel,
         calculate_dominators,
     },
 };
+#[cfg(test)]
 use lamina_mir::Located;
 use lamina_platform::PointerWidth;
-use std::{
-    cmp::Reverse,
-    collections::{HashMap, HashSet, hash_map::Entry},
-};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 /// Loop invariant code motion that moves loop-invariant computations outside loops.
 #[derive(Default)]
@@ -36,7 +37,25 @@ impl Transform for LoopInvariantCodeMotion {
     }
 
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        self.apply_internal(func)
+        let no_callee = |_: &str| -> Option<MirType> { None };
+        let Ok(mut graph) = SsaFunction::build(func, &no_callee) else {
+            return Ok(false);
+        };
+        if !self.apply_ssa(&mut graph)? {
+            return Ok(false);
+        }
+        *func = destroy(&graph).map_err(|e| TransformError::Unsupported(e.to_string()))?;
+        Ok(true)
+    }
+
+    fn ssa(&self) -> Option<&dyn SsaTransform> {
+        Some(self)
+    }
+}
+
+impl SsaTransform for LoopInvariantCodeMotion {
+    fn apply_ssa(&self, graph: &mut SsaFunction) -> Result<bool, TransformError> {
+        ssa_licm::run(self, graph)
     }
 }
 
@@ -165,7 +184,7 @@ mod tests_licm {
             "Invariant instruction should be moved out of loop"
         );
 
-        let pre_header = func.get_block("loop_pre").expect("pre-header created");
+        let pre_header = func.get_block("entry").expect("pre-header");
         let has_moved = pre_header.instructions.iter().any(|i| {
             if let Instruction::IntBinary { lhs, rhs, .. } = &i.instr {
                 matches!(lhs, Operand::Immediate(Immediate::I64(5)))
@@ -179,39 +198,6 @@ mod tests_licm {
 }
 
 impl LoopInvariantCodeMotion {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        let mut changed = false;
-
-        let max_loops = 10;
-        let max_iterations_per_loop = 5;
-        let headers: Vec<String> = self
-            .find_loops(func)
-            .into_iter()
-            .take(max_loops)
-            .map(|loop_info| loop_info.header)
-            .collect();
-
-        for header in headers {
-            let mut iterations = 0;
-            while iterations < max_iterations_per_loop {
-                let Some(loop_info) = self
-                    .find_loops(func)
-                    .into_iter()
-                    .find(|candidate| candidate.header == header)
-                else {
-                    break;
-                };
-                if !self.optimize_loop(func, &loop_info)? {
-                    break;
-                }
-                changed = true;
-                iterations += 1;
-            }
-        }
-
-        Ok(changed)
-    }
-
     pub(super) fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
         let mut loops = Vec::new();
 
@@ -329,151 +315,6 @@ impl LoopInvariantCodeMotion {
         })
     }
 
-    fn optimize_loop(
-        &self,
-        func: &mut Function,
-        loop_info: &LoopInfo,
-    ) -> Result<bool, TransformError> {
-        let mut changed = false;
-
-        let invariant_instrs = self.find_invariant_instructions(func, loop_info)?;
-
-        if !invariant_instrs.is_empty() {
-            self.move_invariant_instructions(func, loop_info, &invariant_instrs)?;
-            changed = true;
-        }
-
-        Ok(changed)
-    }
-
-    fn find_invariant_instructions(
-        &self,
-        func: &Function,
-        loop_info: &LoopInfo,
-    ) -> Result<Vec<(usize, usize)>, TransformError> {
-        let mut invariant = Vec::new();
-        let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
-        let dominators = calculate_dominators(func);
-
-        // Count how many times each register is defined inside the loop.
-        // If a register is defined more than once (e.g. accumulator %sum, induction
-        // var %j), it cannot be safely hoisted — one of those assignments is a
-        // loop-carried update that must execute every iteration.
-        let mut def_counts: HashMap<Register, usize> = HashMap::new();
-        for block in &func.blocks {
-            if !loop_info.blocks.contains(&block.label) {
-                continue;
-            }
-            for instr in &block.instructions {
-                if let Some(def) = instr.def_reg() {
-                    *def_counts.entry(def.clone()).or_insert(0) += 1;
-                }
-            }
-        }
-
-        let mut total_defs: HashMap<Register, usize> = HashMap::new();
-        let mut use_sites: HashMap<Register, Vec<(usize, usize)>> = HashMap::new();
-        for (block_idx, block) in func.blocks.iter().enumerate() {
-            for (instr_idx, instr) in block.instructions.iter().enumerate() {
-                if let Some(def) = instr.def_reg() {
-                    *total_defs.entry(def.clone()).or_insert(0) += 1;
-                }
-                for reg in instr.use_regs() {
-                    use_sites
-                        .entry(reg.clone())
-                        .or_default()
-                        .push((block_idx, instr_idx));
-                }
-            }
-        }
-
-        let max_invariant_instructions = 20;
-
-        for (block_idx, block) in func.blocks.iter().enumerate() {
-            if !loop_info.blocks.contains(&block.label) {
-                continue;
-            }
-
-            for (instr_idx, instr) in block.instructions.iter().enumerate() {
-                // Skip if this register is defined more than once in the loop.
-                if let Some(def) = instr.def_reg()
-                    && def_counts.get(def).copied().unwrap_or(0) > 1
-                {
-                    continue;
-                }
-                if let Some(def) = instr.def_reg() {
-                    let single_def = total_defs.get(def) == Some(&1);
-                    let uses_follow_def = use_sites.get(def).is_none_or(|sites| {
-                        sites.iter().all(|&(b, i)| {
-                            if b == block_idx {
-                                i > instr_idx
-                            } else {
-                                dominators.dominates(&block.label, &func.blocks[b].label)
-                            }
-                        })
-                    });
-                    if !single_def || !uses_follow_def {
-                        continue;
-                    }
-                }
-                if self.is_invariant_instruction(func, loop_info, &defs_in_loop, instr) {
-                    invariant.push((block_idx, instr_idx));
-
-                    if invariant.len() >= max_invariant_instructions {
-                        break;
-                    }
-                }
-            }
-
-            if invariant.len() >= max_invariant_instructions {
-                break;
-            }
-        }
-
-        Ok(invariant)
-    }
-
-    fn is_invariant_instruction(
-        &self,
-        func: &Function,
-        loop_info: &LoopInfo,
-        defs_in_loop: &HashSet<Register>,
-        instr: &Instruction,
-    ) -> bool {
-        // An instruction is invariant if:
-        // 1. It defines a register
-        // 2. All its operands are either constants or defined outside the loop
-        // 3. It's not a side-effecting instruction
-
-        if let Some(_def_reg) = instr.def_reg() {
-            // Check if all operands are invariant
-            let operands_invariant = instr
-                .use_regs()
-                .iter()
-                .all(|reg| self.is_invariant_register(func, loop_info, defs_in_loop, reg));
-
-            // Check if instruction has no side effects
-            let no_side_effects = !self.has_side_effects(instr, func.pointer_width);
-
-            operands_invariant && no_side_effects
-        } else {
-            false
-        }
-    }
-
-    fn is_invariant_register(
-        &self,
-        _func: &Function,
-        _loop_info: &LoopInfo,
-        defs_in_loop: &HashSet<Register>,
-        reg: &Register,
-    ) -> bool {
-        match reg {
-            Register::Physical(_) => false,
-            Register::Virtual(_) => !defs_in_loop.contains(reg),
-        }
-    }
-
     fn has_side_effects(&self, instr: &Instruction, pointer: PointerWidth) -> bool {
         instr.may_trap_integer(pointer)
             || matches!(
@@ -495,138 +336,20 @@ impl LoopInvariantCodeMotion {
                     | Instruction::TailCall { .. }
                     | Instruction::Ret { .. }
             )
+            || self.touches_memory_under_nightly(instr)
     }
 
-    fn move_invariant_instructions(
-        &self,
-        func: &mut Function,
-        loop_info: &LoopInfo,
-        invariant_instrs: &[(usize, usize)],
-    ) -> Result<(), TransformError> {
-        if invariant_instrs.is_empty() {
-            return Ok(());
-        }
-
-        let header_idx = func
-            .blocks
-            .iter()
-            .position(|b| b.label == loop_info.header)
-            .ok_or(TransformError::InvalidState("loop header not found"))?;
-
-        // Generate unique pre-header label to avoid conflicts
-        let mut pre_header_label = format!("{}_pre", loop_info.header);
-        let mut counter = 0;
-        while func.blocks.iter().any(|b| b.label == pre_header_label) {
-            counter += 1;
-            pre_header_label = format!("{}_pre_{}", loop_info.header, counter);
-        }
-
-        let mut pre_header_block = Block {
-            label: pre_header_label.clone(),
-            instructions: Vec::new(),
-        };
-
-        let mut sorted_invariant = invariant_instrs.to_vec();
-        sorted_invariant.sort_by_key(|t| Reverse(t.1));
-        sorted_invariant.sort_by_key(|t| Reverse(t.0));
-
-        sorted_invariant.dedup();
-        let mut instructions_to_move = Vec::new();
-        for &(block_idx, instr_idx) in &sorted_invariant {
-            if block_idx >= func.blocks.len() {
-                continue;
-            }
-            let block = &func.blocks[block_idx];
-            if instr_idx >= block.instructions.len() {
-                continue;
-            }
-            let instr = block.instructions[instr_idx].clone();
-            instructions_to_move.push(instr);
-        }
-
-        // Move instructions to the pre-header block
-        for instr in instructions_to_move {
-            pre_header_block.instructions.push(instr);
-        }
-
-        // Add jump to the original header
-        pre_header_block
-            .instructions
-            .push(Located::from(Instruction::Jmp {
-                target: loop_info.header.clone(),
-            }));
-
-        // Insert pre-header before the original header
-        func.blocks.insert(header_idx, pre_header_block);
-
-        // Remove original instructions from loop blocks
-        // Since we sorted by (block_idx, instr_idx) descending, we can remove them safely
-        for &(block_idx, instr_idx) in &sorted_invariant {
-            // Adjust for the inserted pre-header block
-            let adjusted_block_idx = if block_idx >= header_idx {
-                block_idx + 1
-            } else {
-                block_idx
-            };
-            if adjusted_block_idx < func.blocks.len()
-                && instr_idx < func.blocks[adjusted_block_idx].instructions.len()
-            {
-                func.blocks[adjusted_block_idx]
-                    .instructions
-                    .remove(instr_idx);
-            }
-        }
-
-        // Redirect non-loop incoming edges to go through the pre-header.
-        // Back-edges from inside the loop are skipped.
-        for (block_idx, block) in func.blocks.iter_mut().enumerate() {
-            if block_idx == header_idx || loop_info.blocks.contains(&block.label) {
-                continue;
-            }
-
-            for instr in &mut block.instructions {
-                match &mut instr.instr {
-                    Instruction::Jmp { target } if *target == loop_info.header => {
-                        *target = pre_header_label.clone();
-                    }
-                    Instruction::Br {
-                        true_target,
-                        false_target,
-                        ..
-                    } => {
-                        if *true_target == loop_info.header {
-                            *true_target = pre_header_label.clone();
-                        }
-                        if *false_target == loop_info.header {
-                            *false_target = pre_header_label.clone();
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        // If the loop header was the function entry point, update it to the pre-header
-        if func.entry == loop_info.header {
-            func.entry = pre_header_label;
-        }
-
-        Ok(())
+    #[cfg(feature = "nightly")]
+    fn touches_memory_under_nightly(&self, instr: &Instruction) -> bool {
+        matches!(
+            instr,
+            Instruction::SimdLoad { .. } | Instruction::SimdStore { .. }
+        )
     }
 
-    fn collect_defs_in_loop(&self, func: &Function, loop_info: &LoopInfo) -> HashSet<Register> {
-        let mut defs = HashSet::new();
-        for block in &func.blocks {
-            if !loop_info.blocks.contains(&block.label) {
-                continue;
-            }
-            for instr in &block.instructions {
-                if let Some(def) = instr.def_reg() {
-                    defs.insert(def.clone());
-                }
-            }
-        }
-        defs
+    #[cfg(not(feature = "nightly"))]
+    fn touches_memory_under_nightly(&self, _instr: &Instruction) -> bool {
+        false
     }
 }
 
@@ -1160,5 +883,424 @@ mod tests {
         let unroll = LoopUnrolling;
         let result = unroll.apply(&mut func);
         assert!(result.is_ok());
+    }
+}
+
+/// Loop invariant code motion over the pipeline's SSA graph. A value has exactly one
+/// definition, so a computation whose operands are all defined in a block that dominates
+/// the header can move to a preheader without the availability proof the mutable form
+/// needs for a register that may be written again.
+mod ssa_licm {
+    use super::LoopInvariantCodeMotion;
+    use crate::mir::{
+        Instruction, Register,
+        ssa::{BlockId, SsaBlock, SsaEdge, SsaFunction, SsaInst, ValueDef, ValueId},
+        transform::TransformError,
+    };
+    use lamina_mir::Located;
+    use std::collections::{HashMap, HashSet};
+
+    const MAX_LOOPS: usize = 10;
+    const MAX_PASSES_PER_LOOP: usize = 5;
+    const MAX_HOISTED: usize = 20;
+
+    struct Loop {
+        header: usize,
+        body: HashSet<usize>,
+    }
+
+    pub(super) fn run(
+        licm: &LoopInvariantCodeMotion,
+        graph: &mut SsaFunction,
+    ) -> Result<bool, TransformError> {
+        let mut changed = false;
+        let headers: Vec<usize> = loops(graph)
+            .into_iter()
+            .take(MAX_LOOPS)
+            .map(|info| info.header)
+            .collect();
+        for header in headers {
+            for _ in 0..MAX_PASSES_PER_LOOP {
+                let Some(info) = loops(graph)
+                    .into_iter()
+                    .find(|candidate| candidate.header == header)
+                else {
+                    break;
+                };
+                if !hoist(licm, graph, &info) {
+                    break;
+                }
+                changed = true;
+            }
+        }
+        Ok(changed)
+    }
+
+    /// Natural loops, one per header, in emission order.
+    fn loops(graph: &SsaFunction) -> Vec<Loop> {
+        let mut preds: Vec<Vec<usize>> = vec![Vec::new(); graph.blocks.len()];
+        for (b, block) in graph.blocks.iter().enumerate() {
+            for edge in &block.edges {
+                preds[edge.target.0 as usize].push(b);
+            }
+        }
+        let mut bodies: HashMap<usize, HashSet<usize>> = HashMap::new();
+        for (b, block) in graph.blocks.iter().enumerate() {
+            if !graph.dominators.is_reachable(b) {
+                continue;
+            }
+            for edge in &block.edges {
+                let header = edge.target.0 as usize;
+                if !graph.dominators.dominates(header, b) {
+                    continue;
+                }
+                let body = bodies.entry(header).or_default();
+                body.insert(header);
+                body.insert(b);
+                let mut stack = vec![b];
+                while let Some(block) = stack.pop() {
+                    if block == header {
+                        continue;
+                    }
+                    for &pred in &preds[block] {
+                        if pred != header && body.insert(pred) {
+                            stack.push(pred);
+                        }
+                    }
+                }
+            }
+        }
+        let mut out: Vec<Loop> = bodies
+            .into_iter()
+            .map(|(header, body)| Loop { header, body })
+            .collect();
+        out.sort_by_key(|info| graph.blocks[info.header].order);
+        out
+    }
+
+    fn defining_block(graph: &SsaFunction, value: ValueId) -> usize {
+        match graph.values[value.0 as usize].def {
+            ValueDef::BlockParam { block, .. } | ValueDef::Inst { block, .. } => block.0 as usize,
+        }
+    }
+
+    /// Blocks outside the loop with an edge into the header.
+    fn entries(graph: &SsaFunction, info: &Loop) -> Vec<usize> {
+        (0..graph.blocks.len())
+            .filter(|b| {
+                !info.body.contains(b)
+                    && graph.dominators.is_reachable(*b)
+                    && graph.blocks[*b]
+                        .edges
+                        .iter()
+                        .any(|edge| edge.target.0 as usize == info.header)
+            })
+            .collect()
+    }
+
+    /// A block already standing alone in front of the header, which hoisted code can
+    /// join instead of adding another one.
+    fn existing_preheader(graph: &SsaFunction, outside: &[usize]) -> Option<usize> {
+        let &[pre] = outside else {
+            return None;
+        };
+        let block = graph.blocks.get(pre)?;
+        (pre != 0
+            && block.edges.len() == 1
+            && matches!(
+                block.insts.last().map(|inst| &*inst.instruction),
+                Some(Instruction::Jmp { .. })
+            ))
+        .then_some(pre)
+    }
+
+    fn hoist(licm: &LoopInvariantCodeMotion, graph: &mut SsaFunction, info: &Loop) -> bool {
+        let outside = entries(graph, info);
+        if outside.is_empty() {
+            return false;
+        }
+        let pointer = graph.shell.pointer_width;
+        let mut carried: HashMap<Register, usize> = HashMap::new();
+        for value in &graph.values {
+            *carried.entry(value.register.clone()).or_insert(0) += 1;
+        }
+
+        let mut body: Vec<usize> = info.body.iter().copied().collect();
+        body.sort_by_key(|&b| graph.blocks[b].order);
+        let mut picked: Vec<(usize, usize)> = Vec::new();
+        'blocks: for &b in &body {
+            for (i, inst) in graph.blocks[b].insts.iter().enumerate() {
+                let Some(defined) = inst.defines else {
+                    continue;
+                };
+                if licm.has_side_effects(&inst.instruction, pointer) {
+                    continue;
+                }
+                if carried.get(&graph.values[defined.0 as usize].register) != Some(&1) {
+                    continue;
+                }
+                let available = inst.uses.iter().all(|&used| {
+                    let from = defining_block(graph, used);
+                    from != info.header && graph.dominators.dominates(from, info.header)
+                });
+                if !available {
+                    continue;
+                }
+                picked.push((b, i));
+                if picked.len() >= MAX_HOISTED {
+                    break 'blocks;
+                }
+            }
+        }
+        if picked.is_empty() {
+            return false;
+        }
+
+        let mut moved: Vec<SsaInst> = Vec::with_capacity(picked.len());
+        for &(b, i) in picked.iter().rev() {
+            moved.push(graph.blocks[b].insts.remove(i));
+        }
+        moved.reverse();
+
+        match existing_preheader(graph, &outside) {
+            Some(pre) => {
+                let at = graph.blocks[pre].insts.len() - 1;
+                graph.blocks[pre].insts.splice(at..at, moved);
+                reindex(graph);
+            }
+            None => {
+                add_preheader(graph, info, &outside, moved);
+                reindex(graph);
+                graph.recompute_dominators();
+            }
+        }
+        true
+    }
+
+    fn add_preheader(
+        graph: &mut SsaFunction,
+        info: &Loop,
+        outside: &[usize],
+        mut insts: Vec<SsaInst>,
+    ) {
+        let preheader = BlockId(graph.blocks.len() as u32);
+        let header_label = graph.blocks[info.header].label.clone();
+        let label = graph.fresh_label(&format!("{header_label}_pre"));
+        let header_params = graph.blocks[info.header].params.clone();
+        let mut params = Vec::with_capacity(header_params.len());
+        for (index, &param) in header_params.iter().enumerate() {
+            let value = &graph.values[param.0 as usize];
+            let (ty, register) = (value.ty, value.register.clone());
+            params.push(graph.add_value(
+                ValueDef::BlockParam {
+                    block: preheader,
+                    index: index as u32,
+                },
+                ty,
+                register,
+            ));
+        }
+        insts.push(SsaInst {
+            source: 0,
+            defines: None,
+            uses: Vec::new(),
+            instruction: Located::from(Instruction::Jmp {
+                target: header_label.clone(),
+            }),
+        });
+        let order = graph.blocks[info.header].order;
+        graph.blocks.push(SsaBlock {
+            label: label.clone(),
+            source: None,
+            order: (order.0, order.1 - 1),
+            params: params.clone(),
+            insts,
+            edges: vec![SsaEdge {
+                target: BlockId(info.header as u32),
+                args: params,
+            }],
+        });
+
+        for &b in outside {
+            for e in 0..graph.blocks[b].edges.len() {
+                if graph.blocks[b].edges[e].target.0 as usize != info.header {
+                    continue;
+                }
+                graph.blocks[b].edges[e].target = preheader;
+                if let Some(terminator) = graph.blocks[b].insts.last_mut()
+                    && let Some(target) = terminator.instruction.successors_mut().get_mut(e)
+                {
+                    **target = label.clone();
+                }
+            }
+        }
+        if graph.shell.entry == header_label {
+            graph.shell.entry = label;
+        }
+    }
+
+    /// Restores every value's recorded definition site after blocks or instructions moved.
+    fn reindex(graph: &mut SsaFunction) {
+        for b in 0..graph.blocks.len() {
+            for index in 0..graph.blocks[b].params.len() {
+                let param = graph.blocks[b].params[index];
+                graph.values[param.0 as usize].def = ValueDef::BlockParam {
+                    block: BlockId(b as u32),
+                    index: index as u32,
+                };
+            }
+            for i in 0..graph.blocks[b].insts.len() {
+                if let Some(defined) = graph.blocks[b].insts[i].defines {
+                    graph.values[defined.0 as usize].def = ValueDef::Inst {
+                        block: BlockId(b as u32),
+                        inst: i as u32,
+                    };
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests_ssa_licm {
+    use super::*;
+    use crate::mir::{
+        FunctionBuilder, Immediate, IntBinOp, IntCmpOp, Operand, ScalarType, VirtualReg,
+        transform::test_utils::get_block, verify_function_in_pipeline,
+    };
+
+    fn gpr(id: u32) -> Register {
+        VirtualReg::gpr(id).into()
+    }
+
+    fn i64t() -> MirType {
+        MirType::Scalar(ScalarType::I64)
+    }
+
+    /// entry -> head -> left -> join -> head, with the invariant `v4 = v0 + 1` computed
+    /// in `left` and read in `join`.
+    fn diamond_loop() -> Function {
+        FunctionBuilder::new("diamond")
+            .param(gpr(0), i64t())
+            .returns(i64t())
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: i64t(),
+                dst: gpr(1),
+                src: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Copy {
+                ty: i64t(),
+                dst: gpr(3),
+                src: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Jmp {
+                target: "head".into(),
+            })
+            .block("head")
+            .instr(Instruction::IntCmp {
+                op: IntCmpOp::SLt,
+                ty: i64t(),
+                dst: gpr(2),
+                lhs: Operand::Register(gpr(1)),
+                rhs: Operand::Immediate(Immediate::I64(10)),
+            })
+            .instr(Instruction::Br {
+                cond: gpr(2),
+                true_target: "left".into(),
+                false_target: "done".into(),
+            })
+            .block("left")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: i64t(),
+                dst: gpr(4),
+                lhs: Operand::Register(gpr(0)),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::Jmp {
+                target: "join".into(),
+            })
+            .block("join")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: i64t(),
+                dst: gpr(1),
+                lhs: Operand::Register(gpr(1)),
+                rhs: Operand::Register(gpr(4)),
+            })
+            .instr(Instruction::Jmp {
+                target: "head".into(),
+            })
+            .block("done")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(gpr(1))),
+            })
+            .build()
+    }
+
+    fn computes(block: &Block, register: Register) -> bool {
+        block.instructions.iter().any(
+            |instr| matches!(&instr.instr, Instruction::IntBinary { dst, .. } if *dst == register),
+        )
+    }
+
+    #[test]
+    fn an_invariant_read_in_another_block_leaves_the_loop() {
+        let mut func = diamond_loop();
+        assert!(
+            LoopInvariantCodeMotion
+                .apply(&mut func)
+                .expect("licm runs on the diamond")
+        );
+        assert!(!computes(get_block(&func, "left"), gpr(4)));
+        assert!(computes(get_block(&func, "entry"), gpr(4)));
+        verify_function_in_pipeline(&func).expect("hoisted function verifies");
+    }
+
+    #[test]
+    fn a_block_already_standing_in_front_of_the_header_takes_the_hoisted_code() {
+        let mut func = diamond_loop();
+        let before = func.blocks.len();
+        assert!(LoopInvariantCodeMotion.apply(&mut func).expect("licm runs"));
+        assert_eq!(func.blocks.len(), before);
+    }
+
+    #[test]
+    fn a_loop_whose_header_is_the_entry_gets_a_preheader() {
+        let mut func = FunctionBuilder::new("entry_header")
+            .param(gpr(0), i64t())
+            .returns(i64t())
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: i64t(),
+                dst: gpr(1),
+                lhs: Operand::Register(gpr(0)),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::IntCmp {
+                op: IntCmpOp::SLt,
+                ty: i64t(),
+                dst: gpr(2),
+                lhs: Operand::Register(gpr(1)),
+                rhs: Operand::Immediate(Immediate::I64(10)),
+            })
+            .instr(Instruction::Br {
+                cond: gpr(2),
+                true_target: "entry".into(),
+                false_target: "done".into(),
+            })
+            .block("done")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(gpr(1))),
+            })
+            .build();
+        assert!(LoopInvariantCodeMotion.apply(&mut func).expect("licm runs"));
+        assert_ne!(func.entry, "entry");
+        let entry = func.entry.clone();
+        assert!(computes(get_block(&func, &entry), gpr(1)));
+        verify_function_in_pipeline(&func).expect("hoisted function verifies");
     }
 }
