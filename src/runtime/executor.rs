@@ -311,6 +311,11 @@ pub(crate) fn interpret_mir_function(
                         "Interpreter: Atomic instructions not supported".to_owned(),
                     ));
                 }
+                Instruction::InlineAsm { .. } => {
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: inline assembly not supported".to_owned(),
+                    ));
+                }
                 Instruction::VaStart { .. }
                 | Instruction::VaArg { .. }
                 | Instruction::VaEnd { .. }

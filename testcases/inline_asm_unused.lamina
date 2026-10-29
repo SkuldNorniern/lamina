@@ -1,0 +1,20 @@
+# The result is never read, but the template still runs
+fn @main() -> i64 {
+entry:
+  %p = stackalloc.i64
+  %v = add.i64 41, 0
+  store.i64 %p, %v
+  %u = asm.i64 "addq $$1, ($0)\nmovq $$0, $1", in(reg) %p, out(reg), clobber(memory, flags)
+  %m = load.i64 %p
+  %ok = eq.i64 %m, 42
+  br %ok, good, bad
+good:
+  %o = writebyte 79
+  %k = writebyte 75
+  %nl = writebyte 10
+  ret.i64 0
+bad:
+  %f = writebyte 70
+  %nl2 = writebyte 10
+  ret.i64 1
+}
