@@ -466,9 +466,14 @@ pub use ir::{
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
 use lamina_codegen::{is_assembly_supported, supported_assembly_targets_hint};
+#[cfg(feature = "ssa-round-trip")]
+use lamina_mir::ssa::round_trip_module;
 use lamina_platform::{Target, TargetArchitecture};
+use mir::TransformPipeline;
 use mir_codegen::CodegenError;
+use mir_codegen::settings::{MirCodegenSettings, RegallocStrategy};
 pub use mir_codegen::{generate_mir_to_target, generate_mir_to_target_with_settings};
+use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
 
 /// Parses Lamina IR text and generates assembly code using the host system's architecture.
 ///
@@ -552,6 +557,117 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     Ok(())
 }
 
+/// Code generation options for [`compile_module_to_object_with_options`].
+#[derive(Debug, Clone)]
+pub struct ObjectOptions {
+    /// MIR optimization level. `0` skips the transform pipeline.
+    pub opt_level: u8,
+    /// Number of parallel codegen units.
+    pub codegen_units: usize,
+    /// Backend tunables: register allocator, x86 CPU level, debug lines.
+    pub settings: MirCodegenSettings,
+}
+
+impl ObjectOptions {
+    /// Options that match the `lamina` CLI defaults for `target` at `opt_level`.
+    pub fn for_target(target: &Target, opt_level: u8) -> Self {
+        let mut settings = MirCodegenSettings::default();
+        if target.architecture == TargetArchitecture::X86_64 {
+            settings.regalloc = RegallocStrategy::for_opt_level(opt_level);
+        }
+        Self {
+            opt_level,
+            codegen_units: 1,
+            settings,
+        }
+    }
+}
+
+/// Compiles an IR module straight to relocatable object-file bytes (ELF, Mach-O or COFF).
+///
+/// Uses [`ObjectOptions::for_target`] at optimization level 1, the CLI default.
+/// Nothing is written to disk.
+///
+/// # Example
+///
+/// ```rust
+/// use lamina::target::Target;
+/// use std::str::FromStr;
+///
+/// let module = lamina::parser::parse_module(r#"
+/// fn @main() -> i64 {
+/// entry:
+///     %result = add.i64 42, 8
+///     ret.i64 %result
+/// }
+/// "#)?;
+/// let target = Target::from_str("x86_64_linux")?;
+/// let object = lamina::compile_module_to_object(&module, target)?;
+/// assert_eq!(&object[..4], b"\x7fELF");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn compile_module_to_object(module: &Module, target: Target) -> Result<Vec<u8>, LaminaError> {
+    let options = ObjectOptions::for_target(&target, 1);
+    compile_module_to_object_with_options(module, target, &options)
+}
+
+/// Like [`compile_module_to_object`], with explicit [`ObjectOptions`].
+///
+/// The MIR text is produced in memory and assembled by `ras` without a
+/// temporary file. The text stage is internal, not bypassed.
+pub fn compile_module_to_object_with_options(
+    module: &Module,
+    target: Target,
+    options: &ObjectOptions,
+) -> Result<Vec<u8>, LaminaError> {
+    if !is_object_file_supported(target.architecture, target.operating_system) {
+        return Err(LaminaError::ValidationError(format!(
+            "Target {target} does not produce object files"
+        )));
+    }
+
+    let mut mir_module = mir::codegen::from_ir(module, "module")?;
+    if options.opt_level > 0 {
+        TransformPipeline::default_for_opt_level(options.opt_level)
+            .apply_to_module(&mut mir_module)
+            .map_err(|e| LaminaError::ValidationError(format!("MIR optimization failed: {e}")))?;
+    }
+    #[cfg(feature = "ssa-round-trip")]
+    round_trip_module(&mut mir_module)
+        .map_err(|e| LaminaError::ValidationError(format!("SSA round trip failed: {e}")))?;
+
+    let mut text = Vec::new();
+    generate_mir_to_target_with_settings(
+        &mir_module,
+        &mut text,
+        target.architecture,
+        target.operating_system,
+        options.codegen_units,
+        &options.settings,
+    )?;
+    let text = String::from_utf8(text).map_err(|e| {
+        LaminaError::ValidationError(format!("generated assembly is not UTF-8: {e}"))
+    })?;
+    if text
+        .lines()
+        .any(|line| line.trim_start().starts_with(".loc "))
+    {
+        return Err(LaminaError::ValidationError(
+            "ras does not implement the .loc directive; disable emit_asm_debug_lines".to_string(),
+        ));
+    }
+
+    let mut assembler = Ras::with_object_write_options(
+        target.architecture,
+        target.operating_system,
+        ObjectWriteOptions::default(),
+    )
+    .map_err(|e| LaminaError::ValidationError(format!("Failed to create ras assembler: {e}")))?;
+    assembler
+        .assemble_to_bytes(&text)
+        .map_err(|e| LaminaError::ValidationError(format!("ras assembly failed: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -584,6 +700,27 @@ entry:
             .expect("host assembly should compile");
 
         assert!(!assembly.is_empty());
+    }
+
+    #[test]
+    fn compile_module_to_object_matches_text_path() {
+        let target = Target::from_str("x86_64_linux").expect("target");
+        let module = parser::parse_module(SIMPLE_IR).expect("parse");
+        let object = compile_module_to_object_with_options(
+            &module,
+            target,
+            &ObjectOptions::for_target(&target, 0),
+        )
+        .expect("object");
+
+        let mut assembly = Vec::new();
+        compile_lamina_ir_to_target_assembly(SIMPLE_IR, &mut assembly, "x86_64_linux", 1)
+            .expect("assembly");
+        let assembly = String::from_utf8(assembly).expect("utf-8");
+        let mut ras = Ras::new(target.architecture, target.operating_system).expect("ras");
+        let expected = ras.assemble_to_bytes(&assembly).expect("bytes");
+
+        assert_eq!(object, expected);
     }
 
     #[test]
