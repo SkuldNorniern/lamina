@@ -335,6 +335,46 @@ frame test_u32_array_operations 0
 frame test_u64_array_operations 0
 frame test_u8_array_operations 0
 
+[atomic_cmpxchg O0]
+insns 325
+spills 126
+calls 21
+branches 4
+frame main 384
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
+
+[atomic_cmpxchg O1]
+insns 303
+spills 26
+calls 21
+branches 4
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
+[atomic_cmpxchg O2]
+insns 1026
+spills 135
+calls 21
+branches 36
+frame main 448
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
+[atomic_cmpxchg O3]
+insns 1027
+spills 139
+calls 21
+branches 36
+frame main 464
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
 [atomic_orderings O0]
 insns 2414
 spills 1122
@@ -1978,8 +2018,8 @@ frame print_u64 16
 frame put_u64 32
 
 [fptoint_signed O3]
-insns 19476
-spills 1459
+insns 19386
+spills 1477
 calls 283
 branches 563
 frame main 4768
@@ -2018,8 +2058,8 @@ frame print_u64 16
 frame put_u64 32
 
 [fptoint_unsigned O3]
-insns 16024
-spills 1000
+insns 15934
+spills 1018
 calls 283
 branches 423
 frame main 2832
