@@ -159,3 +159,98 @@ fn refusal_names_the_instruction_and_both_levels() {
     assert!(message.contains("x86-64-v2"), "{message}");
     assert!(message.contains("x86-64-v1"), "{message}");
 }
+
+fn ir_module(source: &str, name: &str) -> Module {
+    let ir = parse_module(source).expect("parse ir");
+    from_ir(&ir, name).expect("lower ir")
+}
+
+#[test]
+fn bit_scan_uses_lzcnt_and_tzcnt_only_at_v3() {
+    let ctlz = ir_module(
+        "fn @f(i64 %x) -> i64 {\nentry:\n    %p = ctlz.i64 %x\n    ret.i64 %p\n}\n",
+        "ctlz",
+    );
+    let cttz = ir_module(
+        "fn @f(i64 %x) -> i64 {\nentry:\n    %p = cttz.i64 %x\n    ret.i64 %p\n}\n",
+        "cttz",
+    );
+    let asm = emit(&ctlz, X86CpuLevel::V2).expect("ctlz emits at v2");
+    assert!(
+        asm.contains("bsrq %rax, %rax") && !asm.contains("lzcntq"),
+        "{asm}"
+    );
+    let asm = emit(&ctlz, X86CpuLevel::V3).expect("ctlz emits at v3");
+    assert!(
+        asm.contains("lzcntq %rax, %rax") && !asm.contains("bsrq"),
+        "{asm}"
+    );
+    let asm = emit(&cttz, X86CpuLevel::V2).expect("cttz emits at v2");
+    assert!(
+        asm.contains("bsfq %rax, %rax") && !asm.contains("tzcntq"),
+        "{asm}"
+    );
+    let asm = emit(&cttz, X86CpuLevel::V3).expect("cttz emits at v3");
+    assert!(
+        asm.contains("tzcntq %rax, %rax") && !asm.contains("bsfq"),
+        "{asm}"
+    );
+}
+
+#[test]
+fn narrow_bit_scan_adjusts_lzcnt_and_sets_the_zero_bit_for_tzcnt() {
+    let ctlz = ir_module(
+        "fn @f(i32 %x) -> i32 {\nentry:\n    %p = ctlz.i32 %x\n    ret.i32 %p\n}\n",
+        "ctlz32",
+    );
+    let cttz = ir_module(
+        "fn @f(i32 %x) -> i32 {\nentry:\n    %p = cttz.i32 %x\n    ret.i32 %p\n}\n",
+        "cttz32",
+    );
+    let asm = emit(&ctlz, X86CpuLevel::V3).expect("ctlz32 emits at v3");
+    assert!(
+        asm.contains("lzcntq %rax, %rax\n    subq $32, %rax"),
+        "{asm}"
+    );
+    let asm = emit(&cttz, X86CpuLevel::V3).expect("cttz32 emits at v3");
+    assert!(
+        asm.contains("btsq $32, %rax\n    tzcntq %rax, %rax"),
+        "{asm}"
+    );
+}
+
+#[test]
+fn variable_shift_uses_bmi2_only_at_v3() {
+    let module = ir_module(
+        "fn @f(i64 %x, i64 %s) -> i64 {\nentry:\n    %p = shl.i64 %x, %s\n    %q = shr.i64 %p, %s\n    %r = shr.u64 %q, %s\n    ret.i64 %r\n}\n",
+        "shift",
+    );
+    let asm = emit(&module, X86CpuLevel::V2).expect("shifts emit at v2");
+    assert!(
+        asm.contains("%cl") && !asm.contains("shlxq") && !asm.contains("sarxq"),
+        "{asm}"
+    );
+    let asm = emit(&module, X86CpuLevel::V3).expect("shifts emit at v3");
+    assert!(
+        asm.contains("shlxq") && asm.contains("sarxq") && asm.contains("shrxq"),
+        "{asm}"
+    );
+    assert!(!asm.contains("%cl"), "{asm}");
+}
+
+#[test]
+fn packed_qword_multiply_is_emulated_below_v4_and_vpmullq_at_v4() {
+    let module = lane_module(VectorOp::VMul, VectorLane::I64);
+    for level in [X86CpuLevel::V1, X86CpuLevel::V2, X86CpuLevel::V3] {
+        let asm = emit(&module, level).expect("i64 multiply emits");
+        assert!(
+            asm.contains("pmuludq") && !asm.contains("vpmullq"),
+            "{level}: {asm}"
+        );
+    }
+    let asm = emit(&module, X86CpuLevel::V4).expect("i64 multiply emits at v4");
+    assert!(
+        asm.contains("vpmullq %xmm") && !asm.contains("pmuludq"),
+        "{asm}"
+    );
+}

@@ -333,7 +333,11 @@ pub(super) fn operation<W: Write>(
     let a = source(&operands[0], SCRATCH_SRC0, writer, ra, slots)?;
     let b = source(&operands[1], SCRATCH_SRC1, writer, ra, slots)?;
     if op == VectorOp::VMul && lane == VectorLane::I64 {
-        emit_mul_i64(a, b, writer)?;
+        if cpu_level >= X86CpuLevel::V4 {
+            writeln!(writer, "    vpmullq %{b}, %{a}, %xmm1")?;
+        } else {
+            emit_mul_i64(a, b, writer)?;
+        }
         return sink(dst, SCRATCH_B, writer, ra, slots);
     }
     let mnemonic = binary_mnemonic(op, lane)?;

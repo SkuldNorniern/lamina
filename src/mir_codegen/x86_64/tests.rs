@@ -1530,6 +1530,19 @@ fn x86_assembly_for(source: &str) -> String {
 }
 
 #[test]
+fn atomic_cmpxchg_emits_locked_cmpxchg_with_expected_in_rax() {
+    let asm = x86_assembly_for(
+        "fn @f(ptr %p) -> i64 {\nentry:\n %old = atomic_cmpxchg.i32 %p, 1, 2, seqcst, acquire\n %w = extend.i32.i64 %old\n ret.i64 %w\n}",
+    );
+    assert_eq!(asm.matches("lock cmpxchgl %").count(), 1, "{asm}");
+    assert!(
+        asm.contains("movq $1, %rax"),
+        "expected loads into rax\n{asm}"
+    );
+    assert!(!asm.contains("does not support"), "{asm}");
+}
+
+#[test]
 fn atomics_emit_locked_read_modify_write_xchg_and_mfence() {
     let asm = x86_assembly_for(
         "fn @f(ptr %p) -> i64 {\nentry:\n %a = atomic_load.i64 %p, seqcst\n atomic_store.i64 %p, 5, seqcst\n %b = atomic_add.i64 %p, 1, seqcst\n %c = atomic_sub.i64 %p, 1, acqrel\n %d = atomic_exchange.i64 %p, 2, seqcst\n %e = atomic_and.i64 %p, 3, relaxed\n %g = atomic_or.i64 %p, 4, seqcst\n %h = atomic_xor.i64 %p, 5, seqcst\n fence seqcst\n fence acquire\n ret.i64 %b\n}",

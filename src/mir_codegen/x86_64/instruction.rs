@@ -379,6 +379,18 @@ fn emit_int_unary<W: Write>(
             writeln!(writer, "    popcntq %rax, %rax")?;
         }
         IntUnOp::Popcount => emit_popcount_swar(writer)?,
+        IntUnOp::Ctlz if cpu_level >= X86CpuLevel::V3 => {
+            writeln!(writer, "    lzcntq %rax, %rax")?;
+            if bits < 64 {
+                writeln!(writer, "    subq ${}, %rax", 64 - bits)?;
+            }
+        }
+        IntUnOp::Cttz if cpu_level >= X86CpuLevel::V3 => {
+            if bits < 64 {
+                writeln!(writer, "    btsq ${bits}, %rax")?;
+            }
+            writeln!(writer, "    tzcntq %rax, %rax")?;
+        }
         IntUnOp::Ctlz => {
             writeln!(writer, "    movq $-1, %rcx")?;
             writeln!(writer, "    bsrq %rax, %rax")?;
@@ -888,6 +900,41 @@ pub(super) fn emit_instruction_x86_64(
                                     _ => unreachable!(),
                                 }
                             }
+                            Operand::Register(_) if settings.x86_cpu_level >= X86CpuLevel::V3 => {
+                                let count = if rhs_in_dp {
+                                    "rax"
+                                } else if let (8, Some(r)) = (ty.size_bytes(), rhs_phys) {
+                                    r
+                                } else {
+                                    load_operand_to_register(
+                                        rhs,
+                                        writer,
+                                        reg_alloc,
+                                        stack_slots,
+                                        "rcx",
+                                    )?;
+                                    "rcx"
+                                };
+                                if ty.size_bytes() < 8 {
+                                    writeln!(
+                                        writer,
+                                        "    andq ${}, %{count}",
+                                        ty.size_bytes() * 8 - 1
+                                    )?;
+                                }
+                                match op {
+                                    IntBinOp::Shl => {
+                                        writeln!(writer, "    shlxq %{count}, %{dp}, %{dp}")?
+                                    }
+                                    IntBinOp::AShr => {
+                                        writeln!(writer, "    sarxq %{count}, %{dp}, %{dp}")?
+                                    }
+                                    IntBinOp::LShr => {
+                                        writeln!(writer, "    shrxq %{count}, %{dp}, %{dp}")?
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
                             Operand::Register(_) => {
                                 // Need shift count in %cl; load rhs into rcx
                                 if rhs_in_dp {
@@ -1027,6 +1074,46 @@ pub(super) fn emit_instruction_x86_64(
                 }
 
                 match op {
+                    IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr
+                        if settings.x86_cpu_level >= X86CpuLevel::V3
+                            && matches!(rhs, Operand::Register(_)) =>
+                    {
+                        let rhs_phys = match rhs {
+                            Operand::Register(Register::Virtual(v)) => reg_alloc.get_mapping_for(v),
+                            Operand::Register(Register::Physical(p)) => Some(p.name),
+                            Operand::Immediate(_) => None,
+                        };
+                        let scratch = match (ty.size_bytes(), rhs_phys) {
+                            (8, Some(_)) => None,
+                            _ => {
+                                let scratch =
+                                    reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
+                                load_operand_to_register(
+                                    rhs,
+                                    writer,
+                                    reg_alloc,
+                                    stack_slots,
+                                    scratch,
+                                )?;
+                                Some(scratch)
+                            }
+                        };
+                        let count = scratch.or(rhs_phys).unwrap_or("rcx");
+                        if ty.size_bytes() < 8 {
+                            writeln!(writer, "    andq ${}, %{count}", ty.size_bytes() * 8 - 1)?;
+                        }
+                        match op {
+                            IntBinOp::Shl => writeln!(writer, "    shlxq %{count}, %rax, %rax")?,
+                            IntBinOp::AShr => writeln!(writer, "    sarxq %{count}, %rax, %rax")?,
+                            IntBinOp::LShr => writeln!(writer, "    shrxq %{count}, %rax, %rax")?,
+                            _ => unreachable!(),
+                        }
+                        if let Some(scratch) = scratch
+                            && scratch != "rbx"
+                        {
+                            reg_alloc.free_scratch(scratch);
+                        }
+                    }
                     IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr => match rhs {
                         Operand::Immediate(imm) => {
                             let shift_val = match imm {
