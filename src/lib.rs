@@ -477,6 +477,7 @@ use lamina_codegen::{is_assembly_supported, supported_assembly_targets_hint};
 use lamina_mir::ssa::round_trip_module;
 use lamina_platform::{Target, TargetArchitecture};
 use mir::TransformPipeline;
+use mir::transform::vector_unit_for;
 use mir_codegen::CodegenError;
 use mir_codegen::settings::{MirCodegenSettings, RegallocStrategy};
 pub use mir_codegen::{generate_mir_to_target, generate_mir_to_target_with_settings};
@@ -537,7 +538,10 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         | TargetArchitecture::Riscv32
         | TargetArchitecture::Riscv64
         | TargetArchitecture::LoongArch64
-        | TargetArchitecture::S390x => {
+        | TargetArchitecture::S390x
+        | TargetArchitecture::Mips64
+        | TargetArchitecture::Mips64El
+        | TargetArchitecture::PowerPC64Be => {
             generate_mir_to_target(
                 &mir_module,
                 output_asm,
@@ -637,9 +641,12 @@ pub fn compile_module_to_object_with_options(
 
     let mut mir_module = mir::codegen::from_ir_for_target(module, "module", target.data_layout())?;
     if options.opt_level > 0 {
-        TransformPipeline::default_for_opt_level(options.opt_level)
-            .apply_to_module(&mut mir_module)
-            .map_err(|e| LaminaError::ValidationError(format!("MIR optimization failed: {e}")))?;
+        TransformPipeline::default_for_opt_level_on(
+            options.opt_level,
+            vector_unit_for(target.architecture, options.settings.x86_cpu_level),
+        )
+        .apply_to_module(&mut mir_module)
+        .map_err(|e| LaminaError::ValidationError(format!("MIR optimization failed: {e}")))?;
     }
     #[cfg(feature = "ssa-round-trip")]
     round_trip_module(&mut mir_module)

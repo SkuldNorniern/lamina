@@ -55,6 +55,8 @@ pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 pub use unroll::LoopUnrolling;
 
+use lamina_platform::{TargetArchitecture, X86CpuLevel};
+
 use crate::mir::{
     Aggregate, Function, MirType, Module, Signature,
     ssa::{SsaFunction, destroy},
@@ -112,7 +114,7 @@ pub type CalleeSignatures = HashMap<String, CalleeShape>;
 
 #[cfg(feature = "nightly")]
 #[allow(unused_imports)]
-pub use vectorization::AutoVectorization;
+pub use vectorization::{AutoVectorization, VectorUnit};
 
 /// Error returned by transform passes.
 #[derive(Debug)]
@@ -306,6 +308,19 @@ impl<'a> OptimizingForm<'a> {
     }
 }
 
+/// The vector unit this compiler can target for `target`, if any. Only x86-64 is
+/// wired up; every other architecture answers `None` and is left untouched.
+#[cfg(feature = "nightly")]
+pub fn vector_unit_for(target: TargetArchitecture, level: X86CpuLevel) -> Option<VectorUnit> {
+    matches!(target, TargetArchitecture::X86_64).then_some(VectorUnit::X86Sse2(level))
+}
+
+/// Without the nightly feature there is no vectorizer to configure.
+#[cfg(not(feature = "nightly"))]
+pub fn vector_unit_for(_target: TargetArchitecture, _level: X86CpuLevel) -> Option<()> {
+    None
+}
+
 /// Stability level of a transform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TransformLevel {
@@ -336,6 +351,8 @@ pub struct TransformPipeline {
     max_total_iterations: usize,
     inline: bool,
     rotate_loops: bool,
+    #[cfg(feature = "nightly")]
+    vector: Option<VectorUnit>,
 }
 
 impl TransformPipeline {
@@ -345,6 +362,8 @@ impl TransformPipeline {
             max_total_iterations: 1000,
             inline: false,
             rotate_loops: false,
+            #[cfg(feature = "nightly")]
+            vector: None,
         }
     }
 
@@ -411,6 +430,22 @@ impl TransformPipeline {
         pipeline.rotate_loops = opt_level >= 3;
 
         pipeline
+    }
+
+    /// The standard pipeline, plus vectorization at O3 when the target has a vector
+    /// unit this compiler knows how to use. `None` leaves the output identical to
+    /// [`Self::default_for_opt_level`].
+    #[cfg(feature = "nightly")]
+    pub fn default_for_opt_level_on(opt_level: u8, unit: Option<VectorUnit>) -> Self {
+        let mut pipeline = Self::default_for_opt_level(opt_level);
+        pipeline.vector = unit.filter(|_| opt_level >= 3);
+        pipeline
+    }
+
+    /// Without the nightly feature there is no vectorizer, so the unit is ignored.
+    #[cfg(not(feature = "nightly"))]
+    pub fn default_for_opt_level_on(opt_level: u8, _unit: Option<()>) -> Self {
+        Self::default_for_opt_level(opt_level)
     }
 
     /// Runs each pass over one function once, in the order they were added. Repeating
@@ -493,6 +528,18 @@ impl TransformPipeline {
         if self.rotate_loops {
             for func in module.functions.values_mut() {
                 LoopRotation.apply(func)?;
+            }
+            module
+                .validate_in_pipeline()
+                .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        }
+        #[cfg(feature = "nightly")]
+        if let Some(unit) = self.vector {
+            let pass = AutoVectorization::new(unit);
+            for func in module.functions.values_mut() {
+                if pass.apply(func)? {
+                    DeadCodeElimination.apply(func)?;
+                }
             }
             module
                 .validate_in_pipeline()

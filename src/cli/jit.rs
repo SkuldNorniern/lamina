@@ -1,6 +1,7 @@
 //! JIT compilation and execution pipeline.
 
 use crate::cli::options::{CompileOptions, toolchain_backends};
+use crate::mir::transform::vector_unit_for;
 
 use crate::{
     mir::{TransformPipeline, codegen::from_ir_for_target},
@@ -147,7 +148,13 @@ pub fn handle_jit_compilation(
     .map_err(|e| LaminaError::MirError(format!("MIR lowering failed: {e}")))?;
 
     if options.opt_level > 0 {
-        let pipeline = TransformPipeline::default_for_opt_level(options.opt_level);
+        let pipeline = TransformPipeline::default_for_opt_level_on(
+            options.opt_level,
+            vector_unit_for(
+                target.architecture,
+                options.mir_codegen_settings.x86_cpu_level,
+            ),
+        );
         let transform_stats = pipeline
             .apply_to_module(&mut mir_mod)
             .map_err(|e| LaminaError::MirError(format!("MIR optimization failed: {e}")))?;

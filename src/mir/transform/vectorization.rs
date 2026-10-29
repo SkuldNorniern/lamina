@@ -1,25 +1,44 @@
-//! Auto-vectorization transform for MIR.
+//! Loop vectorization for MIR, enabled only where the alias analysis proves the
+//! transform cannot change what the program reads or writes.
 //!
-//! This transform converts scalar operations in loops to SIMD vector
-//! operations. This is an O3 nightly/unstable feature.
+//! The one shape this pass accepts is a self-looping block whose single load and
+//! single store cover the same bytes (`AliasResult::SameRange`), whose address
+//! advances by exactly one element per iteration, and whose trip count is a
+//! constant multiple of the vector width. Widening such a loop touches exactly
+//! the bytes the scalar loop already touched, in the same order per lane, so no
+//! cross-iteration dependence can exist. Anything else stays scalar.
 
+use crate::mir::transform::alias::{AliasResult, alias, scan_block};
 use crate::mir::transform::{Dominators, calculate_dominators};
-
 use crate::mir::{
-    Function,
-    instruction::{AddressMode, FloatBinOp, Instruction, IntBinOp, Operand, VectorOp},
-    register::{Register, VirtualReg},
+    AddressMode, AddressSpace, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType,
+    Operand, Register, ScalarType, VectorLane, VectorOp, VectorType, VirtualReg,
+    instruction::FloatBinOp,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
-    types::{MirType, ScalarType, VectorLane, VectorType},
 };
-use std::collections::HashSet;
+use lamina_mir::Located;
+use lamina_platform::X86CpuLevel;
+use std::collections::{HashMap, HashSet};
 
-/// Auto-vectorization transform that converts scalar loop operations to SIMD.
-///
-/// This transform identifies loops with sequential memory access patterns and
-/// converts scalar arithmetic operations to vector operations.
-#[derive(Default)]
-pub struct AutoVectorization;
+/// Vector unit a function is being compiled for. Only the x86-64 SSE2 unit is
+/// wired up; every other target keeps the pass switched off and so is unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VectorUnit {
+    X86Sse2(X86CpuLevel),
+}
+
+/// Vectorizes self-looping element-wise loops whose accesses the alias analysis
+/// proves identical.
+#[derive(Clone, Copy, Debug)]
+pub struct AutoVectorization {
+    unit: VectorUnit,
+}
+
+impl AutoVectorization {
+    pub fn new(unit: VectorUnit) -> Self {
+        Self { unit }
+    }
+}
 
 impl Transform for AutoVectorization {
     fn name(&self) -> &'static str {
@@ -27,7 +46,7 @@ impl Transform for AutoVectorization {
     }
 
     fn description(&self) -> &'static str {
-        "Auto-vectorize scalar operations in loops using SIMD (O3 nightly/unstable)"
+        "Widen element-wise self-loops whose load and store provably cover the same bytes"
     }
 
     fn category(&self) -> TransformCategory {
@@ -39,743 +58,844 @@ impl Transform for AutoVectorization {
     }
 
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        self.apply_internal(func)
-    }
-}
-
-impl AutoVectorization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+        let Some(mut next) = register_base(func) else {
+            return Ok(false);
+        };
+        let dominators = calculate_dominators(func);
+        let labels: Vec<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
         let mut changed = false;
-
-        // Find all loops in the function
-        let loops = self.find_loops(func);
-
-        // Limit the number of loops we process to avoid excessive compilation time
-        const MAX_LOOPS: usize = 10;
-        for loop_info in loops.into_iter().take(MAX_LOOPS) {
-            if self.try_vectorize_loop(func, &loop_info)? {
+        for label in labels {
+            if let Some(plan) = self.plan(func, &dominators, &label) {
+                rewrite(func, &plan, &mut next);
                 changed = true;
             }
         }
-
         Ok(changed)
     }
+}
 
-    /// Find all loops in the function using back-edge detection
-    fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
-        let mut loops = Vec::new();
-        let dominators = calculate_dominators(func);
+/// Value of a register in this block as `base + step * iv + offset`, where `iv`
+/// is the induction variable's value on entry to the visit and `base` names a
+/// register the block never defines.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Affine {
+    base: Option<u32>,
+    step: i64,
+    offset: i64,
+}
 
-        for block in &func.blocks {
-            for located in &block.instructions {
-                let instr = &located.instr;
-                if let Instruction::Br {
-                    true_target,
-                    false_target,
-                    ..
-                } = instr
-                {
-                    if self.is_back_edge(&dominators, &block.label, true_target)
-                        && let Some(loop_info) =
-                            self.analyze_loop(func, true_target, &block.label, &dominators)
-                    {
-                        loops.push(loop_info);
-                    }
-                    if self.is_back_edge(&dominators, &block.label, false_target)
-                        && let Some(loop_info) =
-                            self.analyze_loop(func, false_target, &block.label, &dominators)
-                    {
-                        loops.push(loop_info);
-                    }
-                }
-                if let Instruction::Jmp { target } = instr
-                    && self.is_back_edge(&dominators, &block.label, target)
-                    && let Some(loop_info) =
-                        self.analyze_loop(func, target, &block.label, &dominators)
-                {
-                    loops.push(loop_info);
-                }
-            }
+impl Affine {
+    fn constant(value: i64) -> Self {
+        Self {
+            base: None,
+            step: 0,
+            offset: value,
         }
-
-        // Deduplicate loops by header
-        loops.sort_by(|a, b| a.header.cmp(&b.header));
-        loops.dedup_by(|a, b| a.header == b.header);
-
-        loops
     }
 
-    /// Check if an edge is a back edge (target dominates source)
-    fn is_back_edge(&self, dominators: &Dominators, source: &str, target: &str) -> bool {
-        dominators.dominates(target, source)
-    }
-
-    /// Analyze a loop to extract its structure
-    fn analyze_loop(
-        &self,
-        func: &Function,
-        header: &str,
-        back_edge_source: &str,
-        _dominators: &Dominators,
-    ) -> Option<LoopInfo> {
-        let mut loop_blocks = HashSet::new();
-        let mut to_visit = vec![back_edge_source.to_string()];
-        let mut visited = HashSet::new();
-        const MAX_ITERATIONS: usize = 1000;
-        let mut iterations = 0;
-
-        loop_blocks.insert(header.to_string());
-        loop_blocks.insert(back_edge_source.to_string());
-
-        while let Some(block_label) = to_visit.pop() {
-            if iterations >= MAX_ITERATIONS {
-                return None;
-            }
-            iterations += 1;
-
-            if visited.contains(&block_label) {
-                continue;
-            }
-            visited.insert(block_label.clone());
-            loop_blocks.insert(block_label.clone());
-
-            for block in &func.blocks {
-                if self.has_edge_to(func, &block.label, &block_label) && block.label != header {
-                    to_visit.push(block.label.clone());
-                }
-            }
-        }
-
-        if loop_blocks.len() > 50 {
-            return None;
-        }
-
-        Some(LoopInfo {
-            header: header.to_string(),
-            blocks: loop_blocks,
+    fn add(self, other: Self) -> Option<Self> {
+        let base = match (self.base, other.base) {
+            (Some(_), Some(_)) => return None,
+            (left, right) => left.or(right),
+        };
+        Some(Self {
+            base,
+            step: self.step.checked_add(other.step)?,
+            offset: self.offset.checked_add(other.offset)?,
         })
     }
 
-    fn has_edge_to(&self, func: &Function, source: &str, target: &str) -> bool {
-        func.get_block(source)
-            .map(|b| b.successors().contains(&target))
-            .unwrap_or(false)
-    }
-
-    /// Try to vectorize a loop
-    fn try_vectorize_loop(
-        &self,
-        func: &mut Function,
-        loop_info: &LoopInfo,
-    ) -> Result<bool, TransformError> {
-        // Find vectorizable patterns in the loop
-        let patterns = self.find_vectorizable_patterns(func, loop_info);
-
-        if patterns.is_empty() {
-            return Ok(false);
+    fn sub(self, other: Self) -> Option<Self> {
+        if other.base.is_some() {
+            return None;
         }
+        Some(Self {
+            base: self.base,
+            step: self.step.checked_sub(other.step)?,
+            offset: self.offset.checked_sub(other.offset)?,
+        })
+    }
 
-        // For now, we'll vectorize simple patterns
-        // This is a basic implementation - more analysis can be added later
-        let mut changed = false;
-
-        for pattern in patterns {
-            if self.apply_vectorization_pattern(func, &pattern)? {
-                changed = true;
-            }
+    fn scale(self, factor: i64) -> Option<Self> {
+        if self.base.is_some() {
+            return None;
         }
-
-        Ok(changed)
-    }
-
-    /// Find vectorizable patterns in a loop
-    /// More aggressive: detect more patterns including floating point and longer sequences
-    fn find_vectorizable_patterns(
-        &self,
-        func: &Function,
-        loop_info: &LoopInfo,
-    ) -> Vec<VectorizationPattern> {
-        let mut patterns = Vec::new();
-
-        // Look for sequential load-compute-store patterns
-        for block_label in &loop_info.blocks {
-            if let Some(block) = func.get_block(block_label) {
-                let instructions = &block.instructions;
-
-                // Pattern 1: Load -> IntBinary -> Store (integer operations)
-                for i in 0..instructions.len().saturating_sub(2) {
-                    // Pattern: Load -> Binary Op -> Store
-                    if let (
-                        Instruction::Load {
-                            ty,
-                            dst,
-                            addr,
-                            attrs: load_attrs,
-                            ..
-                        },
-                        Instruction::IntBinary { op, .. },
-                        Instruction::Store {
-                            src,
-                            addr: store_addr,
-                            attrs: store_attrs,
-                            ..
-                        },
-                    ) = (
-                        &instructions[i].instr,
-                        &instructions[i + 1].instr,
-                        &instructions[i + 2].instr,
-                    ) {
-                        if !load_attrs.volatile
-                            && !store_attrs.volatile
-                            && self.is_vectorizable_type(ty)
-                            && self.is_sequential_access(addr, store_addr)
-                            && self.is_vectorizable_op(*op)
-                            && self.matches_load_store(dst, src)
-                            && let Some(scalar_ty) = self.extract_scalar_type(ty)
-                        {
-                            patterns.push(VectorizationPattern {
-                                block: block_label.clone(),
-                                load_idx: i,
-                                compute_idx: i + 1,
-                                store_idx: i + 2,
-                                element_type: scalar_ty,
-                                operation: *op,
-                            });
-                        }
-                    }
-                }
-
-                // Pattern 2: Load -> FloatBinary -> Store (floating point operations)
-                for i in 0..instructions.len().saturating_sub(2) {
-                    if let (
-                        Instruction::Load {
-                            ty,
-                            dst,
-                            addr,
-                            attrs: load_attrs,
-                            ..
-                        },
-                        Instruction::FloatBinary { op, .. },
-                        Instruction::Store {
-                            src,
-                            addr: store_addr,
-                            attrs: store_attrs,
-                            ..
-                        },
-                    ) = (
-                        &instructions[i].instr,
-                        &instructions[i + 1].instr,
-                        &instructions[i + 2].instr,
-                    ) {
-                        if !load_attrs.volatile
-                            && !store_attrs.volatile
-                            && self.is_vectorizable_type(ty)
-                            && self.is_sequential_access(addr, store_addr)
-                            && self.is_vectorizable_float_op(*op)
-                            && self.matches_load_store(dst, src)
-                            && let Some(scalar_ty) = self.extract_scalar_type(ty)
-                        {
-                            let int_op = match op {
-                                FloatBinOp::FAdd => IntBinOp::Add,
-                                FloatBinOp::FSub => IntBinOp::Sub,
-                                FloatBinOp::FMul => IntBinOp::Mul,
-                                FloatBinOp::FDiv => IntBinOp::SDiv,
-                            };
-                            patterns.push(VectorizationPattern {
-                                block: block_label.clone(),
-                                load_idx: i,
-                                compute_idx: i + 1,
-                                store_idx: i + 2,
-                                element_type: scalar_ty,
-                                operation: int_op,
-                            });
-                        }
-                    }
-                }
-
-                // Pattern 3: Multiple consecutive operations (more aggressive)
-                // Look for sequences like: load, op, op, store
-                for i in 0..instructions.len().saturating_sub(3) {
-                    if let (
-                        Instruction::Load {
-                            ty,
-                            dst,
-                            addr,
-                            attrs: load_attrs,
-                            ..
-                        },
-                        Instruction::IntBinary { op: op1, .. },
-                        Instruction::IntBinary { op: _op2, .. },
-                        Instruction::Store {
-                            src,
-                            addr: store_addr,
-                            attrs: store_attrs,
-                            ..
-                        },
-                    ) = (
-                        &instructions[i].instr,
-                        &instructions[i + 1].instr,
-                        &instructions[i + 2].instr,
-                        &instructions[i + 3].instr,
-                    ) {
-                        if !load_attrs.volatile
-                            && !store_attrs.volatile
-                            && self.is_vectorizable_type(ty)
-                            && self.is_sequential_access(addr, store_addr)
-                            && self.is_vectorizable_op(*op1)
-                            && self.matches_load_store(dst, src)
-                            && let Some(scalar_ty) = self.extract_scalar_type(ty)
-                        {
-                            patterns.push(VectorizationPattern {
-                                block: block_label.clone(),
-                                load_idx: i,
-                                compute_idx: i + 1,
-                                store_idx: i + 3,
-                                element_type: scalar_ty,
-                                operation: *op1,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        patterns
-    }
-
-    /// Check if a type is vectorizable
-    fn is_vectorizable_type(&self, ty: &MirType) -> bool {
-        matches!(
-            ty,
-            MirType::Scalar(
-                ScalarType::I8
-                    | ScalarType::I16
-                    | ScalarType::I32
-                    | ScalarType::I64
-                    | ScalarType::F32
-                    | ScalarType::F64
-            )
-        )
-    }
-
-    /// Extract scalar type from MirType
-    fn extract_scalar_type(&self, ty: &MirType) -> Option<ScalarType> {
-        match ty {
-            MirType::Scalar(s) => Some(*s),
-            _ => None,
-        }
-    }
-
-    /// Check if two address modes represent sequential access
-    /// More aggressive: permits larger offset differences and different base registers
-    fn is_sequential_access(&self, load_addr: &AddressMode, store_addr: &AddressMode) -> bool {
-        if load_addr.address_space() != store_addr.address_space() {
-            return false;
-        }
-        match (load_addr, store_addr) {
-            (
-                AddressMode::BaseOffset {
-                    base: lb,
-                    offset: lo,
-                    ..
-                },
-                AddressMode::BaseOffset {
-                    base: sb,
-                    offset: so,
-                    ..
-                },
-            ) => {
-                // Same base register and reasonable offset differences
-                // More aggressive: allow up to 64 bytes difference (for unrolled loops)
-                lb == sb && (so - lo).abs() <= 64
-            }
-            // Also support BaseIndexScale for more complex addressing
-            (
-                AddressMode::BaseIndexScale { base: lb, .. },
-                AddressMode::BaseIndexScale { base: sb, .. },
-            ) => lb == sb,
-            _ => false,
-        }
-    }
-
-    /// Check if an operation is vectorizable
-    fn is_vectorizable_op(&self, op: IntBinOp) -> bool {
-        matches!(
-            op,
-            IntBinOp::Add
-                | IntBinOp::Sub
-                | IntBinOp::Mul
-                | IntBinOp::And
-                | IntBinOp::Or
-                | IntBinOp::Xor
-        )
-    }
-
-    /// Check if a floating point operation is vectorizable
-    fn is_vectorizable_float_op(&self, op: FloatBinOp) -> bool {
-        matches!(
-            op,
-            FloatBinOp::FAdd | FloatBinOp::FSub | FloatBinOp::FMul | FloatBinOp::FDiv
-        )
-    }
-
-    /// Check if load destination matches store source
-    fn matches_load_store(&self, load_dst: &Register, store_src: &Operand) -> bool {
-        if let Operand::Register(reg) = store_src {
-            load_dst == reg
-        } else {
-            false
-        }
-    }
-
-    /// Apply a vectorization pattern
-    fn apply_vectorization_pattern(
-        &self,
-        func: &mut Function,
-        pattern: &VectorizationPattern,
-    ) -> Result<bool, TransformError> {
-        let pointer_width = func.pointer_width;
-        let block = func.get_block_mut(&pattern.block).ok_or_else(|| {
-            TransformError::Unsupported(format!("Block {} not found", pattern.block))
-        })?;
-
-        if block.instructions.len() <= pattern.store_idx {
-            return Ok(false);
-        }
-
-        // Extract the instructions
-        let load_instr = block.instructions[pattern.load_idx].instr.clone();
-        let compute_instr = block.instructions[pattern.compute_idx].instr.clone();
-        let store_instr = block.instructions[pattern.store_idx].instr.clone();
-
-        // Determine vector type based on element type
-        let vector_type = self.get_vector_type_for_scalar(pattern.element_type)?;
-
-        // For basic vectorization, we'll process 4 elements at a time (v128 with 4x i32/f32)
-        // This is a simplified approach - real vectorizers would handle more cases
-        let vectorization_factor = match pattern.element_type {
-            ScalarType::I32 | ScalarType::F32 => 4, // v128 with 4 lanes
-            ScalarType::I64 | ScalarType::F64 => 2, // v128 with 2 lanes
-            ScalarType::I16 => 8,                   // v128 with 8 lanes
-            ScalarType::I8 => 16,                   // v128 with 16 lanes
-            _ => return Ok(false),                  // Not supported
-        };
-
-        // Extract operands from instructions
-        let (load_addr, compute_rhs, store_addr) = match (&load_instr, &compute_instr, &store_instr)
-        {
-            (
-                Instruction::Load { addr, .. },
-                Instruction::IntBinary { rhs, .. },
-                Instruction::Store { addr: saddr, .. },
-            ) => (addr.clone(), rhs.clone(), saddr.clone()),
-            _ => return Ok(false),
-        };
-
-        // Generate vector operations
-        // This is a simplified version - in practice, we'd need to handle:
-        // - Loop unrolling to process multiple elements
-        // - Alignment checks
-        // - Remaining elements handling
-        // - Register allocation for vector registers
-
-        // For now, we'll create a basic vectorized version
-        // Replace the scalar load with a vector load
-        if let AddressMode::BaseOffset {
-            base,
-            offset,
-            address_space,
-        } = load_addr
-        {
-            let vector_dst = self.allocate_vector_register();
-            let vector_op = self.int_binop_to_vector_op(pattern.operation)?;
-
-            block.instructions[pattern.load_idx].instr = Instruction::Load {
-                ty: MirType::Vector(vector_type),
-                dst: vector_dst.clone(),
-                addr: AddressMode::BaseOffset {
-                    base: base.clone(),
-                    offset,
-                    address_space,
-                },
-                attrs: Default::default(),
-            };
-
-            let vector_lhs_reg = vector_dst.clone();
-            let vector_rhs = if matches!(compute_rhs, Operand::Immediate(_)) {
-                // Splat immediate to vector
-                let splat_reg = self.allocate_vector_register();
-                block.instructions.insert(
-                    pattern.compute_idx,
-                    Instruction::VectorOp {
-                        op: VectorOp::VSplat,
-                        ty: MirType::Vector(vector_type),
-                        dst: splat_reg.clone(),
-                        operands: vec![compute_rhs],
-                    }
-                    .into(),
-                );
-                Operand::Register(splat_reg)
-            } else if matches!(compute_rhs, Operand::Register(_)) {
-                // Load second operand as vector if it's a register
-                let vector_rhs_reg = self.allocate_vector_register();
-                block.instructions.insert(
-                    pattern.compute_idx,
-                    Instruction::Load {
-                        ty: MirType::Vector(vector_type),
-                        dst: vector_rhs_reg.clone(),
-                        addr: AddressMode::BaseOffset {
-                            base,
-                            offset: offset
-                                + (MirType::Scalar(pattern.element_type).size_bytes(pointer_width)
-                                    * vectorization_factor)
-                                    as i16,
-                            address_space,
-                        },
-                        attrs: Default::default(),
-                    }
-                    .into(),
-                );
-                Operand::Register(vector_rhs_reg)
-            } else {
-                compute_rhs
-            };
-
-            block.instructions[pattern.compute_idx + 1].instr = Instruction::VectorOp {
-                op: vector_op,
-                ty: MirType::Vector(vector_type),
-                dst: vector_dst.clone(),
-                operands: vec![Operand::Register(vector_lhs_reg), vector_rhs],
-            };
-
-            if let AddressMode::BaseOffset {
-                base: sbase,
-                offset: soffset,
-                address_space,
-            } = store_addr
-            {
-                block.instructions[pattern.store_idx + 1].instr = Instruction::Store {
-                    ty: MirType::Vector(vector_type),
-                    src: Operand::Register(vector_dst),
-                    addr: AddressMode::BaseOffset {
-                        base: sbase,
-                        offset: soffset,
-                        address_space,
-                    },
-                    attrs: Default::default(),
-                };
-            }
-
-            block.instructions.remove(pattern.store_idx);
-
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
-    /// Get vector type for a scalar type
-    fn get_vector_type_for_scalar(&self, scalar: ScalarType) -> Result<VectorType, TransformError> {
-        let lane = self.scalar_to_vector_lane(scalar)?;
-        Ok(VectorType::V128(lane))
-    }
-
-    fn scalar_to_vector_lane(&self, scalar: ScalarType) -> Result<VectorLane, TransformError> {
-        match scalar {
-            ScalarType::I8 => Ok(VectorLane::I8),
-            ScalarType::I16 => Ok(VectorLane::I16),
-            ScalarType::I32 => Ok(VectorLane::I32),
-            ScalarType::I64 => Ok(VectorLane::I64),
-            ScalarType::F32 => Ok(VectorLane::F32),
-            ScalarType::F64 => Ok(VectorLane::F64),
-            _ => Err(TransformError::Unsupported(format!(
-                "cannot vectorize type {scalar:?}"
-            ))),
-        }
-    }
-
-    fn int_binop_to_vector_op(&self, op: IntBinOp) -> Result<VectorOp, TransformError> {
-        match op {
-            IntBinOp::Add => Ok(VectorOp::VAdd),
-            IntBinOp::Sub => Ok(VectorOp::VSub),
-            IntBinOp::Mul => Ok(VectorOp::VMul),
-            IntBinOp::And => Ok(VectorOp::VAnd),
-            IntBinOp::Or => Ok(VectorOp::VOr),
-            _ => Err(TransformError::Unsupported(format!(
-                "cannot vectorize operation {op:?}"
-            ))),
-        }
-    }
-
-    /// Allocate a new vector register (simplified - in practice would use register allocator)
-    fn allocate_vector_register(&self) -> Register {
-        // This is a simplified allocation - real implementation would track used registers
-        static mut COUNTER: u32 = 0;
-        unsafe {
-            COUNTER += 1;
-            Register::Virtual(VirtualReg::vec(COUNTER))
-        }
+        Some(Self {
+            base: None,
+            step: self.step.checked_mul(factor)?,
+            offset: self.offset.checked_mul(factor)?,
+        })
     }
 }
 
-/// Information about a loop
-#[derive(Debug, Clone)]
-struct LoopInfo {
-    header: String,
-    blocks: HashSet<String>,
-}
-
-/// A vectorization pattern found in a loop
-#[derive(Debug, Clone)]
-struct VectorizationPattern {
+struct Plan {
     block: String,
     load_idx: usize,
     compute_idx: usize,
     store_idx: usize,
-    element_type: ScalarType,
-    operation: IntBinOp,
+    increment_idx: usize,
+    lane: VectorLane,
+    op: VectorOp,
+    rhs: Operand,
+    iv: Register,
+    factor: i64,
+    address: Register,
+    offset: i16,
+    address_space: AddressSpace,
+}
+
+impl AutoVectorization {
+    fn plan(&self, func: &Function, dominators: &Dominators, label: &str) -> Option<Plan> {
+        let block = func.get_block(label)?;
+        let (terminator, body) = block.instructions.split_last()?;
+        let Instruction::Br {
+            cond,
+            true_target,
+            false_target,
+        } = &terminator.instr
+        else {
+            return None;
+        };
+        if true_target != label || false_target == label {
+            return None;
+        }
+
+        let defined: HashSet<Register> = body.iter().filter_map(|i| i.def_reg().cloned()).collect();
+
+        let (increment_idx, iv) = single_increment(body, &defined)?;
+        let bound = loop_bound(body, cond, &iv, increment_idx)?;
+        let (start, init) = entry_value(func, dominators, label, &iv)?;
+        if reenters_without(func, label, init) {
+            return None;
+        }
+        let trips = bound.checked_sub(start)?;
+
+        let (load_idx, store_idx) = memory_pair(body)?;
+        let accesses = scan_block(block, &func.stack_reservations);
+        let (Some(read), Some(write)) = (accesses[load_idx], accesses[store_idx]) else {
+            return None;
+        };
+        if alias(&read, &write) != AliasResult::SameRange {
+            return None;
+        }
+
+        let (
+            Instruction::Load {
+                ty: load_ty,
+                dst: loaded,
+                addr: load_addr,
+                attrs: load_attrs,
+            },
+            Instruction::Store {
+                ty: store_ty,
+                src: stored,
+                addr: store_addr,
+                attrs: store_attrs,
+            },
+        ) = (&body[load_idx].instr, &body[store_idx].instr)
+        else {
+            return None;
+        };
+        if load_attrs.volatile || store_attrs.volatile || load_ty != store_ty {
+            return None;
+        }
+        let MirType::Scalar(element) = *load_ty else {
+            return None;
+        };
+        let (address, offset, address_space) = same_place(load_addr, store_addr)?;
+
+        let compute_idx = (load_idx + 1..store_idx).find(|i| {
+            body[*i]
+                .def_reg()
+                .is_some_and(|dst| Some(dst) == stored.as_register())
+        })?;
+        let (op, lhs, rhs) = arithmetic(&body[compute_idx].instr, element)?;
+        if lhs.as_register() != Some(loaded) {
+            return None;
+        }
+        if !single_use_inside(func, label, loaded, load_idx, compute_idx)
+            || !single_use_inside(func, label, stored.as_register()?, compute_idx, store_idx)
+        {
+            return None;
+        }
+        if rhs
+            .as_register()
+            .is_some_and(|reg| defined.contains(reg) || !reg.is_virtual())
+        {
+            return None;
+        }
+
+        let lane = lane_of(element)?;
+        let width = i64::from(lane_bytes(lane));
+        let factor = 16 / width;
+        if trips < factor || trips % factor != 0 {
+            return None;
+        }
+        if !self.profitable(op, lane) {
+            return None;
+        }
+
+        let values = affine_values(body, &iv, &defined);
+        let place = values.get(&register_id(&address)?)?;
+        if place.base.is_none() || place.step != width {
+            return None;
+        }
+
+        let compare_idx = body
+            .iter()
+            .position(|inst| matches!(inst.instr, Instruction::IntCmp { .. }))?;
+        let mut accounted =
+            HashSet::from([load_idx, compute_idx, store_idx, increment_idx, compare_idx]);
+        for (index, inst) in body.iter().enumerate() {
+            if inst
+                .def_reg()
+                .and_then(register_id)
+                .is_some_and(|id| values.contains_key(&id))
+            {
+                accounted.insert(index);
+            }
+        }
+        if accounted.len() != body.len() {
+            return None;
+        }
+        let chain_or_control = |index: usize, inst: &Located| {
+            index == increment_idx
+                || index == compare_idx
+                || inst
+                    .def_reg()
+                    .and_then(register_id)
+                    .is_some_and(|id| values.contains_key(&id))
+        };
+        if body
+            .iter()
+            .enumerate()
+            .any(|(index, inst)| inst.use_regs().contains(&&iv) && !chain_or_control(index, inst))
+        {
+            return None;
+        }
+        if escapes(func, label, &defined, &iv) {
+            return None;
+        }
+
+        Some(Plan {
+            block: label.to_owned(),
+            load_idx,
+            compute_idx,
+            store_idx,
+            increment_idx,
+            lane,
+            op,
+            rhs: rhs.clone(),
+            iv,
+            factor,
+            address: address.clone(),
+            offset,
+            address_space,
+        })
+    }
+
+    /// The cost model from Plan/vector-cost-model.md: a 64-bit lane multiply is
+    /// emulated from `pmuludq` below AVX-512DQ and measured slower than the
+    /// scalar loop, so it is refused there.
+    fn profitable(&self, op: VectorOp, lane: VectorLane) -> bool {
+        let VectorUnit::X86Sse2(level) = self.unit;
+        if op == VectorOp::VMul && matches!(lane, VectorLane::I8 | VectorLane::I16) {
+            return false;
+        }
+        if op == VectorOp::VMul && lane == VectorLane::I32 && level < X86CpuLevel::V2 {
+            return false;
+        }
+        !(op == VectorOp::VMul && lane == VectorLane::I64 && level < X86CpuLevel::V4)
+    }
+}
+
+fn register_id(reg: &Register) -> Option<u32> {
+    match reg {
+        Register::Virtual(v) => Some(v.id),
+        Register::Physical(_) => None,
+    }
+}
+
+fn lane_of(scalar: ScalarType) -> Option<VectorLane> {
+    match scalar {
+        ScalarType::I8 => Some(VectorLane::I8),
+        ScalarType::I16 => Some(VectorLane::I16),
+        ScalarType::I32 => Some(VectorLane::I32),
+        ScalarType::I64 => Some(VectorLane::I64),
+        ScalarType::F32 => Some(VectorLane::F32),
+        ScalarType::F64 => Some(VectorLane::F64),
+        _ => None,
+    }
+}
+
+fn lane_bytes(lane: VectorLane) -> u8 {
+    match lane {
+        VectorLane::I8 => 1,
+        VectorLane::I16 => 2,
+        VectorLane::I32 | VectorLane::F32 => 4,
+        VectorLane::I64 | VectorLane::F64 => 8,
+    }
+}
+
+/// `dst = iv + 1`, the only such self-increment in the block.
+fn single_increment(body: &[Located], defined: &HashSet<Register>) -> Option<(usize, Register)> {
+    let mut found = None;
+    for (index, inst) in body.iter().enumerate() {
+        let Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst,
+            lhs: Operand::Register(lhs),
+            rhs: Operand::Immediate(Immediate::I64(1)),
+        } = &inst.instr
+        else {
+            continue;
+        };
+        if dst != lhs || !dst.is_virtual() {
+            continue;
+        }
+        if found.is_some() {
+            return None;
+        }
+        found = Some((index, dst.clone()));
+    }
+    let (index, iv) = found?;
+    defined.contains(&iv).then_some((index, iv))
+}
+
+/// `cond = iv <signed N` placed after the increment, with `N` a constant.
+fn loop_bound(body: &[Located], cond: &Register, iv: &Register, increment: usize) -> Option<i64> {
+    let mut bound = None;
+    for (index, inst) in body.iter().enumerate() {
+        let Instruction::IntCmp {
+            op: IntCmpOp::SLt,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst,
+            lhs: Operand::Register(lhs),
+            rhs: Operand::Immediate(Immediate::I64(end)),
+        } = &inst.instr
+        else {
+            if matches!(inst.instr, Instruction::IntCmp { .. }) {
+                return None;
+            }
+            continue;
+        };
+        if dst != cond || lhs != iv || index < increment {
+            return None;
+        }
+        if bound.is_some() {
+            return None;
+        }
+        bound = Some(*end);
+    }
+    bound
+}
+
+/// The constant the induction variable holds on entry to the loop: the only
+/// definition outside the loop block must be that constant, and must dominate.
+fn entry_value<'a>(
+    func: &'a Function,
+    dominators: &Dominators,
+    label: &str,
+    iv: &Register,
+) -> Option<(i64, &'a str)> {
+    let mut start = None;
+    for block in &func.blocks {
+        if block.label == label {
+            continue;
+        }
+        for inst in &block.instructions {
+            if inst.def_reg() != Some(iv) {
+                continue;
+            }
+            if start.is_some() || !dominators.dominates(&block.label, label) {
+                return None;
+            }
+            start = match &inst.instr {
+                Instruction::Copy {
+                    ty: MirType::Scalar(ScalarType::I64),
+                    src: Operand::Immediate(Immediate::I64(value)),
+                    ..
+                } => Some((*value, block.label.as_str())),
+                _ => return None,
+            };
+        }
+    }
+    start
+}
+
+/// Whether control can reach `label` again without passing `init`, which would
+/// start the loop at an induction value this pass did not predict. `init`
+/// dominates `label`, so refusing this also fixes the value on every entry.
+fn reenters_without(func: &Function, label: &str, init: &str) -> bool {
+    let Some(block) = func.get_block(label) else {
+        return true;
+    };
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut queue: Vec<&str> = block
+        .successors()
+        .into_iter()
+        .filter(|next| *next != label)
+        .collect();
+    while let Some(next) = queue.pop() {
+        if next == label {
+            return true;
+        }
+        if next == init || !seen.insert(next) {
+            continue;
+        }
+        match func.get_block(next) {
+            Some(block) => queue.extend(block.successors()),
+            None => return true,
+        }
+    }
+    false
+}
+
+/// Exactly one load and one store, the load first, and no other memory access.
+fn memory_pair(body: &[Located]) -> Option<(usize, usize)> {
+    let mut load = None;
+    let mut store = None;
+    for (index, inst) in body.iter().enumerate() {
+        let slot = match &inst.instr {
+            Instruction::Load { .. } => &mut load,
+            Instruction::Store { .. } => &mut store,
+            _ => continue,
+        };
+        if slot.replace(index).is_some() {
+            return None;
+        }
+    }
+    let (load, store) = (load?, store?);
+    (load < store).then_some((load, store))
+}
+
+fn same_place(load: &AddressMode, store: &AddressMode) -> Option<(Register, i16, AddressSpace)> {
+    match (load, store) {
+        (
+            AddressMode::BaseOffset {
+                base: lb,
+                offset: lo,
+                address_space: ls,
+            },
+            AddressMode::BaseOffset {
+                base: sb,
+                offset: so,
+                address_space: ss,
+            },
+        ) if lb == sb && lo == so && ls == ss && *ls == AddressSpace::default() => {
+            Some((lb.clone(), *lo, *ls))
+        }
+        _ => None,
+    }
+}
+
+fn arithmetic(inst: &Instruction, element: ScalarType) -> Option<(VectorOp, &Operand, &Operand)> {
+    match inst {
+        Instruction::IntBinary {
+            op,
+            ty: MirType::Scalar(ty),
+            lhs,
+            rhs,
+            ..
+        } if *ty == element && integer(element) => {
+            let op = match op {
+                IntBinOp::Add => VectorOp::VAdd,
+                IntBinOp::Sub => VectorOp::VSub,
+                IntBinOp::Mul => VectorOp::VMul,
+                IntBinOp::And => VectorOp::VAnd,
+                IntBinOp::Or => VectorOp::VOr,
+                IntBinOp::Xor => VectorOp::VXor,
+                _ => return None,
+            };
+            Some((op, lhs, rhs))
+        }
+        Instruction::FloatBinary {
+            op,
+            ty: MirType::Scalar(ty),
+            lhs,
+            rhs,
+            ..
+        } if *ty == element && matches!(element, ScalarType::F32 | ScalarType::F64) => {
+            let op = match op {
+                FloatBinOp::FAdd => VectorOp::VAdd,
+                FloatBinOp::FSub => VectorOp::VSub,
+                FloatBinOp::FMul => VectorOp::VMul,
+                FloatBinOp::FDiv => return None,
+            };
+            Some((op, lhs, rhs))
+        }
+        _ => None,
+    }
+}
+
+/// `reg` is defined at `def`, used only at `use_at`, and nowhere else at all.
+fn single_use_inside(
+    func: &Function,
+    label: &str,
+    reg: &Register,
+    def: usize,
+    use_at: usize,
+) -> bool {
+    let mut seen = 0;
+    for block in &func.blocks {
+        for (index, inst) in block.instructions.iter().enumerate() {
+            if inst.use_regs().contains(&reg) {
+                if block.label != label || index != use_at {
+                    return false;
+                }
+                seen += 1;
+            }
+            if inst.def_reg() == Some(reg) && (block.label != label || index != def) {
+                return false;
+            }
+        }
+    }
+    seen == 1
+}
+
+/// Any register the block defines, apart from the induction variable, that some
+/// other block reads.
+fn escapes(func: &Function, label: &str, defined: &HashSet<Register>, iv: &Register) -> bool {
+    func.blocks.iter().any(|block| {
+        block.label != label
+            && block.instructions.iter().any(|inst| {
+                inst.use_regs()
+                    .iter()
+                    .any(|reg| *reg != iv && defined.contains(*reg))
+            })
+    })
+}
+
+/// Registers whose value in this visit is an affine function of the induction
+/// variable's entry value. Uses are read before the instruction's definition.
+fn affine_values(
+    body: &[Located],
+    iv: &Register,
+    defined: &HashSet<Register>,
+) -> HashMap<u32, Affine> {
+    let mut values: HashMap<u32, Affine> = HashMap::new();
+    if let Some(id) = register_id(iv) {
+        values.insert(
+            id,
+            Affine {
+                base: None,
+                step: 1,
+                offset: 0,
+            },
+        );
+    }
+    let read = |values: &HashMap<u32, Affine>, operand: &Operand| -> Option<Affine> {
+        match operand {
+            Operand::Immediate(Immediate::I64(value)) => Some(Affine::constant(*value)),
+            Operand::Immediate(_) => None,
+            Operand::Register(reg) => {
+                let id = register_id(reg)?;
+                match values.get(&id) {
+                    Some(value) => Some(*value),
+                    None if !defined.contains(reg) => Some(Affine {
+                        base: Some(id),
+                        step: 0,
+                        offset: 0,
+                    }),
+                    None => None,
+                }
+            }
+        }
+    };
+    for inst in body {
+        let Some(dst) = inst.def_reg().and_then(register_id) else {
+            continue;
+        };
+        let value = match &inst.instr {
+            Instruction::Copy {
+                ty: MirType::Scalar(ScalarType::I64 | ScalarType::Ptr),
+                src,
+                ..
+            } => read(&values, src),
+            Instruction::IntConvert { from, to, src, .. } if wide(*from) && wide(*to) => {
+                read(&values, src)
+            }
+            Instruction::Lea { base, offset, .. } => {
+                read(&values, &Operand::Register(base.clone()))
+                    .and_then(|value| value.add(Affine::constant(i64::from(*offset))))
+            }
+            Instruction::IntBinary {
+                op,
+                ty: MirType::Scalar(ScalarType::I64 | ScalarType::Ptr),
+                lhs,
+                rhs,
+                ..
+            } => {
+                let (left, right) = (read(&values, lhs), read(&values, rhs));
+                match (op, left, right) {
+                    (IntBinOp::Add, Some(left), Some(right)) => left.add(right),
+                    (IntBinOp::Sub, Some(left), Some(right)) => left.sub(right),
+                    (IntBinOp::Mul, Some(left), Some(right)) => match (left.base, right.base) {
+                        (None, None) if left.step == 0 => right.scale(left.offset),
+                        (None, None) if right.step == 0 => left.scale(right.offset),
+                        _ => None,
+                    },
+                    (IntBinOp::Shl, Some(left), Some(right))
+                        if right.base.is_none()
+                            && right.step == 0
+                            && (0..32).contains(&right.offset) =>
+                    {
+                        left.scale(1i64 << right.offset)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        match value {
+            Some(value) => values.insert(dst, value),
+            None => values.remove(&dst),
+        };
+    }
+    values
+}
+
+fn integer(ty: ScalarType) -> bool {
+    matches!(
+        ty,
+        ScalarType::I8 | ScalarType::I16 | ScalarType::I32 | ScalarType::I64
+    )
+}
+
+fn wide(ty: MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Scalar(ScalarType::I64 | ScalarType::Ptr | ScalarType::PtrIn(_))
+    )
+}
+
+fn register_base(func: &Function) -> Option<u32> {
+    func.blocks
+        .iter()
+        .flat_map(|b| &b.instructions)
+        .flat_map(|i| i.def_reg().into_iter().chain(i.use_regs()))
+        .chain(func.sig.params.iter().map(|p| &p.reg))
+        .filter_map(register_id)
+        .max()
+        .unwrap_or(0)
+        .checked_add(1)
+}
+
+fn rewrite(func: &mut Function, plan: &Plan, next: &mut u32) {
+    let vector = MirType::Vector(VectorType::V128(plan.lane));
+    let loaded = Register::Virtual(VirtualReg::vec(*next));
+    let widened = Register::Virtual(VirtualReg::vec(*next + 1));
+    let splat = Register::Virtual(VirtualReg::vec(*next + 2));
+    *next += 3;
+
+    let Some(block) = func.get_block_mut(&plan.block) else {
+        return;
+    };
+    let address = AddressMode::BaseOffset {
+        base: plan.address.clone(),
+        offset: plan.offset,
+        address_space: plan.address_space,
+    };
+
+    block.instructions[plan.load_idx].instr = Instruction::Load {
+        ty: vector,
+        dst: loaded.clone(),
+        addr: address.clone(),
+        attrs: Default::default(),
+    };
+    block.instructions[plan.compute_idx].instr = Instruction::VectorOp {
+        op: plan.op,
+        ty: vector,
+        dst: widened.clone(),
+        operands: vec![Operand::Register(loaded), Operand::Register(splat.clone())],
+    };
+    block.instructions[plan.store_idx].instr = Instruction::Store {
+        ty: vector,
+        src: Operand::Register(widened),
+        addr: address,
+        attrs: Default::default(),
+    };
+    block.instructions[plan.increment_idx].instr = Instruction::IntBinary {
+        op: IntBinOp::Add,
+        ty: MirType::Scalar(ScalarType::I64),
+        dst: plan.iv.clone(),
+        lhs: Operand::Register(plan.iv.clone()),
+        rhs: Operand::Immediate(Immediate::I64(plan.factor)),
+    };
+
+    block.instructions.insert(
+        plan.load_idx,
+        Instruction::VectorOp {
+            op: VectorOp::VSplat,
+            ty: vector,
+            dst: splat,
+            operands: vec![plan.rhs.clone()],
+        }
+        .into(),
+    );
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::{ir, mir};
+    use crate::mir::transform::TransformPipeline;
+    use crate::{mir::codegen::from_ir, parser::parse_module};
 
-    #[test]
-    fn test_find_loops_simple() {
-        let mut builder = ir::IRBuilder::new();
-        let i64_ty = ir::types::Type::Primitive(ir::types::PrimitiveType::I64);
-
-        builder
-            .function("test", i64_ty.clone())
-            .binary(
-                ir::instruction::BinaryOp::Add,
-                "v0",
-                ir::types::PrimitiveType::I64,
-                ir::builder::i64(0),
-                ir::builder::i64(0),
-            )
-            .jump("loop")
-            .block("loop")
-            .binary(
-                ir::instruction::BinaryOp::Add,
-                "v0",
-                ir::types::PrimitiveType::I64,
-                ir::builder::var("v0"),
-                ir::builder::i64(1),
-            )
-            .cmp(
-                ir::instruction::CmpOp::Lt,
-                "cond",
-                ir::types::PrimitiveType::I64,
-                ir::builder::var("v0"),
-                ir::builder::i64(100),
-            )
-            .branch(ir::builder::var("cond"), "loop", "exit")
-            .block("exit")
-            .ret(i64_ty.clone(), ir::builder::var("v0"));
-
-        let ir_module = builder.build();
-        let mir_module =
-            mir::codegen::from_ir(&ir_module, "test_module").expect("Failed to lower to MIR");
-
-        let func = mir_module
+    /// Runs the real O3 pipeline, so a test sees the MIR the pass sees in a build.
+    fn vector_ops(source: &str, level: X86CpuLevel) -> usize {
+        let mut module = from_ir(&parse_module(source).unwrap(), "vectorization").unwrap();
+        TransformPipeline::default_for_opt_level_on(3, Some(VectorUnit::X86Sse2(level)))
+            .apply_to_module(&mut module)
+            .unwrap();
+        module
             .functions
-            .get("test")
-            .expect("Function should exist");
+            .values()
+            .flat_map(|f| &f.blocks)
+            .flat_map(|b| &b.instructions)
+            .filter(|i| matches!(i.instr, Instruction::VectorOp { .. }))
+            .count()
+    }
 
-        let vectorizer = AutoVectorization;
-        let loops = vectorizer.find_loops(func);
-        assert!(!loops.is_empty(), "Should find at least one loop");
+    fn loop_over(body: &str) -> String {
+        format!(
+            "fn @f() -> i64 {{
+entry:
+  %a = stackalloc.[64 x i64]
+  %b = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, 64
+  br %more, body, done
+body:
+{body}
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
+}}"
+        )
     }
 
     #[test]
-    fn test_find_vectorizable_pattern() {
-        let mut builder = ir::IRBuilder::new();
-        let i32_ty = ir::types::Type::Primitive(ir::types::PrimitiveType::I32);
-
-        builder
-            .function("test", i32_ty.clone())
-            .stackalloc("arr", i32_ty.clone())
-            .jump("loop")
-            .block("loop")
-            .load("val", i32_ty.clone(), ir::builder::var("arr"))
-            .binary(
-                ir::instruction::BinaryOp::Add,
-                "val",
-                ir::types::PrimitiveType::I32,
-                ir::builder::var("val"),
-                ir::builder::i32(1),
-            )
-            .store(
-                i32_ty.clone(),
-                ir::builder::var("arr"),
-                ir::builder::var("val"),
-            )
-            .cmp(
-                ir::instruction::CmpOp::Lt,
-                "cond",
-                ir::types::PrimitiveType::I32,
-                ir::builder::var("val"),
-                ir::builder::i32(100),
-            )
-            .branch(ir::builder::var("cond"), "loop", "exit")
-            .block("exit")
-            .ret(i32_ty.clone(), ir::builder::var("val"));
-
-        let ir_module = builder.build();
-        let mir_module =
-            mir::codegen::from_ir(&ir_module, "test_module").expect("Failed to lower to MIR");
-
-        let func = mir_module
-            .functions
-            .get("test")
-            .expect("Function should exist");
-
-        let vectorizer = AutoVectorization;
-        let loops = vectorizer.find_loops(func);
-        assert!(!loops.is_empty(), "Should find loop");
-
-        if let Some(loop_info) = loops.first() {
-            let patterns = vectorizer.find_vectorizable_patterns(func, loop_info);
-            assert!(
-                !patterns.is_empty(),
-                "Should find vectorizable load-compute-store pattern"
-            );
-        }
+    fn widens_a_loop_that_rewrites_its_own_elements() {
+        let source = loop_over(
+            "  %q = getelem.i64 %a, %j
+  %x = load.i64 %q
+  %z = add.i64 %x, 5
+  store.i64 %q, %z",
+        );
+        assert!(vector_ops(&source, X86CpuLevel::V2) > 0);
     }
 
     #[test]
-    fn test_vectorization_no_change_when_no_loops() {
-        let mut builder = ir::IRBuilder::new();
-        let i64_ty = ir::types::Type::Primitive(ir::types::PrimitiveType::I64);
+    fn refuses_a_store_that_overlaps_the_next_load() {
+        let source = loop_over(
+            "  %src = getelem.i64 %a, %j
+  %j1 = add.i64 %j, 1
+  %dst = getelem.i64 %a, %j1
+  %x = load.i64 %src
+  %z = add.i64 %x, 5
+  store.i64 %dst, %z",
+        );
+        assert_eq!(vector_ops(&source, X86CpuLevel::V2), 0);
+    }
 
-        builder
-            .function("test", i64_ty.clone())
-            .binary(
-                ir::instruction::BinaryOp::Add,
-                "result",
-                ir::types::PrimitiveType::I64,
-                ir::builder::i64(1),
-                ir::builder::i64(2),
-            )
-            .ret(i64_ty.clone(), ir::builder::var("result"));
+    #[test]
+    fn refuses_a_second_array_the_analysis_cannot_separate() {
+        let source = loop_over(
+            "  %q = getelem.i64 %a, %j
+  %r = getelem.i64 %b, %j
+  %x = load.i64 %q
+  %y = load.i64 %r
+  %z = add.i64 %x, %y
+  store.i64 %q, %z",
+        );
+        assert_eq!(vector_ops(&source, X86CpuLevel::V2), 0);
+    }
 
-        let ir_module = builder.build();
-        let mir_module =
-            mir::codegen::from_ir(&ir_module, "test_module").expect("Failed to lower to MIR");
+    #[test]
+    fn refuses_a_stride_wider_than_one_element() {
+        let source = "fn @f() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, 32
+  br %more, body, done
+body:
+  %idx = mul.i64 %j, 2
+  %q = getelem.i64 %a, %idx
+  %x = load.i64 %q
+  %z = add.i64 %x, 5
+  store.i64 %q, %z
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
+}";
+        assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
+    }
 
-        let mut func = mir_module
-            .functions
-            .get("test")
-            .cloned()
-            .expect("Function should exist");
+    #[test]
+    fn refuses_a_trip_count_the_vector_width_does_not_divide() {
+        let source = loop_over(
+            "  %q = getelem.i64 %a, %j
+  %x = load.i64 %q
+  %z = add.i64 %x, 5
+  store.i64 %q, %z",
+        )
+        .replace("lt.i64 %j, 64", "lt.i64 %j, 63");
+        assert_eq!(vector_ops(&source, X86CpuLevel::V2), 0);
+    }
 
-        let vectorizer = AutoVectorization;
-        let result = vectorizer.apply_internal(&mut func);
-        assert!(result.is_ok());
-        let changed = result.unwrap();
-        assert!(!changed, "Should not change function without loops");
+    #[test]
+    fn refuses_volatile_accesses() {
+        let source = loop_over(
+            "  %q = getelem.i64 %a, %j
+  %x = volatile load.i64 %q
+  %z = add.i64 %x, 5
+  volatile store.i64 %q, %z",
+        );
+        assert_eq!(vector_ops(&source, X86CpuLevel::V2), 0);
+    }
+
+    #[test]
+    fn refuses_a_loop_whose_bound_is_not_known() {
+        let source = "fn @f(i64 %n) -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, %n
+  br %more, body, done
+body:
+  %q = getelem.i64 %a, %j
+  %x = load.i64 %q
+  %z = add.i64 %x, 5
+  store.i64 %q, %z
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
+}";
+        assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
+    }
+
+    #[test]
+    fn a_64_bit_lane_multiply_waits_for_a_native_one() {
+        let source = loop_over(
+            "  %q = getelem.i64 %a, %j
+  %x = load.i64 %q
+  %z = mul.i64 %x, 3
+  store.i64 %q, %z",
+        );
+        assert_eq!(vector_ops(&source, X86CpuLevel::V2), 0);
+        assert_eq!(vector_ops(&source, X86CpuLevel::V3), 0);
+        assert!(vector_ops(&source, X86CpuLevel::V4) > 0);
     }
 }
