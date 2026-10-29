@@ -1,0 +1,126 @@
+# Compare-and-swap. The result is the value that was in memory before the operation;
+# the exchange happened exactly when that value equals the expected one. Covers success
+# and failure at several widths, and a spin lock acquired and released with it.
+
+fn @main() -> i64 {
+entry:
+    %cell = stackalloc.i64
+    store.i64 %cell, 5
+    %a_old = atomic_cmpxchg.i64 %cell, 5, 9, seqcst, seqcst
+    %a_now = atomic_load.i64 %cell, seqcst
+    %a_hit = eq.i64 %a_old, 5
+    %a_hit_i = extend.bool.i64 %a_hit
+    call @print_i64(%a_old)
+    call @print_i64(%a_now)
+    call @print_i64(%a_hit_i)
+
+    %b_old = atomic_cmpxchg.i64 %cell, 5, 1, acquire, relaxed
+    %b_now = atomic_load.i64 %cell, seqcst
+    %b_hit = eq.i64 %b_old, 5
+    %b_hit_i = extend.bool.i64 %b_hit
+    call @print_i64(%b_old)
+    call @print_i64(%b_now)
+    call @print_i64(%b_hit_i)
+
+    %c8 = stackalloc.i8
+    store.i8 %c8, -1
+    %c_old = atomic_cmpxchg.i8 %c8, -1, 4, seqcst, seqcst
+    %c_now = atomic_load.i8 %c8, seqcst
+    %c_hit = eq.i8 %c_old, -1
+    %c_hit_i = extend.bool.i64 %c_hit
+    %pc1 = extend.i8.i64 %c_old
+    %pc2 = extend.i8.i64 %c_now
+    call @print_i64(%pc1)
+    call @print_i64(%pc2)
+    call @print_i64(%c_hit_i)
+
+    %d16 = stackalloc.i16
+    store.i16 %d16, 300
+    %d_old = atomic_cmpxchg.i16 %d16, 301, 7, seqcst, seqcst
+    %d_now = atomic_load.i16 %d16, seqcst
+    %pd1 = extend.i16.i64 %d_old
+    %pd2 = extend.i16.i64 %d_now
+    call @print_i64(%pd1)
+    call @print_i64(%pd2)
+
+    %e32 = stackalloc.i32
+    store.i32 %e32, -2
+    %e_old = atomic_cmpxchg.i32 %e32, -2, 7, acqrel, acquire
+    %e_now = atomic_load.i32 %e32, seqcst
+    %pe1 = extend.i32.i64 %e_old
+    %pe2 = extend.i32.i64 %e_now
+    call @print_i64(%pe1)
+    call @print_i64(%pe2)
+
+    %f8 = stackalloc.u8
+    store.u8 %f8, 200
+    %f_old = atomic_cmpxchg.u8 %f8, 200, 50, relaxed, seqcst
+    %f_now = atomic_load.u8 %f8, seqcst
+    %pf1 = extend.u8.u64 %f_old
+    %pf2 = extend.u8.u64 %f_now
+    call @print_u64(%pf1)
+    call @print_u64(%pf2)
+
+    %lock = stackalloc.i64
+    store.i64 %lock, 0
+    %first = atomic_cmpxchg.i64 %lock, 0, 1, acquire, relaxed
+    %second = atomic_cmpxchg.i64 %lock, 0, 1, acquire, relaxed
+    call @print_i64(%first)
+    call @print_i64(%second)
+    atomic_store.i64 %lock, 0, release
+    jmp spin
+
+spin:
+    %try = atomic_cmpxchg.i64 %lock, 0, 1, acquire, relaxed
+    %won = eq.i64 %try, 0
+    br %won, locked, spin
+
+locked:
+    %counter = stackalloc.i64
+    store.i64 %counter, 40
+    %count_now = load.i64 %counter
+    %count_next = add.i64 %count_now, 2
+    store.i64 %counter, %count_next
+    atomic_store.i64 %lock, 0, release
+    %final = atomic_load.i64 %counter, seqcst
+    call @print_i64(%final)
+    ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
