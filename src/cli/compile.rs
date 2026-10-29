@@ -17,7 +17,7 @@ use crate::{
 use lamina_mir::RelocationModel;
 #[cfg(feature = "ssa-round-trip")]
 use lamina_mir::ssa::round_trip_module;
-use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem, cpu_count};
+use lamina_platform::{OutputArtifact, Target, TargetOperatingSystem, cpu_count};
 use std::{
     error::Error,
     fs::File,
@@ -112,8 +112,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         let mut mir_mod = from_ir_for_target(
             &ir_mod,
             input_path.to_string_lossy().as_ref(),
-            target_for_extensions.pointer_width(),
-            target_for_extensions.has_64bit_int_registers(),
+            target_for_extensions.data_layout(),
         )
         .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
@@ -171,8 +170,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     let mut mir_mod = from_ir_for_target(
         &ir_mod,
         input_path.to_string_lossy().as_ref(),
-        target.pointer_width(),
-        target.has_64bit_int_registers(),
+        target.data_layout(),
     )
     .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
@@ -196,13 +194,17 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     round_trip_module(&mut mir_mod).map_err(|e| format!("SSA round trip failed: {e}"))?;
 
     let mut intermediate_buffer = Vec::<u8>::new();
+    let codegen_settings = options
+        .mir_codegen_settings
+        .clone()
+        .with_arch_variant(target.variant);
     generate_mir_to_target_with_settings(
         &mir_mod,
         &mut intermediate_buffer,
         target.architecture,
         target.operating_system,
         codegen_units,
-        &options.mir_codegen_settings,
+        &codegen_settings,
     )
     .map_err(|e| format!("Code generation failed: {e}"))?;
 
@@ -216,10 +218,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         final_output_display.set_extension(final_ext);
     }
 
-    let intermediate_name = if matches!(
-        target.architecture,
-        TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
-    ) {
+    let intermediate_name = if target.output_artifact() == OutputArtifact::Module {
         println!(
             "[INFO] Compiling {} -> {}",
             input_path.display(),
@@ -265,8 +264,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     let assemble_result = assemble_with_ras_object_options(
         &intermediate_path,
         &assembly_output_path,
-        target.architecture,
-        target.operating_system,
+        target,
         assembler_backend,
         &options.assembler_flags,
         options.verbose,
@@ -274,10 +272,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     )
     .map_err(|e| format!("Assembly failed: {e}"))?;
 
-    if matches!(
-        target.architecture,
-        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn
-    ) {
+    if target.output_artifact() == OutputArtifact::Text {
         println!(
             "[INFO] GPU text artifact written to {}",
             assemble_result.output_path.display()
@@ -287,10 +282,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
 
     println!(
         "[INFO] {} assembled successfully.",
-        if matches!(
-            target.architecture,
-            TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
-        ) {
+        if target.output_artifact() == OutputArtifact::Module {
             "WASM binary"
         } else {
             "Object file"
@@ -323,10 +315,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     } else {
         println!(
             "[INFO] {} '{}' created successfully.",
-            if matches!(
-                target.architecture,
-                TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
-            ) {
+            if target.output_artifact() == OutputArtifact::Module {
                 "WASM binary"
             } else {
                 "Binary"

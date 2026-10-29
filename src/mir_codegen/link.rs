@@ -11,7 +11,7 @@
 use crate::error::LaminaError;
 use crate::mir_codegen::assemble::{gnu_tool, host_matches, no_gnu_tool, targets_elf};
 use lamina_codegen::os_uses_macho;
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{OutputArtifact, TargetArchitecture, TargetOperatingSystem};
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
@@ -533,13 +533,18 @@ pub fn link(
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<(), LaminaError> {
-    if matches!(
-        target_arch,
-        TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
-    ) {
-        return Err(LaminaError::ValidationError(
-            "WASM targets do not require linking".to_string(),
-        ));
+    match target_arch.output_artifact() {
+        OutputArtifact::Executable => {}
+        OutputArtifact::Module => {
+            return Err(LaminaError::ValidationError(
+                "WASM targets do not require linking".to_string(),
+            ));
+        }
+        OutputArtifact::Text => {
+            return Err(LaminaError::ValidationError(format!(
+                "{target_arch} emits assembly text, which is never linked"
+            )));
+        }
     }
 
     if !input_path.exists() {

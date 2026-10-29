@@ -34,8 +34,10 @@ pub mod windows {
 
 /// Stack alignment constants
 pub mod stack {
-    /// Minimum stack alignment (16 bytes)
-    pub const ALIGNMENT: usize = 16;
+    use lamina_platform::TargetArchitecture;
+
+    /// Alignment the stack pointer holds at a call.
+    pub const ALIGNMENT: usize = TargetArchitecture::X86_64.stack_alignment_at_call();
     /// Size of a stack slot (8 bytes)
     pub const SLOT_SIZE: usize = 8;
 }

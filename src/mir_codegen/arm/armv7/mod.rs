@@ -87,12 +87,13 @@ fn reject_wide_integers(name: &str, func: &Function) -> Result<(), LaminaError> 
 /// Strongest alignment the frame has to stand on, which is also the alignment the
 /// frame size is rounded to so the frame pointer keeps it.
 fn frame_alignment(func: &Function) -> usize {
+    let at_call = TargetArchitecture::Armv7.stack_alignment_at_call();
     func.stack_alignments
         .values()
         .copied()
         .max()
-        .unwrap_or(16)
-        .max(16)
+        .unwrap_or(at_call)
+        .max(at_call)
         .next_power_of_two()
 }
 
@@ -389,6 +390,21 @@ pub fn generate_mir_armv7_with_units_and_settings<W: Write>(
             "armv7 code generation targets ELF; {target_os:?} is not supported"
         )));
     }
+    let variant = settings.arch_variant.armv7().unwrap_or_default();
+    if !variant.hard_float {
+        return Err(unsupported(format!(
+            "armv7 code generation needs a VFP unit; {} has no hardware float and this \
+             backend does not lower to soft-float libcalls",
+            variant.profile.arch_name()
+        )));
+    }
+    if !variant.hardware_divide {
+        return Err(unsupported(format!(
+            "armv7 code generation emits sdiv and udiv; {} without the idiv extension \
+             needs a division libcall this backend does not emit",
+            variant.profile.arch_name()
+        )));
+    }
     validate_module_call_parameters(module, TargetArchitecture::Armv7)?;
     reject_register_symbols(module)?;
 
@@ -402,9 +418,13 @@ pub fn generate_mir_armv7_with_units_and_settings<W: Write>(
         .map_err(parallel_codegen_error)?;
 
     writeln!(writer, ".syntax unified")?;
-    writeln!(writer, ".arch armv7-a")?;
-    writeln!(writer, ".arch_extension idiv")?;
-    writeln!(writer, ".fpu vfpv3-d16")?;
+    writeln!(writer, ".arch {}", variant.profile.arch_name())?;
+    if variant.hardware_divide {
+        writeln!(writer, ".arch_extension idiv")?;
+    }
+    if let Some(fpu) = variant.fpu {
+        writeln!(writer, ".fpu {fpu}")?;
+    }
     writeln!(writer, ".eabi_attribute 28, 1")?;
     writeln!(writer, ".arm")?;
     writeln!(writer, ".text")?;

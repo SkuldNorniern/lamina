@@ -8,9 +8,11 @@
 //!
 //! - [`target`] - Target architecture and operating system definitions
 //! - [`cpu_level`] - x86-64 microarchitecture levels (v1 to v4)
+//! - [`arch_variant`] - sub-architecture variants for the other families
 //! - [`detection`] - Host system detection functions
 //! - [`simd`] - SIMD capabilities detection (nightly feature)
 
+pub mod arch_variant;
 pub mod cpu_level;
 pub mod detection;
 pub mod target;
@@ -19,9 +21,15 @@ pub mod target;
 pub mod simd;
 
 // Re-export main types
+pub use arch_variant::{
+    Aarch64Level, ArchVariant, Armv7Profile, Armv7Variant, PowerLevel, RiscvIsa,
+};
 pub use cpu_level::X86CpuLevel;
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
-pub use target::{HOST_ARCH_LIST, PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
+pub use target::{
+    Endianness, HOST_ARCH_LIST, OutputArtifact, PointerWidth, Target, TargetArchitecture,
+    TargetDataLayout, TargetOperatingSystem, parse_arch_token,
+};
 
 #[cfg(feature = "nightly")]
 pub use simd::{ArmSimdExtension, RiscvSimdExtension, SimdCapabilities, X86SimdExtension};

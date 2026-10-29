@@ -392,8 +392,7 @@ macro_rules! lamina {
             let mir_module = $crate::mir::codegen::from_ir_for_target(
                 &ir_module,
                 "lamina_macro",
-                $crate::target::Target::detect_host().pointer_width(),
-                $crate::target::Target::detect_host().has_64bit_int_registers(),
+                $crate::target::Target::detect_host().data_layout(),
             )
                 .map_err(|e| format!("lamina!: Failed to lower to MIR: {}", e))?;
 
@@ -527,12 +526,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         )));
     }
 
-    let mir_module = mir::codegen::from_ir_for_target(
-        &module,
-        "module",
-        target_obj.pointer_width(),
-        target_obj.has_64bit_int_registers(),
-    )?;
+    let mir_module = mir::codegen::from_ir_for_target(&module, "module", target_obj.data_layout())?;
 
     match target_obj.architecture {
         TargetArchitecture::X86_64
@@ -640,12 +634,7 @@ pub fn compile_module_to_object_with_options(
         )));
     }
 
-    let mut mir_module = mir::codegen::from_ir_for_target(
-        module,
-        "module",
-        target.pointer_width(),
-        target.has_64bit_int_registers(),
-    )?;
+    let mut mir_module = mir::codegen::from_ir_for_target(module, "module", target.data_layout())?;
     if options.opt_level > 0 {
         TransformPipeline::default_for_opt_level(options.opt_level)
             .apply_to_module(&mut mir_module)
@@ -656,13 +645,14 @@ pub fn compile_module_to_object_with_options(
         .map_err(|e| LaminaError::ValidationError(format!("SSA round trip failed: {e}")))?;
 
     let mut text = Vec::new();
+    let settings = options.settings.clone().with_arch_variant(target.variant);
     generate_mir_to_target_with_settings(
         &mir_module,
         &mut text,
         target.architecture,
         target.operating_system,
         options.codegen_units,
-        &options.settings,
+        &settings,
     )?;
     let text = String::from_utf8(text).map_err(|e| {
         LaminaError::ValidationError(format!("generated assembly is not UTF-8: {e}"))

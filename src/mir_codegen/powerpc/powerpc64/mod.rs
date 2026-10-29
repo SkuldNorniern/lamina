@@ -522,11 +522,17 @@ const FLOAT_ARGUMENT_REGISTERS: usize = 13;
 
 fn classify_ppc64_arguments(kinds: &[ArgKind], shift: usize) -> Vec<PpcArgPlace> {
     let banks = Ppc64Abi::ARG_REGISTERS.len();
+    // ELFv2 starts a 16-byte-aligned parameter on an even doubleword. This backend does
+    // not, which `honors_argument_alignment` states.
+    let honors_alignment = TargetArchitecture::PowerPC64.honors_argument_alignment();
     let mut floats = 0;
     let mut dwords = shift;
     kinds
         .iter()
         .map(|kind| {
+            if honors_alignment && kind.aggregate.is_some_and(|a| a.align >= 16) {
+                dwords = dwords.next_multiple_of(2);
+            }
             let place = match kind.aggregate {
                 Some(aggregate) => {
                     let words = aggregate.words();
@@ -1014,12 +1020,19 @@ fn emit_instruction_ppc64<W: Write>(
                 let clear = 64 - (ty.size_bytes(pointer_width) * 8).trailing_zeros();
                 writeln!(writer, "    clrldi 4, 4, {clear}")?;
             }
+            let power_level = settings.arch_variant.powerpc64().unwrap_or_default();
             match op {
                 IntBinOp::Add => writeln!(writer, "    add 3, 3, 4")?,
                 IntBinOp::Sub => writeln!(writer, "    sub 3, 3, 4")?,
                 IntBinOp::Mul => writeln!(writer, "    mulld 3, 3, 4")?,
                 IntBinOp::SDiv => writeln!(writer, "    divd 3, 3, 4")?,
                 IntBinOp::UDiv => writeln!(writer, "    divdu 3, 3, 4")?,
+                IntBinOp::SRem if power_level.has_modulo_instructions() => {
+                    writeln!(writer, "    modsd 3, 3, 4")?;
+                }
+                IntBinOp::URem if power_level.has_modulo_instructions() => {
+                    writeln!(writer, "    modud 3, 3, 4")?;
+                }
                 IntBinOp::SRem => {
                     // rem = lhs - (lhs/rhs)*rhs
                     writeln!(writer, "    divd 5, 3, 4")?;

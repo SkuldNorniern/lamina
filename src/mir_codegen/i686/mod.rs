@@ -1202,8 +1202,8 @@ fn emit_int_rotate<W: Write>(
 }
 
 /// Bytes reserved below the argument area for the target of an indirect call. Only
-/// one word is needed; the rest is padding that keeps `%esp` 16-byte aligned.
-const INDIRECT_AREA: usize = 16;
+/// one word is needed; the rest is padding that keeps `%esp` aligned for the call.
+const INDIRECT_AREA: usize = TargetArchitecture::I686.stack_alignment_at_call();
 
 /// Places a call's arguments, calls `target` and takes the result. With no `target`
 /// the address is already parked in the word below the argument area, which this

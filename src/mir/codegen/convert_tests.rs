@@ -823,7 +823,7 @@ mod pairs_on_a_32_bit_target {
 
     fn lower32(source: &str) -> Result<Module, FromIRError> {
         let ir = parse_module(source).expect("parse");
-        from_ir_for_target(&ir, "pairs", PointerWidth::Bits32, false)
+        from_ir_for_target(&ir, "pairs", TargetArchitecture::I686.data_layout())
     }
 
     fn body(source: &str) -> String {
@@ -957,7 +957,8 @@ mod pairs_on_a_32_bit_target {
     #[test]
     fn a_64_bit_target_is_untouched_by_any_of_this() {
         let ir = parse_module(ADD).expect("parse");
-        let module = from_ir_for_target(&ir, "pairs", PointerWidth::Bits64, true).expect("lower");
+        let module = from_ir_for_target(&ir, "pairs", TargetArchitecture::X86_64.data_layout())
+            .expect("lower");
         let text: String = module.functions["sum"].blocks[0]
             .instructions
             .iter()

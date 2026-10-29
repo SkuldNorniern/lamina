@@ -142,8 +142,7 @@ pub fn handle_jit_compilation(
     let mut mir_mod = from_ir_for_target(
         &ir_mod,
         input_path.to_string_lossy().as_ref(),
-        target.pointer_width(),
-        target.has_64bit_int_registers(),
+        target.data_layout(),
     )
     .map_err(|e| LaminaError::MirError(format!("MIR lowering failed: {e}")))?;
 
@@ -306,13 +305,17 @@ pub fn handle_jit_compilation(
             }
 
             let mut intermediate = Vec::<u8>::new();
+            let codegen_settings = options
+                .mir_codegen_settings
+                .clone()
+                .with_arch_variant(target.variant);
             generate_mir_to_target_with_settings(
                 &mir_mod,
                 &mut intermediate,
                 target.architecture,
                 target.operating_system,
                 codegen_units,
-                &options.mir_codegen_settings,
+                &codegen_settings,
             )?;
 
             write(&intermediate_path, &intermediate)?;
@@ -322,8 +325,7 @@ pub fn handle_jit_compilation(
             let assemble_result = assemble_with_ras_object_options(
                 &intermediate_path,
                 &object_path,
-                target.architecture,
-                target.operating_system,
+                target,
                 assembler_backend,
                 &options.assembler_flags,
                 options.verbose,

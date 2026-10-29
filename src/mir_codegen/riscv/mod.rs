@@ -503,12 +503,16 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
-    let arch = match target.xlen {
+    validate_module_call_parameters(module, target_arch(target))?;
+    emit_riscv_module(module, writer, target, target_os, codegen_units, settings)
+}
+
+/// Which `TargetArchitecture` an ISA selection is, for the facts that hang off it.
+fn target_arch(target: RiscVTarget) -> TargetArchitecture {
+    match target.xlen {
         Xlen::Rv32 => TargetArchitecture::Riscv32,
         Xlen::Rv64 => TargetArchitecture::Riscv64,
-    };
-    validate_module_call_parameters(module, arch)?;
-    emit_riscv_module(module, writer, target, target_os, codegen_units, settings)
+    }
 }
 
 fn emit_riscv_module<W: Write>(
@@ -592,7 +596,12 @@ fn pass_riscv_arguments<W: Write>(
     let arg_regs = RiscVAbi::ARG_REGISTERS;
     let word = target.word_bytes() as usize;
     let pointer = target_pointer(target);
-    let places = classify_riscv_arguments(kinds, usize::from(hidden.is_some()), pointer);
+    let places = classify_riscv_arguments(
+        kinds,
+        usize::from(hidden.is_some()),
+        pointer,
+        target_arch(target),
+    );
     let stack_words: usize = places
         .iter()
         .map(|place| match *place {
@@ -610,7 +619,7 @@ fn pass_riscv_arguments<W: Write>(
             copy_bytes += kind.aggregate.map_or(0, |a| a.words_of(pointer)) * word;
         }
     }
-    let stack_space = align_up(copy_bytes, 16);
+    let stack_space = align_up(copy_bytes, target_arch(target).stack_alignment_at_call());
     if stack_space > 0 {
         RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
     }
@@ -765,7 +774,7 @@ fn store_incoming_arguments<W: Write>(
         })
         .collect();
     let pointer = target_pointer(target);
-    let places = classify_riscv_arguments(&kinds, first_gpr, pointer);
+    let places = classify_riscv_arguments(&kinds, first_gpr, pointer, target_arch(target));
     for ((param, kind), place) in func.sig.params.iter().zip(&kinds).zip(&places) {
         let via_stack_pointer =
             kind.by_reference(pointer) && matches!(place, RiscVArgPlace::Stack(_));
@@ -883,13 +892,21 @@ fn classify_riscv_arguments(
     kinds: &[ArgKind],
     first_gpr: usize,
     pointer: PointerWidth,
+    arch: TargetArchitecture,
 ) -> Vec<RiscVArgPlace> {
     let banks = RiscVAbi::ARG_REGISTERS.len();
+    // The psABI wants the greater of XLEN and the natural alignment, up to 16. This
+    // backend counts plain words, which `honors_argument_alignment` states.
+    let honors_alignment = arch.honors_argument_alignment();
     let mut gprs = first_gpr;
     let mut fprs = 0;
-    let mut stack = 0;
+    let mut stack = 0usize;
     let mut places = Vec::with_capacity(kinds.len());
     for kind in kinds {
+        if honors_alignment && kind.aggregate.is_some_and(|a| a.align >= 16) {
+            gprs = gprs.next_multiple_of(2);
+            stack = stack.next_multiple_of(2);
+        }
         match kind.aggregate {
             Some(aggregate) if !kind.by_reference(pointer) => {
                 let words = aggregate.words_of(pointer);
@@ -1683,7 +1700,12 @@ fn emit_instruction_riscv<W: Write>(
             }
             let arg_regs = RiscVAbi::ARG_REGISTERS;
             let kinds = ctx.signatures.arguments(name, args);
-            let places = classify_riscv_arguments(&kinds, 0, target_pointer(ctx.target));
+            let places = classify_riscv_arguments(
+                &kinds,
+                0,
+                target_pointer(ctx.target),
+                target_arch(ctx.target),
+            );
             for ((arg, kind), place) in args.iter().zip(&kinds).zip(&places) {
                 match *place {
                     RiscVArgPlace::Gpr(bank) => load_operand_to_register(

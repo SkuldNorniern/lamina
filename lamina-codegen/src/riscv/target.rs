@@ -4,7 +4,7 @@
 //! no way to say whether multiply and divide were available. It emitted `mul` and `div`
 //! unconditionally, which are M-extension instructions an rv64i core cannot execute.
 
-use lamina_platform::TargetArchitecture;
+use lamina_platform::{RiscvIsa, TargetArchitecture};
 
 /// Register width in bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +62,23 @@ impl RiscVTarget {
             f: true,
             d: true,
             c: false,
+            v: false,
+        }
+    }
+
+    /// The ISA a target string selected.
+    pub fn from_isa(isa: RiscvIsa) -> Self {
+        Self {
+            xlen: if isa.xlen >= 64 {
+                Xlen::Rv64
+            } else {
+                Xlen::Rv32
+            },
+            m: isa.m,
+            a: isa.a,
+            f: isa.f,
+            d: isa.d,
+            c: isa.c,
             v: false,
         }
     }

@@ -8,6 +8,7 @@ use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::io_codegen_error;
 use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::{ClobberIndex, FunctionEmissionPlan};
+use lamina_platform::TargetArchitecture;
 
 pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
     matches!(reg, "rbx" | "r12" | "r13" | "r14" | "r15")
@@ -786,9 +787,14 @@ pub(super) fn classify_argument_descs_with_sret(
                     words,
                 }
             } else {
-                // A 16-byte-aligned aggregate starts on an even stack slot, so an odd
-                // slot before it is left as padding.
-                if aggregate.align >= 16 && stack % 2 == 1 {
+                // An over-aligned aggregate starts on a stack slot of its own alignment,
+                // so the slots before it are left as padding.
+                let slots = TargetArchitecture::X86_64
+                    .honors_argument_alignment()
+                    .then_some(aggregate.align / stack::SLOT_SIZE)
+                    .filter(|slots| *slots > 1)
+                    .unwrap_or(1);
+                while stack % slots != 0 {
                     stack += 1;
                 }
                 stack += words;

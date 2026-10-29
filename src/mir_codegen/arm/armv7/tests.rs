@@ -113,8 +113,12 @@ fn a_composite_straddles_the_core_registers_and_the_stack() {
 
 fn compile(source: &str) -> String {
     let module = parse_module(source).expect("parse");
-    let mir =
-        from_ir_for_target(&module, "armv7_test", PointerWidth::Bits32, false).expect("lower");
+    let mir = from_ir_for_target(
+        &module,
+        "armv7_test",
+        TargetArchitecture::Armv7.data_layout(),
+    )
+    .expect("lower");
     let mut out = Vec::new();
     generate_mir_armv7(&mir, &mut out, TargetOperatingSystem::Linux).expect("codegen");
     String::from_utf8(out).expect("utf8")

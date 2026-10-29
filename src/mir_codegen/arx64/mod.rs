@@ -92,7 +92,8 @@ pub fn generate_mir_arx64_with_units_and_settings<W: Write>(
 
 fn emit_function<W: Write>(name: &str, func: &Function, writer: &mut W) -> Result<(), LaminaError> {
     let mut stack = StackLayout::new(func);
-    let frame_size = align_to(stack.bytes + 16, 16);
+    let alignment = TargetArchitecture::Arx64.stack_alignment_at_call();
+    let frame_size = align_to(stack.bytes + alignment, alignment);
 
     writeln!(writer, "{name}:").map_err(io_error)?;
     emit_addi(writer, SP, SP, -(frame_size as i64))?;

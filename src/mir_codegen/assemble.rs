@@ -7,7 +7,9 @@
 
 use crate::error::LaminaError;
 use lamina_codegen::os_uses_macho;
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{
+    ArchVariant, OutputArtifact, RiscvIsa, Target, TargetArchitecture, TargetOperatingSystem,
+};
 use ras::{ObjectWriteOptions, Ras, is_assembly_target_supported, is_object_file_supported};
 use std::{
     fs,
@@ -42,8 +44,7 @@ pub struct AssembleResult {
 pub fn assemble(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: Target,
     backend: Option<AssemblerBackend>,
     additional_flags: &[String],
     verbose: bool,
@@ -51,8 +52,7 @@ pub fn assemble(
     assemble_with_ras_object_options(
         input_path,
         output_path,
-        target_arch,
-        target_os,
+        target,
         backend,
         additional_flags,
         verbose,
@@ -65,13 +65,14 @@ pub fn assemble(
 pub fn assemble_with_ras_object_options(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: Target,
     backend: Option<AssemblerBackend>,
     additional_flags: &[String],
     verbose: bool,
     ras_object_write_options: ObjectWriteOptions,
 ) -> Result<AssembleResult, LaminaError> {
+    let target_arch = target.architecture;
+    let target_os = target.operating_system;
     if !input_path.exists() {
         return Err(LaminaError::ValidationError(format!(
             "Input file does not exist: {}",
@@ -79,8 +80,8 @@ pub fn assemble_with_ras_object_options(
         )));
     }
 
-    match target_arch {
-        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn => {
+    match target_arch.output_artifact() {
+        OutputArtifact::Text => {
             let expected_os = if target_arch == TargetArchitecture::Nvptx64 {
                 TargetOperatingSystem::Cuda
             } else {
@@ -100,14 +101,13 @@ pub fn assemble_with_ras_object_options(
                 needs_linking: false,
             })
         }
-        TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
+        OutputArtifact::Module => {
             assemble_wasm(input_path, output_path, backend, additional_flags, verbose)
         }
-        _ => assemble_native(
+        OutputArtifact::Executable => assemble_native(
             input_path,
             output_path,
-            target_arch,
-            target_os,
+            target,
             backend,
             additional_flags,
             verbose,
@@ -170,13 +170,14 @@ fn assemble_wasm(
 fn assemble_native(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: Target,
     backend: Option<AssemblerBackend>,
     additional_flags: &[String],
     verbose: bool,
     ras_object_write_options: ObjectWriteOptions,
 ) -> Result<AssembleResult, LaminaError> {
+    let target_arch = target.architecture;
+    let target_os = target.operating_system;
     let defaulted = backend.is_none();
     let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
 
@@ -203,8 +204,7 @@ fn assemble_native(
         return assemble_with_gnu(
             input_path,
             output_path,
-            target_arch,
-            target_os,
+            target,
             additional_flags,
             verbose,
             &reason,
@@ -221,8 +221,7 @@ fn assemble_native(
                 &tool,
                 input_path,
                 output_path,
-                target_arch,
-                target_os,
+                target,
                 additional_flags,
                 verbose,
             );
@@ -334,12 +333,13 @@ fn ras_assemble(
 fn assemble_with_gnu(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: Target,
     additional_flags: &[String],
     verbose: bool,
     reason: &str,
 ) -> Result<AssembleResult, LaminaError> {
+    let target_arch = target.architecture;
+    let target_os = target.operating_system;
     if !targets_elf(target_os) {
         return Err(LaminaError::ValidationError(format!(
             "{reason}; GNU as cannot produce {target_os:?} objects, so select -c clang"
@@ -353,8 +353,7 @@ fn assemble_with_gnu(
         &tool,
         input_path,
         output_path,
-        target_arch,
-        target_os,
+        target,
         additional_flags,
         verbose,
     )
@@ -364,12 +363,11 @@ fn run_gnu_as(
     tool: &str,
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: Target,
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
-    let mut args = gas_arch_flags(target_arch, target_os);
+    let mut args = gas_arch_flags(target.architecture, target.operating_system, target.variant);
     args.push(input_path.to_string_lossy().to_string());
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
@@ -503,6 +501,7 @@ pub fn get_assembly_output_extension(target_arch: TargetArchitecture) -> &'stati
 fn gas_arch_flags(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
+    variant: ArchVariant,
 ) -> Vec<String> {
     let mut args = vec![];
     match target_arch {
@@ -518,18 +517,17 @@ fn gas_arch_flags(
                 args.push("-arch".to_string());
                 args.push("arm64".to_string());
             } else {
-                args.push("-march=armv8-a".to_string());
+                let level = variant.aarch64().unwrap_or_default();
+                args.push(format!("-march={}", level.march()));
             }
         }
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
-            args.push(format!(
-                "-march=rv{}gc",
-                if matches!(target_arch, TargetArchitecture::Riscv64) {
-                    "64"
-                } else {
-                    "32"
-                }
-            ));
+            let isa = variant.riscv().unwrap_or_else(|| {
+                RiscvIsa::general(target_arch.pointer_width().bytes() as u32 * 8)
+            });
+            // Compressed encodings cost nothing to allow in the assembler, and the ISA
+            // string the toolchains expect for a bare riscv target carries them.
+            args.push(format!("-march={}c", isa.march().trim_end_matches('c')));
         }
         _ => {}
     }
@@ -658,22 +656,47 @@ mod tests {
             TargetOperatingSystem::VisionOS,
         ] {
             assert!(
-                gas_arch_flags(TargetArchitecture::X86_64, os).is_empty(),
+                gas_arch_flags(TargetArchitecture::X86_64, os, ArchVariant::None).is_empty(),
                 "{os:?}"
             );
             assert_eq!(
-                gas_arch_flags(TargetArchitecture::Aarch64, os),
+                gas_arch_flags(
+                    TargetArchitecture::Aarch64,
+                    os,
+                    TargetArchitecture::Aarch64.default_variant()
+                ),
                 ["-arch", "arm64"],
                 "{os:?}"
             );
         }
         assert_eq!(
-            gas_arch_flags(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
+            gas_arch_flags(
+                TargetArchitecture::X86_64,
+                TargetOperatingSystem::Linux,
+                ArchVariant::None
+            ),
             ["--64"]
         );
         assert_eq!(
-            gas_arch_flags(TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
+            gas_arch_flags(
+                TargetArchitecture::Aarch64,
+                TargetOperatingSystem::Linux,
+                TargetArchitecture::Aarch64.default_variant()
+            ),
             ["-march=armv8-a"]
         );
+    }
+
+    #[test]
+    fn sub_architecture_reaches_the_assembler() {
+        let flags = |name: &str| {
+            let target: Target = name.parse().expect(name);
+            gas_arch_flags(target.architecture, target.operating_system, target.variant)
+        };
+        assert_eq!(flags("riscv64_linux"), ["-march=rv64gc"]);
+        assert_eq!(flags("riscv32_linux"), ["-march=rv32gc"]);
+        assert_eq!(flags("rv64imac_linux"), ["-march=rv64imac"]);
+        assert_eq!(flags("aarch64_linux"), ["-march=armv8-a"]);
+        assert_eq!(flags("aarch64v8.2_linux"), ["-march=armv8.2-a"]);
     }
 }

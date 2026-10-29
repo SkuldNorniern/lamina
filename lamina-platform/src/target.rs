@@ -2,12 +2,19 @@
 
 use std::{fmt, str::FromStr};
 
+use crate::arch_variant::{
+    Aarch64Level, ArchVariant, Armv7Profile, Armv7Variant, PowerLevel, RiscvIsa,
+};
 use crate::detection::{detect_host_architecture_only, detect_host_os};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Target {
     pub architecture: TargetArchitecture,
     pub operating_system: TargetOperatingSystem,
+    /// Sub-architecture the target string selected. An added axis: every spelling that
+    /// names only the architecture gets [`TargetArchitecture::default_variant`], which is
+    /// what that spelling has always meant.
+    pub variant: ArchVariant,
 }
 
 /// Width of a data pointer. Pointer size and alignment derive from it.
@@ -26,11 +33,70 @@ impl PointerWidth {
     }
 }
 
+/// Byte order of multi-byte values in memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Endianness {
+    Little,
+    Big,
+}
+
+/// What a finished compilation of this target is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OutputArtifact {
+    /// Object files that a linker turns into an executable.
+    Executable,
+    /// A self-contained module, assembled but never linked.
+    Module,
+    /// Assembly text handed on as-is.
+    Text,
+}
+
+/// The facts a target-independent lowering needs to turn IR into MIR.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TargetDataLayout {
+    pub pointer_width: PointerWidth,
+    pub int_register_bits: u32,
+    pub endianness: Endianness,
+}
+
+impl TargetDataLayout {
+    pub const fn has_64bit_int_registers(self) -> bool {
+        self.int_register_bits >= 64
+    }
+}
+
 impl Target {
     pub fn new(architecture: TargetArchitecture, operating_system: TargetOperatingSystem) -> Self {
         Self {
             architecture,
             operating_system,
+            variant: architecture.default_variant(),
+        }
+    }
+
+    pub fn with_variant(mut self, variant: ArchVariant) -> Self {
+        self.variant = variant;
+        self
+    }
+
+    /// Architecture half of the target string, carrying the variant when it is not the
+    /// default, so `Display` and `FromStr` stay inverses.
+    pub fn arch_token(&self) -> String {
+        if self.variant == self.architecture.default_variant() {
+            return self.architecture.to_string();
+        }
+        match self.variant {
+            ArchVariant::Riscv(isa) => isa.march(),
+            ArchVariant::None
+            | ArchVariant::Armv7(_)
+            | ArchVariant::Aarch64(_)
+            | ArchVariant::PowerPC64(_) => VARIANT_SPELLINGS
+                .iter()
+                .find(|(_, arch, variant)| *arch == self.architecture && *variant == self.variant)
+                .map_or_else(
+                    || self.architecture.to_string(),
+                    |(name, _, _)| (*name).to_string(),
+                ),
         }
     }
 
@@ -40,6 +106,26 @@ impl Target {
 
     pub fn has_64bit_int_registers(&self) -> bool {
         self.architecture.has_64bit_int_registers()
+    }
+
+    pub fn endianness(&self) -> Endianness {
+        self.architecture.endianness()
+    }
+
+    pub fn stack_alignment_at_call(&self) -> usize {
+        self.architecture.stack_alignment_at_call()
+    }
+
+    pub fn honors_argument_alignment(&self) -> bool {
+        self.architecture.honors_argument_alignment()
+    }
+
+    pub fn output_artifact(&self) -> OutputArtifact {
+        self.architecture.output_artifact()
+    }
+
+    pub fn data_layout(&self) -> TargetDataLayout {
+        self.architecture.data_layout()
     }
 
     pub fn gpu_triple(&self) -> Option<&'static str> {
@@ -55,7 +141,7 @@ impl Target {
     }
 
     pub fn to_str(&self) -> String {
-        format!("{}_{}", self.architecture, self.operating_system)
+        format!("{}_{}", self.arch_token(), self.operating_system)
     }
 
     /// Detect the host system's target.
@@ -89,16 +175,16 @@ impl FromStr for Target {
         if parts.len() != 2 {
             return Err("Invalid target format: expected 'architecture_os'");
         }
-        Ok(Self::new(
-            TargetArchitecture::from_str(parts[1])?,
-            TargetOperatingSystem::from_str(parts[0]).map_err(|_| "Invalid operating system")?,
-        ))
+        let (architecture, variant) = parse_arch_token(parts[1])?;
+        let os =
+            TargetOperatingSystem::from_str(parts[0]).map_err(|_| "Invalid operating system")?;
+        Ok(Self::new(architecture, os).with_variant(variant))
     }
 }
 
 impl fmt::Display for Target {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}_{}", self.architecture, self.operating_system)
+        write!(f, "{}_{}", self.arch_token(), self.operating_system)
     }
 }
 
@@ -152,11 +238,10 @@ impl TargetArchitecture {
         }
     }
 
-    /// Whether an integer register holds 64 bits. Decides whether an `i64` is one
-    /// register or a pair of 32-bit words, which is a different question from
-    /// [`TargetArchitecture::pointer_width`]: wasm32 has 32-bit pointers and 64-bit
-    /// integer registers. Exhaustive on purpose, like `pointer_width`.
-    pub const fn has_64bit_int_registers(self) -> bool {
+    /// Widest integer one register holds. A wider integer is lowered to a tuple of
+    /// registers or to a libcall. Not the pointer width: wasm32 has 32-bit pointers and
+    /// 64-bit integer registers. Exhaustive on purpose, like `pointer_width`.
+    pub const fn max_int_register_bits(self) -> u32 {
         match self {
             Self::X86_64
             | Self::Aarch64
@@ -168,12 +253,235 @@ impl TargetArchitecture {
             | Self::Wasm64
             | Self::Nvptx64
             | Self::Amdgcn
-            | Self::Unknown => true,
-            Self::Arm32 | Self::Armv7 | Self::I686 | Self::Riscv32 => false,
+            | Self::Unknown => 64,
+            Self::Arm32 | Self::Armv7 | Self::I686 | Self::Riscv32 => 32,
             #[cfg(feature = "nightly")]
-            Self::Riscv128 | Self::Lisa => true,
+            Self::Riscv128 => 128,
+            #[cfg(feature = "nightly")]
+            Self::Lisa => 64,
         }
     }
+
+    /// Whether an integer register holds 64 bits. Decides whether an `i64` is one
+    /// register or a pair of 32-bit words.
+    pub const fn has_64bit_int_registers(self) -> bool {
+        self.max_int_register_bits() >= 64
+    }
+
+    /// Byte order of a multi-byte value in memory. Decides how a literal is laid out in
+    /// static data and which half of a split wide value is the low word. Exhaustive on
+    /// purpose: `ppc64` and `s390x` are big-endian, and nothing else would catch it.
+    pub const fn endianness(self) -> Endianness {
+        match self {
+            Self::X86_64
+            | Self::Aarch64
+            | Self::Arx64
+            | Self::Arm32
+            | Self::Armv7
+            | Self::I686
+            | Self::Riscv32
+            | Self::Riscv64
+            | Self::Wasm32
+            | Self::Wasm64
+            | Self::PowerPC64
+            | Self::LoongArch64
+            | Self::Nvptx64
+            | Self::Amdgcn
+            | Self::Unknown => Endianness::Little,
+            #[cfg(feature = "nightly")]
+            Self::Riscv128 | Self::Lisa => Endianness::Little,
+        }
+    }
+
+    /// Alignment the stack pointer holds at a call. `1` means the target has no machine
+    /// stack to align. Exhaustive on purpose.
+    pub const fn stack_alignment_at_call(self) -> usize {
+        match self {
+            Self::X86_64
+            | Self::I686
+            | Self::Aarch64
+            | Self::Arx64
+            | Self::Armv7
+            | Self::Riscv32
+            | Self::Riscv64
+            | Self::PowerPC64
+            | Self::LoongArch64
+            | Self::Unknown => 16,
+            Self::Arm32 => 8,
+            Self::Wasm32 | Self::Wasm64 | Self::Nvptx64 | Self::Amdgcn => 1,
+            #[cfg(feature = "nightly")]
+            Self::Riscv128 => 16,
+            #[cfg(feature = "nightly")]
+            Self::Lisa => 16,
+        }
+    }
+
+    /// Whether an argument wider than a word is placed at its own alignment rather than
+    /// at the next word. Only x86_64 does today; aarch64, ppc64 and riscv read the ABI
+    /// the same way but have not implemented it, so an `i128` argument lands one slot
+    /// early there. Exhaustive on purpose, so a new architecture states its answer.
+    pub const fn honors_argument_alignment(self) -> bool {
+        match self {
+            Self::X86_64 => true,
+            Self::Aarch64
+            | Self::Arx64
+            | Self::Arm32
+            | Self::Armv7
+            | Self::I686
+            | Self::Riscv32
+            | Self::Riscv64
+            | Self::Wasm32
+            | Self::Wasm64
+            | Self::PowerPC64
+            | Self::LoongArch64
+            | Self::Nvptx64
+            | Self::Amdgcn
+            | Self::Unknown => false,
+            #[cfg(feature = "nightly")]
+            Self::Riscv128 | Self::Lisa => false,
+        }
+    }
+
+    /// What a finished compilation is. A GPU target stops at assembly text and a wasm
+    /// target at an assembled module; neither reaches a linker. Exhaustive on purpose.
+    pub const fn output_artifact(self) -> OutputArtifact {
+        match self {
+            Self::X86_64
+            | Self::Aarch64
+            | Self::Arx64
+            | Self::Arm32
+            | Self::Armv7
+            | Self::I686
+            | Self::Riscv32
+            | Self::Riscv64
+            | Self::PowerPC64
+            | Self::LoongArch64
+            | Self::Unknown => OutputArtifact::Executable,
+            Self::Wasm32 | Self::Wasm64 => OutputArtifact::Module,
+            Self::Nvptx64 | Self::Amdgcn => OutputArtifact::Text,
+            #[cfg(feature = "nightly")]
+            Self::Riscv128 | Self::Lisa => OutputArtifact::Executable,
+        }
+    }
+
+    pub const fn data_layout(self) -> TargetDataLayout {
+        TargetDataLayout {
+            pointer_width: self.pointer_width(),
+            int_register_bits: self.max_int_register_bits(),
+            endianness: self.endianness(),
+        }
+    }
+
+    /// Sub-architecture a bare architecture name selects. Each value is what that name
+    /// has always meant to the backend, so adding the variant axis changes no output.
+    /// Exhaustive on purpose.
+    pub const fn default_variant(self) -> ArchVariant {
+        match self {
+            Self::Riscv32 => ArchVariant::Riscv(RiscvIsa::general(32)),
+            Self::Riscv64 => ArchVariant::Riscv(RiscvIsa::general(64)),
+            Self::Armv7 => ArchVariant::Armv7(Armv7Variant::cortex_a7()),
+            Self::Aarch64 => ArchVariant::Aarch64(Aarch64Level::V8_0),
+            Self::PowerPC64 => ArchVariant::PowerPC64(PowerLevel::Power8),
+            Self::X86_64
+            | Self::Arx64
+            | Self::Arm32
+            | Self::I686
+            | Self::Wasm32
+            | Self::Wasm64
+            | Self::LoongArch64
+            | Self::Nvptx64
+            | Self::Amdgcn
+            | Self::Unknown => ArchVariant::None,
+            #[cfg(feature = "nightly")]
+            Self::Riscv128 => ArchVariant::Riscv(RiscvIsa::general(128)),
+            #[cfg(feature = "nightly")]
+            Self::Lisa => ArchVariant::None,
+        }
+    }
+}
+
+/// Target strings that name a sub-architecture. Open-ended RISC-V ISA strings are parsed
+/// instead, in [`parse_arch_token`].
+const VARIANT_SPELLINGS: &[(&str, TargetArchitecture, ArchVariant)] = &[
+    (
+        "armv7a-neon",
+        TargetArchitecture::Armv7,
+        ArchVariant::Armv7(Armv7Variant {
+            neon: true,
+            fpu: Some("neon-vfpv4"),
+            ..Armv7Variant::cortex_a7()
+        }),
+    ),
+    (
+        "armv7a-sf",
+        TargetArchitecture::Armv7,
+        ArchVariant::Armv7(Armv7Variant {
+            hard_float: false,
+            fpu: None,
+            ..Armv7Variant::cortex_a7()
+        }),
+    ),
+    (
+        "armv7r",
+        TargetArchitecture::Armv7,
+        ArchVariant::Armv7(Armv7Variant {
+            profile: Armv7Profile::R,
+            hard_float: false,
+            fpu: None,
+            ..Armv7Variant::cortex_a7()
+        }),
+    ),
+    (
+        "armv7m",
+        TargetArchitecture::Armv7,
+        ArchVariant::Armv7(Armv7Variant {
+            profile: Armv7Profile::M,
+            hard_float: false,
+            fpu: None,
+            ..Armv7Variant::cortex_a7()
+        }),
+    ),
+    (
+        "aarch64v8.1",
+        TargetArchitecture::Aarch64,
+        ArchVariant::Aarch64(Aarch64Level::V8_1),
+    ),
+    (
+        "aarch64v8.2",
+        TargetArchitecture::Aarch64,
+        ArchVariant::Aarch64(Aarch64Level::V8_2),
+    ),
+    (
+        "ppc64le-power9",
+        TargetArchitecture::PowerPC64,
+        ArchVariant::PowerPC64(PowerLevel::Power9),
+    ),
+    (
+        "ppc64le-power10",
+        TargetArchitecture::PowerPC64,
+        ArchVariant::PowerPC64(PowerLevel::Power10),
+    ),
+];
+
+/// Architecture half of a target string, with the sub-architecture it names. A spelling
+/// that names only the architecture takes [`TargetArchitecture::default_variant`].
+pub fn parse_arch_token(token: &str) -> Result<(TargetArchitecture, ArchVariant), &'static str> {
+    if let Some((_, arch, variant)) = VARIANT_SPELLINGS.iter().find(|(name, _, _)| *name == token) {
+        return Ok((*arch, *variant));
+    }
+    if token.starts_with("rv") {
+        let isa = RiscvIsa::from_str(token)?;
+        let arch = match isa.xlen {
+            32 => TargetArchitecture::Riscv32,
+            64 => TargetArchitecture::Riscv64,
+            #[cfg(feature = "nightly")]
+            128 => TargetArchitecture::Riscv128,
+            _ => return Err("no backend for that RISC-V width"),
+        };
+        return Ok((arch, ArchVariant::Riscv(isa)));
+    }
+    let arch = TargetArchitecture::from_str(token)?;
+    Ok((arch, arch.default_variant()))
 }
 
 impl FromStr for TargetArchitecture {
@@ -470,6 +778,114 @@ mod tests {
         assert_eq!(width("wasm64_unknown"), PointerWidth::Bits64);
         assert_eq!(PointerWidth::Bits32.bytes(), 4);
         assert_eq!(PointerWidth::Bits64.bytes(), 8);
+    }
+
+    #[test]
+    fn every_target_today_is_little_endian() {
+        for name in HOST_ARCH_LIST {
+            let target: Target = name.parse().expect(name);
+            assert_eq!(target.endianness(), Endianness::Little, "{name}");
+        }
+    }
+
+    #[test]
+    fn only_x86_64_honors_argument_alignment() {
+        let honors = |name: &str| name.parse::<Target>().unwrap().honors_argument_alignment();
+        assert!(honors("x86_64_linux"));
+        for name in [
+            "aarch64_linux",
+            "riscv64_linux",
+            "ppc64le_linux",
+            "i686_linux",
+        ] {
+            assert!(!honors(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn stack_alignment_is_sixteen_where_there_is_a_stack() {
+        let align = |name: &str| name.parse::<Target>().unwrap().stack_alignment_at_call();
+        for name in [
+            "x86_64_linux",
+            "i686_linux",
+            "aarch64_linux",
+            "armv7_linux",
+            "riscv64_linux",
+            "ppc64le_linux",
+        ] {
+            assert_eq!(align(name), 16, "{name}");
+        }
+        assert_eq!(align("wasm32_wasi"), 1);
+    }
+
+    #[test]
+    fn only_native_targets_reach_a_linker() {
+        let artifact = |name: &str| name.parse::<Target>().unwrap().output_artifact();
+        assert_eq!(artifact("x86_64_linux"), OutputArtifact::Executable);
+        assert_eq!(artifact("wasm32_wasi"), OutputArtifact::Module);
+        assert_eq!(artifact("nvptx64_cuda"), OutputArtifact::Text);
+        assert_eq!(artifact("amdgcn_amdhsa"), OutputArtifact::Text);
+    }
+
+    #[test]
+    fn data_layout_separates_pointers_from_registers() {
+        let layout = "wasm32_wasi".parse::<Target>().unwrap().data_layout();
+        assert_eq!(layout.pointer_width, PointerWidth::Bits32);
+        assert_eq!(layout.int_register_bits, 64);
+        assert!(layout.has_64bit_int_registers());
+        assert_eq!(layout.endianness, Endianness::Little);
+    }
+
+    #[test]
+    fn bare_spellings_keep_their_default_variant() {
+        for name in ["riscv64_linux", "riscv64gc_linux", "riscv64_unknown"] {
+            let target: Target = name.parse().expect(name);
+            assert_eq!(
+                target.variant,
+                ArchVariant::Riscv(RiscvIsa::general(64)),
+                "{name}"
+            );
+        }
+        for name in [
+            "armv7_linux",
+            "aarch64_linux",
+            "ppc64le_linux",
+            "x86_64_linux",
+        ] {
+            let target: Target = name.parse().expect(name);
+            assert_eq!(
+                target.variant,
+                target.architecture.default_variant(),
+                "{name}"
+            );
+            assert_eq!(target.to_string(), name.replace("gc", ""), "{name}");
+        }
+    }
+
+    #[test]
+    fn variant_spellings_parse_and_print_back() {
+        for name in [
+            "rv32imac_linux",
+            "rv64gc_linux",
+            "armv7r_linux",
+            "armv7a-neon_linux",
+            "aarch64v8.2_linux",
+            "ppc64le-power9_linux",
+        ] {
+            let target: Target = name.parse().expect(name);
+            assert_ne!(
+                target.variant,
+                target.architecture.default_variant(),
+                "{name} should not be the default"
+            );
+            assert_eq!(target.to_string(), name, "{name} must round trip");
+        }
+        let rv: Target = "rv32imac_linux".parse().unwrap();
+        assert_eq!(rv.architecture, TargetArchitecture::Riscv32);
+        assert_eq!(rv.variant.riscv().map(|i| i.has_float()), Some(false));
+        let a64: Target = "aarch64v8.2_linux".parse().unwrap();
+        assert_eq!(a64.architecture, TargetArchitecture::Aarch64);
+        assert!(a64.variant.aarch64().unwrap().has_lse_atomics());
     }
 
     #[test]

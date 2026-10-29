@@ -32,7 +32,7 @@ use crate::{
 };
 
 use lamina_codegen::wasm::WasmABI;
-use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
 use util::{
     emit_float_binary_op, emit_float_cmp_op, emit_float_unary_op, emit_int_binary_op,
     emit_int_cmp_op, load_fp_operand_wasm, load_operand_wasm, load_register_wasm,
@@ -196,8 +196,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
         let _assemble_result = assemble::assemble(
             &temp_wat,
             &temp_wasm,
-            TargetArchitecture::Wasm32,
-            self.base.target_os,
+            Target::new(TargetArchitecture::Wasm32, self.base.target_os),
             Some(assemble::AssemblerBackend::Wat2Wasm),
             &[],
             self.base.verbose,

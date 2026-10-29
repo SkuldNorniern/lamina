@@ -99,6 +99,10 @@ pub fn print_usage() {
     eprintln!("  --mcpu <gpu>            AMDGPU processor: gfx900 | gfx1200 (default: gfx1200)");
     eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
     eprintln!(
+        "                          A sub-architecture may replace the arch: rv32imac, rv64gc,\n\
+         \x20                         armv7r, armv7a-neon, aarch64v8.2, ppc64le-power9"
+    );
+    eprintln!(
         "  --cpu-level <v>         x86-64 level the output may use: v1 | v2 | v3 | v4 (default: v2, x86_64 targets only)"
     );
     eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
@@ -209,17 +213,20 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                     return Err("Missing argument for target architecture".to_string());
                 }
                 let requested_target = args[i + 1].to_lowercase();
-                if !requested_target.contains('_')
-                    || !HOST_ARCH_LIST
-                        .iter()
-                        .any(|&supported| supported == requested_target)
-                {
-                    let reason = requested_target
-                        .parse::<Target>()
-                        .err()
-                        .map_or_else(String::new, |e| format!(": {e}"));
+                // A sub-architecture spelling such as rv64gc_linux or aarch64v8.2_linux
+                // is the same target with a variant chosen, so the list is checked
+                // against the bare form it resolves to.
+                let parsed = requested_target.parse::<Target>();
+                let listed = parsed.as_ref().is_ok_and(|target| {
+                    let bare = Target::new(target.architecture, target.operating_system);
+                    HOST_ARCH_LIST.contains(&bare.to_string().as_str())
+                });
+                if !requested_target.contains('_') || !listed {
+                    let reason = parsed.err().map_or_else(String::new, |e| format!(": {e}"));
                     return Err(format!(
-                        "Unsupported target '{}'{reason}. Supported values:\n{}",
+                        "Unsupported target '{}'{reason}. Supported values:\n{}\n\
+                         A sub-architecture may be named instead: rv32imac, rv64gc, armv7r, \
+                         armv7a-neon, aarch64v8.2, ppc64le-power9",
                         requested_target,
                         HOST_ARCH_LIST.join(", ")
                     ));

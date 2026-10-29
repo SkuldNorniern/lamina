@@ -24,7 +24,7 @@ pub use capability::{CapabilitySet, CodegenCapability};
 pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};
 
-use std::{borrow::Cow, collections::HashMap, fmt, io::Write};
+use std::{borrow::Cow, collections::HashMap, fmt, io::Write, mem::discriminant};
 
 use crate::{
     error::LaminaError,
@@ -34,7 +34,7 @@ use lamina_codegen::{
     abi::{BuiltinLibrary, RuntimeSymbol},
     riscv::{RiscVTarget, Xlen},
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
+use lamina_platform::{ArchVariant, TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
 pub fn generate_mir_to_target<W: Write>(
@@ -137,6 +137,24 @@ fn check_compiler_runtime_symbols(
     Ok(())
 }
 
+/// The variant a backend runs with: the one the target named, or the architecture's
+/// default when the settings carry none or carry another family's.
+fn effective_variant(arch: TargetArchitecture, chosen: ArchVariant) -> ArchVariant {
+    let default = arch.default_variant();
+    if discriminant(&chosen) == discriminant(&default) {
+        chosen
+    } else {
+        default
+    }
+}
+
+/// The RISC-V the backend emits for: the ISA the target named.
+fn riscv_target(variant: ArchVariant) -> RiscVTarget {
+    variant
+        .riscv()
+        .map_or_else(|| RiscVTarget::general(Xlen::Rv64), RiscVTarget::from_isa)
+}
+
 fn not_implemented(arch: TargetArchitecture, os: TargetOperatingSystem) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
         "{arch} code generation is not implemented: target {arch}_{os} produces no output"
@@ -154,6 +172,10 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     let pointer_width = target_arch.pointer_width();
+    let resolved_settings = settings
+        .clone()
+        .with_arch_variant(effective_variant(target_arch, settings.arch_variant));
+    let settings = &resolved_settings;
     let builtins = BuiltinLibrary::from_env(target_os);
     let retargeted = retarget_runtime_calls(input, &builtins);
     let module: &Module = &retargeted;
@@ -250,8 +272,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             riscv::generate_mir_riscv_with_units_and_settings(
                 module,
                 writer,
-                RiscVTarget::from_arch(target_arch)
-                    .unwrap_or_else(|| RiscVTarget::general(Xlen::Rv64)),
+                riscv_target(settings.arch_variant),
                 target_os,
                 codegen_units,
                 settings,
@@ -280,8 +301,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             riscv::generate_mir_riscv_with_units_and_settings(
                 module,
                 writer,
-                RiscVTarget::from_arch(target_arch)
-                    .unwrap_or_else(|| RiscVTarget::general(Xlen::Rv64)),
+                riscv_target(settings.arch_variant),
                 target_os,
                 codegen_units,
                 settings,

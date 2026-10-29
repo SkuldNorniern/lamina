@@ -561,8 +561,12 @@ entry:
 }
 ";
     let module = parse_module(source).map_err(|e| e.to_string())?;
-    let mir = from_ir_for_target(&module, "rv32_i64", PointerWidth::Bits32, false)
-        .map_err(|e| e.to_string())?;
+    let mir = from_ir_for_target(
+        &module,
+        "rv32_i64",
+        TargetArchitecture::Riscv32.data_layout(),
+    )
+    .map_err(|e| e.to_string())?;
     for function in mir.functions.values() {
         for block in &function.blocks {
             for instruction in &block.instructions {

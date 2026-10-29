@@ -1,6 +1,6 @@
 //! Cross-backend MIR codegen settings (register allocation policy, basic debug emission).
 
-use lamina_platform::X86CpuLevel;
+use lamina_platform::{ArchVariant, X86CpuLevel};
 #[cfg(feature = "nightly")]
 use lamina_platform::{SimdCapabilities, Target};
 
@@ -34,6 +34,10 @@ pub struct MirCodegenSettings {
     /// Highest x86-64 level the emitted code may use. Instructions above it are
     /// replaced by a documented fallback or refused with [`CodegenError::CpuLevelRequired`].
     pub x86_cpu_level: X86CpuLevel,
+    /// Sub-architecture the target selected, for the families that have one. The same
+    /// idea as [`MirCodegenSettings::x86_cpu_level`], for riscv, armv7, aarch64 and
+    /// ppc64. [`ArchVariant::None`] leaves each backend on its architecture's default.
+    pub arch_variant: ArchVariant,
     /// When true, emit GNU assembler `.file` / `.loc` directives (requires
     /// [`crate::mir_codegen::CodegenCapability::DebugInfo`] on the target).
     pub emit_asm_debug_lines: bool,
@@ -51,11 +55,20 @@ impl Default for MirCodegenSettings {
             amdgpu_target: Default::default(),
             regalloc: RegallocStrategy::Incremental,
             x86_cpu_level: X86CpuLevel::default(),
+            arch_variant: ArchVariant::None,
             emit_asm_debug_lines: false,
             debug_file_tag: "lamina".to_string(),
             #[cfg(feature = "nightly")]
             simd: None,
         }
+    }
+}
+
+impl MirCodegenSettings {
+    /// Select the sub-architecture a parsed target named.
+    pub fn with_arch_variant(mut self, variant: ArchVariant) -> Self {
+        self.arch_variant = variant;
+        self
     }
 }
 

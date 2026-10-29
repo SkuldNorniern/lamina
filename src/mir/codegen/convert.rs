@@ -9,9 +9,8 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use crate::mir::parallel::insert_edge_moves;
 use lamina_mir::{Located, SourceLoc};
-use lamina_platform::PointerWidth;
+use lamina_platform::{Endianness, PointerWidth, TargetArchitecture, TargetDataLayout};
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
@@ -45,7 +44,6 @@ use crate::{
             },
         },
         io_intrinsic_result_type,
-        verify::{PhiVerification, verify_before_phi_lowering},
     },
 };
 
@@ -270,20 +268,21 @@ fn declared_align(align: Option<u32>) -> usize {
 ///
 /// The result is target independent: an aggregate crossing a function boundary keeps
 /// its layout in an [`Aggregate`](crate::mir::types::Aggregate) marker and each backend
-/// decides where the words go. Phis survive, so the caller lowers them before handing
-/// the module to a backend. Anything MIR cannot express comes back as a
+/// decides where the words go. Anything MIR cannot express comes back as a
 /// [`FromIRError`] naming the value.
 /// Lowers for a 64-bit target. Use [`from_ir_for_target`] to lower for another width.
 pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
-    from_ir_for_target(ir, name, PointerWidth::Bits64, true)
+    from_ir_for_target(ir, name, TargetArchitecture::X86_64.data_layout())
 }
 
 pub fn from_ir_for_target(
     ir: &IRModule<'_>,
     name: &str,
-    pointer: PointerWidth,
-    int64_regs: bool,
+    layout: TargetDataLayout,
 ) -> Result<Module, FromIRError> {
+    let pointer = layout.pointer_width;
+    let int64_regs = layout.has_64bit_int_registers();
+    let endianness = layout.endianness;
     let mut mir_module = Module::new(name);
     #[cfg(feature = "nightly")]
     {
@@ -304,6 +303,7 @@ pub fn from_ir_for_target(
                 size,
                 decl.initializer.as_ref(),
                 pointer,
+                endianness,
             )?;
             let mut global = Global::new(*global_name, MirType::Scalar(ScalarType::I8), pointer)
                 .with_layout(size, align);
@@ -322,7 +322,8 @@ pub fn from_ir_for_target(
                 // the target does not have.
                 let size = wide_aggregate(int64_regs).size;
                 let align = size.max(declared_align(decl.align));
-                let bytes = wide_global_bytes(global_name, decl.initializer.as_ref(), size)?;
+                let bytes =
+                    wide_global_bytes(global_name, decl.initializer.as_ref(), size, endianness)?;
                 let mut global =
                     Global::new(*global_name, MirType::Scalar(ScalarType::I8), pointer)
                         .with_layout(size, align);
@@ -336,8 +337,13 @@ pub fn from_ir_for_target(
                 continue;
             }
             let ty = map_ir_type(&resolved)?;
-            let initializer =
-                global_initializer(global_name, ty, decl.initializer.as_ref(), pointer)?;
+            let initializer = global_initializer(
+                global_name,
+                ty,
+                decl.initializer.as_ref(),
+                pointer,
+                endianness,
+            )?;
             let mut global = Global::new(*global_name, ty, pointer);
             global.align = global.align.max(declared_align(decl.align));
             if let Some(bytes) = initializer {
@@ -439,6 +445,7 @@ fn element_list_bytes(
     size: usize,
     elements: &[IRLit<'_>],
     pointer: PointerWidth,
+    endianness: Endianness,
 ) -> Result<Vec<u8>, FromIRError> {
     // (offset, width) of every slot the list can fill, in order. An array keeps its
     // stride instead of one entry per element, so a long array costs nothing here.
@@ -486,7 +493,7 @@ fn element_list_bytes(
     let mut bytes = vec![0u8; filled];
     for (index, literal) in elements.iter().enumerate() {
         let (at, width) = slots.get(index).ok_or(FromIRError::UnsupportedType)?;
-        let encoded = literal_bytes(name, literal)?;
+        let encoded = literal_bytes(name, literal, endianness)?;
         if encoded.len() != width {
             return Err(FromIRError::UnsupportedGlobal(format!(
                 "@{name} element {index} is {} bytes, not the {width} its slot takes",
@@ -506,12 +513,13 @@ fn aggregate_global_bytes(
     size: usize,
     value: Option<&GlobalInit<'_>>,
     pointer: PointerWidth,
+    endianness: Endianness,
 ) -> Result<Option<Vec<u8>>, FromIRError> {
     let Some(value) = value else {
         return Ok(None);
     };
     if let GlobalInit::List(elements) = value {
-        return element_list_bytes(name, ty, size, elements, pointer).map(Some);
+        return element_list_bytes(name, ty, size, elements, pointer, endianness).map(Some);
     }
     let GlobalInit::Value(IRVal::Constant(IRLit::String(text))) = value else {
         return Err(FromIRError::UnsupportedGlobal(format!(
@@ -587,6 +595,7 @@ fn wide_global_bytes(
     name: &str,
     value: Option<&GlobalInit<'_>>,
     size: usize,
+    endianness: Endianness,
 ) -> Result<Option<Vec<u8>>, FromIRError> {
     let Some(value) = value else {
         return Ok(None);
@@ -596,7 +605,7 @@ fn wide_global_bytes(
             "@{name} needs a literal initializer"
         )));
     };
-    let mut bytes = literal_bytes(name, literal)?;
+    let mut bytes = literal_bytes(name, literal, endianness)?;
     if bytes.len() > size {
         return Err(FromIRError::UnsupportedGlobal(format!(
             "@{name} initializer is {} bytes, wider than the {size} its type takes",
@@ -608,7 +617,15 @@ fn wide_global_bytes(
     } else {
         0
     };
-    bytes.resize(size, sign);
+    // The widening bytes are the high ones, which come last only in little-endian order.
+    match endianness {
+        Endianness::Little => bytes.resize(size, sign),
+        Endianness::Big => {
+            let mut widened = vec![sign; size.saturating_sub(bytes.len())];
+            widened.append(&mut bytes);
+            bytes = widened;
+        }
+    }
     Ok(Some(bytes))
 }
 
@@ -628,6 +645,7 @@ fn global_initializer(
     ty: MirType,
     value: Option<&GlobalInit<'_>>,
     pointer: PointerWidth,
+    endianness: Endianness,
 ) -> Result<Option<Vec<u8>>, FromIRError> {
     let Some(value) = value else {
         return Ok(None);
@@ -637,7 +655,7 @@ fn global_initializer(
             "@{name} needs a literal initializer"
         )));
     };
-    let bytes = literal_bytes(name, literal)?;
+    let bytes = literal_bytes(name, literal, endianness)?;
     if bytes.len() != ty.size_bytes(pointer) {
         return Err(FromIRError::UnsupportedGlobal(format!(
             "@{name} initializer width does not match its type {ty}"
@@ -646,9 +664,13 @@ fn global_initializer(
     Ok(Some(bytes))
 }
 
-/// Little-endian bytes of a literal, at the width its own type takes.
-fn literal_bytes(name: &str, literal: &IRLit<'_>) -> Result<Vec<u8>, FromIRError> {
-    let bytes = match literal {
+/// Bytes of a literal in the target's byte order, at the width its own type takes.
+fn literal_bytes(
+    name: &str,
+    literal: &IRLit<'_>,
+    endianness: Endianness,
+) -> Result<Vec<u8>, FromIRError> {
+    let mut bytes = match literal {
         IRLit::I8(v) => v.to_le_bytes().to_vec(),
         IRLit::I16(v) => v.to_le_bytes().to_vec(),
         IRLit::I32(v) => v.to_le_bytes().to_vec(),
@@ -668,6 +690,9 @@ fn literal_bytes(name: &str, literal: &IRLit<'_>) -> Result<Vec<u8>, FromIRError
             )));
         }
     };
+    if endianness == Endianness::Big {
+        bytes.reverse();
+    }
     Ok(bytes)
 }
 
@@ -878,18 +903,6 @@ fn convert_function<'a>(
         .with_entry(f.entry_block)
         .with_pointer_width(pointer)
         .with_int64_regs(int64_regs);
-
-    let mut names: HashSet<&str> = f.signature.params.iter().map(|p| p.name).collect();
-    let mut reassigned_names = HashSet::new();
-    for block in f.basic_blocks.values() {
-        for instruction in &block.instructions {
-            if let Some(name) = instruction.defined_var()
-                && !names.insert(name)
-            {
-                reassigned_names.insert(name);
-            }
-        }
-    }
 
     // BFS traversal starting from entry block, guard with visited to avoid cycles
     let mut visited: HashSet<&'a str> = HashSet::new();
@@ -1116,135 +1129,14 @@ fn convert_function<'a>(
         mir_func.add_block(mir_block);
     }
 
+    let mut prelude = aggregate_prelude;
+    prelude.extend(globals.prelude());
+    if !prelude.is_empty()
+        && let Some(entry) = mir_func.get_block_mut(f.entry_block)
     {
-        let mut phis = Vec::new();
-        let mut edge_moves: HashMap<(String, String), Vec<Instruction>> = HashMap::new();
-
-        for (succ_label, ir_block) in &f.basic_blocks {
-            for instr in &ir_block.instructions {
-                if let IRInst::Phi {
-                    result,
-                    ty,
-                    incoming,
-                } = instr
-                    && wide::is_wide_type(ty, int64_regs)
-                    && let Some(pair) = var_to_reg.wide.get(result).cloned()
-                {
-                    let mut halves: Vec<PhiVerification> = pair
-                        .iter()
-                        .map(|dst| PhiVerification {
-                            block: (*succ_label).to_string(),
-                            dst: dst.clone(),
-                            ty: wide::word_ty(int64_regs),
-                            incoming: Vec::new(),
-                        })
-                        .collect();
-                    for (value, pred_label) in incoming {
-                        if !visited.contains(pred_label) {
-                            continue;
-                        }
-                        let (lo, hi) = wide::phi_words(
-                            value,
-                            &mut vreg_alloc,
-                            &mut var_to_reg,
-                            &mut globals,
-                            &mut reservations,
-                            module,
-                            pointer,
-                            int64_regs,
-                        )?;
-                        for ((half, dst), src) in halves.iter_mut().zip(&pair).zip([lo, hi]) {
-                            half.incoming.push(((*pred_label).to_string(), src.clone()));
-                            edge_moves
-                                .entry(((*pred_label).to_string(), (*succ_label).to_string()))
-                                .or_default()
-                                .push(Instruction::Copy {
-                                    ty: wide::word_ty(int64_regs),
-                                    dst: dst.clone(),
-                                    src,
-                                });
-                        }
-                    }
-                    phis.extend(halves);
-                    continue;
-                }
-                if let IRInst::Phi {
-                    result,
-                    ty,
-                    incoming,
-                } = instr
-                {
-                    if let Some(dst_reg) = var_to_reg.get(result).cloned() {
-                        let mir_ty = map_ir_type(ty)?;
-                        let mut phi = PhiVerification {
-                            block: (*succ_label).to_string(),
-                            dst: dst_reg.clone(),
-                            ty: mir_ty,
-                            incoming: Vec::new(),
-                        };
-                        for (val, pred_label) in incoming {
-                            if !visited.contains(pred_label) {
-                                continue;
-                            }
-                            let src_op = resolve_operand(
-                                val,
-                                &mut vreg_alloc,
-                                &mut var_to_reg,
-                                &mut globals,
-                            )?;
-                            let mut mov_like = Instruction::Copy {
-                                ty: mir_ty,
-                                dst: dst_reg.clone(),
-                                src: src_op,
-                            };
-                            mov_like.normalize_integer_immediates(None);
-                            if let Instruction::Copy { src, .. } = &mov_like {
-                                phi.incoming.push(((*pred_label).to_string(), src.clone()));
-                            }
-                            edge_moves
-                                .entry(((*pred_label).to_string(), (*succ_label).to_string()))
-                                .or_default()
-                                .push(mov_like);
-                        }
-                        phis.push(phi);
-                    } else {
-                        // Bind destination conservatively to avoid cascading unknowns
-                        let new_dst = Register::Virtual(vreg_alloc.allocate_gpr());
-                        var_to_reg.insert(*result, new_dst);
-                    }
-                }
-            }
-        }
-
-        let mut prelude = aggregate_prelude;
-        prelude.extend(globals.prelude());
-        if !prelude.is_empty()
-            && let Some(entry) = mir_func.get_block_mut(f.entry_block)
-        {
-            entry
-                .instructions
-                .splice(0..0, prelude.into_iter().map(Located::from));
-        }
-
-        verify_before_phi_lowering(
-            &mir_func,
-            &phis,
-            &reassigned_names
-                .iter()
-                .flat_map(|name| {
-                    let scalar = var_to_reg.get(name).cloned();
-                    let pair = var_to_reg.wide.get(name).cloned();
-                    scalar.into_iter().chain(pair.into_iter().flatten())
-                })
-                .collect(),
-        )
-        .map_err(FromIRError::InvalidMir)?;
-
-        insert_edge_moves(
-            &mut mir_func,
-            edge_moves.into_iter().collect(),
-            &mut vreg_alloc,
-        );
+        entry
+            .instructions
+            .splice(0..0, prelude.into_iter().map(Located::from));
     }
 
     mir_func.stack_reservations = reservations;
@@ -1373,12 +1265,6 @@ fn convert_instruction<'a>(
                 },
             };
             Ok(vec![mir])
-        }
-        // SSA merge: create a binding for the phi result so subsequent uses resolve.
-        // Semantics are not materialized here; a later SSA elimination pass should lower this.
-        IRInst::Phi { result, .. } => {
-            resolve_or_alloc(result, vreg_alloc, var_to_reg);
-            Ok(vec![])
         }
         IRInst::Copy { result, ty, value } => {
             let mir_ty = map_ir_type(ty)?;
@@ -2601,7 +2487,6 @@ fn value_register_classes<'a>(
                 | IRInst::Load { result, ty, .. }
                 | IRInst::AtomicLoad { result, ty, .. }
                 | IRInst::AtomicBinary { result, ty, .. }
-                | IRInst::Phi { result, ty, .. }
                 | IRInst::Copy { result, ty, .. } => (*result, class_of_type(ty)),
                 IRInst::VaArg { result, ty, .. } => (*result, reg_class_for_prim(*ty)),
                 IRInst::Bitcast {
