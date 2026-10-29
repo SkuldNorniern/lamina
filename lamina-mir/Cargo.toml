@@ -15,7 +15,7 @@ lamina-platform = { path = "../lamina-platform", version = "0.2.0" }
 
 [features]
 default = []
-nightly = []
+nightly = ["lamina-platform/nightly"]
 
 [lints]
 workspace = true
