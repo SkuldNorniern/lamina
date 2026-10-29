@@ -1,18 +1,22 @@
 # 128-bit bit intrinsics against the two-word lowering: zero, all ones, lone set bits in each word, MIN, MAX, and rotate counts at word and width boundaries.
 fn @mk_u128(i64 %h, i64 %l) -> u128 {
 entry:
-  %hz = zext.i64.u128 %h
+  %hz_bits = bitcast.i64.u64 %h
+  %hz = extend.u64.u128 %hz_bits
   %hs = shl.u128 %hz, 64
-  %lz = zext.i64.u128 %l
+  %lz_bits = bitcast.i64.u64 %l
+  %lz = extend.u64.u128 %lz_bits
   %v = or.u128 %hs, %lz
   ret.u128 %v
 }
 
 fn @mk_i128(i64 %h, i64 %l) -> i128 {
 entry:
-  %hz = zext.i64.i128 %h
+  %hz_bits2 = bitcast.i64.u64 %h
+  %hz = extend.u64.i128 %hz_bits2
   %hs = shl.i128 %hz, 64
-  %lz = zext.i64.i128 %l
+  %lz_bits2 = bitcast.i64.u64 %l
+  %lz = extend.u64.i128 %lz_bits2
   %v = or.i128 %hs, %lz
   ret.i128 %v
 }

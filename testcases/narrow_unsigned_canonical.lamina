@@ -5,7 +5,7 @@ fn @xor_eq_u8(u8 %p) -> i64 {
   entry:
     %x = xor.u8 0, %p
     %c = eq.u8 %p, %x
-    %w = zext.bool.i64 %c
+    %w = extend.bool.i64 %c
     ret.i64 %w
 }
 
@@ -13,7 +13,7 @@ fn @add_eq_u16(u16 %p) -> i64 {
   entry:
     %x = add.u16 %p, 0
     %c = eq.u16 %p, %x
-    %w = zext.bool.i64 %c
+    %w = extend.bool.i64 %c
     ret.i64 %w
 }
 
@@ -21,7 +21,7 @@ fn @or_eq_u32(u32 %p) -> i64 {
   entry:
     %x = or.u32 %p, 0
     %c = eq.u32 %p, %x
-    %w = zext.bool.i64 %c
+    %w = extend.bool.i64 %c
     ret.i64 %w
 }
 
@@ -44,15 +44,15 @@ fn @main() -> i64 {
     %r = call @mk_u8()
     %s = xor.u8 %r, 0
     %e = eq.u8 %r, %s
-    %ew = zext.bool.i64 %e
+    %ew = extend.bool.i64 %e
     call @print_i64(%ew)
-    %rw = zext.u8.i64 %r
+    %rw = extend.u8.i64 %r
     call @print_i64(%rw)
     %big = gt.u8 %r, 1
-    %bigw = zext.bool.i64 %big
+    %bigw = extend.bool.i64 %big
     call @print_i64(%bigw)
     %q = div.u8 %r, 5
-    %qw = zext.u8.i64 %q
+    %qw = extend.u8.i64 %q
     call @print_i64(%qw)
     ret.i64 0
 }

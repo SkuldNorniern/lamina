@@ -10,7 +10,7 @@ entry:
  %h = load.f32 $half
  %h2 = mul.f32 %h, 8.0
  %bits = bitcast.f32.i32 %h2
- %wide = sext.i32.i64 %bits
+ %wide = extend.i32.i64 %bits
  call @print_i64(%wide)
  ret.i64 0
 }

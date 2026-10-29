@@ -6,8 +6,8 @@ entry:
   %b = va_arg.i8 %ap
   %c = va_arg.ptr %ap
   va_end %ap
-  %a64 = sext.i32.i64 %a
-  %b64 = sext.i8.i64 %b
+  %a64 = extend.i32.i64 %a
+  %b64 = extend.i8.i64 %b
   %c64 = ptrtoint.i64 %c
   %t = add.i64 %a64, %b64
   %u = add.i64 %t, %c64

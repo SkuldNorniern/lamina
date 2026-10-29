@@ -298,7 +298,7 @@ call @free(%hptr)
 
 ```
 # Between integer widths
-%wide = sext.i32.i64 %narrow
+%wide = extend.i32.i64 %narrow
 %narrow = trunc.i64.i32 %wide
 
 # Between integers and floats

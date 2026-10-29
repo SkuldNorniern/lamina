@@ -1,8 +1,8 @@
-# i128/u128 zext, sext and trunc to and from every narrower integer width, and bool.
+# i128/u128 extend, trunc to and from every narrower integer width, and bool.
 fn @case0() -> i64 {
 entry:
   %v = add.i8 -1, 0
-  %w = sext.i8.i128 %v
+  %w = extend.i8.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -14,7 +14,8 @@ entry:
 fn @case1() -> i64 {
 entry:
   %v = add.i8 -1, 0
-  %w = zext.i8.i128 %v
+  %w_bits = bitcast.i8.u8 %v
+  %w = extend.u8.i128 %w_bits
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -26,7 +27,7 @@ entry:
 fn @case2() -> i64 {
 entry:
   %v = add.i8 -1, 0
-  %w = sext.i8.u128 %v
+  %w = extend.i8.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -38,7 +39,8 @@ entry:
 fn @case3() -> i64 {
 entry:
   %v = add.i8 -1, 0
-  %w = zext.i8.u128 %v
+  %w_bits2 = bitcast.i8.u8 %v
+  %w = extend.u8.u128 %w_bits2
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -50,7 +52,7 @@ entry:
 fn @case4() -> i64 {
 entry:
   %v = add.i8 127, 0
-  %w = sext.i8.i128 %v
+  %w = extend.i8.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -62,7 +64,8 @@ entry:
 fn @case5() -> i64 {
 entry:
   %v = add.i8 127, 0
-  %w = zext.i8.i128 %v
+  %w_bits3 = bitcast.i8.u8 %v
+  %w = extend.u8.i128 %w_bits3
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -74,7 +77,7 @@ entry:
 fn @case6() -> i64 {
 entry:
   %v = add.i8 127, 0
-  %w = sext.i8.u128 %v
+  %w = extend.i8.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -86,7 +89,8 @@ entry:
 fn @case7() -> i64 {
 entry:
   %v = add.i8 127, 0
-  %w = zext.i8.u128 %v
+  %w_bits4 = bitcast.i8.u8 %v
+  %w = extend.u8.u128 %w_bits4
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -98,7 +102,7 @@ entry:
 fn @case8() -> i64 {
 entry:
   %v = add.i8 -128, 0
-  %w = sext.i8.i128 %v
+  %w = extend.i8.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -110,7 +114,8 @@ entry:
 fn @case9() -> i64 {
 entry:
   %v = add.i8 -128, 0
-  %w = zext.i8.i128 %v
+  %w_bits5 = bitcast.i8.u8 %v
+  %w = extend.u8.i128 %w_bits5
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -122,7 +127,7 @@ entry:
 fn @case10() -> i64 {
 entry:
   %v = add.i8 -128, 0
-  %w = sext.i8.u128 %v
+  %w = extend.i8.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -134,7 +139,8 @@ entry:
 fn @case11() -> i64 {
 entry:
   %v = add.i8 -128, 0
-  %w = zext.i8.u128 %v
+  %w_bits6 = bitcast.i8.u8 %v
+  %w = extend.u8.u128 %w_bits6
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -146,7 +152,7 @@ entry:
 fn @case12() -> i64 {
 entry:
   %v = add.i8 5, 0
-  %w = sext.i8.i128 %v
+  %w = extend.i8.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -158,7 +164,8 @@ entry:
 fn @case13() -> i64 {
 entry:
   %v = add.i8 5, 0
-  %w = zext.i8.i128 %v
+  %w_bits7 = bitcast.i8.u8 %v
+  %w = extend.u8.i128 %w_bits7
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -170,7 +177,7 @@ entry:
 fn @case14() -> i64 {
 entry:
   %v = add.i8 5, 0
-  %w = sext.i8.u128 %v
+  %w = extend.i8.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -182,7 +189,8 @@ entry:
 fn @case15() -> i64 {
 entry:
   %v = add.i8 5, 0
-  %w = zext.i8.u128 %v
+  %w_bits8 = bitcast.i8.u8 %v
+  %w = extend.u8.u128 %w_bits8
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -194,7 +202,7 @@ entry:
 fn @case16() -> i64 {
 entry:
   %v = add.u8 255, 0
-  %w = zext.u8.i128 %v
+  %w = extend.u8.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -206,7 +214,7 @@ entry:
 fn @case17() -> i64 {
 entry:
   %v = add.u8 255, 0
-  %w = zext.u8.u128 %v
+  %w = extend.u8.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -218,7 +226,7 @@ entry:
 fn @case18() -> i64 {
 entry:
   %v = add.u8 0, 0
-  %w = zext.u8.i128 %v
+  %w = extend.u8.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -230,7 +238,7 @@ entry:
 fn @case19() -> i64 {
 entry:
   %v = add.u8 0, 0
-  %w = zext.u8.u128 %v
+  %w = extend.u8.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -242,7 +250,7 @@ entry:
 fn @case20() -> i64 {
 entry:
   %v = add.u8 200, 0
-  %w = zext.u8.i128 %v
+  %w = extend.u8.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -254,7 +262,7 @@ entry:
 fn @case21() -> i64 {
 entry:
   %v = add.u8 200, 0
-  %w = zext.u8.u128 %v
+  %w = extend.u8.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -266,7 +274,7 @@ entry:
 fn @case22() -> i64 {
 entry:
   %v = add.i16 -1, 0
-  %w = sext.i16.i128 %v
+  %w = extend.i16.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -278,7 +286,8 @@ entry:
 fn @case23() -> i64 {
 entry:
   %v = add.i16 -1, 0
-  %w = zext.i16.i128 %v
+  %w_bits9 = bitcast.i16.u16 %v
+  %w = extend.u16.i128 %w_bits9
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -290,7 +299,7 @@ entry:
 fn @case24() -> i64 {
 entry:
   %v = add.i16 -1, 0
-  %w = sext.i16.u128 %v
+  %w = extend.i16.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -302,7 +311,8 @@ entry:
 fn @case25() -> i64 {
 entry:
   %v = add.i16 -1, 0
-  %w = zext.i16.u128 %v
+  %w_bits10 = bitcast.i16.u16 %v
+  %w = extend.u16.u128 %w_bits10
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -314,7 +324,7 @@ entry:
 fn @case26() -> i64 {
 entry:
   %v = add.i16 32767, 0
-  %w = sext.i16.i128 %v
+  %w = extend.i16.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -326,7 +336,8 @@ entry:
 fn @case27() -> i64 {
 entry:
   %v = add.i16 32767, 0
-  %w = zext.i16.i128 %v
+  %w_bits11 = bitcast.i16.u16 %v
+  %w = extend.u16.i128 %w_bits11
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -338,7 +349,7 @@ entry:
 fn @case28() -> i64 {
 entry:
   %v = add.i16 32767, 0
-  %w = sext.i16.u128 %v
+  %w = extend.i16.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -350,7 +361,8 @@ entry:
 fn @case29() -> i64 {
 entry:
   %v = add.i16 32767, 0
-  %w = zext.i16.u128 %v
+  %w_bits12 = bitcast.i16.u16 %v
+  %w = extend.u16.u128 %w_bits12
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -362,7 +374,7 @@ entry:
 fn @case30() -> i64 {
 entry:
   %v = add.i16 -32768, 0
-  %w = sext.i16.i128 %v
+  %w = extend.i16.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -374,7 +386,8 @@ entry:
 fn @case31() -> i64 {
 entry:
   %v = add.i16 -32768, 0
-  %w = zext.i16.i128 %v
+  %w_bits13 = bitcast.i16.u16 %v
+  %w = extend.u16.i128 %w_bits13
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -386,7 +399,7 @@ entry:
 fn @case32() -> i64 {
 entry:
   %v = add.i16 -32768, 0
-  %w = sext.i16.u128 %v
+  %w = extend.i16.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -398,7 +411,8 @@ entry:
 fn @case33() -> i64 {
 entry:
   %v = add.i16 -32768, 0
-  %w = zext.i16.u128 %v
+  %w_bits14 = bitcast.i16.u16 %v
+  %w = extend.u16.u128 %w_bits14
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -410,7 +424,7 @@ entry:
 fn @case34() -> i64 {
 entry:
   %v = add.u16 65535, 0
-  %w = zext.u16.i128 %v
+  %w = extend.u16.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -422,7 +436,7 @@ entry:
 fn @case35() -> i64 {
 entry:
   %v = add.u16 65535, 0
-  %w = zext.u16.u128 %v
+  %w = extend.u16.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -434,7 +448,7 @@ entry:
 fn @case36() -> i64 {
 entry:
   %v = add.u16 1234, 0
-  %w = zext.u16.i128 %v
+  %w = extend.u16.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -446,7 +460,7 @@ entry:
 fn @case37() -> i64 {
 entry:
   %v = add.u16 1234, 0
-  %w = zext.u16.u128 %v
+  %w = extend.u16.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -458,7 +472,7 @@ entry:
 fn @case38() -> i64 {
 entry:
   %v = add.i32 -1, 0
-  %w = sext.i32.i128 %v
+  %w = extend.i32.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -470,7 +484,8 @@ entry:
 fn @case39() -> i64 {
 entry:
   %v = add.i32 -1, 0
-  %w = zext.i32.i128 %v
+  %w_bits15 = bitcast.i32.u32 %v
+  %w = extend.u32.i128 %w_bits15
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -482,7 +497,7 @@ entry:
 fn @case40() -> i64 {
 entry:
   %v = add.i32 -1, 0
-  %w = sext.i32.u128 %v
+  %w = extend.i32.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -494,7 +509,8 @@ entry:
 fn @case41() -> i64 {
 entry:
   %v = add.i32 -1, 0
-  %w = zext.i32.u128 %v
+  %w_bits16 = bitcast.i32.u32 %v
+  %w = extend.u32.u128 %w_bits16
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -506,7 +522,7 @@ entry:
 fn @case42() -> i64 {
 entry:
   %v = add.i32 2147483647, 0
-  %w = sext.i32.i128 %v
+  %w = extend.i32.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -518,7 +534,8 @@ entry:
 fn @case43() -> i64 {
 entry:
   %v = add.i32 2147483647, 0
-  %w = zext.i32.i128 %v
+  %w_bits17 = bitcast.i32.u32 %v
+  %w = extend.u32.i128 %w_bits17
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -530,7 +547,7 @@ entry:
 fn @case44() -> i64 {
 entry:
   %v = add.i32 2147483647, 0
-  %w = sext.i32.u128 %v
+  %w = extend.i32.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -542,7 +559,8 @@ entry:
 fn @case45() -> i64 {
 entry:
   %v = add.i32 2147483647, 0
-  %w = zext.i32.u128 %v
+  %w_bits18 = bitcast.i32.u32 %v
+  %w = extend.u32.u128 %w_bits18
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -554,7 +572,7 @@ entry:
 fn @case46() -> i64 {
 entry:
   %v = add.i32 -2147483648, 0
-  %w = sext.i32.i128 %v
+  %w = extend.i32.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -566,7 +584,8 @@ entry:
 fn @case47() -> i64 {
 entry:
   %v = add.i32 -2147483648, 0
-  %w = zext.i32.i128 %v
+  %w_bits19 = bitcast.i32.u32 %v
+  %w = extend.u32.i128 %w_bits19
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -578,7 +597,7 @@ entry:
 fn @case48() -> i64 {
 entry:
   %v = add.i32 -2147483648, 0
-  %w = sext.i32.u128 %v
+  %w = extend.i32.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -590,7 +609,8 @@ entry:
 fn @case49() -> i64 {
 entry:
   %v = add.i32 -2147483648, 0
-  %w = zext.i32.u128 %v
+  %w_bits20 = bitcast.i32.u32 %v
+  %w = extend.u32.u128 %w_bits20
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -602,7 +622,7 @@ entry:
 fn @case50() -> i64 {
 entry:
   %v = add.i32 99, 0
-  %w = sext.i32.i128 %v
+  %w = extend.i32.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -614,7 +634,8 @@ entry:
 fn @case51() -> i64 {
 entry:
   %v = add.i32 99, 0
-  %w = zext.i32.i128 %v
+  %w_bits21 = bitcast.i32.u32 %v
+  %w = extend.u32.i128 %w_bits21
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -626,7 +647,7 @@ entry:
 fn @case52() -> i64 {
 entry:
   %v = add.i32 99, 0
-  %w = sext.i32.u128 %v
+  %w = extend.i32.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -638,7 +659,8 @@ entry:
 fn @case53() -> i64 {
 entry:
   %v = add.i32 99, 0
-  %w = zext.i32.u128 %v
+  %w_bits22 = bitcast.i32.u32 %v
+  %w = extend.u32.u128 %w_bits22
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -650,7 +672,7 @@ entry:
 fn @case54() -> i64 {
 entry:
   %v = add.u32 4294967295, 0
-  %w = zext.u32.i128 %v
+  %w = extend.u32.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -662,7 +684,7 @@ entry:
 fn @case55() -> i64 {
 entry:
   %v = add.u32 4294967295, 0
-  %w = zext.u32.u128 %v
+  %w = extend.u32.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -674,7 +696,7 @@ entry:
 fn @case56() -> i64 {
 entry:
   %v = add.u32 7, 0
-  %w = zext.u32.i128 %v
+  %w = extend.u32.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -686,7 +708,7 @@ entry:
 fn @case57() -> i64 {
 entry:
   %v = add.u32 7, 0
-  %w = zext.u32.u128 %v
+  %w = extend.u32.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -698,7 +720,7 @@ entry:
 fn @case58() -> i64 {
 entry:
   %v = add.i64 -1, 0
-  %w = sext.i64.i128 %v
+  %w = extend.i64.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -710,7 +732,8 @@ entry:
 fn @case59() -> i64 {
 entry:
   %v = add.i64 -1, 0
-  %w = zext.i64.i128 %v
+  %w_bits23 = bitcast.i64.u64 %v
+  %w = extend.u64.i128 %w_bits23
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -722,7 +745,7 @@ entry:
 fn @case60() -> i64 {
 entry:
   %v = add.i64 -1, 0
-  %w = sext.i64.u128 %v
+  %w = extend.i64.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -734,7 +757,8 @@ entry:
 fn @case61() -> i64 {
 entry:
   %v = add.i64 -1, 0
-  %w = zext.i64.u128 %v
+  %w_bits24 = bitcast.i64.u64 %v
+  %w = extend.u64.u128 %w_bits24
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -746,7 +770,7 @@ entry:
 fn @case62() -> i64 {
 entry:
   %v = add.i64 9223372036854775807, 0
-  %w = sext.i64.i128 %v
+  %w = extend.i64.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -758,7 +782,8 @@ entry:
 fn @case63() -> i64 {
 entry:
   %v = add.i64 9223372036854775807, 0
-  %w = zext.i64.i128 %v
+  %w_bits25 = bitcast.i64.u64 %v
+  %w = extend.u64.i128 %w_bits25
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -770,7 +795,7 @@ entry:
 fn @case64() -> i64 {
 entry:
   %v = add.i64 9223372036854775807, 0
-  %w = sext.i64.u128 %v
+  %w = extend.i64.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -782,7 +807,8 @@ entry:
 fn @case65() -> i64 {
 entry:
   %v = add.i64 9223372036854775807, 0
-  %w = zext.i64.u128 %v
+  %w_bits26 = bitcast.i64.u64 %v
+  %w = extend.u64.u128 %w_bits26
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -794,7 +820,7 @@ entry:
 fn @case66() -> i64 {
 entry:
   %v = add.i64 -9223372036854775808, 0
-  %w = sext.i64.i128 %v
+  %w = extend.i64.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -806,7 +832,8 @@ entry:
 fn @case67() -> i64 {
 entry:
   %v = add.i64 -9223372036854775808, 0
-  %w = zext.i64.i128 %v
+  %w_bits27 = bitcast.i64.u64 %v
+  %w = extend.u64.i128 %w_bits27
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -818,7 +845,7 @@ entry:
 fn @case68() -> i64 {
 entry:
   %v = add.i64 -9223372036854775808, 0
-  %w = sext.i64.u128 %v
+  %w = extend.i64.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -830,7 +857,8 @@ entry:
 fn @case69() -> i64 {
 entry:
   %v = add.i64 -9223372036854775808, 0
-  %w = zext.i64.u128 %v
+  %w_bits28 = bitcast.i64.u64 %v
+  %w = extend.u64.u128 %w_bits28
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -842,7 +870,7 @@ entry:
 fn @case70() -> i64 {
 entry:
   %v = add.i64 0, 0
-  %w = sext.i64.i128 %v
+  %w = extend.i64.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -854,7 +882,8 @@ entry:
 fn @case71() -> i64 {
 entry:
   %v = add.i64 0, 0
-  %w = zext.i64.i128 %v
+  %w_bits29 = bitcast.i64.u64 %v
+  %w = extend.u64.i128 %w_bits29
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -866,7 +895,7 @@ entry:
 fn @case72() -> i64 {
 entry:
   %v = add.i64 0, 0
-  %w = sext.i64.u128 %v
+  %w = extend.i64.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -878,7 +907,8 @@ entry:
 fn @case73() -> i64 {
 entry:
   %v = add.i64 0, 0
-  %w = zext.i64.u128 %v
+  %w_bits30 = bitcast.i64.u64 %v
+  %w = extend.u64.u128 %w_bits30
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -890,7 +920,7 @@ entry:
 fn @case74() -> i64 {
 entry:
   %v = add.u64 18446744073709551615, 0
-  %w = zext.u64.i128 %v
+  %w = extend.u64.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -902,7 +932,7 @@ entry:
 fn @case75() -> i64 {
 entry:
   %v = add.u64 18446744073709551615, 0
-  %w = zext.u64.u128 %v
+  %w = extend.u64.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -914,7 +944,7 @@ entry:
 fn @case76() -> i64 {
 entry:
   %v = add.u64 1, 0
-  %w = zext.u64.i128 %v
+  %w = extend.u64.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -926,7 +956,7 @@ entry:
 fn @case77() -> i64 {
 entry:
   %v = add.u64 1, 0
-  %w = zext.u64.u128 %v
+  %w = extend.u64.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -938,7 +968,7 @@ entry:
 fn @case78() -> i64 {
 entry:
   %v = add.u64 9223372036854775808, 0
-  %w = zext.u64.i128 %v
+  %w = extend.u64.i128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -950,7 +980,7 @@ entry:
 fn @case79() -> i64 {
 entry:
   %v = add.u64 9223372036854775808, 0
-  %w = zext.u64.u128 %v
+  %w = extend.u64.u128 %v
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -962,7 +992,7 @@ entry:
 fn @case80() -> i64 {
 entry:
   %b = add.bool true, false
-  %w = zext.bool.i128 %b
+  %w = extend.bool.i128 %b
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -974,7 +1004,7 @@ entry:
 fn @case81() -> i64 {
 entry:
   %b = add.bool false, false
-  %w = zext.bool.i128 %b
+  %w = extend.bool.i128 %b
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -987,7 +1017,7 @@ fn @case82() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.i8 %v
-  %w = sext.i8.i128 %t
+  %w = extend.i8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1000,7 +1030,7 @@ fn @case83() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.u8 %v
-  %w = zext.u8.i128 %t
+  %w = extend.u8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1013,7 +1043,7 @@ fn @case84() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.i16 %v
-  %w = sext.i16.i128 %t
+  %w = extend.i16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1026,7 +1056,7 @@ fn @case85() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.u16 %v
-  %w = zext.u16.i128 %t
+  %w = extend.u16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1039,7 +1069,7 @@ fn @case86() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.i32 %v
-  %w = sext.i32.i128 %t
+  %w = extend.i32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1052,7 +1082,7 @@ fn @case87() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.u32 %v
-  %w = zext.u32.i128 %t
+  %w = extend.u32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1065,7 +1095,7 @@ fn @case88() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.i64 %v
-  %w = sext.i64.i128 %t
+  %w = extend.i64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1078,7 +1108,7 @@ fn @case89() -> i64 {
 entry:
   %v = add.i128 0, 0
   %t = trunc.i128.u64 %v
-  %w = zext.u64.i128 %t
+  %w = extend.u64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1091,7 +1121,7 @@ fn @case90() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.i8 %v
-  %w = sext.i8.i128 %t
+  %w = extend.i8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1104,7 +1134,7 @@ fn @case91() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.u8 %v
-  %w = zext.u8.i128 %t
+  %w = extend.u8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1117,7 +1147,7 @@ fn @case92() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.i16 %v
-  %w = sext.i16.i128 %t
+  %w = extend.i16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1130,7 +1160,7 @@ fn @case93() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.u16 %v
-  %w = zext.u16.i128 %t
+  %w = extend.u16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1143,7 +1173,7 @@ fn @case94() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.i32 %v
-  %w = sext.i32.i128 %t
+  %w = extend.i32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1156,7 +1186,7 @@ fn @case95() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.u32 %v
-  %w = zext.u32.i128 %t
+  %w = extend.u32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1169,7 +1199,7 @@ fn @case96() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.i64 %v
-  %w = sext.i64.i128 %t
+  %w = extend.i64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1182,7 +1212,7 @@ fn @case97() -> i64 {
 entry:
   %v = add.i128 1, 0
   %t = trunc.i128.u64 %v
-  %w = zext.u64.i128 %t
+  %w = extend.u64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1195,7 +1225,7 @@ fn @case98() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.i8 %v
-  %w = sext.i8.i128 %t
+  %w = extend.i8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1208,7 +1238,7 @@ fn @case99() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.u8 %v
-  %w = zext.u8.i128 %t
+  %w = extend.u8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1221,7 +1251,7 @@ fn @case100() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.i16 %v
-  %w = sext.i16.i128 %t
+  %w = extend.i16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1234,7 +1264,7 @@ fn @case101() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.u16 %v
-  %w = zext.u16.i128 %t
+  %w = extend.u16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1247,7 +1277,7 @@ fn @case102() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.i32 %v
-  %w = sext.i32.i128 %t
+  %w = extend.i32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1260,7 +1290,7 @@ fn @case103() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.u32 %v
-  %w = zext.u32.i128 %t
+  %w = extend.u32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1273,7 +1303,7 @@ fn @case104() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.i64 %v
-  %w = sext.i64.i128 %t
+  %w = extend.i64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1286,7 +1316,7 @@ fn @case105() -> i64 {
 entry:
   %v = add.i128 -1, 0
   %t = trunc.i128.u64 %v
-  %w = zext.u64.i128 %t
+  %w = extend.u64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1299,7 +1329,7 @@ fn @case106() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.i8 %v
-  %w = sext.i8.i128 %t
+  %w = extend.i8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1312,7 +1342,7 @@ fn @case107() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.u8 %v
-  %w = zext.u8.i128 %t
+  %w = extend.u8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1325,7 +1355,7 @@ fn @case108() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.i16 %v
-  %w = sext.i16.i128 %t
+  %w = extend.i16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1338,7 +1368,7 @@ fn @case109() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.u16 %v
-  %w = zext.u16.i128 %t
+  %w = extend.u16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1351,7 +1381,7 @@ fn @case110() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.i32 %v
-  %w = sext.i32.i128 %t
+  %w = extend.i32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1364,7 +1394,7 @@ fn @case111() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.u32 %v
-  %w = zext.u32.i128 %t
+  %w = extend.u32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1377,7 +1407,7 @@ fn @case112() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.i64 %v
-  %w = sext.i64.i128 %t
+  %w = extend.i64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1390,7 +1420,7 @@ fn @case113() -> i64 {
 entry:
   %v = add.i128 9223372036854775813, 0
   %t = trunc.i128.u64 %v
-  %w = zext.u64.i128 %t
+  %w = extend.u64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1403,7 +1433,7 @@ fn @case114() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.i8 %v
-  %w = sext.i8.i128 %t
+  %w = extend.i8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1416,7 +1446,7 @@ fn @case115() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.u8 %v
-  %w = zext.u8.i128 %t
+  %w = extend.u8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1429,7 +1459,7 @@ fn @case116() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.i16 %v
-  %w = sext.i16.i128 %t
+  %w = extend.i16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1442,7 +1472,7 @@ fn @case117() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.u16 %v
-  %w = zext.u16.i128 %t
+  %w = extend.u16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1455,7 +1485,7 @@ fn @case118() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.i32 %v
-  %w = sext.i32.i128 %t
+  %w = extend.i32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1468,7 +1498,7 @@ fn @case119() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.u32 %v
-  %w = zext.u32.i128 %t
+  %w = extend.u32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1481,7 +1511,7 @@ fn @case120() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.i64 %v
-  %w = sext.i64.i128 %t
+  %w = extend.i64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1494,7 +1524,7 @@ fn @case121() -> i64 {
 entry:
   %v = add.i128 -1267650600228229401496703205453, 0
   %t = trunc.i128.u64 %v
-  %w = zext.u64.i128 %t
+  %w = extend.u64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1507,7 +1537,7 @@ fn @case122() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.i8 %v
-  %w = sext.i8.i128 %t
+  %w = extend.i8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1520,7 +1550,7 @@ fn @case123() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.u8 %v
-  %w = zext.u8.i128 %t
+  %w = extend.u8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1533,7 +1563,7 @@ fn @case124() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.i16 %v
-  %w = sext.i16.i128 %t
+  %w = extend.i16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1546,7 +1576,7 @@ fn @case125() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.u16 %v
-  %w = zext.u16.i128 %t
+  %w = extend.u16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1559,7 +1589,7 @@ fn @case126() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.i32 %v
-  %w = sext.i32.i128 %t
+  %w = extend.i32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1572,7 +1602,7 @@ fn @case127() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.u32 %v
-  %w = zext.u32.i128 %t
+  %w = extend.u32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1585,7 +1615,7 @@ fn @case128() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.i64 %v
-  %w = sext.i64.i128 %t
+  %w = extend.i64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1598,7 +1628,7 @@ fn @case129() -> i64 {
 entry:
   %v = add.i128 170141183460469231731687303715884105727, 0
   %t = trunc.i128.u64 %v
-  %w = zext.u64.i128 %t
+  %w = extend.u64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1611,7 +1641,7 @@ fn @case130() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.i8 %v
-  %w = sext.i8.i128 %t
+  %w = extend.i8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1624,7 +1654,7 @@ fn @case131() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.u8 %v
-  %w = zext.u8.i128 %t
+  %w = extend.u8.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1637,7 +1667,7 @@ fn @case132() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.i16 %v
-  %w = sext.i16.i128 %t
+  %w = extend.i16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1650,7 +1680,7 @@ fn @case133() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.u16 %v
-  %w = zext.u16.i128 %t
+  %w = extend.u16.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1663,7 +1693,7 @@ fn @case134() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.i32 %v
-  %w = sext.i32.i128 %t
+  %w = extend.i32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1676,7 +1706,7 @@ fn @case135() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.u32 %v
-  %w = zext.u32.i128 %t
+  %w = extend.u32.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1689,7 +1719,7 @@ fn @case136() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.i64 %v
-  %w = sext.i64.i128 %t
+  %w = extend.i64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64
@@ -1702,7 +1732,7 @@ fn @case137() -> i64 {
 entry:
   %v = add.i128 -170141183460469231731687303715884105728, 0
   %t = trunc.i128.u64 %v
-  %w = zext.u64.i128 %t
+  %w = extend.u64.i128 %t
   %lo = trunc.i128.i64 %w
   call @print_i64(%lo)
   %hs = shr.i128 %w, 64

@@ -192,7 +192,7 @@ fn stack_frames_are_released_on_every_return() {
 fn signed_byte_compares_on_loaded_operands_read_the_sign() {
     let Some(stdout) = run_wasm_main(
         "cmp8",
-        "fn @main() -> i64 {\nentry:\n %p = stackalloc.i8\n store.i8 %p, -1\n %x = load.i8 %p\n %a = lt.i8 %x, 0\n %pv0 = zext.bool.i64 %a\n call @print_i64(%pv0)\n %b = eq.i8 %x, -1\n %pv1 = zext.bool.i64 %b\n call @print_i64(%pv1)\n %c = lt.u8 %x, 1\n %pv2 = zext.bool.i64 %c\n call @print_i64(%pv2)\n %d = gt.i8 %x, -2\n %pv3 = zext.bool.i64 %d\n call @print_i64(%pv3)\n %e = gt.u8 %x, 1\n %pv4 = zext.bool.i64 %e\n call @print_i64(%pv4)\n %f = add.i8 %x, 0\n %g = lt.i8 %f, 0\n %pv5 = zext.bool.i64 %g\n call @print_i64(%pv5)\n ret.i64 0\n}",
+        "fn @main() -> i64 {\nentry:\n %p = stackalloc.i8\n store.i8 %p, -1\n %x = load.i8 %p\n %a = lt.i8 %x, 0\n %pv0 = extend.bool.i64 %a\n call @print_i64(%pv0)\n %b = eq.i8 %x, -1\n %pv1 = extend.bool.i64 %b\n call @print_i64(%pv1)\n %c = lt.u8 %x, 1\n %pv2 = extend.bool.i64 %c\n call @print_i64(%pv2)\n %d = gt.i8 %x, -2\n %pv3 = extend.bool.i64 %d\n call @print_i64(%pv3)\n %e = gt.u8 %x, 1\n %pv4 = extend.bool.i64 %e\n call @print_i64(%pv4)\n %f = add.i8 %x, 0\n %g = lt.i8 %f, 0\n %pv5 = extend.bool.i64 %g\n call @print_i64(%pv5)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -204,7 +204,7 @@ fn signed_byte_compares_on_loaded_operands_read_the_sign() {
 fn narrow_compares_normalize_operands_at_their_width() {
     let Some(stdout) = run_wasm_main(
         "cmpwidths",
-        "fn @main() -> i64 {\nentry:\n %p8 = stackalloc.i8\n %p16 = stackalloc.i16\n %p32 = stackalloc.i32\n store.i8 %p8, -128\n store.i16 %p16, -32768\n store.i32 %p32, -2147483648\n %a8 = load.i8 %p8\n %a16 = load.i16 %p16\n %a32 = load.i32 %p32\n %s8 = lt.i8 %a8, 0\n %pv0 = zext.bool.i64 %s8\n call @print_i64(%pv0)\n %s16 = lt.i16 %a16, 0\n %pv1 = zext.bool.i64 %s16\n call @print_i64(%pv1)\n %s32 = le.i32 %a32, -2147483648\n %pv2 = zext.bool.i64 %s32\n call @print_i64(%pv2)\n %u8 = lt.u8 %a8, 127\n %pv3 = zext.bool.i64 %u8\n call @print_i64(%pv3)\n %u16 = gt.u16 %a16, 32767\n %pv4 = zext.bool.i64 %u16\n call @print_i64(%pv4)\n %e8 = eq.i8 %a8, -128\n %pv5 = zext.bool.i64 %e8\n call @print_i64(%pv5)\n %c8 = add.i8 %a8, 0\n %g8 = gt.i8 %c8, -127\n %pv6 = zext.bool.i64 %g8\n call @print_i64(%pv6)\n ret.i64 0\n}",
+        "fn @main() -> i64 {\nentry:\n %p8 = stackalloc.i8\n %p16 = stackalloc.i16\n %p32 = stackalloc.i32\n store.i8 %p8, -128\n store.i16 %p16, -32768\n store.i32 %p32, -2147483648\n %a8 = load.i8 %p8\n %a16 = load.i16 %p16\n %a32 = load.i32 %p32\n %s8 = lt.i8 %a8, 0\n %pv0 = extend.bool.i64 %s8\n call @print_i64(%pv0)\n %s16 = lt.i16 %a16, 0\n %pv1 = extend.bool.i64 %s16\n call @print_i64(%pv1)\n %s32 = le.i32 %a32, -2147483648\n %pv2 = extend.bool.i64 %s32\n call @print_i64(%pv2)\n %u8 = lt.u8 %a8, 127\n %pv3 = extend.bool.i64 %u8\n call @print_i64(%pv3)\n %u16 = gt.u16 %a16, 32767\n %pv4 = extend.bool.i64 %u16\n call @print_i64(%pv4)\n %e8 = eq.i8 %a8, -128\n %pv5 = extend.bool.i64 %e8\n call @print_i64(%pv5)\n %c8 = add.i8 %a8, 0\n %g8 = gt.i8 %c8, -127\n %pv6 = extend.bool.i64 %g8\n call @print_i64(%pv6)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -216,7 +216,7 @@ fn narrow_compares_normalize_operands_at_their_width() {
 fn narrow_arguments_keep_their_declared_signedness_across_calls() {
     let Some(stdout) = run_wasm_main(
         "boundary_signedness",
-        "fn @mk() -> i8 {\nentry:\n %v = trunc.i64.i8 255\n ret.i8 %v\n}\nfn @take(u8 %u, i8 %c) -> i64 {\nentry:\n %a = lt.u8 %u, 1\n %pv0 = zext.bool.i64 %a\n call @print_i64(%pv0)\n %b = lt.i8 %c, 0\n %pv1 = zext.bool.i64 %b\n call @print_i64(%pv1)\n ret.i64 0\n}\nfn @main() -> i64 {\nentry:\n %c = call @mk()\n %u = trunc.i64.u8 255\n %r = call @take(%u, %c)\n ret.i64 0\n}",
+        "fn @mk() -> i8 {\nentry:\n %v = trunc.i64.i8 255\n ret.i8 %v\n}\nfn @take(u8 %u, i8 %c) -> i64 {\nentry:\n %a = lt.u8 %u, 1\n %pv0 = extend.bool.i64 %a\n call @print_i64(%pv0)\n %b = lt.i8 %c, 0\n %pv1 = extend.bool.i64 %b\n call @print_i64(%pv1)\n ret.i64 0\n}\nfn @main() -> i64 {\nentry:\n %c = call @mk()\n %u = trunc.i64.u8 255\n %r = call @take(%u, %c)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -435,7 +435,7 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         ("i32", "i64.load32_s"),
     ] {
         let source = format!(
-            "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.{ty}\n  store.{ty} %p, -1\n  %x = load.{ty} %p\n  %w = sext.{ty}.i64 %x\n  call @print_i64(%w)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
+            "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.{ty}\n  store.{ty} %p, -1\n  %x = load.{ty} %p\n  %w = extend.{ty}.i64 %x\n  call @print_i64(%w)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
         );
         let wat = emit_wat(&source, TargetArchitecture::Wasm32);
         assert!(wat.contains(signed), "{ty}: {wat}");
@@ -446,7 +446,7 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         return;
     }
     let source = format!(
-        "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, -1\n  %x = load.i8 %p\n  %pv0 = sext.i8.i64 %x\n  call @print_i64(%pv0)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
+        "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, -1\n  %x = load.i8 %p\n  %pv0 = extend.i8.i64 %x\n  call @print_i64(%pv0)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
     );
     let ir = parse_module(&source).expect("parse");
     let mir = from_ir(&ir, "module").expect("lower");

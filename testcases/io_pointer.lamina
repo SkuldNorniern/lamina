@@ -11,7 +11,7 @@ fn @main() -> i32 {
     %buffer_val = load.i32 %buffer
 
     # Print the buffer value to verify it worked
-    %pv0 = sext.i32.i64 %buffer_val
+    %pv0 = extend.i32.i64 %buffer_val
     call @print_i64(%pv0)
 
     ret.i32 0

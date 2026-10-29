@@ -30,7 +30,7 @@ fn out_of_range_literal_is_rejected_in_every_typed_position() {
         "store.u8 %p, -1",
         "%r = select.i8 %c, 300, 0",
         "%r = select.i8 %c, 0, 300",
-        "%r = zext.i8.i64 300",
+        "%r = extend.i8.i64 300",
     ] {
         let err = rejected(&body(line));
         assert!(err.contains("out of range for"), "{line}: {err}");
@@ -42,7 +42,7 @@ fn in_range_literal_is_accepted_in_every_typed_position() {
     accepted(&body("store.i8 %p, 127"));
     accepted(&body("store.u8 %p, 255"));
     accepted(&body("%r = select.i8 %c, -128, 0"));
-    accepted(&body("%r = zext.i8.i64 -128"));
+    accepted(&body("%r = extend.i8.i64 -128"));
 }
 
 #[test]

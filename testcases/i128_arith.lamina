@@ -69,7 +69,7 @@ entry:
 fn @case6() -> i64 {
 entry:
   %c25 = lt.i128 0, 0
-  %z26 = zext.bool.i64 %c25
+  %z26 = extend.bool.i64 %c25
   call @print_i64(%z26)
   ret.i64 0
 }
@@ -77,7 +77,7 @@ entry:
 fn @case7() -> i64 {
 entry:
   %c27 = le.i128 0, 0
-  %z28 = zext.bool.i64 %c27
+  %z28 = extend.bool.i64 %c27
   call @print_i64(%z28)
   ret.i64 0
 }
@@ -85,7 +85,7 @@ entry:
 fn @case8() -> i64 {
 entry:
   %c29 = gt.i128 0, 0
-  %z30 = zext.bool.i64 %c29
+  %z30 = extend.bool.i64 %c29
   call @print_i64(%z30)
   ret.i64 0
 }
@@ -93,7 +93,7 @@ entry:
 fn @case9() -> i64 {
 entry:
   %c31 = ge.i128 0, 0
-  %z32 = zext.bool.i64 %c31
+  %z32 = extend.bool.i64 %c31
   call @print_i64(%z32)
   ret.i64 0
 }
@@ -101,7 +101,7 @@ entry:
 fn @case10() -> i64 {
 entry:
   %c33 = eq.i128 0, 0
-  %z34 = zext.bool.i64 %c33
+  %z34 = extend.bool.i64 %c33
   call @print_i64(%z34)
   ret.i64 0
 }
@@ -109,7 +109,7 @@ entry:
 fn @case11() -> i64 {
 entry:
   %c35 = ne.i128 0, 0
-  %z36 = zext.bool.i64 %c35
+  %z36 = extend.bool.i64 %c35
   call @print_i64(%z36)
   ret.i64 0
 }
@@ -183,7 +183,7 @@ entry:
 fn @case18() -> i64 {
 entry:
   %c61 = lt.i128 0, 1
-  %z62 = zext.bool.i64 %c61
+  %z62 = extend.bool.i64 %c61
   call @print_i64(%z62)
   ret.i64 0
 }
@@ -191,7 +191,7 @@ entry:
 fn @case19() -> i64 {
 entry:
   %c63 = le.i128 0, 1
-  %z64 = zext.bool.i64 %c63
+  %z64 = extend.bool.i64 %c63
   call @print_i64(%z64)
   ret.i64 0
 }
@@ -199,7 +199,7 @@ entry:
 fn @case20() -> i64 {
 entry:
   %c65 = gt.i128 0, 1
-  %z66 = zext.bool.i64 %c65
+  %z66 = extend.bool.i64 %c65
   call @print_i64(%z66)
   ret.i64 0
 }
@@ -207,7 +207,7 @@ entry:
 fn @case21() -> i64 {
 entry:
   %c67 = ge.i128 0, 1
-  %z68 = zext.bool.i64 %c67
+  %z68 = extend.bool.i64 %c67
   call @print_i64(%z68)
   ret.i64 0
 }
@@ -215,7 +215,7 @@ entry:
 fn @case22() -> i64 {
 entry:
   %c69 = eq.i128 0, 1
-  %z70 = zext.bool.i64 %c69
+  %z70 = extend.bool.i64 %c69
   call @print_i64(%z70)
   ret.i64 0
 }
@@ -223,7 +223,7 @@ entry:
 fn @case23() -> i64 {
 entry:
   %c71 = ne.i128 0, 1
-  %z72 = zext.bool.i64 %c71
+  %z72 = extend.bool.i64 %c71
   call @print_i64(%z72)
   ret.i64 0
 }
@@ -319,7 +319,7 @@ entry:
 fn @case32() -> i64 {
 entry:
   %c105 = lt.i128 0, -1
-  %z106 = zext.bool.i64 %c105
+  %z106 = extend.bool.i64 %c105
   call @print_i64(%z106)
   ret.i64 0
 }
@@ -327,7 +327,7 @@ entry:
 fn @case33() -> i64 {
 entry:
   %c107 = le.i128 0, -1
-  %z108 = zext.bool.i64 %c107
+  %z108 = extend.bool.i64 %c107
   call @print_i64(%z108)
   ret.i64 0
 }
@@ -335,7 +335,7 @@ entry:
 fn @case34() -> i64 {
 entry:
   %c109 = gt.i128 0, -1
-  %z110 = zext.bool.i64 %c109
+  %z110 = extend.bool.i64 %c109
   call @print_i64(%z110)
   ret.i64 0
 }
@@ -343,7 +343,7 @@ entry:
 fn @case35() -> i64 {
 entry:
   %c111 = ge.i128 0, -1
-  %z112 = zext.bool.i64 %c111
+  %z112 = extend.bool.i64 %c111
   call @print_i64(%z112)
   ret.i64 0
 }
@@ -351,7 +351,7 @@ entry:
 fn @case36() -> i64 {
 entry:
   %c113 = eq.i128 0, -1
-  %z114 = zext.bool.i64 %c113
+  %z114 = extend.bool.i64 %c113
   call @print_i64(%z114)
   ret.i64 0
 }
@@ -359,7 +359,7 @@ entry:
 fn @case37() -> i64 {
 entry:
   %c115 = ne.i128 0, -1
-  %z116 = zext.bool.i64 %c115
+  %z116 = extend.bool.i64 %c115
   call @print_i64(%z116)
   ret.i64 0
 }
@@ -455,7 +455,7 @@ entry:
 fn @case46() -> i64 {
 entry:
   %c149 = lt.i128 0, 9223372036854775807
-  %z150 = zext.bool.i64 %c149
+  %z150 = extend.bool.i64 %c149
   call @print_i64(%z150)
   ret.i64 0
 }
@@ -463,7 +463,7 @@ entry:
 fn @case47() -> i64 {
 entry:
   %c151 = le.i128 0, 9223372036854775807
-  %z152 = zext.bool.i64 %c151
+  %z152 = extend.bool.i64 %c151
   call @print_i64(%z152)
   ret.i64 0
 }
@@ -471,7 +471,7 @@ entry:
 fn @case48() -> i64 {
 entry:
   %c153 = gt.i128 0, 9223372036854775807
-  %z154 = zext.bool.i64 %c153
+  %z154 = extend.bool.i64 %c153
   call @print_i64(%z154)
   ret.i64 0
 }
@@ -479,7 +479,7 @@ entry:
 fn @case49() -> i64 {
 entry:
   %c155 = ge.i128 0, 9223372036854775807
-  %z156 = zext.bool.i64 %c155
+  %z156 = extend.bool.i64 %c155
   call @print_i64(%z156)
   ret.i64 0
 }
@@ -487,7 +487,7 @@ entry:
 fn @case50() -> i64 {
 entry:
   %c157 = eq.i128 0, 9223372036854775807
-  %z158 = zext.bool.i64 %c157
+  %z158 = extend.bool.i64 %c157
   call @print_i64(%z158)
   ret.i64 0
 }
@@ -495,7 +495,7 @@ entry:
 fn @case51() -> i64 {
 entry:
   %c159 = ne.i128 0, 9223372036854775807
-  %z160 = zext.bool.i64 %c159
+  %z160 = extend.bool.i64 %c159
   call @print_i64(%z160)
   ret.i64 0
 }
@@ -591,7 +591,7 @@ entry:
 fn @case60() -> i64 {
 entry:
   %c193 = lt.i128 0, -9223372036854775809
-  %z194 = zext.bool.i64 %c193
+  %z194 = extend.bool.i64 %c193
   call @print_i64(%z194)
   ret.i64 0
 }
@@ -599,7 +599,7 @@ entry:
 fn @case61() -> i64 {
 entry:
   %c195 = le.i128 0, -9223372036854775809
-  %z196 = zext.bool.i64 %c195
+  %z196 = extend.bool.i64 %c195
   call @print_i64(%z196)
   ret.i64 0
 }
@@ -607,7 +607,7 @@ entry:
 fn @case62() -> i64 {
 entry:
   %c197 = gt.i128 0, -9223372036854775809
-  %z198 = zext.bool.i64 %c197
+  %z198 = extend.bool.i64 %c197
   call @print_i64(%z198)
   ret.i64 0
 }
@@ -615,7 +615,7 @@ entry:
 fn @case63() -> i64 {
 entry:
   %c199 = ge.i128 0, -9223372036854775809
-  %z200 = zext.bool.i64 %c199
+  %z200 = extend.bool.i64 %c199
   call @print_i64(%z200)
   ret.i64 0
 }
@@ -623,7 +623,7 @@ entry:
 fn @case64() -> i64 {
 entry:
   %c201 = eq.i128 0, -9223372036854775809
-  %z202 = zext.bool.i64 %c201
+  %z202 = extend.bool.i64 %c201
   call @print_i64(%z202)
   ret.i64 0
 }
@@ -631,7 +631,7 @@ entry:
 fn @case65() -> i64 {
 entry:
   %c203 = ne.i128 0, -9223372036854775809
-  %z204 = zext.bool.i64 %c203
+  %z204 = extend.bool.i64 %c203
   call @print_i64(%z204)
   ret.i64 0
 }
@@ -727,7 +727,7 @@ entry:
 fn @case74() -> i64 {
 entry:
   %c237 = lt.i128 0, -170141183460469231731687303715884105728
-  %z238 = zext.bool.i64 %c237
+  %z238 = extend.bool.i64 %c237
   call @print_i64(%z238)
   ret.i64 0
 }
@@ -735,7 +735,7 @@ entry:
 fn @case75() -> i64 {
 entry:
   %c239 = le.i128 0, -170141183460469231731687303715884105728
-  %z240 = zext.bool.i64 %c239
+  %z240 = extend.bool.i64 %c239
   call @print_i64(%z240)
   ret.i64 0
 }
@@ -743,7 +743,7 @@ entry:
 fn @case76() -> i64 {
 entry:
   %c241 = gt.i128 0, -170141183460469231731687303715884105728
-  %z242 = zext.bool.i64 %c241
+  %z242 = extend.bool.i64 %c241
   call @print_i64(%z242)
   ret.i64 0
 }
@@ -751,7 +751,7 @@ entry:
 fn @case77() -> i64 {
 entry:
   %c243 = ge.i128 0, -170141183460469231731687303715884105728
-  %z244 = zext.bool.i64 %c243
+  %z244 = extend.bool.i64 %c243
   call @print_i64(%z244)
   ret.i64 0
 }
@@ -759,7 +759,7 @@ entry:
 fn @case78() -> i64 {
 entry:
   %c245 = eq.i128 0, -170141183460469231731687303715884105728
-  %z246 = zext.bool.i64 %c245
+  %z246 = extend.bool.i64 %c245
   call @print_i64(%z246)
   ret.i64 0
 }
@@ -767,7 +767,7 @@ entry:
 fn @case79() -> i64 {
 entry:
   %c247 = ne.i128 0, -170141183460469231731687303715884105728
-  %z248 = zext.bool.i64 %c247
+  %z248 = extend.bool.i64 %c247
   call @print_i64(%z248)
   ret.i64 0
 }
@@ -863,7 +863,7 @@ entry:
 fn @case88() -> i64 {
 entry:
   %c281 = lt.i128 0, 170141183460469231731687303715884105727
-  %z282 = zext.bool.i64 %c281
+  %z282 = extend.bool.i64 %c281
   call @print_i64(%z282)
   ret.i64 0
 }
@@ -871,7 +871,7 @@ entry:
 fn @case89() -> i64 {
 entry:
   %c283 = le.i128 0, 170141183460469231731687303715884105727
-  %z284 = zext.bool.i64 %c283
+  %z284 = extend.bool.i64 %c283
   call @print_i64(%z284)
   ret.i64 0
 }
@@ -879,7 +879,7 @@ entry:
 fn @case90() -> i64 {
 entry:
   %c285 = gt.i128 0, 170141183460469231731687303715884105727
-  %z286 = zext.bool.i64 %c285
+  %z286 = extend.bool.i64 %c285
   call @print_i64(%z286)
   ret.i64 0
 }
@@ -887,7 +887,7 @@ entry:
 fn @case91() -> i64 {
 entry:
   %c287 = ge.i128 0, 170141183460469231731687303715884105727
-  %z288 = zext.bool.i64 %c287
+  %z288 = extend.bool.i64 %c287
   call @print_i64(%z288)
   ret.i64 0
 }
@@ -895,7 +895,7 @@ entry:
 fn @case92() -> i64 {
 entry:
   %c289 = eq.i128 0, 170141183460469231731687303715884105727
-  %z290 = zext.bool.i64 %c289
+  %z290 = extend.bool.i64 %c289
   call @print_i64(%z290)
   ret.i64 0
 }
@@ -903,7 +903,7 @@ entry:
 fn @case93() -> i64 {
 entry:
   %c291 = ne.i128 0, 170141183460469231731687303715884105727
-  %z292 = zext.bool.i64 %c291
+  %z292 = extend.bool.i64 %c291
   call @print_i64(%z292)
   ret.i64 0
 }
@@ -999,7 +999,7 @@ entry:
 fn @case102() -> i64 {
 entry:
   %c325 = lt.i128 1, 0
-  %z326 = zext.bool.i64 %c325
+  %z326 = extend.bool.i64 %c325
   call @print_i64(%z326)
   ret.i64 0
 }
@@ -1007,7 +1007,7 @@ entry:
 fn @case103() -> i64 {
 entry:
   %c327 = le.i128 1, 0
-  %z328 = zext.bool.i64 %c327
+  %z328 = extend.bool.i64 %c327
   call @print_i64(%z328)
   ret.i64 0
 }
@@ -1015,7 +1015,7 @@ entry:
 fn @case104() -> i64 {
 entry:
   %c329 = gt.i128 1, 0
-  %z330 = zext.bool.i64 %c329
+  %z330 = extend.bool.i64 %c329
   call @print_i64(%z330)
   ret.i64 0
 }
@@ -1023,7 +1023,7 @@ entry:
 fn @case105() -> i64 {
 entry:
   %c331 = ge.i128 1, 0
-  %z332 = zext.bool.i64 %c331
+  %z332 = extend.bool.i64 %c331
   call @print_i64(%z332)
   ret.i64 0
 }
@@ -1031,7 +1031,7 @@ entry:
 fn @case106() -> i64 {
 entry:
   %c333 = eq.i128 1, 0
-  %z334 = zext.bool.i64 %c333
+  %z334 = extend.bool.i64 %c333
   call @print_i64(%z334)
   ret.i64 0
 }
@@ -1039,7 +1039,7 @@ entry:
 fn @case107() -> i64 {
 entry:
   %c335 = ne.i128 1, 0
-  %z336 = zext.bool.i64 %c335
+  %z336 = extend.bool.i64 %c335
   call @print_i64(%z336)
   ret.i64 0
 }
@@ -1113,7 +1113,7 @@ entry:
 fn @case114() -> i64 {
 entry:
   %c361 = lt.i128 1, 1
-  %z362 = zext.bool.i64 %c361
+  %z362 = extend.bool.i64 %c361
   call @print_i64(%z362)
   ret.i64 0
 }
@@ -1121,7 +1121,7 @@ entry:
 fn @case115() -> i64 {
 entry:
   %c363 = le.i128 1, 1
-  %z364 = zext.bool.i64 %c363
+  %z364 = extend.bool.i64 %c363
   call @print_i64(%z364)
   ret.i64 0
 }
@@ -1129,7 +1129,7 @@ entry:
 fn @case116() -> i64 {
 entry:
   %c365 = gt.i128 1, 1
-  %z366 = zext.bool.i64 %c365
+  %z366 = extend.bool.i64 %c365
   call @print_i64(%z366)
   ret.i64 0
 }
@@ -1137,7 +1137,7 @@ entry:
 fn @case117() -> i64 {
 entry:
   %c367 = ge.i128 1, 1
-  %z368 = zext.bool.i64 %c367
+  %z368 = extend.bool.i64 %c367
   call @print_i64(%z368)
   ret.i64 0
 }
@@ -1145,7 +1145,7 @@ entry:
 fn @case118() -> i64 {
 entry:
   %c369 = eq.i128 1, 1
-  %z370 = zext.bool.i64 %c369
+  %z370 = extend.bool.i64 %c369
   call @print_i64(%z370)
   ret.i64 0
 }
@@ -1153,7 +1153,7 @@ entry:
 fn @case119() -> i64 {
 entry:
   %c371 = ne.i128 1, 1
-  %z372 = zext.bool.i64 %c371
+  %z372 = extend.bool.i64 %c371
   call @print_i64(%z372)
   ret.i64 0
 }
@@ -1249,7 +1249,7 @@ entry:
 fn @case128() -> i64 {
 entry:
   %c405 = lt.i128 1, -1
-  %z406 = zext.bool.i64 %c405
+  %z406 = extend.bool.i64 %c405
   call @print_i64(%z406)
   ret.i64 0
 }
@@ -1257,7 +1257,7 @@ entry:
 fn @case129() -> i64 {
 entry:
   %c407 = le.i128 1, -1
-  %z408 = zext.bool.i64 %c407
+  %z408 = extend.bool.i64 %c407
   call @print_i64(%z408)
   ret.i64 0
 }
@@ -1265,7 +1265,7 @@ entry:
 fn @case130() -> i64 {
 entry:
   %c409 = gt.i128 1, -1
-  %z410 = zext.bool.i64 %c409
+  %z410 = extend.bool.i64 %c409
   call @print_i64(%z410)
   ret.i64 0
 }
@@ -1273,7 +1273,7 @@ entry:
 fn @case131() -> i64 {
 entry:
   %c411 = ge.i128 1, -1
-  %z412 = zext.bool.i64 %c411
+  %z412 = extend.bool.i64 %c411
   call @print_i64(%z412)
   ret.i64 0
 }
@@ -1281,7 +1281,7 @@ entry:
 fn @case132() -> i64 {
 entry:
   %c413 = eq.i128 1, -1
-  %z414 = zext.bool.i64 %c413
+  %z414 = extend.bool.i64 %c413
   call @print_i64(%z414)
   ret.i64 0
 }
@@ -1289,7 +1289,7 @@ entry:
 fn @case133() -> i64 {
 entry:
   %c415 = ne.i128 1, -1
-  %z416 = zext.bool.i64 %c415
+  %z416 = extend.bool.i64 %c415
   call @print_i64(%z416)
   ret.i64 0
 }
@@ -1385,7 +1385,7 @@ entry:
 fn @case142() -> i64 {
 entry:
   %c449 = lt.i128 1, 9223372036854775807
-  %z450 = zext.bool.i64 %c449
+  %z450 = extend.bool.i64 %c449
   call @print_i64(%z450)
   ret.i64 0
 }
@@ -1393,7 +1393,7 @@ entry:
 fn @case143() -> i64 {
 entry:
   %c451 = le.i128 1, 9223372036854775807
-  %z452 = zext.bool.i64 %c451
+  %z452 = extend.bool.i64 %c451
   call @print_i64(%z452)
   ret.i64 0
 }
@@ -1401,7 +1401,7 @@ entry:
 fn @case144() -> i64 {
 entry:
   %c453 = gt.i128 1, 9223372036854775807
-  %z454 = zext.bool.i64 %c453
+  %z454 = extend.bool.i64 %c453
   call @print_i64(%z454)
   ret.i64 0
 }
@@ -1409,7 +1409,7 @@ entry:
 fn @case145() -> i64 {
 entry:
   %c455 = ge.i128 1, 9223372036854775807
-  %z456 = zext.bool.i64 %c455
+  %z456 = extend.bool.i64 %c455
   call @print_i64(%z456)
   ret.i64 0
 }
@@ -1417,7 +1417,7 @@ entry:
 fn @case146() -> i64 {
 entry:
   %c457 = eq.i128 1, 9223372036854775807
-  %z458 = zext.bool.i64 %c457
+  %z458 = extend.bool.i64 %c457
   call @print_i64(%z458)
   ret.i64 0
 }
@@ -1425,7 +1425,7 @@ entry:
 fn @case147() -> i64 {
 entry:
   %c459 = ne.i128 1, 9223372036854775807
-  %z460 = zext.bool.i64 %c459
+  %z460 = extend.bool.i64 %c459
   call @print_i64(%z460)
   ret.i64 0
 }
@@ -1521,7 +1521,7 @@ entry:
 fn @case156() -> i64 {
 entry:
   %c493 = lt.i128 1, -9223372036854775809
-  %z494 = zext.bool.i64 %c493
+  %z494 = extend.bool.i64 %c493
   call @print_i64(%z494)
   ret.i64 0
 }
@@ -1529,7 +1529,7 @@ entry:
 fn @case157() -> i64 {
 entry:
   %c495 = le.i128 1, -9223372036854775809
-  %z496 = zext.bool.i64 %c495
+  %z496 = extend.bool.i64 %c495
   call @print_i64(%z496)
   ret.i64 0
 }
@@ -1537,7 +1537,7 @@ entry:
 fn @case158() -> i64 {
 entry:
   %c497 = gt.i128 1, -9223372036854775809
-  %z498 = zext.bool.i64 %c497
+  %z498 = extend.bool.i64 %c497
   call @print_i64(%z498)
   ret.i64 0
 }
@@ -1545,7 +1545,7 @@ entry:
 fn @case159() -> i64 {
 entry:
   %c499 = ge.i128 1, -9223372036854775809
-  %z500 = zext.bool.i64 %c499
+  %z500 = extend.bool.i64 %c499
   call @print_i64(%z500)
   ret.i64 0
 }
@@ -1553,7 +1553,7 @@ entry:
 fn @case160() -> i64 {
 entry:
   %c501 = eq.i128 1, -9223372036854775809
-  %z502 = zext.bool.i64 %c501
+  %z502 = extend.bool.i64 %c501
   call @print_i64(%z502)
   ret.i64 0
 }
@@ -1561,7 +1561,7 @@ entry:
 fn @case161() -> i64 {
 entry:
   %c503 = ne.i128 1, -9223372036854775809
-  %z504 = zext.bool.i64 %c503
+  %z504 = extend.bool.i64 %c503
   call @print_i64(%z504)
   ret.i64 0
 }
@@ -1657,7 +1657,7 @@ entry:
 fn @case170() -> i64 {
 entry:
   %c537 = lt.i128 1, -170141183460469231731687303715884105728
-  %z538 = zext.bool.i64 %c537
+  %z538 = extend.bool.i64 %c537
   call @print_i64(%z538)
   ret.i64 0
 }
@@ -1665,7 +1665,7 @@ entry:
 fn @case171() -> i64 {
 entry:
   %c539 = le.i128 1, -170141183460469231731687303715884105728
-  %z540 = zext.bool.i64 %c539
+  %z540 = extend.bool.i64 %c539
   call @print_i64(%z540)
   ret.i64 0
 }
@@ -1673,7 +1673,7 @@ entry:
 fn @case172() -> i64 {
 entry:
   %c541 = gt.i128 1, -170141183460469231731687303715884105728
-  %z542 = zext.bool.i64 %c541
+  %z542 = extend.bool.i64 %c541
   call @print_i64(%z542)
   ret.i64 0
 }
@@ -1681,7 +1681,7 @@ entry:
 fn @case173() -> i64 {
 entry:
   %c543 = ge.i128 1, -170141183460469231731687303715884105728
-  %z544 = zext.bool.i64 %c543
+  %z544 = extend.bool.i64 %c543
   call @print_i64(%z544)
   ret.i64 0
 }
@@ -1689,7 +1689,7 @@ entry:
 fn @case174() -> i64 {
 entry:
   %c545 = eq.i128 1, -170141183460469231731687303715884105728
-  %z546 = zext.bool.i64 %c545
+  %z546 = extend.bool.i64 %c545
   call @print_i64(%z546)
   ret.i64 0
 }
@@ -1697,7 +1697,7 @@ entry:
 fn @case175() -> i64 {
 entry:
   %c547 = ne.i128 1, -170141183460469231731687303715884105728
-  %z548 = zext.bool.i64 %c547
+  %z548 = extend.bool.i64 %c547
   call @print_i64(%z548)
   ret.i64 0
 }
@@ -1793,7 +1793,7 @@ entry:
 fn @case184() -> i64 {
 entry:
   %c581 = lt.i128 1, 170141183460469231731687303715884105727
-  %z582 = zext.bool.i64 %c581
+  %z582 = extend.bool.i64 %c581
   call @print_i64(%z582)
   ret.i64 0
 }
@@ -1801,7 +1801,7 @@ entry:
 fn @case185() -> i64 {
 entry:
   %c583 = le.i128 1, 170141183460469231731687303715884105727
-  %z584 = zext.bool.i64 %c583
+  %z584 = extend.bool.i64 %c583
   call @print_i64(%z584)
   ret.i64 0
 }
@@ -1809,7 +1809,7 @@ entry:
 fn @case186() -> i64 {
 entry:
   %c585 = gt.i128 1, 170141183460469231731687303715884105727
-  %z586 = zext.bool.i64 %c585
+  %z586 = extend.bool.i64 %c585
   call @print_i64(%z586)
   ret.i64 0
 }
@@ -1817,7 +1817,7 @@ entry:
 fn @case187() -> i64 {
 entry:
   %c587 = ge.i128 1, 170141183460469231731687303715884105727
-  %z588 = zext.bool.i64 %c587
+  %z588 = extend.bool.i64 %c587
   call @print_i64(%z588)
   ret.i64 0
 }
@@ -1825,7 +1825,7 @@ entry:
 fn @case188() -> i64 {
 entry:
   %c589 = eq.i128 1, 170141183460469231731687303715884105727
-  %z590 = zext.bool.i64 %c589
+  %z590 = extend.bool.i64 %c589
   call @print_i64(%z590)
   ret.i64 0
 }
@@ -1833,7 +1833,7 @@ entry:
 fn @case189() -> i64 {
 entry:
   %c591 = ne.i128 1, 170141183460469231731687303715884105727
-  %z592 = zext.bool.i64 %c591
+  %z592 = extend.bool.i64 %c591
   call @print_i64(%z592)
   ret.i64 0
 }
@@ -1929,7 +1929,7 @@ entry:
 fn @case198() -> i64 {
 entry:
   %c625 = lt.i128 -1, 0
-  %z626 = zext.bool.i64 %c625
+  %z626 = extend.bool.i64 %c625
   call @print_i64(%z626)
   ret.i64 0
 }
@@ -1937,7 +1937,7 @@ entry:
 fn @case199() -> i64 {
 entry:
   %c627 = le.i128 -1, 0
-  %z628 = zext.bool.i64 %c627
+  %z628 = extend.bool.i64 %c627
   call @print_i64(%z628)
   ret.i64 0
 }
@@ -1945,7 +1945,7 @@ entry:
 fn @case200() -> i64 {
 entry:
   %c629 = gt.i128 -1, 0
-  %z630 = zext.bool.i64 %c629
+  %z630 = extend.bool.i64 %c629
   call @print_i64(%z630)
   ret.i64 0
 }
@@ -1953,7 +1953,7 @@ entry:
 fn @case201() -> i64 {
 entry:
   %c631 = ge.i128 -1, 0
-  %z632 = zext.bool.i64 %c631
+  %z632 = extend.bool.i64 %c631
   call @print_i64(%z632)
   ret.i64 0
 }
@@ -1961,7 +1961,7 @@ entry:
 fn @case202() -> i64 {
 entry:
   %c633 = eq.i128 -1, 0
-  %z634 = zext.bool.i64 %c633
+  %z634 = extend.bool.i64 %c633
   call @print_i64(%z634)
   ret.i64 0
 }
@@ -1969,7 +1969,7 @@ entry:
 fn @case203() -> i64 {
 entry:
   %c635 = ne.i128 -1, 0
-  %z636 = zext.bool.i64 %c635
+  %z636 = extend.bool.i64 %c635
   call @print_i64(%z636)
   ret.i64 0
 }
@@ -2043,7 +2043,7 @@ entry:
 fn @case210() -> i64 {
 entry:
   %c661 = lt.i128 -1, 1
-  %z662 = zext.bool.i64 %c661
+  %z662 = extend.bool.i64 %c661
   call @print_i64(%z662)
   ret.i64 0
 }
@@ -2051,7 +2051,7 @@ entry:
 fn @case211() -> i64 {
 entry:
   %c663 = le.i128 -1, 1
-  %z664 = zext.bool.i64 %c663
+  %z664 = extend.bool.i64 %c663
   call @print_i64(%z664)
   ret.i64 0
 }
@@ -2059,7 +2059,7 @@ entry:
 fn @case212() -> i64 {
 entry:
   %c665 = gt.i128 -1, 1
-  %z666 = zext.bool.i64 %c665
+  %z666 = extend.bool.i64 %c665
   call @print_i64(%z666)
   ret.i64 0
 }
@@ -2067,7 +2067,7 @@ entry:
 fn @case213() -> i64 {
 entry:
   %c667 = ge.i128 -1, 1
-  %z668 = zext.bool.i64 %c667
+  %z668 = extend.bool.i64 %c667
   call @print_i64(%z668)
   ret.i64 0
 }
@@ -2075,7 +2075,7 @@ entry:
 fn @case214() -> i64 {
 entry:
   %c669 = eq.i128 -1, 1
-  %z670 = zext.bool.i64 %c669
+  %z670 = extend.bool.i64 %c669
   call @print_i64(%z670)
   ret.i64 0
 }
@@ -2083,7 +2083,7 @@ entry:
 fn @case215() -> i64 {
 entry:
   %c671 = ne.i128 -1, 1
-  %z672 = zext.bool.i64 %c671
+  %z672 = extend.bool.i64 %c671
   call @print_i64(%z672)
   ret.i64 0
 }
@@ -2179,7 +2179,7 @@ entry:
 fn @case224() -> i64 {
 entry:
   %c705 = lt.i128 -1, -1
-  %z706 = zext.bool.i64 %c705
+  %z706 = extend.bool.i64 %c705
   call @print_i64(%z706)
   ret.i64 0
 }
@@ -2187,7 +2187,7 @@ entry:
 fn @case225() -> i64 {
 entry:
   %c707 = le.i128 -1, -1
-  %z708 = zext.bool.i64 %c707
+  %z708 = extend.bool.i64 %c707
   call @print_i64(%z708)
   ret.i64 0
 }
@@ -2195,7 +2195,7 @@ entry:
 fn @case226() -> i64 {
 entry:
   %c709 = gt.i128 -1, -1
-  %z710 = zext.bool.i64 %c709
+  %z710 = extend.bool.i64 %c709
   call @print_i64(%z710)
   ret.i64 0
 }
@@ -2203,7 +2203,7 @@ entry:
 fn @case227() -> i64 {
 entry:
   %c711 = ge.i128 -1, -1
-  %z712 = zext.bool.i64 %c711
+  %z712 = extend.bool.i64 %c711
   call @print_i64(%z712)
   ret.i64 0
 }
@@ -2211,7 +2211,7 @@ entry:
 fn @case228() -> i64 {
 entry:
   %c713 = eq.i128 -1, -1
-  %z714 = zext.bool.i64 %c713
+  %z714 = extend.bool.i64 %c713
   call @print_i64(%z714)
   ret.i64 0
 }
@@ -2219,7 +2219,7 @@ entry:
 fn @case229() -> i64 {
 entry:
   %c715 = ne.i128 -1, -1
-  %z716 = zext.bool.i64 %c715
+  %z716 = extend.bool.i64 %c715
   call @print_i64(%z716)
   ret.i64 0
 }
@@ -2315,7 +2315,7 @@ entry:
 fn @case238() -> i64 {
 entry:
   %c749 = lt.i128 -1, 9223372036854775807
-  %z750 = zext.bool.i64 %c749
+  %z750 = extend.bool.i64 %c749
   call @print_i64(%z750)
   ret.i64 0
 }
@@ -2323,7 +2323,7 @@ entry:
 fn @case239() -> i64 {
 entry:
   %c751 = le.i128 -1, 9223372036854775807
-  %z752 = zext.bool.i64 %c751
+  %z752 = extend.bool.i64 %c751
   call @print_i64(%z752)
   ret.i64 0
 }
@@ -2331,7 +2331,7 @@ entry:
 fn @case240() -> i64 {
 entry:
   %c753 = gt.i128 -1, 9223372036854775807
-  %z754 = zext.bool.i64 %c753
+  %z754 = extend.bool.i64 %c753
   call @print_i64(%z754)
   ret.i64 0
 }
@@ -2339,7 +2339,7 @@ entry:
 fn @case241() -> i64 {
 entry:
   %c755 = ge.i128 -1, 9223372036854775807
-  %z756 = zext.bool.i64 %c755
+  %z756 = extend.bool.i64 %c755
   call @print_i64(%z756)
   ret.i64 0
 }
@@ -2347,7 +2347,7 @@ entry:
 fn @case242() -> i64 {
 entry:
   %c757 = eq.i128 -1, 9223372036854775807
-  %z758 = zext.bool.i64 %c757
+  %z758 = extend.bool.i64 %c757
   call @print_i64(%z758)
   ret.i64 0
 }
@@ -2355,7 +2355,7 @@ entry:
 fn @case243() -> i64 {
 entry:
   %c759 = ne.i128 -1, 9223372036854775807
-  %z760 = zext.bool.i64 %c759
+  %z760 = extend.bool.i64 %c759
   call @print_i64(%z760)
   ret.i64 0
 }
@@ -2451,7 +2451,7 @@ entry:
 fn @case252() -> i64 {
 entry:
   %c793 = lt.i128 -1, -9223372036854775809
-  %z794 = zext.bool.i64 %c793
+  %z794 = extend.bool.i64 %c793
   call @print_i64(%z794)
   ret.i64 0
 }
@@ -2459,7 +2459,7 @@ entry:
 fn @case253() -> i64 {
 entry:
   %c795 = le.i128 -1, -9223372036854775809
-  %z796 = zext.bool.i64 %c795
+  %z796 = extend.bool.i64 %c795
   call @print_i64(%z796)
   ret.i64 0
 }
@@ -2467,7 +2467,7 @@ entry:
 fn @case254() -> i64 {
 entry:
   %c797 = gt.i128 -1, -9223372036854775809
-  %z798 = zext.bool.i64 %c797
+  %z798 = extend.bool.i64 %c797
   call @print_i64(%z798)
   ret.i64 0
 }
@@ -2475,7 +2475,7 @@ entry:
 fn @case255() -> i64 {
 entry:
   %c799 = ge.i128 -1, -9223372036854775809
-  %z800 = zext.bool.i64 %c799
+  %z800 = extend.bool.i64 %c799
   call @print_i64(%z800)
   ret.i64 0
 }
@@ -2483,7 +2483,7 @@ entry:
 fn @case256() -> i64 {
 entry:
   %c801 = eq.i128 -1, -9223372036854775809
-  %z802 = zext.bool.i64 %c801
+  %z802 = extend.bool.i64 %c801
   call @print_i64(%z802)
   ret.i64 0
 }
@@ -2491,7 +2491,7 @@ entry:
 fn @case257() -> i64 {
 entry:
   %c803 = ne.i128 -1, -9223372036854775809
-  %z804 = zext.bool.i64 %c803
+  %z804 = extend.bool.i64 %c803
   call @print_i64(%z804)
   ret.i64 0
 }
@@ -2587,7 +2587,7 @@ entry:
 fn @case266() -> i64 {
 entry:
   %c837 = lt.i128 -1, -170141183460469231731687303715884105728
-  %z838 = zext.bool.i64 %c837
+  %z838 = extend.bool.i64 %c837
   call @print_i64(%z838)
   ret.i64 0
 }
@@ -2595,7 +2595,7 @@ entry:
 fn @case267() -> i64 {
 entry:
   %c839 = le.i128 -1, -170141183460469231731687303715884105728
-  %z840 = zext.bool.i64 %c839
+  %z840 = extend.bool.i64 %c839
   call @print_i64(%z840)
   ret.i64 0
 }
@@ -2603,7 +2603,7 @@ entry:
 fn @case268() -> i64 {
 entry:
   %c841 = gt.i128 -1, -170141183460469231731687303715884105728
-  %z842 = zext.bool.i64 %c841
+  %z842 = extend.bool.i64 %c841
   call @print_i64(%z842)
   ret.i64 0
 }
@@ -2611,7 +2611,7 @@ entry:
 fn @case269() -> i64 {
 entry:
   %c843 = ge.i128 -1, -170141183460469231731687303715884105728
-  %z844 = zext.bool.i64 %c843
+  %z844 = extend.bool.i64 %c843
   call @print_i64(%z844)
   ret.i64 0
 }
@@ -2619,7 +2619,7 @@ entry:
 fn @case270() -> i64 {
 entry:
   %c845 = eq.i128 -1, -170141183460469231731687303715884105728
-  %z846 = zext.bool.i64 %c845
+  %z846 = extend.bool.i64 %c845
   call @print_i64(%z846)
   ret.i64 0
 }
@@ -2627,7 +2627,7 @@ entry:
 fn @case271() -> i64 {
 entry:
   %c847 = ne.i128 -1, -170141183460469231731687303715884105728
-  %z848 = zext.bool.i64 %c847
+  %z848 = extend.bool.i64 %c847
   call @print_i64(%z848)
   ret.i64 0
 }
@@ -2723,7 +2723,7 @@ entry:
 fn @case280() -> i64 {
 entry:
   %c881 = lt.i128 -1, 170141183460469231731687303715884105727
-  %z882 = zext.bool.i64 %c881
+  %z882 = extend.bool.i64 %c881
   call @print_i64(%z882)
   ret.i64 0
 }
@@ -2731,7 +2731,7 @@ entry:
 fn @case281() -> i64 {
 entry:
   %c883 = le.i128 -1, 170141183460469231731687303715884105727
-  %z884 = zext.bool.i64 %c883
+  %z884 = extend.bool.i64 %c883
   call @print_i64(%z884)
   ret.i64 0
 }
@@ -2739,7 +2739,7 @@ entry:
 fn @case282() -> i64 {
 entry:
   %c885 = gt.i128 -1, 170141183460469231731687303715884105727
-  %z886 = zext.bool.i64 %c885
+  %z886 = extend.bool.i64 %c885
   call @print_i64(%z886)
   ret.i64 0
 }
@@ -2747,7 +2747,7 @@ entry:
 fn @case283() -> i64 {
 entry:
   %c887 = ge.i128 -1, 170141183460469231731687303715884105727
-  %z888 = zext.bool.i64 %c887
+  %z888 = extend.bool.i64 %c887
   call @print_i64(%z888)
   ret.i64 0
 }
@@ -2755,7 +2755,7 @@ entry:
 fn @case284() -> i64 {
 entry:
   %c889 = eq.i128 -1, 170141183460469231731687303715884105727
-  %z890 = zext.bool.i64 %c889
+  %z890 = extend.bool.i64 %c889
   call @print_i64(%z890)
   ret.i64 0
 }
@@ -2763,7 +2763,7 @@ entry:
 fn @case285() -> i64 {
 entry:
   %c891 = ne.i128 -1, 170141183460469231731687303715884105727
-  %z892 = zext.bool.i64 %c891
+  %z892 = extend.bool.i64 %c891
   call @print_i64(%z892)
   ret.i64 0
 }
@@ -2859,7 +2859,7 @@ entry:
 fn @case294() -> i64 {
 entry:
   %c925 = lt.i128 9223372036854775807, 0
-  %z926 = zext.bool.i64 %c925
+  %z926 = extend.bool.i64 %c925
   call @print_i64(%z926)
   ret.i64 0
 }
@@ -2867,7 +2867,7 @@ entry:
 fn @case295() -> i64 {
 entry:
   %c927 = le.i128 9223372036854775807, 0
-  %z928 = zext.bool.i64 %c927
+  %z928 = extend.bool.i64 %c927
   call @print_i64(%z928)
   ret.i64 0
 }
@@ -2875,7 +2875,7 @@ entry:
 fn @case296() -> i64 {
 entry:
   %c929 = gt.i128 9223372036854775807, 0
-  %z930 = zext.bool.i64 %c929
+  %z930 = extend.bool.i64 %c929
   call @print_i64(%z930)
   ret.i64 0
 }
@@ -2883,7 +2883,7 @@ entry:
 fn @case297() -> i64 {
 entry:
   %c931 = ge.i128 9223372036854775807, 0
-  %z932 = zext.bool.i64 %c931
+  %z932 = extend.bool.i64 %c931
   call @print_i64(%z932)
   ret.i64 0
 }
@@ -2891,7 +2891,7 @@ entry:
 fn @case298() -> i64 {
 entry:
   %c933 = eq.i128 9223372036854775807, 0
-  %z934 = zext.bool.i64 %c933
+  %z934 = extend.bool.i64 %c933
   call @print_i64(%z934)
   ret.i64 0
 }
@@ -2899,7 +2899,7 @@ entry:
 fn @case299() -> i64 {
 entry:
   %c935 = ne.i128 9223372036854775807, 0
-  %z936 = zext.bool.i64 %c935
+  %z936 = extend.bool.i64 %c935
   call @print_i64(%z936)
   ret.i64 0
 }
@@ -2973,7 +2973,7 @@ entry:
 fn @case306() -> i64 {
 entry:
   %c961 = lt.i128 9223372036854775807, 1
-  %z962 = zext.bool.i64 %c961
+  %z962 = extend.bool.i64 %c961
   call @print_i64(%z962)
   ret.i64 0
 }
@@ -2981,7 +2981,7 @@ entry:
 fn @case307() -> i64 {
 entry:
   %c963 = le.i128 9223372036854775807, 1
-  %z964 = zext.bool.i64 %c963
+  %z964 = extend.bool.i64 %c963
   call @print_i64(%z964)
   ret.i64 0
 }
@@ -2989,7 +2989,7 @@ entry:
 fn @case308() -> i64 {
 entry:
   %c965 = gt.i128 9223372036854775807, 1
-  %z966 = zext.bool.i64 %c965
+  %z966 = extend.bool.i64 %c965
   call @print_i64(%z966)
   ret.i64 0
 }
@@ -2997,7 +2997,7 @@ entry:
 fn @case309() -> i64 {
 entry:
   %c967 = ge.i128 9223372036854775807, 1
-  %z968 = zext.bool.i64 %c967
+  %z968 = extend.bool.i64 %c967
   call @print_i64(%z968)
   ret.i64 0
 }
@@ -3005,7 +3005,7 @@ entry:
 fn @case310() -> i64 {
 entry:
   %c969 = eq.i128 9223372036854775807, 1
-  %z970 = zext.bool.i64 %c969
+  %z970 = extend.bool.i64 %c969
   call @print_i64(%z970)
   ret.i64 0
 }
@@ -3013,7 +3013,7 @@ entry:
 fn @case311() -> i64 {
 entry:
   %c971 = ne.i128 9223372036854775807, 1
-  %z972 = zext.bool.i64 %c971
+  %z972 = extend.bool.i64 %c971
   call @print_i64(%z972)
   ret.i64 0
 }
@@ -3109,7 +3109,7 @@ entry:
 fn @case320() -> i64 {
 entry:
   %c1005 = lt.i128 9223372036854775807, -1
-  %z1006 = zext.bool.i64 %c1005
+  %z1006 = extend.bool.i64 %c1005
   call @print_i64(%z1006)
   ret.i64 0
 }
@@ -3117,7 +3117,7 @@ entry:
 fn @case321() -> i64 {
 entry:
   %c1007 = le.i128 9223372036854775807, -1
-  %z1008 = zext.bool.i64 %c1007
+  %z1008 = extend.bool.i64 %c1007
   call @print_i64(%z1008)
   ret.i64 0
 }
@@ -3125,7 +3125,7 @@ entry:
 fn @case322() -> i64 {
 entry:
   %c1009 = gt.i128 9223372036854775807, -1
-  %z1010 = zext.bool.i64 %c1009
+  %z1010 = extend.bool.i64 %c1009
   call @print_i64(%z1010)
   ret.i64 0
 }
@@ -3133,7 +3133,7 @@ entry:
 fn @case323() -> i64 {
 entry:
   %c1011 = ge.i128 9223372036854775807, -1
-  %z1012 = zext.bool.i64 %c1011
+  %z1012 = extend.bool.i64 %c1011
   call @print_i64(%z1012)
   ret.i64 0
 }
@@ -3141,7 +3141,7 @@ entry:
 fn @case324() -> i64 {
 entry:
   %c1013 = eq.i128 9223372036854775807, -1
-  %z1014 = zext.bool.i64 %c1013
+  %z1014 = extend.bool.i64 %c1013
   call @print_i64(%z1014)
   ret.i64 0
 }
@@ -3149,7 +3149,7 @@ entry:
 fn @case325() -> i64 {
 entry:
   %c1015 = ne.i128 9223372036854775807, -1
-  %z1016 = zext.bool.i64 %c1015
+  %z1016 = extend.bool.i64 %c1015
   call @print_i64(%z1016)
   ret.i64 0
 }
@@ -3245,7 +3245,7 @@ entry:
 fn @case334() -> i64 {
 entry:
   %c1049 = lt.i128 9223372036854775807, 9223372036854775807
-  %z1050 = zext.bool.i64 %c1049
+  %z1050 = extend.bool.i64 %c1049
   call @print_i64(%z1050)
   ret.i64 0
 }
@@ -3253,7 +3253,7 @@ entry:
 fn @case335() -> i64 {
 entry:
   %c1051 = le.i128 9223372036854775807, 9223372036854775807
-  %z1052 = zext.bool.i64 %c1051
+  %z1052 = extend.bool.i64 %c1051
   call @print_i64(%z1052)
   ret.i64 0
 }
@@ -3261,7 +3261,7 @@ entry:
 fn @case336() -> i64 {
 entry:
   %c1053 = gt.i128 9223372036854775807, 9223372036854775807
-  %z1054 = zext.bool.i64 %c1053
+  %z1054 = extend.bool.i64 %c1053
   call @print_i64(%z1054)
   ret.i64 0
 }
@@ -3269,7 +3269,7 @@ entry:
 fn @case337() -> i64 {
 entry:
   %c1055 = ge.i128 9223372036854775807, 9223372036854775807
-  %z1056 = zext.bool.i64 %c1055
+  %z1056 = extend.bool.i64 %c1055
   call @print_i64(%z1056)
   ret.i64 0
 }
@@ -3277,7 +3277,7 @@ entry:
 fn @case338() -> i64 {
 entry:
   %c1057 = eq.i128 9223372036854775807, 9223372036854775807
-  %z1058 = zext.bool.i64 %c1057
+  %z1058 = extend.bool.i64 %c1057
   call @print_i64(%z1058)
   ret.i64 0
 }
@@ -3285,7 +3285,7 @@ entry:
 fn @case339() -> i64 {
 entry:
   %c1059 = ne.i128 9223372036854775807, 9223372036854775807
-  %z1060 = zext.bool.i64 %c1059
+  %z1060 = extend.bool.i64 %c1059
   call @print_i64(%z1060)
   ret.i64 0
 }
@@ -3381,7 +3381,7 @@ entry:
 fn @case348() -> i64 {
 entry:
   %c1093 = lt.i128 9223372036854775807, -9223372036854775809
-  %z1094 = zext.bool.i64 %c1093
+  %z1094 = extend.bool.i64 %c1093
   call @print_i64(%z1094)
   ret.i64 0
 }
@@ -3389,7 +3389,7 @@ entry:
 fn @case349() -> i64 {
 entry:
   %c1095 = le.i128 9223372036854775807, -9223372036854775809
-  %z1096 = zext.bool.i64 %c1095
+  %z1096 = extend.bool.i64 %c1095
   call @print_i64(%z1096)
   ret.i64 0
 }
@@ -3397,7 +3397,7 @@ entry:
 fn @case350() -> i64 {
 entry:
   %c1097 = gt.i128 9223372036854775807, -9223372036854775809
-  %z1098 = zext.bool.i64 %c1097
+  %z1098 = extend.bool.i64 %c1097
   call @print_i64(%z1098)
   ret.i64 0
 }
@@ -3405,7 +3405,7 @@ entry:
 fn @case351() -> i64 {
 entry:
   %c1099 = ge.i128 9223372036854775807, -9223372036854775809
-  %z1100 = zext.bool.i64 %c1099
+  %z1100 = extend.bool.i64 %c1099
   call @print_i64(%z1100)
   ret.i64 0
 }
@@ -3413,7 +3413,7 @@ entry:
 fn @case352() -> i64 {
 entry:
   %c1101 = eq.i128 9223372036854775807, -9223372036854775809
-  %z1102 = zext.bool.i64 %c1101
+  %z1102 = extend.bool.i64 %c1101
   call @print_i64(%z1102)
   ret.i64 0
 }
@@ -3421,7 +3421,7 @@ entry:
 fn @case353() -> i64 {
 entry:
   %c1103 = ne.i128 9223372036854775807, -9223372036854775809
-  %z1104 = zext.bool.i64 %c1103
+  %z1104 = extend.bool.i64 %c1103
   call @print_i64(%z1104)
   ret.i64 0
 }
@@ -3517,7 +3517,7 @@ entry:
 fn @case362() -> i64 {
 entry:
   %c1137 = lt.i128 9223372036854775807, -170141183460469231731687303715884105728
-  %z1138 = zext.bool.i64 %c1137
+  %z1138 = extend.bool.i64 %c1137
   call @print_i64(%z1138)
   ret.i64 0
 }
@@ -3525,7 +3525,7 @@ entry:
 fn @case363() -> i64 {
 entry:
   %c1139 = le.i128 9223372036854775807, -170141183460469231731687303715884105728
-  %z1140 = zext.bool.i64 %c1139
+  %z1140 = extend.bool.i64 %c1139
   call @print_i64(%z1140)
   ret.i64 0
 }
@@ -3533,7 +3533,7 @@ entry:
 fn @case364() -> i64 {
 entry:
   %c1141 = gt.i128 9223372036854775807, -170141183460469231731687303715884105728
-  %z1142 = zext.bool.i64 %c1141
+  %z1142 = extend.bool.i64 %c1141
   call @print_i64(%z1142)
   ret.i64 0
 }
@@ -3541,7 +3541,7 @@ entry:
 fn @case365() -> i64 {
 entry:
   %c1143 = ge.i128 9223372036854775807, -170141183460469231731687303715884105728
-  %z1144 = zext.bool.i64 %c1143
+  %z1144 = extend.bool.i64 %c1143
   call @print_i64(%z1144)
   ret.i64 0
 }
@@ -3549,7 +3549,7 @@ entry:
 fn @case366() -> i64 {
 entry:
   %c1145 = eq.i128 9223372036854775807, -170141183460469231731687303715884105728
-  %z1146 = zext.bool.i64 %c1145
+  %z1146 = extend.bool.i64 %c1145
   call @print_i64(%z1146)
   ret.i64 0
 }
@@ -3557,7 +3557,7 @@ entry:
 fn @case367() -> i64 {
 entry:
   %c1147 = ne.i128 9223372036854775807, -170141183460469231731687303715884105728
-  %z1148 = zext.bool.i64 %c1147
+  %z1148 = extend.bool.i64 %c1147
   call @print_i64(%z1148)
   ret.i64 0
 }
@@ -3653,7 +3653,7 @@ entry:
 fn @case376() -> i64 {
 entry:
   %c1181 = lt.i128 9223372036854775807, 170141183460469231731687303715884105727
-  %z1182 = zext.bool.i64 %c1181
+  %z1182 = extend.bool.i64 %c1181
   call @print_i64(%z1182)
   ret.i64 0
 }
@@ -3661,7 +3661,7 @@ entry:
 fn @case377() -> i64 {
 entry:
   %c1183 = le.i128 9223372036854775807, 170141183460469231731687303715884105727
-  %z1184 = zext.bool.i64 %c1183
+  %z1184 = extend.bool.i64 %c1183
   call @print_i64(%z1184)
   ret.i64 0
 }
@@ -3669,7 +3669,7 @@ entry:
 fn @case378() -> i64 {
 entry:
   %c1185 = gt.i128 9223372036854775807, 170141183460469231731687303715884105727
-  %z1186 = zext.bool.i64 %c1185
+  %z1186 = extend.bool.i64 %c1185
   call @print_i64(%z1186)
   ret.i64 0
 }
@@ -3677,7 +3677,7 @@ entry:
 fn @case379() -> i64 {
 entry:
   %c1187 = ge.i128 9223372036854775807, 170141183460469231731687303715884105727
-  %z1188 = zext.bool.i64 %c1187
+  %z1188 = extend.bool.i64 %c1187
   call @print_i64(%z1188)
   ret.i64 0
 }
@@ -3685,7 +3685,7 @@ entry:
 fn @case380() -> i64 {
 entry:
   %c1189 = eq.i128 9223372036854775807, 170141183460469231731687303715884105727
-  %z1190 = zext.bool.i64 %c1189
+  %z1190 = extend.bool.i64 %c1189
   call @print_i64(%z1190)
   ret.i64 0
 }
@@ -3693,7 +3693,7 @@ entry:
 fn @case381() -> i64 {
 entry:
   %c1191 = ne.i128 9223372036854775807, 170141183460469231731687303715884105727
-  %z1192 = zext.bool.i64 %c1191
+  %z1192 = extend.bool.i64 %c1191
   call @print_i64(%z1192)
   ret.i64 0
 }
@@ -3789,7 +3789,7 @@ entry:
 fn @case390() -> i64 {
 entry:
   %c1225 = lt.i128 -9223372036854775809, 0
-  %z1226 = zext.bool.i64 %c1225
+  %z1226 = extend.bool.i64 %c1225
   call @print_i64(%z1226)
   ret.i64 0
 }
@@ -3797,7 +3797,7 @@ entry:
 fn @case391() -> i64 {
 entry:
   %c1227 = le.i128 -9223372036854775809, 0
-  %z1228 = zext.bool.i64 %c1227
+  %z1228 = extend.bool.i64 %c1227
   call @print_i64(%z1228)
   ret.i64 0
 }
@@ -3805,7 +3805,7 @@ entry:
 fn @case392() -> i64 {
 entry:
   %c1229 = gt.i128 -9223372036854775809, 0
-  %z1230 = zext.bool.i64 %c1229
+  %z1230 = extend.bool.i64 %c1229
   call @print_i64(%z1230)
   ret.i64 0
 }
@@ -3813,7 +3813,7 @@ entry:
 fn @case393() -> i64 {
 entry:
   %c1231 = ge.i128 -9223372036854775809, 0
-  %z1232 = zext.bool.i64 %c1231
+  %z1232 = extend.bool.i64 %c1231
   call @print_i64(%z1232)
   ret.i64 0
 }
@@ -3821,7 +3821,7 @@ entry:
 fn @case394() -> i64 {
 entry:
   %c1233 = eq.i128 -9223372036854775809, 0
-  %z1234 = zext.bool.i64 %c1233
+  %z1234 = extend.bool.i64 %c1233
   call @print_i64(%z1234)
   ret.i64 0
 }
@@ -3829,7 +3829,7 @@ entry:
 fn @case395() -> i64 {
 entry:
   %c1235 = ne.i128 -9223372036854775809, 0
-  %z1236 = zext.bool.i64 %c1235
+  %z1236 = extend.bool.i64 %c1235
   call @print_i64(%z1236)
   ret.i64 0
 }
@@ -3903,7 +3903,7 @@ entry:
 fn @case402() -> i64 {
 entry:
   %c1261 = lt.i128 -9223372036854775809, 1
-  %z1262 = zext.bool.i64 %c1261
+  %z1262 = extend.bool.i64 %c1261
   call @print_i64(%z1262)
   ret.i64 0
 }
@@ -3911,7 +3911,7 @@ entry:
 fn @case403() -> i64 {
 entry:
   %c1263 = le.i128 -9223372036854775809, 1
-  %z1264 = zext.bool.i64 %c1263
+  %z1264 = extend.bool.i64 %c1263
   call @print_i64(%z1264)
   ret.i64 0
 }
@@ -3919,7 +3919,7 @@ entry:
 fn @case404() -> i64 {
 entry:
   %c1265 = gt.i128 -9223372036854775809, 1
-  %z1266 = zext.bool.i64 %c1265
+  %z1266 = extend.bool.i64 %c1265
   call @print_i64(%z1266)
   ret.i64 0
 }
@@ -3927,7 +3927,7 @@ entry:
 fn @case405() -> i64 {
 entry:
   %c1267 = ge.i128 -9223372036854775809, 1
-  %z1268 = zext.bool.i64 %c1267
+  %z1268 = extend.bool.i64 %c1267
   call @print_i64(%z1268)
   ret.i64 0
 }
@@ -3935,7 +3935,7 @@ entry:
 fn @case406() -> i64 {
 entry:
   %c1269 = eq.i128 -9223372036854775809, 1
-  %z1270 = zext.bool.i64 %c1269
+  %z1270 = extend.bool.i64 %c1269
   call @print_i64(%z1270)
   ret.i64 0
 }
@@ -3943,7 +3943,7 @@ entry:
 fn @case407() -> i64 {
 entry:
   %c1271 = ne.i128 -9223372036854775809, 1
-  %z1272 = zext.bool.i64 %c1271
+  %z1272 = extend.bool.i64 %c1271
   call @print_i64(%z1272)
   ret.i64 0
 }
@@ -4039,7 +4039,7 @@ entry:
 fn @case416() -> i64 {
 entry:
   %c1305 = lt.i128 -9223372036854775809, -1
-  %z1306 = zext.bool.i64 %c1305
+  %z1306 = extend.bool.i64 %c1305
   call @print_i64(%z1306)
   ret.i64 0
 }
@@ -4047,7 +4047,7 @@ entry:
 fn @case417() -> i64 {
 entry:
   %c1307 = le.i128 -9223372036854775809, -1
-  %z1308 = zext.bool.i64 %c1307
+  %z1308 = extend.bool.i64 %c1307
   call @print_i64(%z1308)
   ret.i64 0
 }
@@ -4055,7 +4055,7 @@ entry:
 fn @case418() -> i64 {
 entry:
   %c1309 = gt.i128 -9223372036854775809, -1
-  %z1310 = zext.bool.i64 %c1309
+  %z1310 = extend.bool.i64 %c1309
   call @print_i64(%z1310)
   ret.i64 0
 }
@@ -4063,7 +4063,7 @@ entry:
 fn @case419() -> i64 {
 entry:
   %c1311 = ge.i128 -9223372036854775809, -1
-  %z1312 = zext.bool.i64 %c1311
+  %z1312 = extend.bool.i64 %c1311
   call @print_i64(%z1312)
   ret.i64 0
 }
@@ -4071,7 +4071,7 @@ entry:
 fn @case420() -> i64 {
 entry:
   %c1313 = eq.i128 -9223372036854775809, -1
-  %z1314 = zext.bool.i64 %c1313
+  %z1314 = extend.bool.i64 %c1313
   call @print_i64(%z1314)
   ret.i64 0
 }
@@ -4079,7 +4079,7 @@ entry:
 fn @case421() -> i64 {
 entry:
   %c1315 = ne.i128 -9223372036854775809, -1
-  %z1316 = zext.bool.i64 %c1315
+  %z1316 = extend.bool.i64 %c1315
   call @print_i64(%z1316)
   ret.i64 0
 }
@@ -4175,7 +4175,7 @@ entry:
 fn @case430() -> i64 {
 entry:
   %c1349 = lt.i128 -9223372036854775809, 9223372036854775807
-  %z1350 = zext.bool.i64 %c1349
+  %z1350 = extend.bool.i64 %c1349
   call @print_i64(%z1350)
   ret.i64 0
 }
@@ -4183,7 +4183,7 @@ entry:
 fn @case431() -> i64 {
 entry:
   %c1351 = le.i128 -9223372036854775809, 9223372036854775807
-  %z1352 = zext.bool.i64 %c1351
+  %z1352 = extend.bool.i64 %c1351
   call @print_i64(%z1352)
   ret.i64 0
 }
@@ -4191,7 +4191,7 @@ entry:
 fn @case432() -> i64 {
 entry:
   %c1353 = gt.i128 -9223372036854775809, 9223372036854775807
-  %z1354 = zext.bool.i64 %c1353
+  %z1354 = extend.bool.i64 %c1353
   call @print_i64(%z1354)
   ret.i64 0
 }
@@ -4199,7 +4199,7 @@ entry:
 fn @case433() -> i64 {
 entry:
   %c1355 = ge.i128 -9223372036854775809, 9223372036854775807
-  %z1356 = zext.bool.i64 %c1355
+  %z1356 = extend.bool.i64 %c1355
   call @print_i64(%z1356)
   ret.i64 0
 }
@@ -4207,7 +4207,7 @@ entry:
 fn @case434() -> i64 {
 entry:
   %c1357 = eq.i128 -9223372036854775809, 9223372036854775807
-  %z1358 = zext.bool.i64 %c1357
+  %z1358 = extend.bool.i64 %c1357
   call @print_i64(%z1358)
   ret.i64 0
 }
@@ -4215,7 +4215,7 @@ entry:
 fn @case435() -> i64 {
 entry:
   %c1359 = ne.i128 -9223372036854775809, 9223372036854775807
-  %z1360 = zext.bool.i64 %c1359
+  %z1360 = extend.bool.i64 %c1359
   call @print_i64(%z1360)
   ret.i64 0
 }
@@ -4311,7 +4311,7 @@ entry:
 fn @case444() -> i64 {
 entry:
   %c1393 = lt.i128 -9223372036854775809, -9223372036854775809
-  %z1394 = zext.bool.i64 %c1393
+  %z1394 = extend.bool.i64 %c1393
   call @print_i64(%z1394)
   ret.i64 0
 }
@@ -4319,7 +4319,7 @@ entry:
 fn @case445() -> i64 {
 entry:
   %c1395 = le.i128 -9223372036854775809, -9223372036854775809
-  %z1396 = zext.bool.i64 %c1395
+  %z1396 = extend.bool.i64 %c1395
   call @print_i64(%z1396)
   ret.i64 0
 }
@@ -4327,7 +4327,7 @@ entry:
 fn @case446() -> i64 {
 entry:
   %c1397 = gt.i128 -9223372036854775809, -9223372036854775809
-  %z1398 = zext.bool.i64 %c1397
+  %z1398 = extend.bool.i64 %c1397
   call @print_i64(%z1398)
   ret.i64 0
 }
@@ -4335,7 +4335,7 @@ entry:
 fn @case447() -> i64 {
 entry:
   %c1399 = ge.i128 -9223372036854775809, -9223372036854775809
-  %z1400 = zext.bool.i64 %c1399
+  %z1400 = extend.bool.i64 %c1399
   call @print_i64(%z1400)
   ret.i64 0
 }
@@ -4343,7 +4343,7 @@ entry:
 fn @case448() -> i64 {
 entry:
   %c1401 = eq.i128 -9223372036854775809, -9223372036854775809
-  %z1402 = zext.bool.i64 %c1401
+  %z1402 = extend.bool.i64 %c1401
   call @print_i64(%z1402)
   ret.i64 0
 }
@@ -4351,7 +4351,7 @@ entry:
 fn @case449() -> i64 {
 entry:
   %c1403 = ne.i128 -9223372036854775809, -9223372036854775809
-  %z1404 = zext.bool.i64 %c1403
+  %z1404 = extend.bool.i64 %c1403
   call @print_i64(%z1404)
   ret.i64 0
 }
@@ -4447,7 +4447,7 @@ entry:
 fn @case458() -> i64 {
 entry:
   %c1437 = lt.i128 -9223372036854775809, -170141183460469231731687303715884105728
-  %z1438 = zext.bool.i64 %c1437
+  %z1438 = extend.bool.i64 %c1437
   call @print_i64(%z1438)
   ret.i64 0
 }
@@ -4455,7 +4455,7 @@ entry:
 fn @case459() -> i64 {
 entry:
   %c1439 = le.i128 -9223372036854775809, -170141183460469231731687303715884105728
-  %z1440 = zext.bool.i64 %c1439
+  %z1440 = extend.bool.i64 %c1439
   call @print_i64(%z1440)
   ret.i64 0
 }
@@ -4463,7 +4463,7 @@ entry:
 fn @case460() -> i64 {
 entry:
   %c1441 = gt.i128 -9223372036854775809, -170141183460469231731687303715884105728
-  %z1442 = zext.bool.i64 %c1441
+  %z1442 = extend.bool.i64 %c1441
   call @print_i64(%z1442)
   ret.i64 0
 }
@@ -4471,7 +4471,7 @@ entry:
 fn @case461() -> i64 {
 entry:
   %c1443 = ge.i128 -9223372036854775809, -170141183460469231731687303715884105728
-  %z1444 = zext.bool.i64 %c1443
+  %z1444 = extend.bool.i64 %c1443
   call @print_i64(%z1444)
   ret.i64 0
 }
@@ -4479,7 +4479,7 @@ entry:
 fn @case462() -> i64 {
 entry:
   %c1445 = eq.i128 -9223372036854775809, -170141183460469231731687303715884105728
-  %z1446 = zext.bool.i64 %c1445
+  %z1446 = extend.bool.i64 %c1445
   call @print_i64(%z1446)
   ret.i64 0
 }
@@ -4487,7 +4487,7 @@ entry:
 fn @case463() -> i64 {
 entry:
   %c1447 = ne.i128 -9223372036854775809, -170141183460469231731687303715884105728
-  %z1448 = zext.bool.i64 %c1447
+  %z1448 = extend.bool.i64 %c1447
   call @print_i64(%z1448)
   ret.i64 0
 }
@@ -4583,7 +4583,7 @@ entry:
 fn @case472() -> i64 {
 entry:
   %c1481 = lt.i128 -9223372036854775809, 170141183460469231731687303715884105727
-  %z1482 = zext.bool.i64 %c1481
+  %z1482 = extend.bool.i64 %c1481
   call @print_i64(%z1482)
   ret.i64 0
 }
@@ -4591,7 +4591,7 @@ entry:
 fn @case473() -> i64 {
 entry:
   %c1483 = le.i128 -9223372036854775809, 170141183460469231731687303715884105727
-  %z1484 = zext.bool.i64 %c1483
+  %z1484 = extend.bool.i64 %c1483
   call @print_i64(%z1484)
   ret.i64 0
 }
@@ -4599,7 +4599,7 @@ entry:
 fn @case474() -> i64 {
 entry:
   %c1485 = gt.i128 -9223372036854775809, 170141183460469231731687303715884105727
-  %z1486 = zext.bool.i64 %c1485
+  %z1486 = extend.bool.i64 %c1485
   call @print_i64(%z1486)
   ret.i64 0
 }
@@ -4607,7 +4607,7 @@ entry:
 fn @case475() -> i64 {
 entry:
   %c1487 = ge.i128 -9223372036854775809, 170141183460469231731687303715884105727
-  %z1488 = zext.bool.i64 %c1487
+  %z1488 = extend.bool.i64 %c1487
   call @print_i64(%z1488)
   ret.i64 0
 }
@@ -4615,7 +4615,7 @@ entry:
 fn @case476() -> i64 {
 entry:
   %c1489 = eq.i128 -9223372036854775809, 170141183460469231731687303715884105727
-  %z1490 = zext.bool.i64 %c1489
+  %z1490 = extend.bool.i64 %c1489
   call @print_i64(%z1490)
   ret.i64 0
 }
@@ -4623,7 +4623,7 @@ entry:
 fn @case477() -> i64 {
 entry:
   %c1491 = ne.i128 -9223372036854775809, 170141183460469231731687303715884105727
-  %z1492 = zext.bool.i64 %c1491
+  %z1492 = extend.bool.i64 %c1491
   call @print_i64(%z1492)
   ret.i64 0
 }
@@ -4719,7 +4719,7 @@ entry:
 fn @case486() -> i64 {
 entry:
   %c1525 = lt.i128 -170141183460469231731687303715884105728, 0
-  %z1526 = zext.bool.i64 %c1525
+  %z1526 = extend.bool.i64 %c1525
   call @print_i64(%z1526)
   ret.i64 0
 }
@@ -4727,7 +4727,7 @@ entry:
 fn @case487() -> i64 {
 entry:
   %c1527 = le.i128 -170141183460469231731687303715884105728, 0
-  %z1528 = zext.bool.i64 %c1527
+  %z1528 = extend.bool.i64 %c1527
   call @print_i64(%z1528)
   ret.i64 0
 }
@@ -4735,7 +4735,7 @@ entry:
 fn @case488() -> i64 {
 entry:
   %c1529 = gt.i128 -170141183460469231731687303715884105728, 0
-  %z1530 = zext.bool.i64 %c1529
+  %z1530 = extend.bool.i64 %c1529
   call @print_i64(%z1530)
   ret.i64 0
 }
@@ -4743,7 +4743,7 @@ entry:
 fn @case489() -> i64 {
 entry:
   %c1531 = ge.i128 -170141183460469231731687303715884105728, 0
-  %z1532 = zext.bool.i64 %c1531
+  %z1532 = extend.bool.i64 %c1531
   call @print_i64(%z1532)
   ret.i64 0
 }
@@ -4751,7 +4751,7 @@ entry:
 fn @case490() -> i64 {
 entry:
   %c1533 = eq.i128 -170141183460469231731687303715884105728, 0
-  %z1534 = zext.bool.i64 %c1533
+  %z1534 = extend.bool.i64 %c1533
   call @print_i64(%z1534)
   ret.i64 0
 }
@@ -4759,7 +4759,7 @@ entry:
 fn @case491() -> i64 {
 entry:
   %c1535 = ne.i128 -170141183460469231731687303715884105728, 0
-  %z1536 = zext.bool.i64 %c1535
+  %z1536 = extend.bool.i64 %c1535
   call @print_i64(%z1536)
   ret.i64 0
 }
@@ -4833,7 +4833,7 @@ entry:
 fn @case498() -> i64 {
 entry:
   %c1561 = lt.i128 -170141183460469231731687303715884105728, 1
-  %z1562 = zext.bool.i64 %c1561
+  %z1562 = extend.bool.i64 %c1561
   call @print_i64(%z1562)
   ret.i64 0
 }
@@ -4841,7 +4841,7 @@ entry:
 fn @case499() -> i64 {
 entry:
   %c1563 = le.i128 -170141183460469231731687303715884105728, 1
-  %z1564 = zext.bool.i64 %c1563
+  %z1564 = extend.bool.i64 %c1563
   call @print_i64(%z1564)
   ret.i64 0
 }
@@ -4849,7 +4849,7 @@ entry:
 fn @case500() -> i64 {
 entry:
   %c1565 = gt.i128 -170141183460469231731687303715884105728, 1
-  %z1566 = zext.bool.i64 %c1565
+  %z1566 = extend.bool.i64 %c1565
   call @print_i64(%z1566)
   ret.i64 0
 }
@@ -4857,7 +4857,7 @@ entry:
 fn @case501() -> i64 {
 entry:
   %c1567 = ge.i128 -170141183460469231731687303715884105728, 1
-  %z1568 = zext.bool.i64 %c1567
+  %z1568 = extend.bool.i64 %c1567
   call @print_i64(%z1568)
   ret.i64 0
 }
@@ -4865,7 +4865,7 @@ entry:
 fn @case502() -> i64 {
 entry:
   %c1569 = eq.i128 -170141183460469231731687303715884105728, 1
-  %z1570 = zext.bool.i64 %c1569
+  %z1570 = extend.bool.i64 %c1569
   call @print_i64(%z1570)
   ret.i64 0
 }
@@ -4873,7 +4873,7 @@ entry:
 fn @case503() -> i64 {
 entry:
   %c1571 = ne.i128 -170141183460469231731687303715884105728, 1
-  %z1572 = zext.bool.i64 %c1571
+  %z1572 = extend.bool.i64 %c1571
   call @print_i64(%z1572)
   ret.i64 0
 }
@@ -4969,7 +4969,7 @@ entry:
 fn @case512() -> i64 {
 entry:
   %c1605 = lt.i128 -170141183460469231731687303715884105728, -1
-  %z1606 = zext.bool.i64 %c1605
+  %z1606 = extend.bool.i64 %c1605
   call @print_i64(%z1606)
   ret.i64 0
 }
@@ -4977,7 +4977,7 @@ entry:
 fn @case513() -> i64 {
 entry:
   %c1607 = le.i128 -170141183460469231731687303715884105728, -1
-  %z1608 = zext.bool.i64 %c1607
+  %z1608 = extend.bool.i64 %c1607
   call @print_i64(%z1608)
   ret.i64 0
 }
@@ -4985,7 +4985,7 @@ entry:
 fn @case514() -> i64 {
 entry:
   %c1609 = gt.i128 -170141183460469231731687303715884105728, -1
-  %z1610 = zext.bool.i64 %c1609
+  %z1610 = extend.bool.i64 %c1609
   call @print_i64(%z1610)
   ret.i64 0
 }
@@ -4993,7 +4993,7 @@ entry:
 fn @case515() -> i64 {
 entry:
   %c1611 = ge.i128 -170141183460469231731687303715884105728, -1
-  %z1612 = zext.bool.i64 %c1611
+  %z1612 = extend.bool.i64 %c1611
   call @print_i64(%z1612)
   ret.i64 0
 }
@@ -5001,7 +5001,7 @@ entry:
 fn @case516() -> i64 {
 entry:
   %c1613 = eq.i128 -170141183460469231731687303715884105728, -1
-  %z1614 = zext.bool.i64 %c1613
+  %z1614 = extend.bool.i64 %c1613
   call @print_i64(%z1614)
   ret.i64 0
 }
@@ -5009,7 +5009,7 @@ entry:
 fn @case517() -> i64 {
 entry:
   %c1615 = ne.i128 -170141183460469231731687303715884105728, -1
-  %z1616 = zext.bool.i64 %c1615
+  %z1616 = extend.bool.i64 %c1615
   call @print_i64(%z1616)
   ret.i64 0
 }
@@ -5083,7 +5083,7 @@ entry:
 fn @case524() -> i64 {
 entry:
   %c1641 = lt.i128 -170141183460469231731687303715884105728, 9223372036854775807
-  %z1642 = zext.bool.i64 %c1641
+  %z1642 = extend.bool.i64 %c1641
   call @print_i64(%z1642)
   ret.i64 0
 }
@@ -5091,7 +5091,7 @@ entry:
 fn @case525() -> i64 {
 entry:
   %c1643 = le.i128 -170141183460469231731687303715884105728, 9223372036854775807
-  %z1644 = zext.bool.i64 %c1643
+  %z1644 = extend.bool.i64 %c1643
   call @print_i64(%z1644)
   ret.i64 0
 }
@@ -5099,7 +5099,7 @@ entry:
 fn @case526() -> i64 {
 entry:
   %c1645 = gt.i128 -170141183460469231731687303715884105728, 9223372036854775807
-  %z1646 = zext.bool.i64 %c1645
+  %z1646 = extend.bool.i64 %c1645
   call @print_i64(%z1646)
   ret.i64 0
 }
@@ -5107,7 +5107,7 @@ entry:
 fn @case527() -> i64 {
 entry:
   %c1647 = ge.i128 -170141183460469231731687303715884105728, 9223372036854775807
-  %z1648 = zext.bool.i64 %c1647
+  %z1648 = extend.bool.i64 %c1647
   call @print_i64(%z1648)
   ret.i64 0
 }
@@ -5115,7 +5115,7 @@ entry:
 fn @case528() -> i64 {
 entry:
   %c1649 = eq.i128 -170141183460469231731687303715884105728, 9223372036854775807
-  %z1650 = zext.bool.i64 %c1649
+  %z1650 = extend.bool.i64 %c1649
   call @print_i64(%z1650)
   ret.i64 0
 }
@@ -5123,7 +5123,7 @@ entry:
 fn @case529() -> i64 {
 entry:
   %c1651 = ne.i128 -170141183460469231731687303715884105728, 9223372036854775807
-  %z1652 = zext.bool.i64 %c1651
+  %z1652 = extend.bool.i64 %c1651
   call @print_i64(%z1652)
   ret.i64 0
 }
@@ -5219,7 +5219,7 @@ entry:
 fn @case538() -> i64 {
 entry:
   %c1685 = lt.i128 -170141183460469231731687303715884105728, -9223372036854775809
-  %z1686 = zext.bool.i64 %c1685
+  %z1686 = extend.bool.i64 %c1685
   call @print_i64(%z1686)
   ret.i64 0
 }
@@ -5227,7 +5227,7 @@ entry:
 fn @case539() -> i64 {
 entry:
   %c1687 = le.i128 -170141183460469231731687303715884105728, -9223372036854775809
-  %z1688 = zext.bool.i64 %c1687
+  %z1688 = extend.bool.i64 %c1687
   call @print_i64(%z1688)
   ret.i64 0
 }
@@ -5235,7 +5235,7 @@ entry:
 fn @case540() -> i64 {
 entry:
   %c1689 = gt.i128 -170141183460469231731687303715884105728, -9223372036854775809
-  %z1690 = zext.bool.i64 %c1689
+  %z1690 = extend.bool.i64 %c1689
   call @print_i64(%z1690)
   ret.i64 0
 }
@@ -5243,7 +5243,7 @@ entry:
 fn @case541() -> i64 {
 entry:
   %c1691 = ge.i128 -170141183460469231731687303715884105728, -9223372036854775809
-  %z1692 = zext.bool.i64 %c1691
+  %z1692 = extend.bool.i64 %c1691
   call @print_i64(%z1692)
   ret.i64 0
 }
@@ -5251,7 +5251,7 @@ entry:
 fn @case542() -> i64 {
 entry:
   %c1693 = eq.i128 -170141183460469231731687303715884105728, -9223372036854775809
-  %z1694 = zext.bool.i64 %c1693
+  %z1694 = extend.bool.i64 %c1693
   call @print_i64(%z1694)
   ret.i64 0
 }
@@ -5259,7 +5259,7 @@ entry:
 fn @case543() -> i64 {
 entry:
   %c1695 = ne.i128 -170141183460469231731687303715884105728, -9223372036854775809
-  %z1696 = zext.bool.i64 %c1695
+  %z1696 = extend.bool.i64 %c1695
   call @print_i64(%z1696)
   ret.i64 0
 }
@@ -5355,7 +5355,7 @@ entry:
 fn @case552() -> i64 {
 entry:
   %c1729 = lt.i128 -170141183460469231731687303715884105728, -170141183460469231731687303715884105728
-  %z1730 = zext.bool.i64 %c1729
+  %z1730 = extend.bool.i64 %c1729
   call @print_i64(%z1730)
   ret.i64 0
 }
@@ -5363,7 +5363,7 @@ entry:
 fn @case553() -> i64 {
 entry:
   %c1731 = le.i128 -170141183460469231731687303715884105728, -170141183460469231731687303715884105728
-  %z1732 = zext.bool.i64 %c1731
+  %z1732 = extend.bool.i64 %c1731
   call @print_i64(%z1732)
   ret.i64 0
 }
@@ -5371,7 +5371,7 @@ entry:
 fn @case554() -> i64 {
 entry:
   %c1733 = gt.i128 -170141183460469231731687303715884105728, -170141183460469231731687303715884105728
-  %z1734 = zext.bool.i64 %c1733
+  %z1734 = extend.bool.i64 %c1733
   call @print_i64(%z1734)
   ret.i64 0
 }
@@ -5379,7 +5379,7 @@ entry:
 fn @case555() -> i64 {
 entry:
   %c1735 = ge.i128 -170141183460469231731687303715884105728, -170141183460469231731687303715884105728
-  %z1736 = zext.bool.i64 %c1735
+  %z1736 = extend.bool.i64 %c1735
   call @print_i64(%z1736)
   ret.i64 0
 }
@@ -5387,7 +5387,7 @@ entry:
 fn @case556() -> i64 {
 entry:
   %c1737 = eq.i128 -170141183460469231731687303715884105728, -170141183460469231731687303715884105728
-  %z1738 = zext.bool.i64 %c1737
+  %z1738 = extend.bool.i64 %c1737
   call @print_i64(%z1738)
   ret.i64 0
 }
@@ -5395,7 +5395,7 @@ entry:
 fn @case557() -> i64 {
 entry:
   %c1739 = ne.i128 -170141183460469231731687303715884105728, -170141183460469231731687303715884105728
-  %z1740 = zext.bool.i64 %c1739
+  %z1740 = extend.bool.i64 %c1739
   call @print_i64(%z1740)
   ret.i64 0
 }
@@ -5491,7 +5491,7 @@ entry:
 fn @case566() -> i64 {
 entry:
   %c1773 = lt.i128 -170141183460469231731687303715884105728, 170141183460469231731687303715884105727
-  %z1774 = zext.bool.i64 %c1773
+  %z1774 = extend.bool.i64 %c1773
   call @print_i64(%z1774)
   ret.i64 0
 }
@@ -5499,7 +5499,7 @@ entry:
 fn @case567() -> i64 {
 entry:
   %c1775 = le.i128 -170141183460469231731687303715884105728, 170141183460469231731687303715884105727
-  %z1776 = zext.bool.i64 %c1775
+  %z1776 = extend.bool.i64 %c1775
   call @print_i64(%z1776)
   ret.i64 0
 }
@@ -5507,7 +5507,7 @@ entry:
 fn @case568() -> i64 {
 entry:
   %c1777 = gt.i128 -170141183460469231731687303715884105728, 170141183460469231731687303715884105727
-  %z1778 = zext.bool.i64 %c1777
+  %z1778 = extend.bool.i64 %c1777
   call @print_i64(%z1778)
   ret.i64 0
 }
@@ -5515,7 +5515,7 @@ entry:
 fn @case569() -> i64 {
 entry:
   %c1779 = ge.i128 -170141183460469231731687303715884105728, 170141183460469231731687303715884105727
-  %z1780 = zext.bool.i64 %c1779
+  %z1780 = extend.bool.i64 %c1779
   call @print_i64(%z1780)
   ret.i64 0
 }
@@ -5523,7 +5523,7 @@ entry:
 fn @case570() -> i64 {
 entry:
   %c1781 = eq.i128 -170141183460469231731687303715884105728, 170141183460469231731687303715884105727
-  %z1782 = zext.bool.i64 %c1781
+  %z1782 = extend.bool.i64 %c1781
   call @print_i64(%z1782)
   ret.i64 0
 }
@@ -5531,7 +5531,7 @@ entry:
 fn @case571() -> i64 {
 entry:
   %c1783 = ne.i128 -170141183460469231731687303715884105728, 170141183460469231731687303715884105727
-  %z1784 = zext.bool.i64 %c1783
+  %z1784 = extend.bool.i64 %c1783
   call @print_i64(%z1784)
   ret.i64 0
 }
@@ -5627,7 +5627,7 @@ entry:
 fn @case580() -> i64 {
 entry:
   %c1817 = lt.i128 170141183460469231731687303715884105727, 0
-  %z1818 = zext.bool.i64 %c1817
+  %z1818 = extend.bool.i64 %c1817
   call @print_i64(%z1818)
   ret.i64 0
 }
@@ -5635,7 +5635,7 @@ entry:
 fn @case581() -> i64 {
 entry:
   %c1819 = le.i128 170141183460469231731687303715884105727, 0
-  %z1820 = zext.bool.i64 %c1819
+  %z1820 = extend.bool.i64 %c1819
   call @print_i64(%z1820)
   ret.i64 0
 }
@@ -5643,7 +5643,7 @@ entry:
 fn @case582() -> i64 {
 entry:
   %c1821 = gt.i128 170141183460469231731687303715884105727, 0
-  %z1822 = zext.bool.i64 %c1821
+  %z1822 = extend.bool.i64 %c1821
   call @print_i64(%z1822)
   ret.i64 0
 }
@@ -5651,7 +5651,7 @@ entry:
 fn @case583() -> i64 {
 entry:
   %c1823 = ge.i128 170141183460469231731687303715884105727, 0
-  %z1824 = zext.bool.i64 %c1823
+  %z1824 = extend.bool.i64 %c1823
   call @print_i64(%z1824)
   ret.i64 0
 }
@@ -5659,7 +5659,7 @@ entry:
 fn @case584() -> i64 {
 entry:
   %c1825 = eq.i128 170141183460469231731687303715884105727, 0
-  %z1826 = zext.bool.i64 %c1825
+  %z1826 = extend.bool.i64 %c1825
   call @print_i64(%z1826)
   ret.i64 0
 }
@@ -5667,7 +5667,7 @@ entry:
 fn @case585() -> i64 {
 entry:
   %c1827 = ne.i128 170141183460469231731687303715884105727, 0
-  %z1828 = zext.bool.i64 %c1827
+  %z1828 = extend.bool.i64 %c1827
   call @print_i64(%z1828)
   ret.i64 0
 }
@@ -5741,7 +5741,7 @@ entry:
 fn @case592() -> i64 {
 entry:
   %c1853 = lt.i128 170141183460469231731687303715884105727, 1
-  %z1854 = zext.bool.i64 %c1853
+  %z1854 = extend.bool.i64 %c1853
   call @print_i64(%z1854)
   ret.i64 0
 }
@@ -5749,7 +5749,7 @@ entry:
 fn @case593() -> i64 {
 entry:
   %c1855 = le.i128 170141183460469231731687303715884105727, 1
-  %z1856 = zext.bool.i64 %c1855
+  %z1856 = extend.bool.i64 %c1855
   call @print_i64(%z1856)
   ret.i64 0
 }
@@ -5757,7 +5757,7 @@ entry:
 fn @case594() -> i64 {
 entry:
   %c1857 = gt.i128 170141183460469231731687303715884105727, 1
-  %z1858 = zext.bool.i64 %c1857
+  %z1858 = extend.bool.i64 %c1857
   call @print_i64(%z1858)
   ret.i64 0
 }
@@ -5765,7 +5765,7 @@ entry:
 fn @case595() -> i64 {
 entry:
   %c1859 = ge.i128 170141183460469231731687303715884105727, 1
-  %z1860 = zext.bool.i64 %c1859
+  %z1860 = extend.bool.i64 %c1859
   call @print_i64(%z1860)
   ret.i64 0
 }
@@ -5773,7 +5773,7 @@ entry:
 fn @case596() -> i64 {
 entry:
   %c1861 = eq.i128 170141183460469231731687303715884105727, 1
-  %z1862 = zext.bool.i64 %c1861
+  %z1862 = extend.bool.i64 %c1861
   call @print_i64(%z1862)
   ret.i64 0
 }
@@ -5781,7 +5781,7 @@ entry:
 fn @case597() -> i64 {
 entry:
   %c1863 = ne.i128 170141183460469231731687303715884105727, 1
-  %z1864 = zext.bool.i64 %c1863
+  %z1864 = extend.bool.i64 %c1863
   call @print_i64(%z1864)
   ret.i64 0
 }
@@ -5877,7 +5877,7 @@ entry:
 fn @case606() -> i64 {
 entry:
   %c1897 = lt.i128 170141183460469231731687303715884105727, -1
-  %z1898 = zext.bool.i64 %c1897
+  %z1898 = extend.bool.i64 %c1897
   call @print_i64(%z1898)
   ret.i64 0
 }
@@ -5885,7 +5885,7 @@ entry:
 fn @case607() -> i64 {
 entry:
   %c1899 = le.i128 170141183460469231731687303715884105727, -1
-  %z1900 = zext.bool.i64 %c1899
+  %z1900 = extend.bool.i64 %c1899
   call @print_i64(%z1900)
   ret.i64 0
 }
@@ -5893,7 +5893,7 @@ entry:
 fn @case608() -> i64 {
 entry:
   %c1901 = gt.i128 170141183460469231731687303715884105727, -1
-  %z1902 = zext.bool.i64 %c1901
+  %z1902 = extend.bool.i64 %c1901
   call @print_i64(%z1902)
   ret.i64 0
 }
@@ -5901,7 +5901,7 @@ entry:
 fn @case609() -> i64 {
 entry:
   %c1903 = ge.i128 170141183460469231731687303715884105727, -1
-  %z1904 = zext.bool.i64 %c1903
+  %z1904 = extend.bool.i64 %c1903
   call @print_i64(%z1904)
   ret.i64 0
 }
@@ -5909,7 +5909,7 @@ entry:
 fn @case610() -> i64 {
 entry:
   %c1905 = eq.i128 170141183460469231731687303715884105727, -1
-  %z1906 = zext.bool.i64 %c1905
+  %z1906 = extend.bool.i64 %c1905
   call @print_i64(%z1906)
   ret.i64 0
 }
@@ -5917,7 +5917,7 @@ entry:
 fn @case611() -> i64 {
 entry:
   %c1907 = ne.i128 170141183460469231731687303715884105727, -1
-  %z1908 = zext.bool.i64 %c1907
+  %z1908 = extend.bool.i64 %c1907
   call @print_i64(%z1908)
   ret.i64 0
 }
@@ -6013,7 +6013,7 @@ entry:
 fn @case620() -> i64 {
 entry:
   %c1941 = lt.i128 170141183460469231731687303715884105727, 9223372036854775807
-  %z1942 = zext.bool.i64 %c1941
+  %z1942 = extend.bool.i64 %c1941
   call @print_i64(%z1942)
   ret.i64 0
 }
@@ -6021,7 +6021,7 @@ entry:
 fn @case621() -> i64 {
 entry:
   %c1943 = le.i128 170141183460469231731687303715884105727, 9223372036854775807
-  %z1944 = zext.bool.i64 %c1943
+  %z1944 = extend.bool.i64 %c1943
   call @print_i64(%z1944)
   ret.i64 0
 }
@@ -6029,7 +6029,7 @@ entry:
 fn @case622() -> i64 {
 entry:
   %c1945 = gt.i128 170141183460469231731687303715884105727, 9223372036854775807
-  %z1946 = zext.bool.i64 %c1945
+  %z1946 = extend.bool.i64 %c1945
   call @print_i64(%z1946)
   ret.i64 0
 }
@@ -6037,7 +6037,7 @@ entry:
 fn @case623() -> i64 {
 entry:
   %c1947 = ge.i128 170141183460469231731687303715884105727, 9223372036854775807
-  %z1948 = zext.bool.i64 %c1947
+  %z1948 = extend.bool.i64 %c1947
   call @print_i64(%z1948)
   ret.i64 0
 }
@@ -6045,7 +6045,7 @@ entry:
 fn @case624() -> i64 {
 entry:
   %c1949 = eq.i128 170141183460469231731687303715884105727, 9223372036854775807
-  %z1950 = zext.bool.i64 %c1949
+  %z1950 = extend.bool.i64 %c1949
   call @print_i64(%z1950)
   ret.i64 0
 }
@@ -6053,7 +6053,7 @@ entry:
 fn @case625() -> i64 {
 entry:
   %c1951 = ne.i128 170141183460469231731687303715884105727, 9223372036854775807
-  %z1952 = zext.bool.i64 %c1951
+  %z1952 = extend.bool.i64 %c1951
   call @print_i64(%z1952)
   ret.i64 0
 }
@@ -6149,7 +6149,7 @@ entry:
 fn @case634() -> i64 {
 entry:
   %c1985 = lt.i128 170141183460469231731687303715884105727, -9223372036854775809
-  %z1986 = zext.bool.i64 %c1985
+  %z1986 = extend.bool.i64 %c1985
   call @print_i64(%z1986)
   ret.i64 0
 }
@@ -6157,7 +6157,7 @@ entry:
 fn @case635() -> i64 {
 entry:
   %c1987 = le.i128 170141183460469231731687303715884105727, -9223372036854775809
-  %z1988 = zext.bool.i64 %c1987
+  %z1988 = extend.bool.i64 %c1987
   call @print_i64(%z1988)
   ret.i64 0
 }
@@ -6165,7 +6165,7 @@ entry:
 fn @case636() -> i64 {
 entry:
   %c1989 = gt.i128 170141183460469231731687303715884105727, -9223372036854775809
-  %z1990 = zext.bool.i64 %c1989
+  %z1990 = extend.bool.i64 %c1989
   call @print_i64(%z1990)
   ret.i64 0
 }
@@ -6173,7 +6173,7 @@ entry:
 fn @case637() -> i64 {
 entry:
   %c1991 = ge.i128 170141183460469231731687303715884105727, -9223372036854775809
-  %z1992 = zext.bool.i64 %c1991
+  %z1992 = extend.bool.i64 %c1991
   call @print_i64(%z1992)
   ret.i64 0
 }
@@ -6181,7 +6181,7 @@ entry:
 fn @case638() -> i64 {
 entry:
   %c1993 = eq.i128 170141183460469231731687303715884105727, -9223372036854775809
-  %z1994 = zext.bool.i64 %c1993
+  %z1994 = extend.bool.i64 %c1993
   call @print_i64(%z1994)
   ret.i64 0
 }
@@ -6189,7 +6189,7 @@ entry:
 fn @case639() -> i64 {
 entry:
   %c1995 = ne.i128 170141183460469231731687303715884105727, -9223372036854775809
-  %z1996 = zext.bool.i64 %c1995
+  %z1996 = extend.bool.i64 %c1995
   call @print_i64(%z1996)
   ret.i64 0
 }
@@ -6285,7 +6285,7 @@ entry:
 fn @case648() -> i64 {
 entry:
   %c2029 = lt.i128 170141183460469231731687303715884105727, -170141183460469231731687303715884105728
-  %z2030 = zext.bool.i64 %c2029
+  %z2030 = extend.bool.i64 %c2029
   call @print_i64(%z2030)
   ret.i64 0
 }
@@ -6293,7 +6293,7 @@ entry:
 fn @case649() -> i64 {
 entry:
   %c2031 = le.i128 170141183460469231731687303715884105727, -170141183460469231731687303715884105728
-  %z2032 = zext.bool.i64 %c2031
+  %z2032 = extend.bool.i64 %c2031
   call @print_i64(%z2032)
   ret.i64 0
 }
@@ -6301,7 +6301,7 @@ entry:
 fn @case650() -> i64 {
 entry:
   %c2033 = gt.i128 170141183460469231731687303715884105727, -170141183460469231731687303715884105728
-  %z2034 = zext.bool.i64 %c2033
+  %z2034 = extend.bool.i64 %c2033
   call @print_i64(%z2034)
   ret.i64 0
 }
@@ -6309,7 +6309,7 @@ entry:
 fn @case651() -> i64 {
 entry:
   %c2035 = ge.i128 170141183460469231731687303715884105727, -170141183460469231731687303715884105728
-  %z2036 = zext.bool.i64 %c2035
+  %z2036 = extend.bool.i64 %c2035
   call @print_i64(%z2036)
   ret.i64 0
 }
@@ -6317,7 +6317,7 @@ entry:
 fn @case652() -> i64 {
 entry:
   %c2037 = eq.i128 170141183460469231731687303715884105727, -170141183460469231731687303715884105728
-  %z2038 = zext.bool.i64 %c2037
+  %z2038 = extend.bool.i64 %c2037
   call @print_i64(%z2038)
   ret.i64 0
 }
@@ -6325,7 +6325,7 @@ entry:
 fn @case653() -> i64 {
 entry:
   %c2039 = ne.i128 170141183460469231731687303715884105727, -170141183460469231731687303715884105728
-  %z2040 = zext.bool.i64 %c2039
+  %z2040 = extend.bool.i64 %c2039
   call @print_i64(%z2040)
   ret.i64 0
 }
@@ -6421,7 +6421,7 @@ entry:
 fn @case662() -> i64 {
 entry:
   %c2073 = lt.i128 170141183460469231731687303715884105727, 170141183460469231731687303715884105727
-  %z2074 = zext.bool.i64 %c2073
+  %z2074 = extend.bool.i64 %c2073
   call @print_i64(%z2074)
   ret.i64 0
 }
@@ -6429,7 +6429,7 @@ entry:
 fn @case663() -> i64 {
 entry:
   %c2075 = le.i128 170141183460469231731687303715884105727, 170141183460469231731687303715884105727
-  %z2076 = zext.bool.i64 %c2075
+  %z2076 = extend.bool.i64 %c2075
   call @print_i64(%z2076)
   ret.i64 0
 }
@@ -6437,7 +6437,7 @@ entry:
 fn @case664() -> i64 {
 entry:
   %c2077 = gt.i128 170141183460469231731687303715884105727, 170141183460469231731687303715884105727
-  %z2078 = zext.bool.i64 %c2077
+  %z2078 = extend.bool.i64 %c2077
   call @print_i64(%z2078)
   ret.i64 0
 }
@@ -6445,7 +6445,7 @@ entry:
 fn @case665() -> i64 {
 entry:
   %c2079 = ge.i128 170141183460469231731687303715884105727, 170141183460469231731687303715884105727
-  %z2080 = zext.bool.i64 %c2079
+  %z2080 = extend.bool.i64 %c2079
   call @print_i64(%z2080)
   ret.i64 0
 }
@@ -6453,7 +6453,7 @@ entry:
 fn @case666() -> i64 {
 entry:
   %c2081 = eq.i128 170141183460469231731687303715884105727, 170141183460469231731687303715884105727
-  %z2082 = zext.bool.i64 %c2081
+  %z2082 = extend.bool.i64 %c2081
   call @print_i64(%z2082)
   ret.i64 0
 }
@@ -6461,7 +6461,7 @@ entry:
 fn @case667() -> i64 {
 entry:
   %c2083 = ne.i128 170141183460469231731687303715884105727, 170141183460469231731687303715884105727
-  %z2084 = zext.bool.i64 %c2083
+  %z2084 = extend.bool.i64 %c2083
   call @print_i64(%z2084)
   ret.i64 0
 }
@@ -6524,7 +6524,7 @@ entry:
 fn @case673() -> i64 {
 entry:
   %c2105 = lt.u128 0, 0
-  %z2106 = zext.bool.i64 %c2105
+  %z2106 = extend.bool.i64 %c2105
   call @print_i64(%z2106)
   ret.i64 0
 }
@@ -6532,7 +6532,7 @@ entry:
 fn @case674() -> i64 {
 entry:
   %c2107 = ge.u128 0, 0
-  %z2108 = zext.bool.i64 %c2107
+  %z2108 = extend.bool.i64 %c2107
   call @print_i64(%z2108)
   ret.i64 0
 }
@@ -6540,7 +6540,7 @@ entry:
 fn @case675() -> i64 {
 entry:
   %c2109 = gt.u128 0, 0
-  %z2110 = zext.bool.i64 %c2109
+  %z2110 = extend.bool.i64 %c2109
   call @print_i64(%z2110)
   ret.i64 0
 }
@@ -6548,7 +6548,7 @@ entry:
 fn @case676() -> i64 {
 entry:
   %c2111 = le.u128 0, 0
-  %z2112 = zext.bool.i64 %c2111
+  %z2112 = extend.bool.i64 %c2111
   call @print_i64(%z2112)
   ret.i64 0
 }
@@ -6589,7 +6589,7 @@ entry:
 fn @case680() -> i64 {
 entry:
   %c2125 = lt.u128 0, 3
-  %z2126 = zext.bool.i64 %c2125
+  %z2126 = extend.bool.i64 %c2125
   call @print_i64(%z2126)
   ret.i64 0
 }
@@ -6597,7 +6597,7 @@ entry:
 fn @case681() -> i64 {
 entry:
   %c2127 = ge.u128 0, 3
-  %z2128 = zext.bool.i64 %c2127
+  %z2128 = extend.bool.i64 %c2127
   call @print_i64(%z2128)
   ret.i64 0
 }
@@ -6605,7 +6605,7 @@ entry:
 fn @case682() -> i64 {
 entry:
   %c2129 = gt.u128 0, 3
-  %z2130 = zext.bool.i64 %c2129
+  %z2130 = extend.bool.i64 %c2129
   call @print_i64(%z2130)
   ret.i64 0
 }
@@ -6613,7 +6613,7 @@ entry:
 fn @case683() -> i64 {
 entry:
   %c2131 = le.u128 0, 3
-  %z2132 = zext.bool.i64 %c2131
+  %z2132 = extend.bool.i64 %c2131
   call @print_i64(%z2132)
   ret.i64 0
 }
@@ -6676,7 +6676,7 @@ entry:
 fn @case689() -> i64 {
 entry:
   %c2153 = lt.u128 0, 18446744073709551615
-  %z2154 = zext.bool.i64 %c2153
+  %z2154 = extend.bool.i64 %c2153
   call @print_i64(%z2154)
   ret.i64 0
 }
@@ -6684,7 +6684,7 @@ entry:
 fn @case690() -> i64 {
 entry:
   %c2155 = ge.u128 0, 18446744073709551615
-  %z2156 = zext.bool.i64 %c2155
+  %z2156 = extend.bool.i64 %c2155
   call @print_i64(%z2156)
   ret.i64 0
 }
@@ -6692,7 +6692,7 @@ entry:
 fn @case691() -> i64 {
 entry:
   %c2157 = gt.u128 0, 18446744073709551615
-  %z2158 = zext.bool.i64 %c2157
+  %z2158 = extend.bool.i64 %c2157
   call @print_i64(%z2158)
   ret.i64 0
 }
@@ -6700,7 +6700,7 @@ entry:
 fn @case692() -> i64 {
 entry:
   %c2159 = le.u128 0, 18446744073709551615
-  %z2160 = zext.bool.i64 %c2159
+  %z2160 = extend.bool.i64 %c2159
   call @print_i64(%z2160)
   ret.i64 0
 }
@@ -6763,7 +6763,7 @@ entry:
 fn @case698() -> i64 {
 entry:
   %c2181 = lt.u128 0, 1267650600228229401496703217721
-  %z2182 = zext.bool.i64 %c2181
+  %z2182 = extend.bool.i64 %c2181
   call @print_i64(%z2182)
   ret.i64 0
 }
@@ -6771,7 +6771,7 @@ entry:
 fn @case699() -> i64 {
 entry:
   %c2183 = ge.u128 0, 1267650600228229401496703217721
-  %z2184 = zext.bool.i64 %c2183
+  %z2184 = extend.bool.i64 %c2183
   call @print_i64(%z2184)
   ret.i64 0
 }
@@ -6779,7 +6779,7 @@ entry:
 fn @case700() -> i64 {
 entry:
   %c2185 = gt.u128 0, 1267650600228229401496703217721
-  %z2186 = zext.bool.i64 %c2185
+  %z2186 = extend.bool.i64 %c2185
   call @print_i64(%z2186)
   ret.i64 0
 }
@@ -6787,7 +6787,7 @@ entry:
 fn @case701() -> i64 {
 entry:
   %c2187 = le.u128 0, 1267650600228229401496703217721
-  %z2188 = zext.bool.i64 %c2187
+  %z2188 = extend.bool.i64 %c2187
   call @print_i64(%z2188)
   ret.i64 0
 }
@@ -6850,7 +6850,7 @@ entry:
 fn @case707() -> i64 {
 entry:
   %c2209 = lt.u128 0, 170141183460469231731687303715884105728
-  %z2210 = zext.bool.i64 %c2209
+  %z2210 = extend.bool.i64 %c2209
   call @print_i64(%z2210)
   ret.i64 0
 }
@@ -6858,7 +6858,7 @@ entry:
 fn @case708() -> i64 {
 entry:
   %c2211 = ge.u128 0, 170141183460469231731687303715884105728
-  %z2212 = zext.bool.i64 %c2211
+  %z2212 = extend.bool.i64 %c2211
   call @print_i64(%z2212)
   ret.i64 0
 }
@@ -6866,7 +6866,7 @@ entry:
 fn @case709() -> i64 {
 entry:
   %c2213 = gt.u128 0, 170141183460469231731687303715884105728
-  %z2214 = zext.bool.i64 %c2213
+  %z2214 = extend.bool.i64 %c2213
   call @print_i64(%z2214)
   ret.i64 0
 }
@@ -6874,7 +6874,7 @@ entry:
 fn @case710() -> i64 {
 entry:
   %c2215 = le.u128 0, 170141183460469231731687303715884105728
-  %z2216 = zext.bool.i64 %c2215
+  %z2216 = extend.bool.i64 %c2215
   call @print_i64(%z2216)
   ret.i64 0
 }
@@ -6937,7 +6937,7 @@ entry:
 fn @case716() -> i64 {
 entry:
   %c2237 = lt.u128 0, 340282366920938463463374607431768211455
-  %z2238 = zext.bool.i64 %c2237
+  %z2238 = extend.bool.i64 %c2237
   call @print_i64(%z2238)
   ret.i64 0
 }
@@ -6945,7 +6945,7 @@ entry:
 fn @case717() -> i64 {
 entry:
   %c2239 = ge.u128 0, 340282366920938463463374607431768211455
-  %z2240 = zext.bool.i64 %c2239
+  %z2240 = extend.bool.i64 %c2239
   call @print_i64(%z2240)
   ret.i64 0
 }
@@ -6953,7 +6953,7 @@ entry:
 fn @case718() -> i64 {
 entry:
   %c2241 = gt.u128 0, 340282366920938463463374607431768211455
-  %z2242 = zext.bool.i64 %c2241
+  %z2242 = extend.bool.i64 %c2241
   call @print_i64(%z2242)
   ret.i64 0
 }
@@ -6961,7 +6961,7 @@ entry:
 fn @case719() -> i64 {
 entry:
   %c2243 = le.u128 0, 340282366920938463463374607431768211455
-  %z2244 = zext.bool.i64 %c2243
+  %z2244 = extend.bool.i64 %c2243
   call @print_i64(%z2244)
   ret.i64 0
 }
@@ -7024,7 +7024,7 @@ entry:
 fn @case725() -> i64 {
 entry:
   %c2265 = lt.u128 3, 0
-  %z2266 = zext.bool.i64 %c2265
+  %z2266 = extend.bool.i64 %c2265
   call @print_i64(%z2266)
   ret.i64 0
 }
@@ -7032,7 +7032,7 @@ entry:
 fn @case726() -> i64 {
 entry:
   %c2267 = ge.u128 3, 0
-  %z2268 = zext.bool.i64 %c2267
+  %z2268 = extend.bool.i64 %c2267
   call @print_i64(%z2268)
   ret.i64 0
 }
@@ -7040,7 +7040,7 @@ entry:
 fn @case727() -> i64 {
 entry:
   %c2269 = gt.u128 3, 0
-  %z2270 = zext.bool.i64 %c2269
+  %z2270 = extend.bool.i64 %c2269
   call @print_i64(%z2270)
   ret.i64 0
 }
@@ -7048,7 +7048,7 @@ entry:
 fn @case728() -> i64 {
 entry:
   %c2271 = le.u128 3, 0
-  %z2272 = zext.bool.i64 %c2271
+  %z2272 = extend.bool.i64 %c2271
   call @print_i64(%z2272)
   ret.i64 0
 }
@@ -7089,7 +7089,7 @@ entry:
 fn @case732() -> i64 {
 entry:
   %c2285 = lt.u128 3, 3
-  %z2286 = zext.bool.i64 %c2285
+  %z2286 = extend.bool.i64 %c2285
   call @print_i64(%z2286)
   ret.i64 0
 }
@@ -7097,7 +7097,7 @@ entry:
 fn @case733() -> i64 {
 entry:
   %c2287 = ge.u128 3, 3
-  %z2288 = zext.bool.i64 %c2287
+  %z2288 = extend.bool.i64 %c2287
   call @print_i64(%z2288)
   ret.i64 0
 }
@@ -7105,7 +7105,7 @@ entry:
 fn @case734() -> i64 {
 entry:
   %c2289 = gt.u128 3, 3
-  %z2290 = zext.bool.i64 %c2289
+  %z2290 = extend.bool.i64 %c2289
   call @print_i64(%z2290)
   ret.i64 0
 }
@@ -7113,7 +7113,7 @@ entry:
 fn @case735() -> i64 {
 entry:
   %c2291 = le.u128 3, 3
-  %z2292 = zext.bool.i64 %c2291
+  %z2292 = extend.bool.i64 %c2291
   call @print_i64(%z2292)
   ret.i64 0
 }
@@ -7176,7 +7176,7 @@ entry:
 fn @case741() -> i64 {
 entry:
   %c2313 = lt.u128 3, 18446744073709551615
-  %z2314 = zext.bool.i64 %c2313
+  %z2314 = extend.bool.i64 %c2313
   call @print_i64(%z2314)
   ret.i64 0
 }
@@ -7184,7 +7184,7 @@ entry:
 fn @case742() -> i64 {
 entry:
   %c2315 = ge.u128 3, 18446744073709551615
-  %z2316 = zext.bool.i64 %c2315
+  %z2316 = extend.bool.i64 %c2315
   call @print_i64(%z2316)
   ret.i64 0
 }
@@ -7192,7 +7192,7 @@ entry:
 fn @case743() -> i64 {
 entry:
   %c2317 = gt.u128 3, 18446744073709551615
-  %z2318 = zext.bool.i64 %c2317
+  %z2318 = extend.bool.i64 %c2317
   call @print_i64(%z2318)
   ret.i64 0
 }
@@ -7200,7 +7200,7 @@ entry:
 fn @case744() -> i64 {
 entry:
   %c2319 = le.u128 3, 18446744073709551615
-  %z2320 = zext.bool.i64 %c2319
+  %z2320 = extend.bool.i64 %c2319
   call @print_i64(%z2320)
   ret.i64 0
 }
@@ -7263,7 +7263,7 @@ entry:
 fn @case750() -> i64 {
 entry:
   %c2341 = lt.u128 3, 1267650600228229401496703217721
-  %z2342 = zext.bool.i64 %c2341
+  %z2342 = extend.bool.i64 %c2341
   call @print_i64(%z2342)
   ret.i64 0
 }
@@ -7271,7 +7271,7 @@ entry:
 fn @case751() -> i64 {
 entry:
   %c2343 = ge.u128 3, 1267650600228229401496703217721
-  %z2344 = zext.bool.i64 %c2343
+  %z2344 = extend.bool.i64 %c2343
   call @print_i64(%z2344)
   ret.i64 0
 }
@@ -7279,7 +7279,7 @@ entry:
 fn @case752() -> i64 {
 entry:
   %c2345 = gt.u128 3, 1267650600228229401496703217721
-  %z2346 = zext.bool.i64 %c2345
+  %z2346 = extend.bool.i64 %c2345
   call @print_i64(%z2346)
   ret.i64 0
 }
@@ -7287,7 +7287,7 @@ entry:
 fn @case753() -> i64 {
 entry:
   %c2347 = le.u128 3, 1267650600228229401496703217721
-  %z2348 = zext.bool.i64 %c2347
+  %z2348 = extend.bool.i64 %c2347
   call @print_i64(%z2348)
   ret.i64 0
 }
@@ -7350,7 +7350,7 @@ entry:
 fn @case759() -> i64 {
 entry:
   %c2369 = lt.u128 3, 170141183460469231731687303715884105728
-  %z2370 = zext.bool.i64 %c2369
+  %z2370 = extend.bool.i64 %c2369
   call @print_i64(%z2370)
   ret.i64 0
 }
@@ -7358,7 +7358,7 @@ entry:
 fn @case760() -> i64 {
 entry:
   %c2371 = ge.u128 3, 170141183460469231731687303715884105728
-  %z2372 = zext.bool.i64 %c2371
+  %z2372 = extend.bool.i64 %c2371
   call @print_i64(%z2372)
   ret.i64 0
 }
@@ -7366,7 +7366,7 @@ entry:
 fn @case761() -> i64 {
 entry:
   %c2373 = gt.u128 3, 170141183460469231731687303715884105728
-  %z2374 = zext.bool.i64 %c2373
+  %z2374 = extend.bool.i64 %c2373
   call @print_i64(%z2374)
   ret.i64 0
 }
@@ -7374,7 +7374,7 @@ entry:
 fn @case762() -> i64 {
 entry:
   %c2375 = le.u128 3, 170141183460469231731687303715884105728
-  %z2376 = zext.bool.i64 %c2375
+  %z2376 = extend.bool.i64 %c2375
   call @print_i64(%z2376)
   ret.i64 0
 }
@@ -7437,7 +7437,7 @@ entry:
 fn @case768() -> i64 {
 entry:
   %c2397 = lt.u128 3, 340282366920938463463374607431768211455
-  %z2398 = zext.bool.i64 %c2397
+  %z2398 = extend.bool.i64 %c2397
   call @print_i64(%z2398)
   ret.i64 0
 }
@@ -7445,7 +7445,7 @@ entry:
 fn @case769() -> i64 {
 entry:
   %c2399 = ge.u128 3, 340282366920938463463374607431768211455
-  %z2400 = zext.bool.i64 %c2399
+  %z2400 = extend.bool.i64 %c2399
   call @print_i64(%z2400)
   ret.i64 0
 }
@@ -7453,7 +7453,7 @@ entry:
 fn @case770() -> i64 {
 entry:
   %c2401 = gt.u128 3, 340282366920938463463374607431768211455
-  %z2402 = zext.bool.i64 %c2401
+  %z2402 = extend.bool.i64 %c2401
   call @print_i64(%z2402)
   ret.i64 0
 }
@@ -7461,7 +7461,7 @@ entry:
 fn @case771() -> i64 {
 entry:
   %c2403 = le.u128 3, 340282366920938463463374607431768211455
-  %z2404 = zext.bool.i64 %c2403
+  %z2404 = extend.bool.i64 %c2403
   call @print_i64(%z2404)
   ret.i64 0
 }
@@ -7524,7 +7524,7 @@ entry:
 fn @case777() -> i64 {
 entry:
   %c2425 = lt.u128 18446744073709551615, 0
-  %z2426 = zext.bool.i64 %c2425
+  %z2426 = extend.bool.i64 %c2425
   call @print_i64(%z2426)
   ret.i64 0
 }
@@ -7532,7 +7532,7 @@ entry:
 fn @case778() -> i64 {
 entry:
   %c2427 = ge.u128 18446744073709551615, 0
-  %z2428 = zext.bool.i64 %c2427
+  %z2428 = extend.bool.i64 %c2427
   call @print_i64(%z2428)
   ret.i64 0
 }
@@ -7540,7 +7540,7 @@ entry:
 fn @case779() -> i64 {
 entry:
   %c2429 = gt.u128 18446744073709551615, 0
-  %z2430 = zext.bool.i64 %c2429
+  %z2430 = extend.bool.i64 %c2429
   call @print_i64(%z2430)
   ret.i64 0
 }
@@ -7548,7 +7548,7 @@ entry:
 fn @case780() -> i64 {
 entry:
   %c2431 = le.u128 18446744073709551615, 0
-  %z2432 = zext.bool.i64 %c2431
+  %z2432 = extend.bool.i64 %c2431
   call @print_i64(%z2432)
   ret.i64 0
 }
@@ -7589,7 +7589,7 @@ entry:
 fn @case784() -> i64 {
 entry:
   %c2445 = lt.u128 18446744073709551615, 3
-  %z2446 = zext.bool.i64 %c2445
+  %z2446 = extend.bool.i64 %c2445
   call @print_i64(%z2446)
   ret.i64 0
 }
@@ -7597,7 +7597,7 @@ entry:
 fn @case785() -> i64 {
 entry:
   %c2447 = ge.u128 18446744073709551615, 3
-  %z2448 = zext.bool.i64 %c2447
+  %z2448 = extend.bool.i64 %c2447
   call @print_i64(%z2448)
   ret.i64 0
 }
@@ -7605,7 +7605,7 @@ entry:
 fn @case786() -> i64 {
 entry:
   %c2449 = gt.u128 18446744073709551615, 3
-  %z2450 = zext.bool.i64 %c2449
+  %z2450 = extend.bool.i64 %c2449
   call @print_i64(%z2450)
   ret.i64 0
 }
@@ -7613,7 +7613,7 @@ entry:
 fn @case787() -> i64 {
 entry:
   %c2451 = le.u128 18446744073709551615, 3
-  %z2452 = zext.bool.i64 %c2451
+  %z2452 = extend.bool.i64 %c2451
   call @print_i64(%z2452)
   ret.i64 0
 }
@@ -7676,7 +7676,7 @@ entry:
 fn @case793() -> i64 {
 entry:
   %c2473 = lt.u128 18446744073709551615, 18446744073709551615
-  %z2474 = zext.bool.i64 %c2473
+  %z2474 = extend.bool.i64 %c2473
   call @print_i64(%z2474)
   ret.i64 0
 }
@@ -7684,7 +7684,7 @@ entry:
 fn @case794() -> i64 {
 entry:
   %c2475 = ge.u128 18446744073709551615, 18446744073709551615
-  %z2476 = zext.bool.i64 %c2475
+  %z2476 = extend.bool.i64 %c2475
   call @print_i64(%z2476)
   ret.i64 0
 }
@@ -7692,7 +7692,7 @@ entry:
 fn @case795() -> i64 {
 entry:
   %c2477 = gt.u128 18446744073709551615, 18446744073709551615
-  %z2478 = zext.bool.i64 %c2477
+  %z2478 = extend.bool.i64 %c2477
   call @print_i64(%z2478)
   ret.i64 0
 }
@@ -7700,7 +7700,7 @@ entry:
 fn @case796() -> i64 {
 entry:
   %c2479 = le.u128 18446744073709551615, 18446744073709551615
-  %z2480 = zext.bool.i64 %c2479
+  %z2480 = extend.bool.i64 %c2479
   call @print_i64(%z2480)
   ret.i64 0
 }
@@ -7763,7 +7763,7 @@ entry:
 fn @case802() -> i64 {
 entry:
   %c2501 = lt.u128 18446744073709551615, 1267650600228229401496703217721
-  %z2502 = zext.bool.i64 %c2501
+  %z2502 = extend.bool.i64 %c2501
   call @print_i64(%z2502)
   ret.i64 0
 }
@@ -7771,7 +7771,7 @@ entry:
 fn @case803() -> i64 {
 entry:
   %c2503 = ge.u128 18446744073709551615, 1267650600228229401496703217721
-  %z2504 = zext.bool.i64 %c2503
+  %z2504 = extend.bool.i64 %c2503
   call @print_i64(%z2504)
   ret.i64 0
 }
@@ -7779,7 +7779,7 @@ entry:
 fn @case804() -> i64 {
 entry:
   %c2505 = gt.u128 18446744073709551615, 1267650600228229401496703217721
-  %z2506 = zext.bool.i64 %c2505
+  %z2506 = extend.bool.i64 %c2505
   call @print_i64(%z2506)
   ret.i64 0
 }
@@ -7787,7 +7787,7 @@ entry:
 fn @case805() -> i64 {
 entry:
   %c2507 = le.u128 18446744073709551615, 1267650600228229401496703217721
-  %z2508 = zext.bool.i64 %c2507
+  %z2508 = extend.bool.i64 %c2507
   call @print_i64(%z2508)
   ret.i64 0
 }
@@ -7850,7 +7850,7 @@ entry:
 fn @case811() -> i64 {
 entry:
   %c2529 = lt.u128 18446744073709551615, 170141183460469231731687303715884105728
-  %z2530 = zext.bool.i64 %c2529
+  %z2530 = extend.bool.i64 %c2529
   call @print_i64(%z2530)
   ret.i64 0
 }
@@ -7858,7 +7858,7 @@ entry:
 fn @case812() -> i64 {
 entry:
   %c2531 = ge.u128 18446744073709551615, 170141183460469231731687303715884105728
-  %z2532 = zext.bool.i64 %c2531
+  %z2532 = extend.bool.i64 %c2531
   call @print_i64(%z2532)
   ret.i64 0
 }
@@ -7866,7 +7866,7 @@ entry:
 fn @case813() -> i64 {
 entry:
   %c2533 = gt.u128 18446744073709551615, 170141183460469231731687303715884105728
-  %z2534 = zext.bool.i64 %c2533
+  %z2534 = extend.bool.i64 %c2533
   call @print_i64(%z2534)
   ret.i64 0
 }
@@ -7874,7 +7874,7 @@ entry:
 fn @case814() -> i64 {
 entry:
   %c2535 = le.u128 18446744073709551615, 170141183460469231731687303715884105728
-  %z2536 = zext.bool.i64 %c2535
+  %z2536 = extend.bool.i64 %c2535
   call @print_i64(%z2536)
   ret.i64 0
 }
@@ -7937,7 +7937,7 @@ entry:
 fn @case820() -> i64 {
 entry:
   %c2557 = lt.u128 18446744073709551615, 340282366920938463463374607431768211455
-  %z2558 = zext.bool.i64 %c2557
+  %z2558 = extend.bool.i64 %c2557
   call @print_i64(%z2558)
   ret.i64 0
 }
@@ -7945,7 +7945,7 @@ entry:
 fn @case821() -> i64 {
 entry:
   %c2559 = ge.u128 18446744073709551615, 340282366920938463463374607431768211455
-  %z2560 = zext.bool.i64 %c2559
+  %z2560 = extend.bool.i64 %c2559
   call @print_i64(%z2560)
   ret.i64 0
 }
@@ -7953,7 +7953,7 @@ entry:
 fn @case822() -> i64 {
 entry:
   %c2561 = gt.u128 18446744073709551615, 340282366920938463463374607431768211455
-  %z2562 = zext.bool.i64 %c2561
+  %z2562 = extend.bool.i64 %c2561
   call @print_i64(%z2562)
   ret.i64 0
 }
@@ -7961,7 +7961,7 @@ entry:
 fn @case823() -> i64 {
 entry:
   %c2563 = le.u128 18446744073709551615, 340282366920938463463374607431768211455
-  %z2564 = zext.bool.i64 %c2563
+  %z2564 = extend.bool.i64 %c2563
   call @print_i64(%z2564)
   ret.i64 0
 }
@@ -8024,7 +8024,7 @@ entry:
 fn @case829() -> i64 {
 entry:
   %c2585 = lt.u128 1267650600228229401496703217721, 0
-  %z2586 = zext.bool.i64 %c2585
+  %z2586 = extend.bool.i64 %c2585
   call @print_i64(%z2586)
   ret.i64 0
 }
@@ -8032,7 +8032,7 @@ entry:
 fn @case830() -> i64 {
 entry:
   %c2587 = ge.u128 1267650600228229401496703217721, 0
-  %z2588 = zext.bool.i64 %c2587
+  %z2588 = extend.bool.i64 %c2587
   call @print_i64(%z2588)
   ret.i64 0
 }
@@ -8040,7 +8040,7 @@ entry:
 fn @case831() -> i64 {
 entry:
   %c2589 = gt.u128 1267650600228229401496703217721, 0
-  %z2590 = zext.bool.i64 %c2589
+  %z2590 = extend.bool.i64 %c2589
   call @print_i64(%z2590)
   ret.i64 0
 }
@@ -8048,7 +8048,7 @@ entry:
 fn @case832() -> i64 {
 entry:
   %c2591 = le.u128 1267650600228229401496703217721, 0
-  %z2592 = zext.bool.i64 %c2591
+  %z2592 = extend.bool.i64 %c2591
   call @print_i64(%z2592)
   ret.i64 0
 }
@@ -8089,7 +8089,7 @@ entry:
 fn @case836() -> i64 {
 entry:
   %c2605 = lt.u128 1267650600228229401496703217721, 3
-  %z2606 = zext.bool.i64 %c2605
+  %z2606 = extend.bool.i64 %c2605
   call @print_i64(%z2606)
   ret.i64 0
 }
@@ -8097,7 +8097,7 @@ entry:
 fn @case837() -> i64 {
 entry:
   %c2607 = ge.u128 1267650600228229401496703217721, 3
-  %z2608 = zext.bool.i64 %c2607
+  %z2608 = extend.bool.i64 %c2607
   call @print_i64(%z2608)
   ret.i64 0
 }
@@ -8105,7 +8105,7 @@ entry:
 fn @case838() -> i64 {
 entry:
   %c2609 = gt.u128 1267650600228229401496703217721, 3
-  %z2610 = zext.bool.i64 %c2609
+  %z2610 = extend.bool.i64 %c2609
   call @print_i64(%z2610)
   ret.i64 0
 }
@@ -8113,7 +8113,7 @@ entry:
 fn @case839() -> i64 {
 entry:
   %c2611 = le.u128 1267650600228229401496703217721, 3
-  %z2612 = zext.bool.i64 %c2611
+  %z2612 = extend.bool.i64 %c2611
   call @print_i64(%z2612)
   ret.i64 0
 }
@@ -8176,7 +8176,7 @@ entry:
 fn @case845() -> i64 {
 entry:
   %c2633 = lt.u128 1267650600228229401496703217721, 18446744073709551615
-  %z2634 = zext.bool.i64 %c2633
+  %z2634 = extend.bool.i64 %c2633
   call @print_i64(%z2634)
   ret.i64 0
 }
@@ -8184,7 +8184,7 @@ entry:
 fn @case846() -> i64 {
 entry:
   %c2635 = ge.u128 1267650600228229401496703217721, 18446744073709551615
-  %z2636 = zext.bool.i64 %c2635
+  %z2636 = extend.bool.i64 %c2635
   call @print_i64(%z2636)
   ret.i64 0
 }
@@ -8192,7 +8192,7 @@ entry:
 fn @case847() -> i64 {
 entry:
   %c2637 = gt.u128 1267650600228229401496703217721, 18446744073709551615
-  %z2638 = zext.bool.i64 %c2637
+  %z2638 = extend.bool.i64 %c2637
   call @print_i64(%z2638)
   ret.i64 0
 }
@@ -8200,7 +8200,7 @@ entry:
 fn @case848() -> i64 {
 entry:
   %c2639 = le.u128 1267650600228229401496703217721, 18446744073709551615
-  %z2640 = zext.bool.i64 %c2639
+  %z2640 = extend.bool.i64 %c2639
   call @print_i64(%z2640)
   ret.i64 0
 }
@@ -8263,7 +8263,7 @@ entry:
 fn @case854() -> i64 {
 entry:
   %c2661 = lt.u128 1267650600228229401496703217721, 1267650600228229401496703217721
-  %z2662 = zext.bool.i64 %c2661
+  %z2662 = extend.bool.i64 %c2661
   call @print_i64(%z2662)
   ret.i64 0
 }
@@ -8271,7 +8271,7 @@ entry:
 fn @case855() -> i64 {
 entry:
   %c2663 = ge.u128 1267650600228229401496703217721, 1267650600228229401496703217721
-  %z2664 = zext.bool.i64 %c2663
+  %z2664 = extend.bool.i64 %c2663
   call @print_i64(%z2664)
   ret.i64 0
 }
@@ -8279,7 +8279,7 @@ entry:
 fn @case856() -> i64 {
 entry:
   %c2665 = gt.u128 1267650600228229401496703217721, 1267650600228229401496703217721
-  %z2666 = zext.bool.i64 %c2665
+  %z2666 = extend.bool.i64 %c2665
   call @print_i64(%z2666)
   ret.i64 0
 }
@@ -8287,7 +8287,7 @@ entry:
 fn @case857() -> i64 {
 entry:
   %c2667 = le.u128 1267650600228229401496703217721, 1267650600228229401496703217721
-  %z2668 = zext.bool.i64 %c2667
+  %z2668 = extend.bool.i64 %c2667
   call @print_i64(%z2668)
   ret.i64 0
 }
@@ -8350,7 +8350,7 @@ entry:
 fn @case863() -> i64 {
 entry:
   %c2689 = lt.u128 1267650600228229401496703217721, 170141183460469231731687303715884105728
-  %z2690 = zext.bool.i64 %c2689
+  %z2690 = extend.bool.i64 %c2689
   call @print_i64(%z2690)
   ret.i64 0
 }
@@ -8358,7 +8358,7 @@ entry:
 fn @case864() -> i64 {
 entry:
   %c2691 = ge.u128 1267650600228229401496703217721, 170141183460469231731687303715884105728
-  %z2692 = zext.bool.i64 %c2691
+  %z2692 = extend.bool.i64 %c2691
   call @print_i64(%z2692)
   ret.i64 0
 }
@@ -8366,7 +8366,7 @@ entry:
 fn @case865() -> i64 {
 entry:
   %c2693 = gt.u128 1267650600228229401496703217721, 170141183460469231731687303715884105728
-  %z2694 = zext.bool.i64 %c2693
+  %z2694 = extend.bool.i64 %c2693
   call @print_i64(%z2694)
   ret.i64 0
 }
@@ -8374,7 +8374,7 @@ entry:
 fn @case866() -> i64 {
 entry:
   %c2695 = le.u128 1267650600228229401496703217721, 170141183460469231731687303715884105728
-  %z2696 = zext.bool.i64 %c2695
+  %z2696 = extend.bool.i64 %c2695
   call @print_i64(%z2696)
   ret.i64 0
 }
@@ -8437,7 +8437,7 @@ entry:
 fn @case872() -> i64 {
 entry:
   %c2717 = lt.u128 1267650600228229401496703217721, 340282366920938463463374607431768211455
-  %z2718 = zext.bool.i64 %c2717
+  %z2718 = extend.bool.i64 %c2717
   call @print_i64(%z2718)
   ret.i64 0
 }
@@ -8445,7 +8445,7 @@ entry:
 fn @case873() -> i64 {
 entry:
   %c2719 = ge.u128 1267650600228229401496703217721, 340282366920938463463374607431768211455
-  %z2720 = zext.bool.i64 %c2719
+  %z2720 = extend.bool.i64 %c2719
   call @print_i64(%z2720)
   ret.i64 0
 }
@@ -8453,7 +8453,7 @@ entry:
 fn @case874() -> i64 {
 entry:
   %c2721 = gt.u128 1267650600228229401496703217721, 340282366920938463463374607431768211455
-  %z2722 = zext.bool.i64 %c2721
+  %z2722 = extend.bool.i64 %c2721
   call @print_i64(%z2722)
   ret.i64 0
 }
@@ -8461,7 +8461,7 @@ entry:
 fn @case875() -> i64 {
 entry:
   %c2723 = le.u128 1267650600228229401496703217721, 340282366920938463463374607431768211455
-  %z2724 = zext.bool.i64 %c2723
+  %z2724 = extend.bool.i64 %c2723
   call @print_i64(%z2724)
   ret.i64 0
 }
@@ -8524,7 +8524,7 @@ entry:
 fn @case881() -> i64 {
 entry:
   %c2745 = lt.u128 170141183460469231731687303715884105728, 0
-  %z2746 = zext.bool.i64 %c2745
+  %z2746 = extend.bool.i64 %c2745
   call @print_i64(%z2746)
   ret.i64 0
 }
@@ -8532,7 +8532,7 @@ entry:
 fn @case882() -> i64 {
 entry:
   %c2747 = ge.u128 170141183460469231731687303715884105728, 0
-  %z2748 = zext.bool.i64 %c2747
+  %z2748 = extend.bool.i64 %c2747
   call @print_i64(%z2748)
   ret.i64 0
 }
@@ -8540,7 +8540,7 @@ entry:
 fn @case883() -> i64 {
 entry:
   %c2749 = gt.u128 170141183460469231731687303715884105728, 0
-  %z2750 = zext.bool.i64 %c2749
+  %z2750 = extend.bool.i64 %c2749
   call @print_i64(%z2750)
   ret.i64 0
 }
@@ -8548,7 +8548,7 @@ entry:
 fn @case884() -> i64 {
 entry:
   %c2751 = le.u128 170141183460469231731687303715884105728, 0
-  %z2752 = zext.bool.i64 %c2751
+  %z2752 = extend.bool.i64 %c2751
   call @print_i64(%z2752)
   ret.i64 0
 }
@@ -8589,7 +8589,7 @@ entry:
 fn @case888() -> i64 {
 entry:
   %c2765 = lt.u128 170141183460469231731687303715884105728, 3
-  %z2766 = zext.bool.i64 %c2765
+  %z2766 = extend.bool.i64 %c2765
   call @print_i64(%z2766)
   ret.i64 0
 }
@@ -8597,7 +8597,7 @@ entry:
 fn @case889() -> i64 {
 entry:
   %c2767 = ge.u128 170141183460469231731687303715884105728, 3
-  %z2768 = zext.bool.i64 %c2767
+  %z2768 = extend.bool.i64 %c2767
   call @print_i64(%z2768)
   ret.i64 0
 }
@@ -8605,7 +8605,7 @@ entry:
 fn @case890() -> i64 {
 entry:
   %c2769 = gt.u128 170141183460469231731687303715884105728, 3
-  %z2770 = zext.bool.i64 %c2769
+  %z2770 = extend.bool.i64 %c2769
   call @print_i64(%z2770)
   ret.i64 0
 }
@@ -8613,7 +8613,7 @@ entry:
 fn @case891() -> i64 {
 entry:
   %c2771 = le.u128 170141183460469231731687303715884105728, 3
-  %z2772 = zext.bool.i64 %c2771
+  %z2772 = extend.bool.i64 %c2771
   call @print_i64(%z2772)
   ret.i64 0
 }
@@ -8676,7 +8676,7 @@ entry:
 fn @case897() -> i64 {
 entry:
   %c2793 = lt.u128 170141183460469231731687303715884105728, 18446744073709551615
-  %z2794 = zext.bool.i64 %c2793
+  %z2794 = extend.bool.i64 %c2793
   call @print_i64(%z2794)
   ret.i64 0
 }
@@ -8684,7 +8684,7 @@ entry:
 fn @case898() -> i64 {
 entry:
   %c2795 = ge.u128 170141183460469231731687303715884105728, 18446744073709551615
-  %z2796 = zext.bool.i64 %c2795
+  %z2796 = extend.bool.i64 %c2795
   call @print_i64(%z2796)
   ret.i64 0
 }
@@ -8692,7 +8692,7 @@ entry:
 fn @case899() -> i64 {
 entry:
   %c2797 = gt.u128 170141183460469231731687303715884105728, 18446744073709551615
-  %z2798 = zext.bool.i64 %c2797
+  %z2798 = extend.bool.i64 %c2797
   call @print_i64(%z2798)
   ret.i64 0
 }
@@ -8700,7 +8700,7 @@ entry:
 fn @case900() -> i64 {
 entry:
   %c2799 = le.u128 170141183460469231731687303715884105728, 18446744073709551615
-  %z2800 = zext.bool.i64 %c2799
+  %z2800 = extend.bool.i64 %c2799
   call @print_i64(%z2800)
   ret.i64 0
 }
@@ -8763,7 +8763,7 @@ entry:
 fn @case906() -> i64 {
 entry:
   %c2821 = lt.u128 170141183460469231731687303715884105728, 1267650600228229401496703217721
-  %z2822 = zext.bool.i64 %c2821
+  %z2822 = extend.bool.i64 %c2821
   call @print_i64(%z2822)
   ret.i64 0
 }
@@ -8771,7 +8771,7 @@ entry:
 fn @case907() -> i64 {
 entry:
   %c2823 = ge.u128 170141183460469231731687303715884105728, 1267650600228229401496703217721
-  %z2824 = zext.bool.i64 %c2823
+  %z2824 = extend.bool.i64 %c2823
   call @print_i64(%z2824)
   ret.i64 0
 }
@@ -8779,7 +8779,7 @@ entry:
 fn @case908() -> i64 {
 entry:
   %c2825 = gt.u128 170141183460469231731687303715884105728, 1267650600228229401496703217721
-  %z2826 = zext.bool.i64 %c2825
+  %z2826 = extend.bool.i64 %c2825
   call @print_i64(%z2826)
   ret.i64 0
 }
@@ -8787,7 +8787,7 @@ entry:
 fn @case909() -> i64 {
 entry:
   %c2827 = le.u128 170141183460469231731687303715884105728, 1267650600228229401496703217721
-  %z2828 = zext.bool.i64 %c2827
+  %z2828 = extend.bool.i64 %c2827
   call @print_i64(%z2828)
   ret.i64 0
 }
@@ -8850,7 +8850,7 @@ entry:
 fn @case915() -> i64 {
 entry:
   %c2849 = lt.u128 170141183460469231731687303715884105728, 170141183460469231731687303715884105728
-  %z2850 = zext.bool.i64 %c2849
+  %z2850 = extend.bool.i64 %c2849
   call @print_i64(%z2850)
   ret.i64 0
 }
@@ -8858,7 +8858,7 @@ entry:
 fn @case916() -> i64 {
 entry:
   %c2851 = ge.u128 170141183460469231731687303715884105728, 170141183460469231731687303715884105728
-  %z2852 = zext.bool.i64 %c2851
+  %z2852 = extend.bool.i64 %c2851
   call @print_i64(%z2852)
   ret.i64 0
 }
@@ -8866,7 +8866,7 @@ entry:
 fn @case917() -> i64 {
 entry:
   %c2853 = gt.u128 170141183460469231731687303715884105728, 170141183460469231731687303715884105728
-  %z2854 = zext.bool.i64 %c2853
+  %z2854 = extend.bool.i64 %c2853
   call @print_i64(%z2854)
   ret.i64 0
 }
@@ -8874,7 +8874,7 @@ entry:
 fn @case918() -> i64 {
 entry:
   %c2855 = le.u128 170141183460469231731687303715884105728, 170141183460469231731687303715884105728
-  %z2856 = zext.bool.i64 %c2855
+  %z2856 = extend.bool.i64 %c2855
   call @print_i64(%z2856)
   ret.i64 0
 }
@@ -8937,7 +8937,7 @@ entry:
 fn @case924() -> i64 {
 entry:
   %c2877 = lt.u128 170141183460469231731687303715884105728, 340282366920938463463374607431768211455
-  %z2878 = zext.bool.i64 %c2877
+  %z2878 = extend.bool.i64 %c2877
   call @print_i64(%z2878)
   ret.i64 0
 }
@@ -8945,7 +8945,7 @@ entry:
 fn @case925() -> i64 {
 entry:
   %c2879 = ge.u128 170141183460469231731687303715884105728, 340282366920938463463374607431768211455
-  %z2880 = zext.bool.i64 %c2879
+  %z2880 = extend.bool.i64 %c2879
   call @print_i64(%z2880)
   ret.i64 0
 }
@@ -8953,7 +8953,7 @@ entry:
 fn @case926() -> i64 {
 entry:
   %c2881 = gt.u128 170141183460469231731687303715884105728, 340282366920938463463374607431768211455
-  %z2882 = zext.bool.i64 %c2881
+  %z2882 = extend.bool.i64 %c2881
   call @print_i64(%z2882)
   ret.i64 0
 }
@@ -8961,7 +8961,7 @@ entry:
 fn @case927() -> i64 {
 entry:
   %c2883 = le.u128 170141183460469231731687303715884105728, 340282366920938463463374607431768211455
-  %z2884 = zext.bool.i64 %c2883
+  %z2884 = extend.bool.i64 %c2883
   call @print_i64(%z2884)
   ret.i64 0
 }
@@ -9024,7 +9024,7 @@ entry:
 fn @case933() -> i64 {
 entry:
   %c2905 = lt.u128 340282366920938463463374607431768211455, 0
-  %z2906 = zext.bool.i64 %c2905
+  %z2906 = extend.bool.i64 %c2905
   call @print_i64(%z2906)
   ret.i64 0
 }
@@ -9032,7 +9032,7 @@ entry:
 fn @case934() -> i64 {
 entry:
   %c2907 = ge.u128 340282366920938463463374607431768211455, 0
-  %z2908 = zext.bool.i64 %c2907
+  %z2908 = extend.bool.i64 %c2907
   call @print_i64(%z2908)
   ret.i64 0
 }
@@ -9040,7 +9040,7 @@ entry:
 fn @case935() -> i64 {
 entry:
   %c2909 = gt.u128 340282366920938463463374607431768211455, 0
-  %z2910 = zext.bool.i64 %c2909
+  %z2910 = extend.bool.i64 %c2909
   call @print_i64(%z2910)
   ret.i64 0
 }
@@ -9048,7 +9048,7 @@ entry:
 fn @case936() -> i64 {
 entry:
   %c2911 = le.u128 340282366920938463463374607431768211455, 0
-  %z2912 = zext.bool.i64 %c2911
+  %z2912 = extend.bool.i64 %c2911
   call @print_i64(%z2912)
   ret.i64 0
 }
@@ -9089,7 +9089,7 @@ entry:
 fn @case940() -> i64 {
 entry:
   %c2925 = lt.u128 340282366920938463463374607431768211455, 3
-  %z2926 = zext.bool.i64 %c2925
+  %z2926 = extend.bool.i64 %c2925
   call @print_i64(%z2926)
   ret.i64 0
 }
@@ -9097,7 +9097,7 @@ entry:
 fn @case941() -> i64 {
 entry:
   %c2927 = ge.u128 340282366920938463463374607431768211455, 3
-  %z2928 = zext.bool.i64 %c2927
+  %z2928 = extend.bool.i64 %c2927
   call @print_i64(%z2928)
   ret.i64 0
 }
@@ -9105,7 +9105,7 @@ entry:
 fn @case942() -> i64 {
 entry:
   %c2929 = gt.u128 340282366920938463463374607431768211455, 3
-  %z2930 = zext.bool.i64 %c2929
+  %z2930 = extend.bool.i64 %c2929
   call @print_i64(%z2930)
   ret.i64 0
 }
@@ -9113,7 +9113,7 @@ entry:
 fn @case943() -> i64 {
 entry:
   %c2931 = le.u128 340282366920938463463374607431768211455, 3
-  %z2932 = zext.bool.i64 %c2931
+  %z2932 = extend.bool.i64 %c2931
   call @print_i64(%z2932)
   ret.i64 0
 }
@@ -9176,7 +9176,7 @@ entry:
 fn @case949() -> i64 {
 entry:
   %c2953 = lt.u128 340282366920938463463374607431768211455, 18446744073709551615
-  %z2954 = zext.bool.i64 %c2953
+  %z2954 = extend.bool.i64 %c2953
   call @print_i64(%z2954)
   ret.i64 0
 }
@@ -9184,7 +9184,7 @@ entry:
 fn @case950() -> i64 {
 entry:
   %c2955 = ge.u128 340282366920938463463374607431768211455, 18446744073709551615
-  %z2956 = zext.bool.i64 %c2955
+  %z2956 = extend.bool.i64 %c2955
   call @print_i64(%z2956)
   ret.i64 0
 }
@@ -9192,7 +9192,7 @@ entry:
 fn @case951() -> i64 {
 entry:
   %c2957 = gt.u128 340282366920938463463374607431768211455, 18446744073709551615
-  %z2958 = zext.bool.i64 %c2957
+  %z2958 = extend.bool.i64 %c2957
   call @print_i64(%z2958)
   ret.i64 0
 }
@@ -9200,7 +9200,7 @@ entry:
 fn @case952() -> i64 {
 entry:
   %c2959 = le.u128 340282366920938463463374607431768211455, 18446744073709551615
-  %z2960 = zext.bool.i64 %c2959
+  %z2960 = extend.bool.i64 %c2959
   call @print_i64(%z2960)
   ret.i64 0
 }
@@ -9263,7 +9263,7 @@ entry:
 fn @case958() -> i64 {
 entry:
   %c2981 = lt.u128 340282366920938463463374607431768211455, 1267650600228229401496703217721
-  %z2982 = zext.bool.i64 %c2981
+  %z2982 = extend.bool.i64 %c2981
   call @print_i64(%z2982)
   ret.i64 0
 }
@@ -9271,7 +9271,7 @@ entry:
 fn @case959() -> i64 {
 entry:
   %c2983 = ge.u128 340282366920938463463374607431768211455, 1267650600228229401496703217721
-  %z2984 = zext.bool.i64 %c2983
+  %z2984 = extend.bool.i64 %c2983
   call @print_i64(%z2984)
   ret.i64 0
 }
@@ -9279,7 +9279,7 @@ entry:
 fn @case960() -> i64 {
 entry:
   %c2985 = gt.u128 340282366920938463463374607431768211455, 1267650600228229401496703217721
-  %z2986 = zext.bool.i64 %c2985
+  %z2986 = extend.bool.i64 %c2985
   call @print_i64(%z2986)
   ret.i64 0
 }
@@ -9287,7 +9287,7 @@ entry:
 fn @case961() -> i64 {
 entry:
   %c2987 = le.u128 340282366920938463463374607431768211455, 1267650600228229401496703217721
-  %z2988 = zext.bool.i64 %c2987
+  %z2988 = extend.bool.i64 %c2987
   call @print_i64(%z2988)
   ret.i64 0
 }
@@ -9350,7 +9350,7 @@ entry:
 fn @case967() -> i64 {
 entry:
   %c3009 = lt.u128 340282366920938463463374607431768211455, 170141183460469231731687303715884105728
-  %z3010 = zext.bool.i64 %c3009
+  %z3010 = extend.bool.i64 %c3009
   call @print_i64(%z3010)
   ret.i64 0
 }
@@ -9358,7 +9358,7 @@ entry:
 fn @case968() -> i64 {
 entry:
   %c3011 = ge.u128 340282366920938463463374607431768211455, 170141183460469231731687303715884105728
-  %z3012 = zext.bool.i64 %c3011
+  %z3012 = extend.bool.i64 %c3011
   call @print_i64(%z3012)
   ret.i64 0
 }
@@ -9366,7 +9366,7 @@ entry:
 fn @case969() -> i64 {
 entry:
   %c3013 = gt.u128 340282366920938463463374607431768211455, 170141183460469231731687303715884105728
-  %z3014 = zext.bool.i64 %c3013
+  %z3014 = extend.bool.i64 %c3013
   call @print_i64(%z3014)
   ret.i64 0
 }
@@ -9374,7 +9374,7 @@ entry:
 fn @case970() -> i64 {
 entry:
   %c3015 = le.u128 340282366920938463463374607431768211455, 170141183460469231731687303715884105728
-  %z3016 = zext.bool.i64 %c3015
+  %z3016 = extend.bool.i64 %c3015
   call @print_i64(%z3016)
   ret.i64 0
 }
@@ -9437,7 +9437,7 @@ entry:
 fn @case976() -> i64 {
 entry:
   %c3037 = lt.u128 340282366920938463463374607431768211455, 340282366920938463463374607431768211455
-  %z3038 = zext.bool.i64 %c3037
+  %z3038 = extend.bool.i64 %c3037
   call @print_i64(%z3038)
   ret.i64 0
 }
@@ -9445,7 +9445,7 @@ entry:
 fn @case977() -> i64 {
 entry:
   %c3039 = ge.u128 340282366920938463463374607431768211455, 340282366920938463463374607431768211455
-  %z3040 = zext.bool.i64 %c3039
+  %z3040 = extend.bool.i64 %c3039
   call @print_i64(%z3040)
   ret.i64 0
 }
@@ -9453,7 +9453,7 @@ entry:
 fn @case978() -> i64 {
 entry:
   %c3041 = gt.u128 340282366920938463463374607431768211455, 340282366920938463463374607431768211455
-  %z3042 = zext.bool.i64 %c3041
+  %z3042 = extend.bool.i64 %c3041
   call @print_i64(%z3042)
   ret.i64 0
 }
@@ -9461,7 +9461,7 @@ entry:
 fn @case979() -> i64 {
 entry:
   %c3043 = le.u128 340282366920938463463374607431768211455, 340282366920938463463374607431768211455
-  %z3044 = zext.bool.i64 %c3043
+  %z3044 = extend.bool.i64 %c3043
   call @print_i64(%z3044)
   ret.i64 0
 }

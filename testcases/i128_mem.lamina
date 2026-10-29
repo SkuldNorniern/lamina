@@ -15,7 +15,8 @@ head:
   br %more, body, done
 body:
   %t = mul.i128 %acc, 3
-  %ii = zext.i64.i128 %i
+  %ii_bits = bitcast.i64.u64 %i
+  %ii = extend.u64.i128 %ii_bits
   %next = add.i128 %t, %ii
   %inext = add.i64 %i, 1
   jmp head

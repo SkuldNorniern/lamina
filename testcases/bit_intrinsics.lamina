@@ -35,23 +35,24 @@ done:
   %pb = popcount.i8 %b
   %rb = rotl.i8 %b, 3
   %sb = bswap.i8 %rb
-  %x1 = zext.i8.i64 %pb
+  %x1_bits = bitcast.i8.u8 %pb
+  %x1 = extend.u8.i64 %x1_bits
   call @print_i64(%x1)
-  %x2 = sext.i8.i64 %sb
+  %x2 = extend.i8.i64 %sb
   call @print_i64(%x2)
   %w = trunc.i64.u16 %res
   %bw = bswap.u16 %w
-  %x3 = zext.u16.i64 %bw
+  %x3 = extend.u16.i64 %bw
   call @print_i64(%x3)
   %u = trunc.i64.u32 %res
   %cu = ctlz.u32 %u
   %tu = cttz.u32 %u
-  %x4 = zext.u32.i64 %cu
+  %x4 = extend.u32.i64 %cu
   call @print_i64(%x4)
-  %x5 = zext.u32.i64 %tu
+  %x5 = extend.u32.i64 %tu
   call @print_i64(%x5)
   %ru = rotr.u32 %u, 7
-  %x6 = zext.u32.i64 %ru
+  %x6 = extend.u32.i64 %ru
   call @print_i64(%x6)
   ret.i64 0
 }

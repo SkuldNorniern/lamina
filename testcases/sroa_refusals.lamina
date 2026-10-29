@@ -92,9 +92,9 @@ fn @overlap() -> i64 {
     %lo = load.i32 %w0
     %hi = load.i32 %w1
     %whole = load.i64 %w0
-    %pv4 = sext.i32.i64 %lo
+    %pv4 = extend.i32.i64 %lo
     call @print_i64(%pv4)
-    %pv5 = sext.i32.i64 %hi
+    %pv5 = extend.i32.i64 %hi
     call @print_i64(%pv5)
     call @print_i64(%whole)
     ret.i64 0
@@ -158,7 +158,7 @@ fn @bool_field() -> i64 {
     store.i64 %c, 4
     %fv = load.bool %f
     %cv = load.i64 %c
-    %z = zext.bool.i64 %fv
+    %z = extend.bool.i64 %fv
     %sum = add.i64 %z, %cv
     call @print_i64(%sum)
     ret.i64 0

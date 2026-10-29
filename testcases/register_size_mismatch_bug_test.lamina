@@ -9,9 +9,12 @@ fn @test_i8_register_operations() -> i64 {
     %c = mul.i8 %a, 2
 
     # Convert to i64
-    %a64 = zext.i8.i64 %a
-    %b64 = zext.i8.i64 %b
-    %c64 = zext.i8.i64 %c
+    %a64_bits = bitcast.i8.u8 %a
+    %a64 = extend.u8.i64 %a64_bits
+    %b64_bits = bitcast.i8.u8 %b
+    %b64 = extend.u8.i64 %b64_bits
+    %c64_bits = bitcast.i8.u8 %c
+    %c64 = extend.u8.i64 %c64_bits
 
     # Result: a + b*256 + c*65536
     %b_scaled = mul.i64 %b64, 256
@@ -31,9 +34,12 @@ fn @test_i16_register_operations() -> i64 {
     %c = mul.i16 %a, 3
 
     # Convert to i64
-    %a64 = zext.i16.i64 %a
-    %b64 = zext.i16.i64 %b
-    %c64 = zext.i16.i64 %c
+    %a64_bits2 = bitcast.i16.u16 %a
+    %a64 = extend.u16.i64 %a64_bits2
+    %b64_bits2 = bitcast.i16.u16 %b
+    %b64 = extend.u16.i64 %b64_bits2
+    %c64_bits2 = bitcast.i16.u16 %c
+    %c64 = extend.u16.i64 %c64_bits2
 
     # Result: a + b*1000000 + c*1000000000000
     %b_scaled = mul.i64 %b64, 1000000
@@ -53,9 +59,12 @@ fn @test_mixed_size_operations() -> i64 {
     %i32_val = add.i32 100000, 50000
 
     # Convert all to i64
-    %i8_64 = zext.i8.i64 %i8_val
-    %i16_64 = zext.i16.i64 %i16_val
-    %i32_64 = zext.i32.i64 %i32_val
+    %i8_64_bits = bitcast.i8.u8 %i8_val
+    %i8_64 = extend.u8.i64 %i8_64_bits
+    %i16_64_bits = bitcast.i16.u16 %i16_val
+    %i16_64 = extend.u16.i64 %i16_64_bits
+    %i32_64_bits = bitcast.i32.u32 %i32_val
+    %i32_64 = extend.u32.i64 %i32_64_bits
 
     # Result: i8 + i16*1000 + i32*1000000
     %i16_scaled = mul.i64 %i16_64, 1000
@@ -76,10 +85,12 @@ fn @test_division_small_types() -> i64 {
     %u16_div = div.u16 3000, 6
 
     # Convert to i64
-    %i8_64 = zext.i8.i64 %i8_div
-    %i16_64 = zext.i16.i64 %i16_div
-    %u8_64 = zext.u8.i64 %u8_div
-    %u16_64 = zext.u16.i64 %u16_div
+    %i8_64_bits2 = bitcast.i8.u8 %i8_div
+    %i8_64 = extend.u8.i64 %i8_64_bits2
+    %i16_64_bits2 = bitcast.i16.u16 %i16_div
+    %i16_64 = extend.u16.i64 %i16_64_bits2
+    %u8_64 = extend.u8.i64 %u8_div
+    %u16_64 = extend.u16.i64 %u16_div
 
     # Result: i8 + i16*256 + u8*65536 + u16*16777216
     %i16_scaled = mul.i64 %i16_64, 256

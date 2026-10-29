@@ -18,7 +18,7 @@ entry:
  %e = div.u64 %d, 3
  call @print_u64(%e)
  %f = trunc.u64.u32 %d
- %pv4 = zext.u32.u64 %f
+ %pv4 = extend.u32.u64 %f
  call @print_u64(%pv4)
  %g = sub.i64 0, 1
  call @print_i64(%g)

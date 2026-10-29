@@ -504,12 +504,12 @@ no:
 }
 @export fn @i8_widen(i8 %x) -> i64 {
 entry:
- %w = sext.i8.i64 %x
+ %w = extend.i8.i64 %x
  ret.i64 %w
 }
 @export fn @i32_widen(i32 %x) -> i64 {
 entry:
- %w = sext.i32.i64 %x
+ %w = extend.i32.i64 %x
  ret.i64 %w
 }
 fn @plain_helper() -> i64 {
@@ -888,37 +888,37 @@ entry:
 @export fn @probe_ret_u8() -> i64 {
 entry:
  %r = call @raw_ret_u8()
- %w = zext.u8.i64 %r
+ %w = extend.u8.i64 %r
  ret.i64 %w
 }
 @export fn @probe_ret_i8() -> i64 {
 entry:
  %r = call @raw_ret_i8()
- %w = sext.i8.i64 %r
+ %w = extend.i8.i64 %r
  ret.i64 %w
 }
 @export fn @probe_ret_u16() -> i64 {
 entry:
  %r = call @raw_ret_u16()
- %w = zext.u16.i64 %r
+ %w = extend.u16.i64 %r
  ret.i64 %w
 }
 @export fn @probe_ret_i16() -> i64 {
 entry:
  %r = call @raw_ret_i16()
- %w = sext.i16.i64 %r
+ %w = extend.i16.i64 %r
  ret.i64 %w
 }
 @export fn @probe_ret_u32() -> i64 {
 entry:
  %r = call @raw_ret_u32()
- %w = zext.u32.i64 %r
+ %w = extend.u32.i64 %r
  ret.i64 %w
 }
 @export fn @probe_ret_i32() -> i64 {
 entry:
  %r = call @raw_ret_i32()
- %w = sext.i32.i64 %r
+ %w = extend.i32.i64 %r
  ret.i64 %w
 }
 "#;
@@ -928,32 +928,32 @@ entry:
     const INCOMING: &str = r#"
 @export fn @echo_u8(u8 %x) -> i64 {
 entry:
- %w = zext.u8.i64 %x
+ %w = extend.u8.i64 %x
  ret.i64 %w
 }
 @export fn @echo_i8(i8 %x) -> i64 {
 entry:
- %w = sext.i8.i64 %x
+ %w = extend.i8.i64 %x
  ret.i64 %w
 }
 @export fn @echo_u16(u16 %x) -> i64 {
 entry:
- %w = zext.u16.i64 %x
+ %w = extend.u16.i64 %x
  ret.i64 %w
 }
 @export fn @echo_i16(i16 %x) -> i64 {
 entry:
- %w = sext.i16.i64 %x
+ %w = extend.i16.i64 %x
  ret.i64 %w
 }
 @export fn @echo_u32(u32 %x) -> i64 {
 entry:
- %w = zext.u32.i64 %x
+ %w = extend.u32.i64 %x
  ret.i64 %w
 }
 @export fn @echo_i32(i32 %x) -> i64 {
 entry:
- %w = sext.i32.i64 %x
+ %w = extend.i32.i64 %x
  ret.i64 %w
 }
 "#;
@@ -1235,7 +1235,7 @@ entry:
  %a = load.i32 %ap
  %b = load.i32 %bp
  %s = add.i32 %a, %b
- %w = sext.i32.i64 %s
+ %w = extend.i32.i64 %s
  ret.i64 %w
 }
 @export fn @take_three(struct { a: i32, b: i32, c: i32 } %p) -> i64 {
@@ -1248,7 +1248,7 @@ entry:
  %c = load.i32 %cp
  %ab = add.i32 %a, %b
  %s = add.i32 %ab, %c
- %w = sext.i32.i64 %s
+ %w = extend.i32.i64 %s
  ret.i64 %w
 }
 @export fn @take_spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, struct { a: i64, b: i64 } %p) -> i64 {

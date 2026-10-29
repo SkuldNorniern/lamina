@@ -13,23 +13,23 @@ entry:
   %p3 = getelem.i8 %buf, 3
   store.i8 %p3, 90
   %c3 = load.i8 %p3
-  %c3w = sext.i8.i64 %c3
+  %c3w = extend.i8.i64 %c3
   call @print_i64(%c3w)
   %copy = stackalloc.[8 x i8]
   %cbase = getelem.i8 %copy, 0
   call @memcpy(%cbase, %base, 8)
   %q3 = getelem.i8 %copy, 3
   %d3 = load.i8 %q3
-  %d3w = sext.i8.i64 %d3
+  %d3w = extend.i8.i64 %d3
   call @print_i64(%d3w)
   %q0 = getelem.i8 %copy, 0
   call @memmove(%q0, %q3, 4)
   %e0 = load.i8 %q0
-  %e0w = sext.i8.i64 %e0
+  %e0w = extend.i8.i64 %e0
   call @print_i64(%e0w)
   %q1 = getelem.i8 %copy, 1
   %e1 = load.i8 %q1
-  %e1w = sext.i8.i64 %e1
+  %e1w = extend.i8.i64 %e1
   call @print_i64(%e1w)
   write %cbase, 8, n
   %nl = writebyte 10

@@ -28,11 +28,16 @@ fn @test_i8_array_gep() -> i64 {
     %val4 = load.i8 %ptr4
 
     # Convert to i64 and combine
-    %r0 = zext.i8.i64 %val0
-    %r1 = zext.i8.i64 %val1
-    %r2 = zext.i8.i64 %val2
-    %r3 = zext.i8.i64 %val3
-    %r4 = zext.i8.i64 %val4
+    %r0_bits = bitcast.i8.u8 %val0
+    %r0 = extend.u8.i64 %r0_bits
+    %r1_bits = bitcast.i8.u8 %val1
+    %r1 = extend.u8.i64 %r1_bits
+    %r2_bits = bitcast.i8.u8 %val2
+    %r2 = extend.u8.i64 %r2_bits
+    %r3_bits = bitcast.i8.u8 %val3
+    %r3 = extend.u8.i64 %r3_bits
+    %r4_bits = bitcast.i8.u8 %val4
+    %r4 = extend.u8.i64 %r4_bits
 
     # Result: val0 + val1*256 + val2*65536 + val3*16777216 + val4*4294967296
     %t1 = mul.i64 %r1, 256
@@ -65,9 +70,12 @@ fn @test_i16_array_gep() -> i64 {
     %val1 = load.i16 %ptr1
     %val2 = load.i16 %ptr2
 
-    %r0 = zext.i16.i64 %val0
-    %r1 = zext.i16.i64 %val1
-    %r2 = zext.i16.i64 %val2
+    %r0_bits2 = bitcast.i16.u16 %val0
+    %r0 = extend.u16.i64 %r0_bits2
+    %r1_bits2 = bitcast.i16.u16 %val1
+    %r1 = extend.u16.i64 %r1_bits2
+    %r2_bits2 = bitcast.i16.u16 %val2
+    %r2 = extend.u16.i64 %r2_bits2
 
     # Result: val0 + val1*1000000 + val2*1000000000000
     %t1 = mul.i64 %r1, 1000000

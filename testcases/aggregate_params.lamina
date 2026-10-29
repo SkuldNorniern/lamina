@@ -23,7 +23,7 @@ fn @sum_small(!Small %p) -> i64 {
     %a = load.i32 %ap
     %b = load.i32 %bp
     %s = add.i32 %a, %b
-    %w = sext.i32.i64 %s
+    %w = extend.i32.i64 %s
     ret.i64 %w
 }
 
@@ -37,7 +37,7 @@ fn @sum_three(!Three %p) -> i64 {
     %c = load.i32 %cp
     %ab = add.i32 %a, %b
     %s = add.i32 %ab, %c
-    %w = sext.i32.i64 %s
+    %w = extend.i32.i64 %s
     ret.i64 %w
 }
 

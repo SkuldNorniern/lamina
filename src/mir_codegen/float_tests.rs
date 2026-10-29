@@ -62,7 +62,7 @@ int main(void) { CHECK(float); CHECK(double); return 0; }
             source.push_str(&format!(" jmp {ty}_{i}\n{ty}_{i}:\n"));
             for j in 0..9 {
                 for op in ["eq", "ne", "lt", "le", "gt", "ge"] {
-                    source.push_str(&format!(" %r{ty}_{i}_{j}_{op} = {op}.{ty} %v{ty}_{i}, %v{ty}_{j}\n %z{ty}_{i}_{j}_{op} = zext.bool.i64 %r{ty}_{i}_{j}_{op}\n call @print_i64(%z{ty}_{i}_{j}_{op})\n"));
+                    source.push_str(&format!(" %r{ty}_{i}_{j}_{op} = {op}.{ty} %v{ty}_{i}, %v{ty}_{j}\n %z{ty}_{i}_{j}_{op} = extend.bool.i64 %r{ty}_{i}_{j}_{op}\n call @print_i64(%z{ty}_{i}_{j}_{op})\n"));
                 }
             }
         }

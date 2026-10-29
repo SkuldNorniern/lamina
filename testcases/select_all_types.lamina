@@ -8,17 +8,17 @@ entry:
   %b = select.i64 %f, 10, 20
   call @print_i64(%b)
   %c = select.i32 %t, -5, 7
-  %cw = sext.i32.i64 %c
+  %cw = extend.i32.i64 %c
   call @print_i64(%cw)
   %d = select.u8 %f, 200, 100
-  %dw = zext.u8.i64 %d
+  %dw = extend.u8.i64 %d
   call @print_i64(%dw)
   %e = select.f64 %t, 1.5, 2.5
   %eb = bitcast.f64.i64 %e
   call @print_i64(%eb)
   %g = select.f32 %f, 1.5, 2.5
   %gb = bitcast.f32.i32 %g
-  %gw = sext.i32.i64 %gb
+  %gw = extend.i32.i64 %gb
   call @print_i64(%gw)
   ret.i64 0
 }

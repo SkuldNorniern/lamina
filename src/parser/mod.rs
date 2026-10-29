@@ -171,7 +171,6 @@ pub fn get_annotation_names() -> &'static [&'static str] {
         "cold",
         "hot",
         "pure",
-        "const",
         "internal",
         "private",
         "hidden",
@@ -1106,41 +1105,104 @@ mod tests {
         }
     }
 
+    fn extend_line_error(line: &str) -> String {
+        let input =
+            format!("fn @f(i8 %x, u8 %y, bool %b) -> i64 {{\nentry:\n  {line}\n  ret.i64 0\n}}\n");
+        parse_module(&input)
+            .expect_err("extend line should be rejected")
+            .to_string()
+    }
+
     #[test]
-    fn test_parse_i8_type_and_zext() {
+    fn removed_zext_and_sext_point_at_extend() {
+        for line in [
+            "%r = zext.u8.i64 %y",
+            "%r = sext.i8.i64 %x",
+            "%r = zext.i8.i64 %x",
+        ] {
+            let err = extend_line_error(line);
+            assert!(err.contains("Unknown instruction opcode"), "{line}: {err}");
+            assert!(
+                err.contains("extend.<source-type>.<target-type>"),
+                "{line}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn extend_rejects_narrowing_and_equal_width() {
+        let narrowing = extend_line_error("%r = extend.i64.i32 %x");
+        assert!(
+            narrowing.contains("narrows") && narrowing.contains("trunc.i64.i32"),
+            "{narrowing}"
+        );
+        let equal = extend_line_error("%r = extend.u8.u8 %y");
+        assert!(
+            equal.contains("keeps the width") && equal.contains("bitcast.u8.u8"),
+            "{equal}"
+        );
+    }
+
+    #[test]
+    fn extend_rejects_float_and_pointer_sources() {
+        let float = extend_line_error("%r = extend.f32.i64 %x");
+        assert!(float.contains("integer or bool"), "{float}");
+        let pointer = extend_line_error("%r = extend.ptr.i64 %x");
+        assert!(pointer.contains("integer or bool"), "{pointer}");
+    }
+
+    #[test]
+    fn extend_picks_sign_from_source_type() {
+        let input = "fn @f(i8 %x, u8 %y, bool %b) -> i64 {\nentry:\n  %a = extend.i8.i64 %x\n  %c = extend.u8.i64 %y\n  %d = extend.bool.i64 %b\n  ret.i64 0\n}\n";
+        let module = parse_module(input).expect("parse");
+        let entry = &module.functions["f"].basic_blocks["entry"];
+        assert!(matches!(
+            entry.instructions[0],
+            Instruction::SignExtend { .. }
+        ));
+        assert!(matches!(
+            entry.instructions[1],
+            Instruction::ZeroExtend { .. }
+        ));
+        assert!(matches!(
+            entry.instructions[2],
+            Instruction::ZeroExtend { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_u8_type_and_extend() {
         let input = r#"
-            fn @test_i8() -> i64 {
+            fn @test_u8() -> i64 {
               entry:
-                %i8_val = add.i8 10, 5
-                %extended = zext.i8.i64 %i8_val
+                %u8_val = add.u8 10, 5
+                %extended = extend.u8.i64 %u8_val
                 ret.i64 %extended
             }
         "#;
 
         let module = parse_module(input).expect("Parsing failed");
-        let func = module.functions.get("test_i8").expect("Function not found");
+        let func = module.functions.get("test_u8").expect("Function not found");
         let entry = func
             .basic_blocks
             .get("entry")
             .expect("Entry block not found");
 
-        // Check the add operation uses I8 type
         match &entry.instructions[0] {
             Instruction::Binary { op, ty, .. } => {
                 assert_eq!(*op, BinaryOp::Add);
-                assert_eq!(*ty, PrimitiveType::I8);
+                assert_eq!(*ty, PrimitiveType::U8);
             }
             _ => panic!("Expected Binary instruction"),
         }
 
-        // Check the zext operation
         match &entry.instructions[1] {
             Instruction::ZeroExtend {
                 source_type,
                 target_type,
                 ..
             } => {
-                assert_eq!(*source_type, PrimitiveType::I8);
+                assert_eq!(*source_type, PrimitiveType::U8);
                 assert_eq!(*target_type, PrimitiveType::I64);
             }
             _ => panic!("Expected ZeroExtend instruction"),
@@ -2601,7 +2663,7 @@ mod surface_tests {
              %r = rem.u128 %y, 3\n  \
              %l = lt.i128 %q, 0\n  \
              %h = shr.u128 %y, 64\n  \
-             %z = zext.u64.u128 %h\n  \
+             %z = extend.u64.u128 %h\n  \
              %t = trunc.i128.i32 %q\n  \
              %f = inttofp.i128.f64 %x\n  \
              ret.u128 %z\n\

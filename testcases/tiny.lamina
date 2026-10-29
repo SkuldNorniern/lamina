@@ -7,7 +7,8 @@ entry:
   store.i32 %op_counter, 0
 
   %idx0 = load.i32 %data_ptr
-  %idx0_64 = zext.i32.i64 %idx0
+  %idx0_64_bits = bitcast.i32.u32 %idx0
+  %idx0_64 = extend.u32.i64 %idx0_64_bits
   %cell_ptr0 = getelem.i32 %tape, %idx0_64
   store.i32 %cell_ptr0, 0
 
@@ -19,7 +20,8 @@ entry:
   store.i32 %op_counter, %count1
 
   %idx1 = load.i32 %data_ptr
-  %idx1_64 = zext.i32.i64 %idx1
+  %idx1_64_bits = bitcast.i32.u32 %idx1
+  %idx1_64 = extend.u32.i64 %idx1_64_bits
   %cell_ptr1 = getelem.i32 %tape, %idx1_64
   %value2 = load.i32 %cell_ptr1
   %value3 = add.i32 %value2, 1
@@ -29,10 +31,11 @@ entry:
   store.i32 %op_counter, %count3
 
   %idx2 = load.i32 %data_ptr
-  %idx2_64 = zext.i32.i64 %idx2
+  %idx2_64_bits = bitcast.i32.u32 %idx2
+  %idx2_64 = extend.u32.i64 %idx2_64_bits
   %cell_ptr2 = getelem.i32 %tape, %idx2_64
   %current_cell = load.i32 %cell_ptr2
-  %pv0 = sext.i32.i64 %current_cell
+  %pv0 = extend.i32.i64 %current_cell
   call @print_i64(%pv0)
 
   %count4 = load.i32 %op_counter

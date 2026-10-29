@@ -763,7 +763,7 @@ impl OwnedIRBuilder {
     // Type conversions
     // -----------------------------------------------------------------------
 
-    /// Appends a zero-extension instruction.
+    /// Appends an extend instruction. The source type's signedness picks sign or zero extension.
     pub fn zext(
         &mut self,
         result: impl AsRef<str>,
@@ -772,7 +772,7 @@ impl OwnedIRBuilder {
         value: &OwnedValue,
     ) -> &mut Self {
         let t = format!(
-            "%{} = zext.{}.{} {}",
+            "%{} = extend.{}.{} {}",
             result.as_ref(),
             source.as_str(),
             target.as_str(),
@@ -782,7 +782,7 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends a sign-extension instruction.
+    /// Appends an extend instruction. The source type's signedness picks sign or zero extension.
     pub fn sext(
         &mut self,
         result: impl AsRef<str>,
@@ -791,7 +791,7 @@ impl OwnedIRBuilder {
         value: &OwnedValue,
     ) -> &mut Self {
         let t = format!(
-            "%{} = sext.{}.{} {}",
+            "%{} = extend.{}.{} {}",
             result.as_ref(),
             source.as_str(),
             target.as_str(),

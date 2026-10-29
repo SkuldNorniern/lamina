@@ -26,7 +26,8 @@ fn @test_i8_array_operations() -> i64 {
     %sum2 = add.i8 %sum1, %val2
 
     # Convert result to i64
-    %result = zext.i8.i64 %sum2
+    %result_bits = bitcast.i8.u8 %sum2
+    %result = extend.u8.i64 %result_bits
     ret.i64 %result
 }
 
@@ -55,7 +56,7 @@ fn @test_u8_array_operations() -> i64 {
     %final = load.u8 %ptr2
 
     # Convert result to i64
-    %result = zext.u8.i64 %final
+    %result = extend.u8.i64 %final
     ret.i64 %result
 }
 
@@ -83,7 +84,8 @@ fn @test_i16_array_operations() -> i64 {
     %avg = div.i16 %total, 3
 
     # Convert result to i64
-    %result = zext.i16.i64 %avg
+    %result_bits2 = bitcast.i16.u16 %avg
+    %result = extend.u16.i64 %result_bits2
     ret.i64 %result
 }
 
@@ -110,7 +112,7 @@ fn @test_u16_array_operations() -> i64 {
     %max = add.u16 %val2, 0
 
     # Convert result to i64
-    %result = zext.u16.i64 %max
+    %result = extend.u16.i64 %max
     ret.i64 %result
 }
 
@@ -142,7 +144,8 @@ fn @test_i32_array_operations() -> i64 {
     %total = add.i32 %sum01, %sum23
 
     # Convert result to i64
-    %result = zext.i32.i64 %total
+    %result_bits3 = bitcast.i32.u32 %total
+    %result = extend.u32.i64 %result_bits3
     ret.i64 %result
 }
 
@@ -173,7 +176,7 @@ fn @test_u32_array_operations() -> i64 {
     store.u32 %ptr3, %final
 
     # Convert result to i64
-    %result = zext.u32.i64 %final
+    %result = extend.u32.i64 %final
     ret.i64 %result
 }
 
@@ -253,7 +256,7 @@ fn @test_bool_array_operations() -> i64 {
     %total = add.bool %count, %val2
 
     # Convert result to i64
-    %result = zext.bool.i64 %total
+    %result = extend.bool.i64 %total
     ret.i64 %result
 }
 
@@ -279,7 +282,8 @@ fn @test_char_array_operations() -> i64 {
     %first_char = load.i8 %ptr0
 
     # Convert result to i64
-    %result = zext.i8.i64 %first_char
+    %result_bits4 = bitcast.i8.u8 %first_char
+    %result = extend.u8.i64 %result_bits4
     ret.i64 %result
 }
 
@@ -358,7 +362,8 @@ fn @test_multidimensional_array() -> i64 {
     %total = add.i32 %sum01, %val02
 
     # Convert result to i64
-    %result = zext.i32.i64 %total
+    %result_bits5 = bitcast.i32.u32 %total
+    %result = extend.u32.i64 %result_bits5
     ret.i64 %result
 }
 

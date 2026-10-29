@@ -18,10 +18,10 @@ fn @main() -> i64 {
     %u = call @mk_u8()
     %cneg = lt.i8 %c, 0
     %uneg = lt.u8 %u, 0
-    %cwide = sext.i8.i64 %c
-    %uwide = zext.u8.i64 %u
-    %cnegw = zext.bool.i64 %cneg
-    %unegw = zext.bool.i64 %uneg
+    %cwide = extend.i8.i64 %c
+    %uwide = extend.u8.i64 %u
+    %cnegw = extend.bool.i64 %cneg
+    %unegw = extend.bool.i64 %uneg
     call @print_i64(%cnegw)
     call @print_i64(%unegw)
     call @print_i64(%cwide)

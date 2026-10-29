@@ -4,16 +4,16 @@ fn @main() -> i64 {
     %a = add.i16 32767, 0
     %b = add.i16 %a, %a
     %c = lt.i16 %b, 1
-    %d = zext.bool.i64 %c
+    %d = extend.bool.i64 %c
     call @print_i64(%d)
     %e = add.i32 2000000000, 0
     %f = add.i32 %e, %e
     %g = lt.i32 %f, 0
-    %h = zext.bool.i64 %g
+    %h = extend.bool.i64 %g
     call @print_i64(%h)
     %i = add.i8 100, 0
     %j = add.i8 %i, %i
-    %k = sext.i8.i64 %j
+    %k = extend.i8.i64 %j
     call @print_i64(%k)
     ret.i64 0
 }

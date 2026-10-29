@@ -96,7 +96,8 @@ fn @test_pointer_movement() -> i64 {
     # Access element at computed position
     %ptr = getelem.i32 %tape, %pos2
     %value = load.i32 %ptr
-    %result = zext.i32.i64 %value
+    %result_bits = bitcast.i32.u32 %value
+    %result = extend.u32.i64 %result_bits
 
     ret.i64 %result  # Should return 30
 }
@@ -138,18 +139,21 @@ fn @test_multi_type_arrays() -> i64 {
     # Access i32 array at index 2
     %i32_var_ptr = getelem.i32 %i32_arr, %idx
     %i32_val = load.i32 %i32_var_ptr
-    %i32_ext = zext.i32.i64 %i32_val
+    %i32_ext_bits = bitcast.i32.u32 %i32_val
+    %i32_ext = extend.u32.i64 %i32_ext_bits
 
     # Access i16 array at index 1
     %idx2 = add.i64 0, 1
     %i16_var_ptr = getelem.i16 %i16_arr, %idx2
     %i16_val = load.i16 %i16_var_ptr
-    %i16_ext = zext.i16.i64 %i16_val
+    %i16_ext_bits = bitcast.i16.u16 %i16_val
+    %i16_ext = extend.u16.i64 %i16_ext_bits
 
     # Access i8 array at index 1
     %i8_var_ptr = getelem.i8 %i8_arr, %idx2
     %i8_val = load.i8 %i8_var_ptr
-    %i8_ext = zext.i8.i64 %i8_val
+    %i8_ext_bits = bitcast.i8.u8 %i8_val
+    %i8_ext = extend.u8.i64 %i8_ext_bits
 
     # Combine results: i32_val + i16_val + i8_val
     %sum1 = add.i64 %i32_ext, %i16_ext

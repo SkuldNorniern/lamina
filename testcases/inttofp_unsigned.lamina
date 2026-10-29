@@ -2,31 +2,31 @@ fn @main() -> i64 {
 entry:
  %r1 = inttofp.u8.f32 0
  %b1 = bitcast.f32.i32 %r1
- %w1 = sext.i32.i64 %b1
+ %w1 = extend.i32.i64 %b1
  call @print_i64(%w1)
  %r2 = inttofp.u8.f32 1
  %b2 = bitcast.f32.i32 %r2
- %w2 = sext.i32.i64 %b2
+ %w2 = extend.i32.i64 %b2
  call @print_i64(%w2)
  %r3 = inttofp.u8.f32 2
  %b3 = bitcast.f32.i32 %r3
- %w3 = sext.i32.i64 %b3
+ %w3 = extend.i32.i64 %b3
  call @print_i64(%w3)
  %r4 = inttofp.u8.f32 127
  %b4 = bitcast.f32.i32 %r4
- %w4 = sext.i32.i64 %b4
+ %w4 = extend.i32.i64 %b4
  call @print_i64(%w4)
  %r5 = inttofp.u8.f32 128
  %b5 = bitcast.f32.i32 %r5
- %w5 = sext.i32.i64 %b5
+ %w5 = extend.i32.i64 %b5
  call @print_i64(%w5)
  %r6 = inttofp.u8.f32 254
  %b6 = bitcast.f32.i32 %r6
- %w6 = sext.i32.i64 %b6
+ %w6 = extend.i32.i64 %b6
  call @print_i64(%w6)
  %r7 = inttofp.u8.f32 255
  %b7 = bitcast.f32.i32 %r7
- %w7 = sext.i32.i64 %b7
+ %w7 = extend.i32.i64 %b7
  call @print_i64(%w7)
  %r8 = inttofp.u8.f64 0
  %b8 = bitcast.f64.i64 %r8
@@ -51,31 +51,31 @@ entry:
  call @print_i64(%b14)
  %r15 = inttofp.u16.f32 0
  %b15 = bitcast.f32.i32 %r15
- %w15 = sext.i32.i64 %b15
+ %w15 = extend.i32.i64 %b15
  call @print_i64(%w15)
  %r16 = inttofp.u16.f32 1
  %b16 = bitcast.f32.i32 %r16
- %w16 = sext.i32.i64 %b16
+ %w16 = extend.i32.i64 %b16
  call @print_i64(%w16)
  %r17 = inttofp.u16.f32 2
  %b17 = bitcast.f32.i32 %r17
- %w17 = sext.i32.i64 %b17
+ %w17 = extend.i32.i64 %b17
  call @print_i64(%w17)
  %r18 = inttofp.u16.f32 32767
  %b18 = bitcast.f32.i32 %r18
- %w18 = sext.i32.i64 %b18
+ %w18 = extend.i32.i64 %b18
  call @print_i64(%w18)
  %r19 = inttofp.u16.f32 32768
  %b19 = bitcast.f32.i32 %r19
- %w19 = sext.i32.i64 %b19
+ %w19 = extend.i32.i64 %b19
  call @print_i64(%w19)
  %r20 = inttofp.u16.f32 65534
  %b20 = bitcast.f32.i32 %r20
- %w20 = sext.i32.i64 %b20
+ %w20 = extend.i32.i64 %b20
  call @print_i64(%w20)
  %r21 = inttofp.u16.f32 65535
  %b21 = bitcast.f32.i32 %r21
- %w21 = sext.i32.i64 %b21
+ %w21 = extend.i32.i64 %b21
  call @print_i64(%w21)
  %r22 = inttofp.u16.f64 0
  %b22 = bitcast.f64.i64 %r22
@@ -102,35 +102,35 @@ b24:
  call @print_i64(%b28)
  %r29 = inttofp.u32.f32 0
  %b29 = bitcast.f32.i32 %r29
- %w29 = sext.i32.i64 %b29
+ %w29 = extend.i32.i64 %b29
  call @print_i64(%w29)
  %r30 = inttofp.u32.f32 1
  %b30 = bitcast.f32.i32 %r30
- %w30 = sext.i32.i64 %b30
+ %w30 = extend.i32.i64 %b30
  call @print_i64(%w30)
  %r31 = inttofp.u32.f32 2
  %b31 = bitcast.f32.i32 %r31
- %w31 = sext.i32.i64 %b31
+ %w31 = extend.i32.i64 %b31
  call @print_i64(%w31)
  %r32 = inttofp.u32.f32 2147483647
  %b32 = bitcast.f32.i32 %r32
- %w32 = sext.i32.i64 %b32
+ %w32 = extend.i32.i64 %b32
  call @print_i64(%w32)
  %r33 = inttofp.u32.f32 2147483648
  %b33 = bitcast.f32.i32 %r33
- %w33 = sext.i32.i64 %b33
+ %w33 = extend.i32.i64 %b33
  call @print_i64(%w33)
  %r34 = inttofp.u32.f32 4294967294
  %b34 = bitcast.f32.i32 %r34
- %w34 = sext.i32.i64 %b34
+ %w34 = extend.i32.i64 %b34
  call @print_i64(%w34)
  %r35 = inttofp.u32.f32 4294967295
  %b35 = bitcast.f32.i32 %r35
- %w35 = sext.i32.i64 %b35
+ %w35 = extend.i32.i64 %b35
  call @print_i64(%w35)
  %r36 = inttofp.u32.f32 16777217
  %b36 = bitcast.f32.i32 %r36
- %w36 = sext.i32.i64 %b36
+ %w36 = extend.i32.i64 %b36
  call @print_i64(%w36)
  %r37 = inttofp.u32.f64 0
  %b37 = bitcast.f64.i64 %r37
@@ -158,41 +158,41 @@ b24:
  call @print_i64(%b44)
  %r45 = inttofp.u64.f32 0
  %b45 = bitcast.f32.i32 %r45
- %w45 = sext.i32.i64 %b45
+ %w45 = extend.i32.i64 %b45
  call @print_i64(%w45)
  %r46 = inttofp.u64.f32 1
  %b46 = bitcast.f32.i32 %r46
- %w46 = sext.i32.i64 %b46
+ %w46 = extend.i32.i64 %b46
  call @print_i64(%w46)
  %r47 = inttofp.u64.f32 2
  %b47 = bitcast.f32.i32 %r47
- %w47 = sext.i32.i64 %b47
+ %w47 = extend.i32.i64 %b47
  call @print_i64(%w47)
  %r48 = inttofp.u64.f32 9223372036854775807
  %b48 = bitcast.f32.i32 %r48
- %w48 = sext.i32.i64 %b48
+ %w48 = extend.i32.i64 %b48
  call @print_i64(%w48)
  jmp b48
 b48:
  %r49 = inttofp.u64.f32 9223372036854775808
  %b49 = bitcast.f32.i32 %r49
- %w49 = sext.i32.i64 %b49
+ %w49 = extend.i32.i64 %b49
  call @print_i64(%w49)
  %r50 = inttofp.u64.f32 18446744073709551614
  %b50 = bitcast.f32.i32 %r50
- %w50 = sext.i32.i64 %b50
+ %w50 = extend.i32.i64 %b50
  call @print_i64(%w50)
  %r51 = inttofp.u64.f32 18446744073709551615
  %b51 = bitcast.f32.i32 %r51
- %w51 = sext.i32.i64 %b51
+ %w51 = extend.i32.i64 %b51
  call @print_i64(%w51)
  %r52 = inttofp.u64.f32 9007199254740993
  %b52 = bitcast.f32.i32 %r52
- %w52 = sext.i32.i64 %b52
+ %w52 = extend.i32.i64 %b52
  call @print_i64(%w52)
  %r53 = inttofp.u64.f32 18446744073709549568
  %b53 = bitcast.f32.i32 %r53
- %w53 = sext.i32.i64 %b53
+ %w53 = extend.i32.i64 %b53
  call @print_i64(%w53)
  %r54 = inttofp.u64.f64 0
  %b54 = bitcast.f64.i64 %r54

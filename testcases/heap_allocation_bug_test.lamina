@@ -19,7 +19,8 @@ fn @test_heap_allocation() -> i64 {
     %loaded_val = load.i32 %heap_ptr
 
     # Convert to i64 for return
-    %result = zext.i32.i64 %loaded_val
+    %result_bits = bitcast.i32.u32 %loaded_val
+    %result = extend.u32.i64 %result_bits
     ret.i64 %result
 }
 
@@ -45,7 +46,8 @@ fn @test_heap_array() -> i64 {
     %sum1 = add.i32 %val0, %val1
     %total = add.i32 %sum1, %val2
 
-    %result = zext.i32.i64 %total
+    %result_bits2 = bitcast.i32.u32 %total
+    %result = extend.u32.i64 %result_bits2
     ret.i64 %result
 }
 
@@ -66,7 +68,8 @@ fn @test_heap_struct() -> i64 {
     %val_y = load.i32 %ptr_y
 
     %sum = add.i32 %val_x, %val_y
-    %result = zext.i32.i64 %sum
+    %result_bits3 = bitcast.i32.u32 %sum
+    %result = extend.u32.i64 %result_bits3
     ret.i64 %result
 }
 
@@ -89,8 +92,10 @@ fn @test_multiple_allocations() -> i64 {
     %val2 = load.i64 %ptr2
     %val3 = load.i16 %arr_ptr
 
-    %val1_i64 = zext.i32.i64 %val1
-    %val3_i64 = zext.i16.i64 %val3
+    %val1_i64_bits = bitcast.i32.u32 %val1
+    %val1_i64 = extend.u32.i64 %val1_i64_bits
+    %val3_i64_bits = bitcast.i16.u16 %val3
+    %val3_i64 = extend.u16.i64 %val3_i64_bits
 
     %sum1 = add.i64 %val1_i64, %val2
     %result = add.i64 %sum1, %val3_i64

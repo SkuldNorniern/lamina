@@ -43,10 +43,10 @@ entry:
     %byte = stackalloc.i8
     store.i8 %byte, 127
     %old_byte = atomic_add.i8 %byte, 1, seqcst
-    %pv13 = sext.i8.i64 %old_byte
+    %pv13 = extend.i8.i64 %old_byte
     call @print_i64(%pv13)
     %now_byte = atomic_load.i8 %byte, seqcst
-    %pv14 = sext.i8.i64 %now_byte
+    %pv14 = extend.i8.i64 %now_byte
     call @print_i64(%pv14)
 
     %flag = stackalloc.i64
@@ -80,33 +80,33 @@ exit:
     store.i8 %c8, 12
     %o8 = atomic_and.i8 %c8, 10, seqcst
     %n8 = atomic_load.i8 %c8, seqcst
-    %pv16 = sext.i8.i64 %o8
+    %pv16 = extend.i8.i64 %o8
     call @print_i64(%pv16)
-    %pv17 = sext.i8.i64 %n8
+    %pv17 = extend.i8.i64 %n8
     call @print_i64(%pv17)
     %c16 = stackalloc.i16
     store.i16 %c16, 1000
     %o16 = atomic_or.i16 %c16, 3000, acqrel
     %n16 = atomic_load.i16 %c16, seqcst
-    %pv18 = sext.i16.i64 %o16
+    %pv18 = extend.i16.i64 %o16
     call @print_i64(%pv18)
-    %pv19 = sext.i16.i64 %n16
+    %pv19 = extend.i16.i64 %n16
     call @print_i64(%pv19)
     %c32 = stackalloc.i32
     store.i32 %c32, -5
     %o32 = atomic_xor.i32 %c32, 255, seqcst
     %n32 = atomic_load.i32 %c32, seqcst
-    %pv20 = sext.i32.i64 %o32
+    %pv20 = extend.i32.i64 %o32
     call @print_i64(%pv20)
-    %pv21 = sext.i32.i64 %n32
+    %pv21 = extend.i32.i64 %n32
     call @print_i64(%pv21)
     %u8 = stackalloc.u8
     store.u8 %u8, 200
     %ou8 = atomic_sub.u8 %u8, 100, seqcst
     %nu8 = atomic_load.u8 %u8, seqcst
-    %pv22 = zext.u8.u64 %ou8
+    %pv22 = extend.u8.u64 %ou8
     call @print_u64(%pv22)
-    %pv23 = zext.u8.u64 %nu8
+    %pv23 = extend.u8.u64 %nu8
     call @print_u64(%pv23)
     %big = stackalloc.i64
     store.i64 %big, 1

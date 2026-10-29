@@ -493,12 +493,15 @@ pub enum Instruction<'a> {
         lhs: Value<'a>,
         rhs: Value<'a>,
     },
-    /// Zero-extend a smaller integer to a larger integer type.
+    /// Zero-extend an unsigned integer or bool to a larger integer type.
+    ///
+    /// Written `extend.<unsigned-or-bool>.<target>` in source. A bool source maps
+    /// false and true to 0 and 1.
     ///
     /// # Preconditions
     /// - `value` must have type `source_type`.
-    /// - `source_type` must be an integer type strictly smaller than
-    ///   `target_type`.
+    /// - `source_type` must be an unsigned integer or bool, strictly smaller than
+    ///   `target_type` in bit-width.
     ZeroExtend {
         result: Identifier<'a>,
         source_type: PrimitiveType,
@@ -527,10 +530,10 @@ pub enum Instruction<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     },
-    /// Sign-extend an integer value to a larger integer type.
+    /// Sign-extend a signed integer value to a larger integer type.
     ///
-    /// The source and target types must be signed integers, and the target must be
-    /// strictly larger than the source in bit-width.
+    /// Written `extend.<signed>.<target>` in source. The source and target types must
+    /// be integers, the source signed, and the target strictly larger in bit-width.
     SignExtend {
         result: Identifier<'a>,
         source_type: PrimitiveType,
@@ -958,9 +961,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
     #[allow(dead_code)]
     const INSTRUCTION_ASSIGNMENT_OPS: &[&str] = &[
         // Type conversion operations (from Instruction::ZeroExtend, etc.)
-        "zext",
+        "extend",
         "trunc",
-        "sext",
         "bitcast",
         "inttofp",
         "fptoint",
@@ -1031,9 +1033,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "lt",
         "le",
         // Instruction-specific (manually maintained, corresponds to Instruction enum variants)
-        "zext",
+        "extend",
         "trunc",
-        "sext",
         "bitcast",
         "inttofp",
         "fptoint",
@@ -1367,7 +1368,7 @@ impl fmt::Display for Instruction<'_> {
                 source_type,
                 target_type,
                 value,
-            } => write!(f, "%{result} = zext.{source_type}.{target_type} {value}"),
+            } => write!(f, "%{result} = extend.{source_type}.{target_type} {value}"),
             Instruction::Select {
                 result,
                 ty,
@@ -1386,7 +1387,7 @@ impl fmt::Display for Instruction<'_> {
                 source_type,
                 target_type,
                 value,
-            } => write!(f, "%{result} = sext.{source_type}.{target_type} {value}"),
+            } => write!(f, "%{result} = extend.{source_type}.{target_type} {value}"),
             Instruction::Bitcast {
                 result,
                 source_type,
@@ -1873,13 +1874,13 @@ mod tests {
         // ZeroExtend
         let instr17 = Instruction::ZeroExtend {
             result: "extended_val",
-            source_type: PrimitiveType::I8,
+            source_type: PrimitiveType::U8,
             target_type: PrimitiveType::I64,
             value: Value::Variable("byte_val"),
         };
         assert_eq!(
             format!("{}", instr17),
-            "%extended_val = zext.i8.i64 %byte_val"
+            "%extended_val = extend.u8.i64 %byte_val"
         );
 
         // Select
@@ -1916,7 +1917,7 @@ mod tests {
         };
         assert_eq!(
             format!("{}", instr_sext),
-            "%sext_val = sext.i32.i64 %narrow_val"
+            "%sext_val = extend.i32.i64 %narrow_val"
         );
 
         // Bitcast

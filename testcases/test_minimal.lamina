@@ -2,7 +2,8 @@
 fn @main() -> i64 {
   entry:
     %a = add.i8 10, 20
-    %result = zext.i8.i64 %a
+    %result_bits = bitcast.i8.u8 %a
+    %result = extend.u8.i64 %result_bits
     call @print_i64(%result)
     ret.i64 0
 }

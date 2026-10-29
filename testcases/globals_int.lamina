@@ -16,7 +16,7 @@ entry:
  %b = call @bump()
  call @print_i64(%b)
  %s = load.i32 $step
- %s64 = sext.i32.i64 %s
+ %s64 = extend.i32.i64 %s
  call @print_i64(%s64)
  ret.i64 0
 }

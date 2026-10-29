@@ -7,11 +7,13 @@ entry:
  call @print_i64(%z)
  store.i64 $acc, 7
  %f0 = load.i8 $flag
- %f0w = zext.i8.i64 %f0
+ %f0w_bits = bitcast.i8.u8 %f0
+ %f0w = extend.u8.i64 %f0w_bits
  call @print_i64(%f0w)
  store.i8 $flag, -56
  %f1 = load.i8 $flag
- %f1w = zext.i8.i64 %f1
+ %f1w_bits = bitcast.i8.u8 %f1
+ %f1w = extend.u8.i64 %f1w_bits
  %acc = load.i64 $acc
  %sum = add.i64 %acc, %f1w
  call @print_i64(%sum)

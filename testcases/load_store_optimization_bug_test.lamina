@@ -80,7 +80,8 @@ fn @test_partial_overwrites() -> i64 {
     # This test is limited by current capabilities
     %result = load.i32 %data
 
-    %final = zext.i32.i64 %result
+    %final_bits = bitcast.i32.u32 %result
+    %final = extend.u32.i64 %final_bits
 
     ret.i64 %final
 }

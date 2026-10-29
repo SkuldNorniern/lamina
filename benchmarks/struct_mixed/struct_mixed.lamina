@@ -44,16 +44,16 @@ fn @main() -> i64 {
 
   accumulate:
     %av = load.i8 %ap
-    %ai = sext.i8.i64 %av
+    %ai = extend.i8.i64 %av
     %bv = load.u16 %bp
-    %bi = zext.u16.i64 %bv
+    %bi = extend.u16.i64 %bv
     %cv = load.i32 %cp
-    %ci = sext.i32.i64 %cv
+    %ci = extend.i32.i64 %cv
     %dv = load.u64 %dp
     %fv = load.bool %fp
-    %fi = zext.bool.i64 %fv
+    %fi = extend.bool.i64 %fv
     %gv = load.i8 %gp
-    %gi = sext.i8.i64 %gv
+    %gi = extend.i8.i64 %gv
     %s1 = add.i64 %ai, %bi
     %s2 = add.i64 %s1, %ci
     %s3 = add.i64 %s2, %dv

@@ -2512,9 +2512,9 @@ mod narrow_integer_tests {
             ] {
                 let compare = matches!(op, "lt" | "le" | "gt" | "ge");
                 let conversion = if compare {
-                    "zext.bool.i64".to_string()
+                    "extend.bool.i64".to_string()
                 } else {
-                    format!("sext.i{width}.i64")
+                    format!("extend.i{width}.i64")
                 };
                 writeln!(
                     functions,
@@ -2531,13 +2531,13 @@ mod narrow_integer_tests {
             let minimum = -(1_i64 << (width - 1));
             writeln!(
                 body,
-                "%overflow{width} = add.i{width} {maximum}, 1\n%negative{width} = shr.i{width} %overflow{width}, 3\n%wide{width} = sext.i{width}.i64 %negative{width}\ncall @print_i64(%wide{width})\n%unsigned{width} = zext.i{width}.i64 %overflow{width}\ncall @print_i64(%unsigned{width})"
+                "%overflow{width} = add.i{width} {maximum}, 1\n%negative{width} = shr.i{width} %overflow{width}, 3\n%wide{width} = extend.i{width}.i64 %negative{width}\ncall @print_i64(%wide{width})\n%unsigned{width}_bits = bitcast.i{width}.u{width} %overflow{width}\n%unsigned{width} = extend.u{width}.i64 %unsigned{width}_bits\ncall @print_i64(%unsigned{width})"
             )?;
             writeln!(expected, "{}\n{}", minimum >> 3, 1_i64 << (width - 1))?;
             // Adjacent elements catch stores that overwrite beyond their type width.
             writeln!(
                 body,
-                "%array{width} = stackalloc.[2 x i{width}]\n%low{width} = getelem.i{width} %array{width}, 0\n%high{width} = getelem.i{width} %array{width}, 1\nstore.i{width} %high{width}, 99\nstore.i{width} %low{width}, -20\n%load{width} = load.i{width} %low{width}\n%div{width} = div.i{width} %load{width}, 3\n%loaded{width} = sext.i{width}.i64 %div{width}\ncall @print_i64(%loaded{width})\n%neighbor{width} = load.i{width} %high{width}\n%neighborwide{width} = sext.i{width}.i64 %neighbor{width}\ncall @print_i64(%neighborwide{width})"
+                "%array{width} = stackalloc.[2 x i{width}]\n%low{width} = getelem.i{width} %array{width}, 0\n%high{width} = getelem.i{width} %array{width}, 1\nstore.i{width} %high{width}, 99\nstore.i{width} %low{width}, -20\n%load{width} = load.i{width} %low{width}\n%div{width} = div.i{width} %load{width}, 3\n%loaded{width} = extend.i{width}.i64 %div{width}\ncall @print_i64(%loaded{width})\n%neighbor{width} = load.i{width} %high{width}\n%neighborwide{width} = extend.i{width}.i64 %neighbor{width}\ncall @print_i64(%neighborwide{width})"
             )?;
             writeln!(expected, "-6\n99")?;
         }
@@ -2591,11 +2591,11 @@ mod narrow_integer_tests {
             )?;
             writeln!(
                 functions,
-                "fn @same{width}(u{width} %p) -> i64 {{\nentry:\n%x = xor.u{width} %p, 0\n%c = eq.u{width} %p, %x\n%z = zext.bool.i64 %c\nret.i64 %z\n}}"
+                "fn @same{width}(u{width} %p) -> i64 {{\nentry:\n%x = xor.u{width} %p, 0\n%c = eq.u{width} %p, %x\n%z = extend.bool.i64 %c\nret.i64 %z\n}}"
             )?;
             writeln!(
                 body,
-                "%p{width} = trunc.i64.u{width} {maximum}\n%r{width} = call @ident{width}(%p{width})\n%w{width} = zext.u{width}.i64 %r{width}\ncall @print_i64(%w{width})\n%e{width} = call @same{width}(%p{width})\ncall @print_i64(%e{width})\n%x{width} = xor.u{width} %r{width}, 0\n%q{width} = eq.u{width} %r{width}, %x{width}\n%qz{width} = zext.bool.i64 %q{width}\ncall @print_i64(%qz{width})\n%d{width} = div.u{width} %r{width}, 7\n%dz{width} = zext.u{width}.i64 %d{width}\ncall @print_i64(%dz{width})\n%g{width} = gt.u{width} %r{width}, 1\n%gz{width} = zext.bool.i64 %g{width}\ncall @print_i64(%gz{width})"
+                "%p{width} = trunc.i64.u{width} {maximum}\n%r{width} = call @ident{width}(%p{width})\n%w{width} = extend.u{width}.i64 %r{width}\ncall @print_i64(%w{width})\n%e{width} = call @same{width}(%p{width})\ncall @print_i64(%e{width})\n%x{width} = xor.u{width} %r{width}, 0\n%q{width} = eq.u{width} %r{width}, %x{width}\n%qz{width} = extend.bool.i64 %q{width}\ncall @print_i64(%qz{width})\n%d{width} = div.u{width} %r{width}, 7\n%dz{width} = extend.u{width}.i64 %d{width}\ncall @print_i64(%dz{width})\n%g{width} = gt.u{width} %r{width}, 1\n%gz{width} = extend.bool.i64 %g{width}\ncall @print_i64(%gz{width})"
             )?;
             writeln!(expected, "{maximum}\n1\n1\n{}\n1", maximum / 7)?;
         }

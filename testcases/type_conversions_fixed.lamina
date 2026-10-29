@@ -4,7 +4,8 @@
 fn @test_i8_to_i64() -> i64 {
   entry:
     %val_i8 = add.i8 100, 0
-    %val_i64 = zext.i8.i64 %val_i8
+    %val_i64_bits = bitcast.i8.u8 %val_i8
+    %val_i64 = extend.u8.i64 %val_i64_bits
     ret.i64 %val_i64
 }
 
@@ -12,7 +13,8 @@ fn @test_i8_to_i64() -> i64 {
 fn @test_i32_to_i64() -> i64 {
   entry:
     %val_i32 = add.i32 1000, 0
-    %val_i64 = zext.i32.i64 %val_i32
+    %val_i64_bits2 = bitcast.i32.u32 %val_i32
+    %val_i64 = extend.u32.i64 %val_i64_bits2
     ret.i64 %val_i64
 }
 

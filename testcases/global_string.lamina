@@ -8,19 +8,19 @@ entry:
  %nl = writebyte 10
  call @print_i64(%n)
  %c = load.i8 %p
- %cw = sext.i8.i64 %c
+ %cw = extend.i8.i64 %c
  call @print_i64(%cw)
  %p4 = getelem.i8 $greeting, 4
  %c4 = load.i8 %p4
- %c4w = sext.i8.i64 %c4
+ %c4w = extend.i8.i64 %c4
  call @print_i64(%c4w)
  %b = getelem.i8 $blank, 0
  %z = load.i8 %b
- %zw = sext.i8.i64 %z
+ %zw = extend.i8.i64 %z
  call @print_i64(%zw)
  store.i8 %b, 90
  %z2 = load.i8 %b
- %z2w = sext.i8.i64 %z2
+ %z2w = extend.i8.i64 %z2
  call @print_i64(%z2w)
  ret.i64 0
 }

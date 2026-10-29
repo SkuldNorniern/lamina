@@ -1339,8 +1339,10 @@ entry:
     %z = load.i8 %heap_last
     %guard = load.i64 %other
     call @free(%heap)
-    %wide_y = zext.i8.i64 %y
-    %wide_z = zext.i8.i64 %z
+    %wide_y_bits = bitcast.i8.u8 %y
+    %wide_y = extend.u8.i64 %wide_y_bits
+    %wide_z_bits = bitcast.i8.u8 %z
+    %wide_z = extend.u8.i64 %wide_z_bits
     %sum = add.i64 %x, %wide_y
     %sum2 = add.i64 %sum, %wide_z
     %result = add.i64 %sum2, %guard

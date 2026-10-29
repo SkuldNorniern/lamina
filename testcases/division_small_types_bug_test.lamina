@@ -9,7 +9,8 @@ fn @test_i8_division() -> i64 {
     %b = add.i8 3, 0     # 3
     %quotient = div.i8 %a, %b  # Should be 6 (20/3 = 6 in integer division)
 
-    %result = zext.i8.i64 %quotient
+    %result_bits = bitcast.i8.u8 %quotient
+    %result = extend.u8.i64 %result_bits
     ret.i64 %result
 }
 
@@ -20,7 +21,8 @@ fn @test_i16_division() -> i64 {
     %b = add.i16 7, 0      # 7
     %quotient = div.i16 %a, %b  # Should be 14 (100/7 = 14 in integer division)
 
-    %result = zext.i16.i64 %quotient
+    %result_bits2 = bitcast.i16.u16 %quotient
+    %result = extend.u16.i64 %result_bits2
     ret.i64 %result
 }
 
@@ -31,7 +33,8 @@ fn @test_u8_division() -> i64 {
     %b = add.i8 4, 0      # 4
     %quotient = div.i8 %a, %b  # Should be 6 (25/4 = 6 in integer division)
 
-    %result = zext.i8.i64 %quotient
+    %result_bits3 = bitcast.i8.u8 %quotient
+    %result = extend.u8.i64 %result_bits3
     ret.i64 %result
 }
 
@@ -42,7 +45,8 @@ fn @test_u16_division() -> i64 {
     %b = add.i16 3, 0      # 3
     %quotient = div.i16 %a, %b  # Should be 16 (50/3 = 16 in integer division)
 
-    %result = zext.i16.i64 %quotient
+    %result_bits4 = bitcast.i16.u16 %quotient
+    %result = extend.u16.i64 %result_bits4
     ret.i64 %result
 }
 
@@ -61,7 +65,8 @@ fn @test_mixed_division() -> i64 {
     # Division result of divisions
     %combined = div.i8 %result1, 2  # Should be 3
 
-    %final = zext.i8.i64 %combined
+    %final_bits = bitcast.i8.u8 %combined
+    %final = extend.u8.i64 %final_bits
     ret.i64 %final
 }
 

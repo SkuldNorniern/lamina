@@ -38,9 +38,13 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 parse_unary_op(state, result, opcode_str)
             }
             "eq" | "ne" | "gt" | "ge" | "lt" | "le" => parse_cmp_op(state, result, opcode_str),
-            "zext" => parse_zext(state, result),
+            "extend" => parse_extend(state, result),
             "trunc" => parse_trunc(state, result),
-            "sext" => parse_sext(state, result),
+            "zext" | "sext" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'extend.<source-type>.<target-type>' (a signed source sign-extends, an unsigned or bool source zero-extends)",
+            )),
             "bitcast" => parse_bitcast(state, result),
             "inttofp" => parse_int_to_float(state, result),
             "sitofp" | "uitofp" => Err(removed_opcode_error(
@@ -1085,65 +1089,6 @@ fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, La
     Ok(Instruction::ReadByte { result })
 }
 
-fn parse_zext<'a>(
-    state: &mut ParserState<'a>,
-    result: Identifier<'a>,
-) -> Result<Instruction<'a>, LaminaError> {
-    state.expect_char('.')?;
-    let source_type_str = state.parse_identifier_str()?;
-    let source_type = match source_type_str {
-        "i8" => PrimitiveType::I8,
-        "i16" => PrimitiveType::I16,
-        "i32" => PrimitiveType::I32,
-        "i64" => PrimitiveType::I64,
-        "u8" => PrimitiveType::U8,
-        "u16" => PrimitiveType::U16,
-        "u32" => PrimitiveType::U32,
-        "u64" => PrimitiveType::U64,
-        "i128" => PrimitiveType::I128,
-        "u128" => PrimitiveType::U128,
-        "f32" => PrimitiveType::F32,
-        "f64" => PrimitiveType::F64,
-        "bool" => PrimitiveType::Bool,
-        "char" => return Err(removed_char_error(state)),
-        _ => return Err(state.error(format!("Invalid source type for zext: {source_type_str}"))),
-    };
-
-    state.expect_char('.')?;
-    let target_type_str = state.parse_identifier_str()?;
-    let target_type = match target_type_str {
-        "i8" => PrimitiveType::I8,
-        "i16" => PrimitiveType::I16,
-        "i32" => PrimitiveType::I32,
-        "i64" => PrimitiveType::I64,
-        "u8" => PrimitiveType::U8,
-        "u16" => PrimitiveType::U16,
-        "u32" => PrimitiveType::U32,
-        "u64" => PrimitiveType::U64,
-        "i128" => PrimitiveType::I128,
-        "u128" => PrimitiveType::U128,
-        "f32" => PrimitiveType::F32,
-        "f64" => PrimitiveType::F64,
-        "bool" => PrimitiveType::Bool,
-        "char" => return Err(removed_char_error(state)),
-        _ => return Err(state.error(format!("Invalid target type for zext: {target_type_str}"))),
-    };
-
-    if source_type == target_type {
-        return Err(state.error(format!(
-            "Source and target types must be different for conversion: {source_type_str}"
-        )));
-    }
-
-    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
-    Ok(Instruction::ZeroExtend {
-        result,
-        source_type,
-        target_type,
-        value,
-    })
-}
-
 fn parse_int_to_float<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -1290,31 +1235,78 @@ fn parse_trunc<'a>(
     })
 }
 
-fn parse_sext<'a>(
+fn parse_extend<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
     state.expect_char('.')?;
-    let source_type_str = state.parse_identifier_str()?;
-    let source_type = parse_primitive_from_ident(state, source_type_str)?;
-
+    let source_str = state.parse_identifier_str()?;
+    let source_type = parse_primitive_from_ident(state, source_str)?;
     state.expect_char('.')?;
-    let target_type_str = state.parse_identifier_str()?;
-    let target_type = parse_primitive_from_ident(state, target_type_str)?;
+    let target_str = state.parse_identifier_str()?;
+    let target_type = parse_primitive_from_ident(state, target_str)?;
 
-    if source_type == target_type {
+    let Some(source_bits) = integer_bits(source_type) else {
         return Err(state.error(format!(
-            "Source and target types must be different for conversion: {source_type_str}"
+            "extend source must be an integer or bool, found {source_str}"
+        )));
+    };
+    let target_bits = match integer_bits(target_type) {
+        Some(bits) if target_type != PrimitiveType::Bool => bits,
+        _ => {
+            return Err(state.error(format!(
+                "extend target must be an integer, found {target_str}"
+            )));
+        }
+    };
+    if target_bits == source_bits {
+        return Err(state.error(format!(
+            "extend from {source_str} to {target_str} keeps the width\n  Hint: Use 'bitcast.{source_str}.{target_str}' to reinterpret the bits"
+        )));
+    }
+    if target_bits < source_bits {
+        return Err(state.error(format!(
+            "extend from {source_str} to {target_str} narrows\n  Hint: Use 'trunc.{source_str}.{target_str}' to narrow"
         )));
     }
 
     let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
-    Ok(Instruction::SignExtend {
-        result,
+    let signed = matches!(
         source_type,
-        target_type,
-        value,
-    })
+        PrimitiveType::I8
+            | PrimitiveType::I16
+            | PrimitiveType::I32
+            | PrimitiveType::I64
+            | PrimitiveType::I128
+    );
+    if signed {
+        Ok(Instruction::SignExtend {
+            result,
+            source_type,
+            target_type,
+            value,
+        })
+    } else {
+        Ok(Instruction::ZeroExtend {
+            result,
+            source_type,
+            target_type,
+            value,
+        })
+    }
+}
+
+/// Bit width of an integer or bool type. Floats and pointers have no integer width.
+fn integer_bits(ty: PrimitiveType) -> Option<u32> {
+    match ty {
+        PrimitiveType::Bool => Some(1),
+        PrimitiveType::I8 | PrimitiveType::U8 => Some(8),
+        PrimitiveType::I16 | PrimitiveType::U16 => Some(16),
+        PrimitiveType::I32 | PrimitiveType::U32 => Some(32),
+        PrimitiveType::I64 | PrimitiveType::U64 => Some(64),
+        PrimitiveType::I128 | PrimitiveType::U128 => Some(128),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Ptr => None,
+    }
 }
 
 fn parse_bitcast<'a>(

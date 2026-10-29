@@ -15,7 +15,7 @@ entry:
   call @print_i64(%nb)
   %c = add.i32 -7, 0
   %nc = neg.i32 %c
-  %ncw = sext.i32.i64 %nc
+  %ncw = extend.i32.i64 %nc
   call @print_i64(%ncw)
   %f = add.f64 2.0, 0.25
   %nf = neg.f64 %f
@@ -28,7 +28,7 @@ entry:
   call @print_f64(%pv5)
   %u = add.u32 1, 0
   %nu = not.u32 %u
-  %pv6 = zext.u32.u64 %nu
+  %pv6 = extend.u32.u64 %nu
   call @print_u64(%pv6)
   ret.i64 0
 }

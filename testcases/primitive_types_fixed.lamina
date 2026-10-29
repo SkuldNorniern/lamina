@@ -6,7 +6,8 @@ fn @test_i8_operations() -> i64 {
     %a = add.i8 10, 20
     %b = sub.i8 50, 15
     %c = mul.i8 %a, 2
-    %result = zext.i8.i64 %c
+    %result_bits = bitcast.i8.u8 %c
+    %result = extend.u8.i64 %result_bits
     ret.i64 %result
 }
 
@@ -16,7 +17,8 @@ fn @test_u8_operations() -> i64 {
     %a = add.i8 10, 20
     %b = sub.i8 50, 15
     %c = mul.i8 %a, 2
-    %result = zext.i8.i64 %c
+    %result_bits2 = bitcast.i8.u8 %c
+    %result = extend.u8.i64 %result_bits2
     ret.i64 %result
 }
 

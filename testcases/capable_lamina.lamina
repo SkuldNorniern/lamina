@@ -117,13 +117,16 @@ fn @conversion_demo() -> i64 {
 
     # Convert i64 to smaller types and back
     %as_i32 = trunc.i64.i32 %big_num
-    %back_to_i64 = zext.i32.i64 %as_i32
+    %back_to_i64_bits = bitcast.i32.u32 %as_i32
+    %back_to_i64 = extend.u32.i64 %back_to_i64_bits
 
     %as_i16 = trunc.i64.i16 %big_num
-    %back_from_i16 = zext.i16.i64 %as_i16
+    %back_from_i16_bits = bitcast.i16.u16 %as_i16
+    %back_from_i16 = extend.u16.i64 %back_from_i16_bits
 
     %as_i8 = trunc.i64.i8 %big_num
-    %back_from_i8 = zext.i8.i64 %as_i8
+    %back_from_i8_bits = bitcast.i8.u8 %as_i8
+    %back_from_i8 = extend.u8.i64 %back_from_i8_bits
 
     # Sum all conversions
     %sum1 = add.i64 %back_to_i64, %back_from_i16

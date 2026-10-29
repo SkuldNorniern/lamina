@@ -3,28 +3,28 @@ fn @cmp(f64 %z, f64 %x) -> i64 {
   entry:
     %nan = div.f64 %z, %z
     %a = eq.f64 %nan, %x
-    %ra = zext.bool.i64 %a
+    %ra = extend.bool.i64 %a
     call @print_i64(%ra)
     %b = ne.f64 %nan, %x
-    %rb = zext.bool.i64 %b
+    %rb = extend.bool.i64 %b
     call @print_i64(%rb)
     %c = lt.f64 %nan, %x
-    %rc = zext.bool.i64 %c
+    %rc = extend.bool.i64 %c
     call @print_i64(%rc)
     %d = le.f64 %nan, %x
-    %rd = zext.bool.i64 %d
+    %rd = extend.bool.i64 %d
     call @print_i64(%rd)
     %e = gt.f64 %nan, %x
-    %re = zext.bool.i64 %e
+    %re = extend.bool.i64 %e
     call @print_i64(%re)
     %f = ge.f64 %nan, %x
-    %rf = zext.bool.i64 %f
+    %rf = extend.bool.i64 %f
     call @print_i64(%rf)
     %g = le.f64 %x, %nan
-    %rg = zext.bool.i64 %g
+    %rg = extend.bool.i64 %g
     call @print_i64(%rg)
     %h = ge.f64 %x, %nan
-    %rh = zext.bool.i64 %h
+    %rh = extend.bool.i64 %h
     call @print_i64(%rh)
     ret.i64 0
 }

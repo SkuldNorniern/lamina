@@ -28,7 +28,8 @@ fn @test_point2d_operations() -> i64 {
     %dist_sq = add.i32 %x_sq, %y_sq
 
     # Convert result to i64
-    %result = zext.i32.i64 %dist_sq
+    %result_bits = bitcast.i32.u32 %dist_sq
+    %result = extend.u32.i64 %result_bits
     ret.i64 %result
 }
 
@@ -91,8 +92,9 @@ fn @test_person_operations() -> i64 {
     %first_char = load.i8 %name0
 
     # Combine results
-    %age_i64 = zext.u8.i64 %age
-    %char_i64 = zext.i8.i64 %first_char
+    %age_i64 = extend.u8.i64 %age
+    %char_i64_bits = bitcast.i8.u8 %first_char
+    %char_i64 = extend.u8.i64 %char_i64_bits
     %combined = add.i64 %age_i64, %char_i64
 
     ret.i64 %combined
@@ -119,8 +121,8 @@ fn @test_complex_data_operations() -> i64 {
     %active = load.bool %active_ptr
 
     # Use active flag to conditionally return id
-    %id_i64 = zext.u32.i64 %id
-    %active_i64 = zext.bool.i64 %active
+    %id_i64 = extend.u32.i64 %id
+    %active_i64 = extend.bool.i64 %active
     %result = mul.i64 %id_i64, %active_i64
 
     ret.i64 %result
@@ -158,11 +160,14 @@ fn @test_mixed_types_operations() -> i64 {
     %g_val = load.i8 %g_ptr
 
     # Convert to common type (i64) for summation
-    %a_i64 = zext.i8.i64 %a_val
-    %b_i64 = zext.u16.i64 %b_val
-    %c_i64 = zext.i32.i64 %c_val
-    %f_i64 = zext.bool.i64 %f_val
-    %g_i64 = zext.i8.i64 %g_val
+    %a_i64_bits = bitcast.i8.u8 %a_val
+    %a_i64 = extend.u8.i64 %a_i64_bits
+    %b_i64 = extend.u16.i64 %b_val
+    %c_i64_bits = bitcast.i32.u32 %c_val
+    %c_i64 = extend.u32.i64 %c_i64_bits
+    %f_i64 = extend.bool.i64 %f_val
+    %g_i64_bits = bitcast.i8.u8 %g_val
+    %g_i64 = extend.u8.i64 %g_i64_bits
 
     # Calculate sum
     %sum1 = add.i64 %a_i64, %b_i64
@@ -204,8 +209,8 @@ fn @test_struct_copy_operations() -> i64 {
     %y_equal = eq.i32 %y_val, %p2_y_val
 
     # Both should be true (1), sum should be 2
-    %x_i64 = zext.bool.i64 %x_equal
-    %y_i64 = zext.bool.i64 %y_equal
+    %x_i64 = extend.bool.i64 %x_equal
+    %y_i64 = extend.bool.i64 %y_equal
     %result = add.i64 %x_i64, %y_i64
 
     ret.i64 %result
@@ -248,7 +253,8 @@ fn @test_nested_struct_operations() -> i64 {
     %length = add.i32 %dx, %dy
 
     # Convert result to i64
-    %result = zext.i32.i64 %length
+    %result_bits2 = bitcast.i32.u32 %length
+    %result = extend.u32.i64 %result_bits2
     ret.i64 %result
 }
 
@@ -301,7 +307,8 @@ fn @test_struct_array_operations() -> i64 {
     %grand_total = add.i32 %x_total, %y_total
 
     # Convert result to i64
-    %result = zext.i32.i64 %grand_total
+    %result_bits3 = bitcast.i32.u32 %grand_total
+    %result = extend.u32.i64 %result_bits3
     ret.i64 %result
 }
 

@@ -85,7 +85,7 @@ type !Person = struct { name: [10 x i8], age: i32, height: i64 }
 #     # Load and return age + height
 #     %age_val = load.i32 %age_ptr
 #     %height_val = load.i64 %height_ptr
-#     %age_extended = zext.i32.i64 %age_val
+#     %age_extended = extend.i32.i64 %age_val
 #     %result = add.i64 %age_extended, %height_val
 #
 #     ret.i64 %result
@@ -169,7 +169,8 @@ fn @test_pointer_movement() -> i64 {
     %val = load.i32 %elem_ptr
 
     # Convert to i64 and return
-    %result = zext.i32.i64 %val
+    %result_bits = bitcast.i32.u32 %val
+    %result = extend.u32.i64 %result_bits
     ret.i64 %result
 }
 

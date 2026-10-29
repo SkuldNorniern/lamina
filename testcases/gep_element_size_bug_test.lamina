@@ -10,9 +10,12 @@ fn @test_i32_array_gep() -> i64 {
     %val2 = add.i32 3000, 0
 
     # Convert to i64 for return
-    %result0 = zext.i32.i64 %val0
-    %result1 = zext.i32.i64 %val1
-    %result2 = zext.i32.i64 %val2
+    %result0_bits = bitcast.i32.u32 %val0
+    %result0 = extend.u32.i64 %result0_bits
+    %result1_bits = bitcast.i32.u32 %val1
+    %result1 = extend.u32.i64 %result1_bits
+    %result2_bits = bitcast.i32.u32 %val2
+    %result2 = extend.u32.i64 %result2_bits
 
     # Return combined result: val0 + val1*1000000 + val2*1000000000000
     %temp1 = mul.i64 %result1, 1000000

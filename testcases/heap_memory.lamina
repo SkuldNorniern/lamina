@@ -17,7 +17,8 @@ fn @test_heap_allocation() -> i64 {
     %loaded = load.i32 %heap_ptr
 
     # Convert to i64 for return
-    %loaded_i64 = zext.i32.i64 %loaded
+    %loaded_i64_bits = bitcast.i32.u32 %loaded
+    %loaded_i64 = extend.u32.i64 %loaded_i64_bits
 
     # Use the loaded value
     %result = add.i64 %loaded_i64, 8

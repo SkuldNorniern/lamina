@@ -358,7 +358,7 @@ fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn
 fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register()
 -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i64 {\nentry:\n  %arr = stackalloc.[5000 x i8]\n  %p = getelem.i8 %arr, 4999\n  store.i8 %p, 42\n  %v = load.i8 %p\n  %w = zext.i8.i64 %v\n  ret.i64 %w\n}\n";
+    let ir = "fn @main() -> i64 {\nentry:\n  %arr = stackalloc.[5000 x i8]\n  %p = getelem.i8 %arr, 4999\n  store.i8 %p, 42\n  %v = load.i8 %p\n  %v_u = bitcast.i8.u8 %v\n  %w = extend.u8.i64 %v_u\n  ret.i64 %w\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "big_frame").expect("lower big frame module");
     let mut output = Vec::new();
@@ -540,7 +540,7 @@ fn stack_aggregate_prologue_keeps_off_callee_saved_registers() -> Result<(), Box
 #[test]
 fn darwin_packs_narrow_stack_arguments_at_natural_size() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @wide(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, i32 %i, i32 %j) -> i64 {\nentry:\n  %x = zext.i32.i64 %i\n  ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)\n  ret.i64 %r\n}\n";
+    let ir = "fn @wide(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, i32 %i, i32 %j) -> i64 {\nentry:\n  %i_u = bitcast.i32.u32 %i\n  %x = extend.u32.i64 %i_u\n  ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "narrow_stack").expect("lower narrow arguments");
 

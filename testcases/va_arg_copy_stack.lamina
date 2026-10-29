@@ -20,7 +20,7 @@ entry:
   %r = add.i64 %p, %q
   %sum = add.i64 %r, %v
   %same = eq.i64 %y, %z
-  %sw = zext.bool.i64 %same
+  %sw = extend.bool.i64 %same
   %final = add.i64 %sum, %sw
   %g = add.i64 %final, %x5
   ret.i64 %g

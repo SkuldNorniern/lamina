@@ -53,11 +53,6 @@ impl<'a> IRBuilder<'a> {
         self.annotate(FunctionAnnotation::Pure)
     }
 
-    /// Marks the current function as const (compile-time evaluable)
-    pub fn const_fn(&mut self) -> &mut Self {
-        self.annotate(FunctionAnnotation::Const)
-    }
-
     /// Marks the current function as internal (private to module)
     pub fn internal(&mut self) -> &mut Self {
         self.annotate(FunctionAnnotation::Internal)

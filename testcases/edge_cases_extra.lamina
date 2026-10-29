@@ -32,10 +32,12 @@ fn @test_wrapping() -> i64 {
     %underflow = sub.i8 %min, 1
     
     # Extend to i64 to return sum
-    %o_ext = zext.i8.i64 %overflow
-    %u_ext = zext.i8.i64 %underflow
+    %o_ext_bits = bitcast.i8.u8 %overflow
+    %o_ext = extend.u8.i64 %o_ext_bits
+    %u_ext_bits = bitcast.i8.u8 %underflow
+    %u_ext = extend.u8.i64 %u_ext_bits
     
-    # Note: zext treats i8 as unsigned, so -128 becomes 128, 127 becomes 127
+    # Note: the bitcast to u8 makes -128 extend to 128, 127 stays 127
     # -128 (0x80) -> 128
     # 127 (0x7F) -> 127
     %sum = add.i64 %o_ext, %u_ext

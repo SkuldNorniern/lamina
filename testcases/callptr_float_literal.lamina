@@ -3,7 +3,7 @@ global $slot: i64 = 0
 fn @bits32(f32 %p) -> i64 {
 entry:
   %b = bitcast.f32.i32 %p
-  %w = sext.i32.i64 %b
+  %w = extend.i32.i64 %b
   ret.i64 %w
 }
 
@@ -16,7 +16,7 @@ entry:
 fn @mixed(f32 %a, i64 %n, f64 %d) -> i64 {
 entry:
   %ab = bitcast.f32.i32 %a
-  %aw = sext.i32.i64 %ab
+  %aw = extend.i32.i64 %ab
   %db = bitcast.f64.i64 %d
   call @print_i64(%aw)
   call @print_i64(%n)
@@ -32,7 +32,7 @@ entry:
 fn @report(f32 %a) -> void {
 entry:
   %b = bitcast.f32.i32 %a
-  %w = sext.i32.i64 %b
+  %w = extend.i32.i64 %b
   store.i64 $slot, %w
   ret.void
 }

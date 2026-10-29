@@ -97,8 +97,9 @@ ret.void
 
 @kernel fn @conversions(ptr %out, i32 %a, i64 %b, ptr %p) -> void {
 entry:
-%zero = zext.i32.i64 %a
-%sign = sext.i32.i64 %a
+%zero_bits = bitcast.i32.u32 %a
+%zero = extend.u32.i64 %zero_bits
+%sign = extend.i32.i64 %a
 %narrow = trunc.i64.i32 %b
 %address = ptrtoint.i64 %p
 %back = inttoptr.i64 %address
@@ -119,7 +120,8 @@ entry:
 %group = call @__lamina_gpu_block_id_x()
 %base = mul.i32 %group, %stride
 %index = add.i32 %base, %tid
-%wide = zext.i32.i64 %index
+%wide_bits = bitcast.i32.u32 %index
+%wide = extend.u32.i64 %wide_bits
 %lp = getelem.i32 %left, %wide
 %rp = getelem.i32 %right, %wide
 %op = getelem.i32 %out, %wide
@@ -156,7 +158,8 @@ entry:
 %group = add.i32 %group2, %gx
 %base = mul.i32 %group, 24
 %index = add.i32 %base, %local
-%wide = zext.i32.i64 %index
+%wide_bits2 = bitcast.i32.u32 %index
+%wide = extend.u32.i64 %wide_bits2
 %p = getelem.i32 %out, %wide
 %sy = shl.i32 %y, 4
 %sz = shl.i32 %z, 8
@@ -178,7 +181,8 @@ entry:
 %group = call @__lamina_gpu_block_id_x()
 %base = mul.i32 %group, %stride
 %index = add.i32 %base, %tid
-%wide = zext.i32.i64 %index
+%wide_bits3 = bitcast.i32.u32 %index
+%wide = extend.u32.i64 %wide_bits3
 %lp = getelem.i64 %left, %wide
 %rp = getelem.i64 %right, %wide
 %op = getelem.i64 %out, %wide
@@ -195,7 +199,8 @@ entry:
 %group = call @__lamina_gpu_block_id_x()
 %base = mul.i32 %group, %stride
 %index = add.i32 %base, %tid
-%wide = zext.i32.i64 %index
+%wide_bits4 = bitcast.i32.u32 %index
+%wide = extend.u32.i64 %wide_bits4
 %lp = getelem.i64 %left, %wide
 %rp = getelem.i64 %right, %wide
 %op = getelem.i64 %out, %wide
@@ -244,7 +249,8 @@ entry:
 %base = mul.i32 %group, %b1
 %index = add.i32 %base, %thread
 %stride = mul.i32 %index, 8
-%wide = zext.i32.i64 %stride
+%wide_bits5 = bitcast.i32.u32 %stride
+%wide = extend.u32.i64 %wide_bits5
 %record = getelem.i32 %out, %wide
 %p0 = getelem.i32 %record, 0
 store.i32 %p0, %dx

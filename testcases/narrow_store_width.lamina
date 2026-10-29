@@ -8,7 +8,8 @@ fn @main() -> i64 {
     store.i8 %hi, 99
     store.i8 %lo, 1
     %back = load.i8 %hi
-    %wide = zext.i8.i64 %back
+    %wide_bits = bitcast.i8.u8 %back
+    %wide = extend.u8.i64 %wide_bits
     %dummy = call @print_number(%wide)
     %nl = writebyte 10
     ret.i64 0

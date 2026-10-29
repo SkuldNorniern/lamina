@@ -18,11 +18,11 @@ entry:
   call @print_i64(%v)
   %b = getelem.i8 $bytes, 2
   %c = load.i8 %b
-  %cw = sext.i8.i64 %c
+  %cw = extend.i8.i64 %c
   call @print_i64(%cw)
   %b3 = getelem.i8 $bytes, 3
   %c3 = load.i8 %b3
-  %c3w = sext.i8.i64 %c3
+  %c3w = extend.i8.i64 %c3
   call @print_i64(%c3w)
   %r = getelem.f64 $ratios, 1
   %rv = load.f64 %r

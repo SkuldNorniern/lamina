@@ -22,7 +22,8 @@ fn @test_i8_pointer_operations() -> i64 {
     %final_val = load.i8 %ptr
 
     # Convert result to i64
-    %result = zext.i8.i64 %final_val
+    %result_bits = bitcast.i8.u8 %final_val
+    %result = extend.u8.i64 %result_bits
     ret.i64 %result
 }
 
@@ -46,7 +47,7 @@ fn @test_u8_pointer_operations() -> i64 {
     %final_val = load.u8 %ptr
 
     # Convert result to i64
-    %result = zext.u8.i64 %final_val
+    %result = extend.u8.i64 %final_val
     ret.i64 %result
 }
 
@@ -70,7 +71,8 @@ fn @test_i16_pointer_operations() -> i64 {
     %final_val = load.i16 %ptr
 
     # Convert result to i64
-    %result = zext.i16.i64 %final_val
+    %result_bits2 = bitcast.i16.u16 %final_val
+    %result = extend.u16.i64 %result_bits2
     ret.i64 %result
 }
 
@@ -94,7 +96,7 @@ fn @test_u16_pointer_operations() -> i64 {
     %final_val = load.u16 %ptr
 
     # Convert result to i64
-    %result = zext.u16.i64 %final_val
+    %result = extend.u16.i64 %final_val
     ret.i64 %result
 }
 
@@ -118,7 +120,8 @@ fn @test_i32_pointer_operations() -> i64 {
     %final_val = load.i32 %ptr
 
     # Convert result to i64
-    %result = zext.i32.i64 %final_val
+    %result_bits3 = bitcast.i32.u32 %final_val
+    %result = extend.u32.i64 %result_bits3
     ret.i64 %result
 }
 
@@ -142,7 +145,7 @@ fn @test_u32_pointer_operations() -> i64 {
     %final_val = load.u32 %ptr
 
     # Convert result to i64 (will truncate, but that's OK for testing)
-    %result = zext.u32.i64 %final_val
+    %result = extend.u32.i64 %final_val
     ret.i64 %result
 }
 
@@ -213,7 +216,7 @@ fn @test_bool_pointer_operations() -> i64 {
     %final_val = load.bool %ptr
 
     # Convert result to i64
-    %result = zext.bool.i64 %final_val
+    %result = extend.bool.i64 %final_val
     ret.i64 %result
 }
 
@@ -237,7 +240,8 @@ fn @test_char_pointer_operations() -> i64 {
     %final_val = load.i8 %ptr
 
     # Convert result to i64
-    %result = zext.i8.i64 %final_val
+    %result_bits4 = bitcast.i8.u8 %final_val
+    %result = extend.u8.i64 %result_bits4
     ret.i64 %result
 }
 
@@ -303,7 +307,8 @@ fn @test_pointer_pointer_operations() -> i64 {
     %is_correct = eq.i32 %loaded_value, %expected
 
     # Convert result to i64
-    %result = zext.i32.i64 %loaded_value
+    %result_bits5 = bitcast.i32.u32 %loaded_value
+    %result = extend.u32.i64 %result_bits5
     ret.i64 %result
 }
 

@@ -63,7 +63,11 @@ pub fn parse_annotations(
                 "cold" => FunctionAnnotation::Cold,
                 "hot" => FunctionAnnotation::Hot,
                 "pure" => FunctionAnnotation::Pure,
-                "const" => FunctionAnnotation::Const,
+                "const" => {
+                    return Err(state.error(
+                        "@const was removed\n  Hint: Use @pure, which marks a function with no side effects",
+                    ));
+                }
                 "internal" => FunctionAnnotation::Internal,
                 "private" => FunctionAnnotation::Private,
                 "hidden" => FunctionAnnotation::Hidden,
@@ -327,11 +331,20 @@ mod tests {
     }
 
     #[test]
+    fn const_annotation_is_removed_in_favour_of_pure() {
+        let source = "@const\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n";
+        let err = parse_module(source)
+            .expect_err("@const should be rejected")
+            .to_string();
+        assert!(err.contains("@const was removed"), "{err}");
+        assert!(err.contains("@pure"), "{err}");
+    }
+
+    #[test]
     fn visibility_and_placement_annotations_parse() {
         let cases = [
             ("hot", FunctionAnnotation::Hot),
             ("pure", FunctionAnnotation::Pure),
-            ("const", FunctionAnnotation::Const),
             ("internal", FunctionAnnotation::Internal),
             ("private", FunctionAnnotation::Private),
             ("hidden", FunctionAnnotation::Hidden),

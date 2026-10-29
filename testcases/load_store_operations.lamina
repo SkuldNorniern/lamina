@@ -40,9 +40,12 @@ fn @test_multiple_operations() -> i64 {
     %final3 = load.i32 %ptr3
 
     # Extend to i64 for summation
-    %f1_i64 = zext.i32.i64 %final1
-    %f2_i64 = zext.i32.i64 %final2
-    %f3_i64 = zext.i32.i64 %final3
+    %f1_i64_bits = bitcast.i32.u32 %final1
+    %f1_i64 = extend.u32.i64 %f1_i64_bits
+    %f2_i64_bits = bitcast.i32.u32 %final2
+    %f2_i64 = extend.u32.i64 %f2_i64_bits
+    %f3_i64_bits = bitcast.i32.u32 %final3
+    %f3_i64 = extend.u32.i64 %f3_i64_bits
 
     %sum1 = add.i64 %f1_i64, %f2_i64
     %total = add.i64 %sum1, %f3_i64
@@ -69,8 +72,9 @@ fn @test_different_types() -> i64 {
     %bool_val = load.bool %bool_ptr
 
     # Convert everything to i64
-    %i32_extended = zext.i32.i64 %i32_val
-    %bool_extended = zext.bool.i64 %bool_val
+    %i32_extended_bits = bitcast.i32.u32 %i32_val
+    %i32_extended = extend.u32.i64 %i32_extended_bits
+    %bool_extended = extend.bool.i64 %bool_val
 
     # Calculate: i32_val + i64_val + bool_val
     %sum1 = add.i64 %i32_extended, %i64_val

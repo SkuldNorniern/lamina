@@ -7,10 +7,12 @@ fn @test_basic_zext() -> i64 {
     %small_val = add.i8 100, 0  # 100 as i8
 
     # Extend to i32
-    %i32_val = zext.i8.i32 %small_val
+    %i32_val_bits = bitcast.i8.u8 %small_val
+    %i32_val = extend.u8.i32 %i32_val_bits
 
     # Extend to i64
-    %i64_val = zext.i32.i64 %i32_val
+    %i64_val_bits = bitcast.i32.u32 %i32_val
+    %i64_val = extend.u32.i64 %i64_val_bits
 
     # Verify the value is preserved
     %expected = add.i64 100, 0
@@ -28,14 +30,17 @@ fn @test_zext_arithmetic() -> i64 {
     %b_i8 = add.i8 20, 0
 
     # Extend to i32 for arithmetic
-    %a_i32 = zext.i8.i32 %a_i8
-    %b_i32 = zext.i8.i32 %b_i8
+    %a_i32_bits = bitcast.i8.u8 %a_i8
+    %a_i32 = extend.u8.i32 %a_i32_bits
+    %b_i32_bits = bitcast.i8.u8 %b_i8
+    %b_i32 = extend.u8.i32 %b_i32_bits
 
     # Perform arithmetic
     %sum_i32 = add.i32 %a_i32, %b_i32  # 30 as i32
 
     # Extend to i64
-    %sum_i64 = zext.i32.i64 %sum_i32
+    %sum_i64_bits = bitcast.i32.u32 %sum_i32
+    %sum_i64 = extend.u32.i64 %sum_i64_bits
 
     # More operations at i64 level
     %result = mul.i64 %sum_i64, 2  # 60 as i64
@@ -51,12 +56,14 @@ fn @test_boolean_zext() -> i64 {
     %false_val = add.bool false, false  # false
 
     # Extend to i32
-    %true_i32 = zext.bool.i32 %true_val   # Should be 1
-    %false_i32 = zext.bool.i32 %false_val # Should be 0
+    %true_i32 = extend.bool.i32 %true_val   # Should be 1
+    %false_i32 = extend.bool.i32 %false_val # Should be 0
 
     # Extend to i64
-    %true_i64 = zext.i32.i64 %true_i32   # Should be 1
-    %false_i64 = zext.i32.i64 %false_i32 # Should be 0
+    %true_i64_bits = bitcast.i32.u32 %true_i32
+    %true_i64 = extend.u32.i64 %true_i64_bits   # Should be 1
+    %false_i64_bits = bitcast.i32.u32 %false_i32
+    %false_i64 = extend.u32.i64 %false_i64_bits # Should be 0
 
     # Calculate: true_i64 + false_i64
     %result = add.i64 %true_i64, %false_i64
@@ -71,13 +78,15 @@ fn @test_zext_conditionals() -> i64 {
     %y_i8 = add.i8 30, 0
 
     # Extend for comparison
-    %x_i32 = zext.i8.i32 %x_i8
-    %y_i32 = zext.i8.i32 %y_i8
+    %x_i32_bits = bitcast.i8.u8 %x_i8
+    %x_i32 = extend.u8.i32 %x_i32_bits
+    %y_i32_bits = bitcast.i8.u8 %y_i8
+    %y_i32 = extend.u8.i32 %y_i32_bits
 
     %is_greater = gt.i32 %x_i32, %y_i32  # true (50 > 30)
 
     # Extend boolean result to i64
-    %result_i64 = zext.bool.i64 %is_greater  # Should be 1
+    %result_i64 = extend.bool.i64 %is_greater  # Should be 1
 
     ret.i64 %result_i64
 }
@@ -89,15 +98,17 @@ fn @test_chained_zext() -> i64 {
     %val_i8 = add.i8 7, 0
 
     # Chain extensions: i8 -> i32 -> i64 (skip i16 for now)
-    %val_i32 = zext.i8.i32 %val_i8
-    %val_i64 = zext.i32.i64 %val_i32
+    %val_i32_bits = bitcast.i8.u8 %val_i8
+    %val_i32 = extend.u8.i32 %val_i32_bits
+    %val_i64_bits = bitcast.i32.u32 %val_i32
+    %val_i64 = extend.u32.i64 %val_i64_bits
 
     # Verify value preservation
     %expected = add.i64 7, 0
     %is_correct = eq.i64 %val_i64, %expected
 
     # Return 1 if correct, 0 if not
-    %result = zext.bool.i64 %is_correct
+    %result = extend.bool.i64 %is_correct
 
     ret.i64 %result
 }
@@ -109,16 +120,18 @@ fn @test_zext_overflow() -> i64 {
     %max_i8 = add.i8 127, 0
 
     # Extend to i32 - should preserve value
-    %max_i32 = zext.i8.i32 %max_i8
+    %max_i32_bits = bitcast.i8.u8 %max_i8
+    %max_i32 = extend.u8.i32 %max_i32_bits
 
     # Extend to i64
-    %max_i64 = zext.i32.i64 %max_i32
+    %max_i64_bits = bitcast.i32.u32 %max_i32
+    %max_i64 = extend.u32.i64 %max_i64_bits
 
     # Verify it's still 127
     %expected = add.i64 127, 0
     %is_correct = eq.i64 %max_i64, %expected
 
-    %result = zext.bool.i64 %is_correct
+    %result = extend.bool.i64 %is_correct
     ret.i64 %result
 }
 
@@ -126,7 +139,8 @@ fn @test_zext_overflow() -> i64 {
 fn @double_value(i32 %input) -> i64 {
   entry:
     %doubled_i32 = mul.i32 %input, 2
-    %result_i64 = zext.i32.i64 %doubled_i32
+    %result_i64_bits = bitcast.i32.u32 %doubled_i32
+    %result_i64 = extend.u32.i64 %result_i64_bits
     ret.i64 %result_i64
 }
 
@@ -136,7 +150,8 @@ fn @test_zext_functions() -> i64 {
     %small_i8 = add.i8 25, 0
 
     # Extend to i32 for function call
-    %i32_val = zext.i8.i32 %small_i8
+    %i32_val_bits2 = bitcast.i8.u8 %small_i8
+    %i32_val = extend.u8.i32 %i32_val_bits2
 
     # Call function
     %result = call @double_value(%i32_val)  # Should double 25 to 50

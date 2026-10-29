@@ -48,11 +48,16 @@ fn @test_many_small_allocations() -> i64 {
     %val5 = load.i32 %ptr5
 
     # Convert to i64 and combine
-    %v1 = zext.i32.i64 %val1
-    %v2 = zext.i32.i64 %val2
-    %v3 = zext.i32.i64 %val3
-    %v4 = zext.i32.i64 %val4
-    %v5 = zext.i32.i64 %val5
+    %v1_bits = bitcast.i32.u32 %val1
+    %v1 = extend.u32.i64 %v1_bits
+    %v2_bits = bitcast.i32.u32 %val2
+    %v2 = extend.u32.i64 %v2_bits
+    %v3_bits = bitcast.i32.u32 %val3
+    %v3 = extend.u32.i64 %v3_bits
+    %v4_bits = bitcast.i32.u32 %val4
+    %v4 = extend.u32.i64 %v4_bits
+    %v5_bits = bitcast.i32.u32 %val5
+    %v5 = extend.u32.i64 %v5_bits
 
     # Result: v1 + v2*10 + v3*100 + v4*1000 + v5*10000
     %t2 = mul.i64 %v2, 10
