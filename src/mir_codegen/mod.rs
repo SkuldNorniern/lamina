@@ -135,6 +135,12 @@ fn check_compiler_runtime_symbols(
     Ok(())
 }
 
+fn not_implemented(arch: TargetArchitecture, os: TargetOperatingSystem) -> LaminaError {
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+        "{arch} code generation is not implemented: target {arch}_{os} produces no output"
+    )))
+}
+
 /// Like [`generate_mir_to_target`], but honors [`MirCodegenSettings`] for register allocation
 /// and optional assembly debug directives.
 pub fn generate_mir_to_target_with_settings<W: Write>(
@@ -285,6 +291,9 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 settings,
             )?;
         }
+        TargetArchitecture::Arm32 => return Err(not_implemented(target_arch, target_os)),
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Lisa => return Err(not_implemented(target_arch, target_os)),
         _ => {
             return Err(LaminaError::ValidationError(format!(
                 "Unsupported target architecture: {target_arch:?}"

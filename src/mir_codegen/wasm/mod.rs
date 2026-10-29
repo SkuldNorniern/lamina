@@ -382,13 +382,21 @@ pub fn generate_mir_wasm_with_units<W: Write>(
             .iter()
             .filter_map(|name| {
                 let sig = &module.functions.get(name)?.sig;
-                Some((
-                    name.clone(),
+                // The WASI helpers that stand in for these take and return i64.
+                let helper = target_os == TargetOperatingSystem::Wasi
+                    && matches!(name.as_str(), "memcpy" | "memmove" | "memset");
+                let shape = if helper {
                     ImportShape {
-                        params: sig.params.iter().map(|p| float_shape(&p.ty)).collect(),
-                        result: sig.ret_ty.as_ref().and_then(float_shape),
-                    },
-                ))
+                        params: vec![Boundary::Integer; sig.params.len()],
+                        result: Boundary::Integer,
+                    }
+                } else {
+                    ImportShape {
+                        params: sig.params.iter().map(|p| boundary(&p.ty)).collect(),
+                        result: sig.ret_ty.as_ref().map_or(Boundary::Integer, boundary),
+                    }
+                };
+                Some((name.clone(), shape))
             })
             .collect(),
     });
@@ -457,11 +465,11 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
             let shape = &addresses.imports[func_name];
             for param in &shape.params {
-                write!(writer, " (param {})", wasm_type(param.as_ref()))?;
+                write!(writer, " (param {})", wasm_type(*param, memory))?;
             }
 
             if func.sig.ret_ty.is_some() {
-                write!(writer, " (result {})", wasm_type(shape.result.as_ref()))?;
+                write!(writer, " (result {})", wasm_type(shape.result, memory))?;
             }
 
             writeln!(writer, "))")?;
@@ -497,10 +505,48 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         writeln!(writer, "  (type ${name} (func{params}{result}))")?;
     }
     if !indirect.is_empty() || addressed {
+        // A table entry is called with i64 arguments, so an import whose boundary is not
+        // all i64 goes through a thunk that converts them.
+        for name in &table {
+            let (Some(shape), Some(func)) =
+                (addresses.imports.get(*name), module.functions.get(*name))
+            else {
+                continue;
+            };
+            if !shape.is_all_integer() {
+                let mangled = abi.mangle_function_name(name);
+                write!(writer, "  (func ${mangled}{THUNK_SUFFIX}")?;
+                for _ in &shape.params {
+                    write!(writer, " (param i64)")?;
+                }
+                if func.sig.ret_ty.is_some() {
+                    write!(writer, " (result i64)")?;
+                }
+                writeln!(writer)?;
+                for index in 0..shape.params.len() {
+                    writeln!(writer, "    local.get {index}")?;
+                    convert_param(writer, shape.params[index], memory)?;
+                }
+                writeln!(writer, "    call ${mangled}")?;
+                if func.sig.ret_ty.is_some() {
+                    convert_result(writer, shape.result, memory)?;
+                }
+                writeln!(writer, "  )")?;
+            }
+        }
         writeln!(writer, "  (table {} funcref)", table.len())?;
         write!(writer, "  (elem (i32.const 0)")?;
         for name in &table {
-            write!(writer, " ${}", abi.mangle_function_name(name))?;
+            let mangled = abi.mangle_function_name(name);
+            let thunked = addresses
+                .imports
+                .get(*name)
+                .is_some_and(|shape| !shape.is_all_integer());
+            if thunked {
+                write!(writer, " ${mangled}{THUNK_SUFFIX}")?;
+            } else {
+                write!(writer, " ${mangled}")?;
+            }
         }
         writeln!(writer, ")")?;
     }
@@ -793,24 +839,76 @@ pub struct Addresses {
     wasi: bool,
 }
 
-/// Width of each parameter and of the result of an imported function, `None` where the
-/// value is an integer and travels as an i64.
+/// How a value crosses into or out of an imported function. Integers travel as i64,
+/// pointers as the memory index type, and floats as the float the host declares.
+#[derive(Clone, Copy)]
+pub enum Boundary {
+    Integer,
+    Pointer,
+    Float(MirType),
+}
+
 #[derive(Clone)]
 pub struct ImportShape {
-    params: Vec<Option<MirType>>,
-    result: Option<MirType>,
+    params: Vec<Boundary>,
+    result: Boundary,
 }
 
-fn float_shape(ty: &MirType) -> Option<MirType> {
-    ty.is_float().then_some(*ty)
+fn boundary(ty: &MirType) -> Boundary {
+    if ty.is_float() {
+        Boundary::Float(*ty)
+    } else if matches!(ty, MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_))) {
+        Boundary::Pointer
+    } else {
+        Boundary::Integer
+    }
 }
 
-/// Declares `ty` the way a wasm signature spells it.
-fn wasm_type(ty: Option<&MirType>) -> &'static str {
-    match ty {
-        Some(ty) if ty.size_bytes() == 4 => "f32",
-        Some(_) => "f64",
-        None => "i64",
+impl ImportShape {
+    fn is_all_integer(&self) -> bool {
+        matches!(self.result, Boundary::Integer)
+            && self.params.iter().all(|p| matches!(p, Boundary::Integer))
+    }
+}
+
+/// Suffix of the function that adapts an import to the i64 signature `call_indirect` declares.
+const THUNK_SUFFIX: &str = ".thunk";
+
+/// Turns an i64 argument on the stack into what the import declares.
+fn convert_param(
+    writer: &mut impl Write,
+    boundary: Boundary,
+    memory: Memory,
+) -> Result<(), LaminaError> {
+    match boundary {
+        Boundary::Integer => {}
+        Boundary::Pointer => memory.narrow(writer, "      ")?,
+        Boundary::Float(ty) => reinterpret_out(writer, &ty)?,
+    }
+    Ok(())
+}
+
+/// Turns a value the import returned back into the i64 the backend holds.
+fn convert_result(
+    writer: &mut impl Write,
+    boundary: Boundary,
+    memory: Memory,
+) -> Result<(), LaminaError> {
+    match boundary {
+        Boundary::Integer => {}
+        Boundary::Pointer => memory.widen(writer, "      ")?,
+        Boundary::Float(ty) => reinterpret_in(writer, &ty)?,
+    }
+    Ok(())
+}
+
+/// Declares `boundary` the way a wasm signature spells it.
+fn wasm_type(boundary: Boundary, memory: Memory) -> &'static str {
+    match boundary {
+        Boundary::Integer => "i64",
+        Boundary::Pointer => memory.index_type(),
+        Boundary::Float(ty) if ty.size_bytes() == 4 => "f32",
+        Boundary::Float(_) => "f64",
     }
 }
 
@@ -1107,11 +1205,8 @@ fn emit_instruction_wasm(
             let shape = addresses.imports.get(name);
             for (index, arg) in args.iter().enumerate() {
                 load_operand_wasm(arg, writer, vreg_to_local)?;
-                if let Some(ty) = shape
-                    .and_then(|shape| shape.params.get(index))
-                    .and_then(Option::as_ref)
-                {
-                    reinterpret_out(writer, ty)?;
+                if let Some(boundary) = shape.and_then(|shape| shape.params.get(index)) {
+                    convert_param(writer, *boundary, memory)?;
                 }
             }
 
@@ -1120,8 +1215,8 @@ fn emit_instruction_wasm(
             let symbol = name.strip_prefix("lamina.").unwrap_or(name);
             writeln!(writer, "      call ${symbol}")?;
 
-            if let Some(ty) = shape.and_then(|shape| shape.result.as_ref()) {
-                reinterpret_in(writer, ty)?;
+            if let Some(shape) = shape {
+                convert_result(writer, shape.result, memory)?;
             }
             if addresses.wasi && ret.is_none() && matches!(symbol, "memcpy" | "memmove" | "memset")
             {

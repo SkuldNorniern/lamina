@@ -651,3 +651,38 @@ fn wasi_io_outcomes_reach_stdout_as_their_low_byte() {
         assert_eq!(output.stdout, expected, "{tag}");
     }
 }
+
+#[test]
+fn pointer_imports_use_the_memory_index_type() {
+    let source = "@extern\nfn @takes(ptr %p) -> ptr\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 $text, 0\n  %r = call @takes(%p)\n  %v = load.i8 %r\n  %w = extend.i8.i64 %v\n  ret.i64 %w\n}\n\nglobal $text: [6 x i8] = \"abcde\"\n";
+
+    let wat32 = emit_wat(source, TargetArchitecture::Wasm32);
+    let import = wat32
+        .lines()
+        .find(|line| line.contains("takes"))
+        .expect("import should be emitted");
+    assert!(import.contains("(param i32) (result i32)"), "{wat32}");
+    assert!(wat32.contains("i32.wrap_i64"), "{wat32}");
+    assert!(wat32.contains("i64.extend_i32_u"), "{wat32}");
+
+    let wat64 = emit_wat(source, TargetArchitecture::Wasm64);
+    let import = wat64
+        .lines()
+        .find(|line| line.contains("takes"))
+        .expect("import should be emitted");
+    assert!(import.contains("(param i64) (result i64)"), "{wat64}");
+}
+
+#[test]
+fn pointer_imports_called_indirectly_go_through_a_thunk() {
+    let source = "@extern\nfn @takes(ptr %p) -> i64\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 $text, 0\n  %f = funcaddr @takes\n  %r = callptr.i64 %f(ptr %p)\n  ret.i64 %r\n}\n\nglobal $text: [6 x i8] = \"abcde\"\n";
+    let wat = emit_wat(source, TargetArchitecture::Wasm32);
+    assert!(
+        wat.contains("(func $takes.thunk (param i64) (result i64)"),
+        "{wat}"
+    );
+    assert!(
+        wat.contains("(elem (i32.const 0) $main $takes.thunk)"),
+        "{wat}"
+    );
+}

@@ -106,7 +106,7 @@ impl FromStr for TargetArchitecture {
             "arx64" => Ok(Self::Arx64),
             "arm32" => Ok(Self::Arm32),
             "riscv32" => Ok(Self::Riscv32),
-            "riscv64" => Ok(Self::Riscv64),
+            "riscv64" | "riscv64gc" => Ok(Self::Riscv64),
             #[cfg(feature = "nightly")]
             "riscv128" => Ok(Self::Riscv128),
             "wasm32" => Ok(Self::Wasm32),
@@ -275,6 +275,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "wasm32_wasi",
     "riscv32_unknown",
     "riscv64_unknown",
+    "riscv64gc_linux",
     "ppc64_linux",
     "ppc64le_linux",
     "ppc64_unknown",
@@ -339,5 +340,15 @@ mod tests {
         assert_eq!(TargetOperatingSystem::VisionOS.to_string(), "visionos");
         assert_eq!(TargetOperatingSystem::Psp.to_string(), "psp");
         assert_eq!(TargetOperatingSystem::Psx.to_string(), "psx");
+    }
+
+    #[test]
+    fn riscv64gc_is_an_alias_for_riscv64() {
+        let target: Target = "riscv64gc_linux".parse().unwrap();
+        assert_eq!(
+            target,
+            Target::new(TargetArchitecture::Riscv64, TargetOperatingSystem::Linux)
+        );
+        assert_eq!(target.to_string(), "riscv64_linux");
     }
 }
