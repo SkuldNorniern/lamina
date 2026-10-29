@@ -140,7 +140,7 @@ use std::{
 use crate::{
     function::Function,
     instruction::Instruction,
-    types::{Identifier, Literal, Type, Value},
+    types::{Identifier, Literal, Type, Value, resolve_type_names},
 };
 
 /// A named type declaration (e.g., `type !Vec2 = struct { ... }`).
@@ -349,6 +349,7 @@ impl<'a> Module<'a> {
             }));
         }
         self.validate_named_types(&mut all_errors);
+        self.validate_field_pointers(&mut all_errors);
         if all_errors.is_empty() {
             Ok(())
         } else {
@@ -377,8 +378,14 @@ impl<'a> Module<'a> {
             ));
             for block in func.basic_blocks.values() {
                 for instr in &block.instructions {
-                    if let Instruction::Alloc { allocated_ty, .. } = instr {
-                        uses.push((format!("alloc in '@{}'", func.name), allocated_ty));
+                    match instr {
+                        Instruction::Alloc { allocated_ty, .. } => {
+                            uses.push((format!("alloc in '@{}'", func.name), allocated_ty));
+                        }
+                        Instruction::GetFieldPtr { struct_type, .. } => {
+                            uses.push((format!("getfieldptr in '@{}'", func.name), struct_type));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -401,6 +408,36 @@ impl<'a> Module<'a> {
                 errors.push(format!(
                     "type '!{name}' contains itself, so its size is infinite"
                 ));
+            }
+        }
+    }
+
+    fn validate_field_pointers(&self, errors: &mut Vec<String>) {
+        for func in self.functions.values() {
+            for block in func.basic_blocks.values() {
+                for instr in &block.instructions {
+                    let Instruction::GetFieldPtr {
+                        struct_type,
+                        field_index,
+                        ..
+                    } = instr
+                    else {
+                        continue;
+                    };
+                    match resolve_type_names(struct_type, &self.type_declarations) {
+                        Some(Type::Struct(fields)) if *field_index < fields.len() => {}
+                        Some(Type::Struct(fields)) => errors.push(format!(
+                            "getfieldptr in '@{}' takes field {field_index}, but its struct has {} fields",
+                            func.name,
+                            fields.len()
+                        )),
+                        Some(other) => errors.push(format!(
+                            "getfieldptr in '@{}' needs a struct layout, found {other}",
+                            func.name
+                        )),
+                        None => {}
+                    }
+                }
             }
         }
     }

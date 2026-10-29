@@ -701,16 +701,18 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends a struct field pointer instruction.
+    /// Appends a struct field pointer instruction laid out as `struct_type`.
     pub fn getfieldptr(
         &mut self,
         result: impl AsRef<str>,
         struct_ptr: &OwnedValue,
+        struct_type: impl Into<OwnedType>,
         field_index: usize,
     ) -> &mut Self {
         let t = format!(
-            "%{} = getfieldptr {}, {}",
+            "%{} = getfieldptr.{} {}, {}",
             result.as_ref(),
+            struct_type.into(),
             struct_ptr,
             field_index
         );

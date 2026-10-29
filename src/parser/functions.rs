@@ -2,7 +2,10 @@
 
 use crate::{
     Label, LaminaError,
-    ir::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
+    ir::{
+        BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
+        Instruction, Type,
+    },
     parser::{instructions::parse_instruction, state::ParserState, types::parse_type},
 };
 use std::collections::{HashMap, HashSet};
@@ -85,6 +88,8 @@ pub fn parse_annotations(
                     FunctionAnnotation::Section(name.to_string())
                 }
                 "align" => FunctionAnnotation::Align(parse_alignment_argument(state)?),
+                "naked" => FunctionAnnotation::Naked,
+                "no_red_zone" => FunctionAnnotation::NoRedZone,
                 _ => {
                     let hint = unknown_annotation_hint(name, super::get_annotation_names());
                     return Err(state.error(format!(
@@ -142,7 +147,8 @@ pub fn parse_annotations(
 
 fn conflicts(a: &FunctionAnnotation, b: &FunctionAnnotation) -> bool {
     use FunctionAnnotation::{
-        Align, Cold, Export, Hidden, Hot, Internal, Private, Protected, Section,
+        Align, Cold, Export, Hidden, Hot, Inline, Internal, Naked, Private, Protected, Pure,
+        Section,
     };
     let visibility = |x: &FunctionAnnotation| matches!(x, Internal | Private | Hidden | Protected);
     let local = |x: &FunctionAnnotation| matches!(x, Internal | Private);
@@ -151,7 +157,8 @@ fn conflicts(a: &FunctionAnnotation, b: &FunctionAnnotation) -> bool {
             || (matches!((a, b), (Cold, Hot) | (Hot, Cold)))
             || matches!((a, b), (Section(_), Section(_)) | (Align(_), Align(_)))
             || (local(a) && *b == Export)
-            || (*a == Export && local(b)))
+            || (*a == Export && local(b))
+            || matches!((a, b), (Naked, Inline | Pure) | (Inline | Pure, Naked)))
 }
 
 /// Parses a function definition.
@@ -200,6 +207,10 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     let entry_block = entry_block_label
         .ok_or_else(|| state.error("Function must have at least one basic block"))?;
 
+    if annotations.contains(&FunctionAnnotation::Naked) {
+        validate_naked_body(state, name, &signature, &basic_blocks)?;
+    }
+
     Ok(Function {
         name,
         signature,
@@ -207,6 +218,59 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
         basic_blocks,
         entry_block,
     })
+}
+
+/// Rejects a `@naked` function whose body would need a prologue, epilogue or values.
+fn validate_naked_body(
+    state: &ParserState<'_>,
+    name: &str,
+    signature: &FunctionSignature<'_>,
+    basic_blocks: &HashMap<Label<'_>, BasicBlock<'_>>,
+) -> Result<(), LaminaError> {
+    if !signature.params.is_empty() || signature.variadic {
+        return Err(state.error(format!(
+            "@naked function '{name}' takes parameters\n  Hint: A naked function has no argument setup; read the registers in inline asm"
+        )));
+    }
+    if signature.return_type != Type::Void {
+        return Err(state.error(format!(
+            "@naked function '{name}' returns a value\n  Hint: A naked function returns void; the asm writes the result where it needs to go"
+        )));
+    }
+    let [block] = basic_blocks.values().collect::<Vec<_>>()[..] else {
+        return Err(state.error(format!(
+            "@naked function '{name}' must have exactly one basic block\n  Hint: Write the whole body as one block of inline asm ending in unreachable"
+        )));
+    };
+    let (last, body) = block
+        .instructions
+        .split_last()
+        .ok_or_else(|| state.error(format!("@naked function '{name}' has an empty body")))?;
+    if !matches!(last, Instruction::Unreachable) {
+        return Err(state.error(format!(
+            "@naked function '{name}' must end in unreachable\n  Hint: Let the asm leave the function (iret, jmp, hlt loop); unreachable marks the end"
+        )));
+    }
+    for inst in body {
+        match inst {
+            Instruction::InlineAsm {
+                result: None,
+                operands,
+                ..
+            } if operands.is_empty() => {}
+            Instruction::InlineAsm { .. } => {
+                return Err(state.error(format!(
+                    "@naked function '{name}' uses inline asm with operands or a result\n  Hint: A naked body computes no IR values; name the registers in the template"
+                )));
+            }
+            other => {
+                return Err(state.error(format!(
+                    "@naked function '{name}' contains '{other}'\n  Hint: A naked body is inline asm only, because any other instruction expects a frame"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Parses a function signature.
@@ -376,5 +440,71 @@ mod tests {
     fn hidden_and_protected_may_combine_with_export() {
         let source = "@export\n@hidden\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n";
         assert_eq!(annotations_of(source).len(), 2);
+    }
+
+    fn naked_error(source: &str) -> String {
+        parse_module(source)
+            .expect_err("naked body must be rejected")
+            .to_string()
+    }
+
+    #[test]
+    fn naked_and_no_red_zone_parse_with_asm_body() {
+        let source = "@naked\n@no_red_zone\nfn @isr() -> void {\nentry:\n    asm.void \"cli; hlt\"\n    unreachable\n}\n";
+        assert_eq!(
+            annotations_of(source),
+            vec![FunctionAnnotation::Naked, FunctionAnnotation::NoRedZone]
+        );
+    }
+
+    #[test]
+    fn naked_body_rejects_ir_instructions_and_terminators() {
+        let cases = [
+            "@naked\nfn @f() -> void {\nentry:\n    asm.void \"cli\"\n    ret.void\n}\n",
+            "@naked\nfn @f() -> void {\nentry:\n    %x = add.i64 1, 2\n    unreachable\n}\n",
+            "@naked\nfn @f() -> void {\nentry:\n    asm.void \"cli\"\n    jmp next\nnext:\n    unreachable\n}\n",
+        ];
+        for source in cases {
+            let message = naked_error(source);
+            assert!(message.contains("@naked function 'f'"), "{message}");
+        }
+    }
+
+    #[test]
+    fn naked_body_must_end_in_unreachable() {
+        let message = naked_error(
+            "@naked\nfn @f() -> void {\nentry:\n    asm.void \"hlt\"\n    ret.void\n}\n",
+        );
+        assert!(message.contains("must end in unreachable"), "{message}");
+    }
+
+    #[test]
+    fn naked_signature_must_take_no_parameters_and_return_void() {
+        let with_param = naked_error(
+            "@naked\nfn @f(i64 %a) -> void {\nentry:\n    asm.void \"cli\"\n    unreachable\n}\n",
+        );
+        assert!(with_param.contains("takes parameters"), "{with_param}");
+        let with_return = naked_error(
+            "@naked\nfn @f() -> i64 {\nentry:\n    asm.void \"cli\"\n    unreachable\n}\n",
+        );
+        assert!(with_return.contains("returns a value"), "{with_return}");
+    }
+
+    #[test]
+    fn naked_asm_with_operands_or_result_is_rejected() {
+        let operands = naked_error(
+            "@naked\nfn @f() -> void {\nentry:\n    %v = asm.i64 \"movq $$1, $0\", out(rax)\n    unreachable\n}\n",
+        );
+        assert!(operands.contains("operands or a result"), "{operands}");
+    }
+
+    #[test]
+    fn naked_conflicts_with_inline_and_pure() {
+        for other in ["@inline", "@pure"] {
+            let source =
+                format!("@naked\n{other}\nfn @f() -> void {{\nentry:\n    unreachable\n}}\n");
+            let message = naked_error(&source);
+            assert!(message.contains("Conflicting annotations"), "{message}");
+        }
     }
 }

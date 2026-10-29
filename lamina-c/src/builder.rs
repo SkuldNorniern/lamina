@@ -721,18 +721,39 @@ pub unsafe extern "C" fn lia_builder_getelem(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_getfieldptr(
+    _builder: *mut LaminaBuilder,
+    _result: *const c_char,
+    _struct_ptr: *const LaminaValue,
+    _field_index: usize,
+) -> LaminaStatus {
+    set_error("getfieldptr needs its struct layout; call lia_builder_getfieldptr_typed");
+    LaminaStatus::ErrorInvalidArgument
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_getfieldptr_typed(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     struct_ptr: *const LaminaValue,
+    struct_type: *const LaminaType,
     field_index: usize,
 ) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         let b = require_mut!(builder, "builder");
         let r = require_str!(result, "result");
         let sp = require_ref!(struct_ptr, "struct_ptr");
-        b.0.getfieldptr(r, &sp.0, field_index);
-        clear_error();
-        LaminaStatus::Ok
+        let st = require_ref!(struct_type, "struct_type");
+        match &st.0 {
+            OwnedType::Struct(_) | OwnedType::Named(_) => {
+                b.0.getfieldptr(r, &sp.0, st.0.clone(), field_index);
+                clear_error();
+                LaminaStatus::Ok
+            }
+            _ => {
+                set_error("getfieldptr struct_type must be a struct or named type");
+                LaminaStatus::ErrorInvalidArgument
+            }
+        }
     }))
 }
 
@@ -1025,6 +1046,38 @@ mod tests {
             assert!(!ty.is_null());
             lia_type_free(field_ty);
             lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn getfieldptr_without_layout_fails_and_typed_form_builds() {
+        unsafe {
+            let builder = lia_builder_create();
+            let result = cs("p");
+            let ptr = lia_value_var(cs("s").as_ptr());
+            let untyped = lia_builder_getfieldptr(builder, result.as_ptr(), ptr, 1);
+            assert_eq!(untyped, LaminaStatus::ErrorInvalidArgument);
+            let layout = lia_type_named(cs("Pair").as_ptr());
+            let typed = lia_builder_getfieldptr_typed(builder, result.as_ptr(), ptr, layout, 1);
+            assert_eq!(typed, LaminaStatus::Ok);
+            lia_type_free(layout);
+            lia_value_free(ptr);
+            lia_builder_free(builder);
+        }
+    }
+
+    #[test]
+    fn getfieldptr_typed_rejects_a_primitive_layout() {
+        unsafe {
+            let builder = lia_builder_create();
+            let result = cs("p");
+            let ptr = lia_value_var(cs("s").as_ptr());
+            let layout = lia_type_i64();
+            let status = lia_builder_getfieldptr_typed(builder, result.as_ptr(), ptr, layout, 0);
+            assert_eq!(status, LaminaStatus::ErrorInvalidArgument);
+            lia_type_free(layout);
+            lia_value_free(ptr);
+            lia_builder_free(builder);
         }
     }
 

@@ -572,24 +572,23 @@ mod tests {
     fn test_getfieldptr() {
         let mut builder = IRBuilder::new();
 
+        let point_ty = Type::Struct(vec![
+            StructField {
+                name: "x",
+                ty: Type::Primitive(PrimitiveType::I32),
+            },
+            StructField {
+                name: "y",
+                ty: Type::Primitive(PrimitiveType::I32),
+            },
+        ]);
+
         builder
             .function("struct_ops", Type::Primitive(PrimitiveType::I32))
-            .stackalloc(
-                "point",
-                Type::Struct(vec![
-                    StructField {
-                        name: "x",
-                        ty: Type::Primitive(PrimitiveType::I32),
-                    },
-                    StructField {
-                        name: "y",
-                        ty: Type::Primitive(PrimitiveType::I32),
-                    },
-                ]),
-            )
-            .getfieldptr("x_ptr", var("point"), 0)
+            .stackalloc("point", point_ty.clone())
+            .getfieldptr("x_ptr", var("point"), point_ty.clone(), 0)
             .store(Type::Primitive(PrimitiveType::I32), var("x_ptr"), i32(10))
-            .getfieldptr("y_ptr", var("point"), 1)
+            .getfieldptr("y_ptr", var("point"), point_ty, 1)
             .store(Type::Primitive(PrimitiveType::I32), var("y_ptr"), i32(20))
             .load("x_val", Type::Primitive(PrimitiveType::I32), var("x_ptr"))
             .ret(Type::Primitive(PrimitiveType::I32), var("x_val"));
@@ -1124,9 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn test_getfieldptr_typed() {
-        use crate::types::struct_field_byte_offset;
-
+    fn test_getfieldptr_keeps_layout() {
         let mut builder = IRBuilder::new();
 
         let fields = vec![
@@ -1138,70 +1135,30 @@ mod tests {
                 name: "value",
                 ty: Type::Primitive(PrimitiveType::I32),
             },
-            StructField {
-                name: "extra",
-                ty: Type::Primitive(PrimitiveType::I64),
-            },
         ];
+        let layout = Type::Struct(fields);
 
         builder
             .function("typed_gep", Type::Void)
-            .stackalloc("s", Type::Struct(fields.clone()))
-            .getfieldptr_typed("flag_ptr", var("s"), &fields, 0)
-            .getfieldptr_typed("val_ptr", var("s"), &fields, 1)
-            .getfieldptr_typed("ext_ptr", var("s"), &fields, 2)
+            .stackalloc("s", layout.clone())
+            .getfieldptr("value_ptr", var("s"), layout.clone(), 1)
             .ret_void();
 
         let module = builder.build();
-        let func = &module.functions["typed_gep"];
-        let entry = &func.basic_blocks["entry"];
+        let entry = &module.functions["typed_gep"].basic_blocks["entry"];
 
-        // GetFieldPtr for field 0 (flag: i8) — offset 0
         if let Instruction::GetFieldPtr {
             result,
             field_index,
-            field_byte_offset,
+            struct_type,
             ..
         } = &entry.instructions[1]
         {
-            assert_eq!(*result, "flag_ptr");
-            assert_eq!(*field_index, 0);
-            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 0));
-            assert_eq!(*field_byte_offset, Some(0));
-        } else {
-            panic!("Expected GetFieldPtr for flag");
-        }
-
-        // GetFieldPtr for field 1 (value: i32) — ABI offset = align_up(1, 4) = 4
-        if let Instruction::GetFieldPtr {
-            result,
-            field_index,
-            field_byte_offset,
-            ..
-        } = &entry.instructions[2]
-        {
-            assert_eq!(*result, "val_ptr");
+            assert_eq!(*result, "value_ptr");
             assert_eq!(*field_index, 1);
-            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 1));
-            assert_eq!(*field_byte_offset, Some(4));
+            assert_eq!(*struct_type, layout);
         } else {
             panic!("Expected GetFieldPtr for value");
-        }
-
-        // GetFieldPtr for field 2 (extra: i64) — ABI offset = align_up(4+4, 8) = 8
-        if let Instruction::GetFieldPtr {
-            result,
-            field_index,
-            field_byte_offset,
-            ..
-        } = &entry.instructions[3]
-        {
-            assert_eq!(*result, "ext_ptr");
-            assert_eq!(*field_index, 2);
-            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 2));
-            assert_eq!(*field_byte_offset, Some(8));
-        } else {
-            panic!("Expected GetFieldPtr for extra");
         }
     }
 

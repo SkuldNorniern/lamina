@@ -850,12 +850,10 @@ pub enum Instruction<'a> {
         // Get pointer to struct field
         result: Identifier<'a>, // Result is always ptr
         struct_ptr: Value<'a>,  // Must be a ptr to a struct or named struct type
+        /// Layout the field offset is computed from: a struct, or a named type that
+        /// resolves to one.
+        struct_type: Type<'a>,
         field_index: usize,
-        /// Pre-computed byte offset of this field using ABI-correct struct layout.
-        /// `None` when the struct type is unavailable (e.g., parsed from text without
-        /// type context); the backend then falls back to a fixed 8-byte-per-field stride.
-        /// Set by `IRBuilder::getfieldptr_typed` when the full field list is known.
-        field_byte_offset: Option<u64>,
     },
     GetElemPtr {
         // Get pointer to array element
@@ -1645,9 +1643,12 @@ impl fmt::Display for Instruction<'_> {
             Instruction::GetFieldPtr {
                 result,
                 struct_ptr,
+                struct_type,
                 field_index,
-                ..
-            } => write!(f, "%{result} = getfieldptr {struct_ptr}, {field_index}"),
+            } => write!(
+                f,
+                "%{result} = getfieldptr.{struct_type} {struct_ptr}, {field_index}"
+            ),
             Instruction::GetElemPtr {
                 result,
                 array_ptr,
@@ -1880,12 +1881,12 @@ mod tests {
         let instr11 = Instruction::GetFieldPtr {
             result: "field_ptr",
             struct_ptr: Value::Variable("struct_instance_ptr"),
+            struct_type: Type::Named("Pair"),
             field_index: 1,
-            field_byte_offset: None,
         };
         assert_eq!(
             format!("{}", instr11),
-            "%field_ptr = getfieldptr %struct_instance_ptr, 1"
+            "%field_ptr = getfieldptr.!Pair %struct_instance_ptr, 1"
         );
 
         // GetElemPtr

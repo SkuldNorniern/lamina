@@ -6,7 +6,7 @@
 use crate::{
     builder::IRBuilder,
     instruction::Instruction,
-    types::{PrimitiveType, StructField, Type, Value, struct_field_byte_offset},
+    types::{PrimitiveType, Type, Value},
 };
 
 impl<'a> IRBuilder<'a> {
@@ -54,43 +54,23 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Gets a pointer to a struct field using a fixed 8-byte-per-field stride.
+    /// Gets a pointer to a field of a struct laid out as `struct_type`.
     ///
-    /// For structs with non-uniform or non-8-byte fields, use [`Self::getfieldptr_typed`]
-    /// which computes the correct ABI offset from the field type list.
+    /// The byte offset is computed from the layout when the IR is lowered, using standard
+    /// C-ABI alignment rules. A named layout is resolved against the module's type
+    /// declarations.
     pub fn getfieldptr(
         &mut self,
         result: &'a str,
         struct_ptr: Value<'a>,
+        struct_type: impl Into<Type<'a>>,
         field_index: usize,
     ) -> &mut Self {
         self.inst(Instruction::GetFieldPtr {
             result,
             struct_ptr,
+            struct_type: struct_type.into(),
             field_index,
-            field_byte_offset: None,
-        })
-    }
-
-    /// Gets a pointer to a struct field with ABI-correct byte offset computation.
-    ///
-    /// The `fields` slice must describe the complete struct layout; `field_index` selects
-    /// which field to address. The byte offset is computed from `fields` using standard
-    /// C-ABI alignment rules (natural alignment, no packing) and embedded in the
-    /// instruction so the MIR backend uses the correct offset instead of a fixed stride.
-    pub fn getfieldptr_typed(
-        &mut self,
-        result: &'a str,
-        struct_ptr: Value<'a>,
-        fields: &[StructField<'a>],
-        field_index: usize,
-    ) -> &mut Self {
-        let field_byte_offset = struct_field_byte_offset(fields, field_index);
-        self.inst(Instruction::GetFieldPtr {
-            result,
-            struct_ptr,
-            field_index,
-            field_byte_offset,
         })
     }
 

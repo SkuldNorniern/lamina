@@ -83,7 +83,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "getfield" => Err(removed_opcode_error(
                 state,
                 opcode_str,
-                "'getfieldptr <ptr>, <index>'",
+                "'getfieldptr.<struct-type> <ptr>, <index>'",
             )),
             "getelem" => parse_getelem(state, result),
             "getelementptr" => Err(removed_opcode_error(
@@ -96,7 +96,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "tuple" | "extract" => Err(removed_opcode_error(
                 state,
                 opcode_str,
-                "a struct in memory: 'stackalloc.<type>' then 'getfieldptr <ptr>, <index>'",
+                "a struct in memory: 'stackalloc.<type>' then 'getfieldptr.<type> <ptr>, <index>'",
             )),
             "call" => parse_call(state, Some(result)),
             "asm" => parse_asm(state, Some(result)),
@@ -901,12 +901,11 @@ fn parse_getfield<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    if state.current_char() == Some('.') {
-        return Err(state.error(
-            "getfieldptr takes no type suffix, because its offset comes from the struct layout\n  Hint: Write 'getfieldptr <ptr>, <index>'. For an array element, use 'getelem.<type> <ptr>, <index>', which needs the element type to scale the index",
-        ));
-    }
-
+    require_type_suffix(
+        state,
+        "getfieldptr needs its struct layout as a suffix, because the field offset depends on it\n  Hint: Did you mean 'getfieldptr.<struct-type> <ptr>, <index>', e.g. 'getfieldptr.!Pair %p, 1'?",
+    )?;
+    let struct_type = parse_type_suffix(state)?;
     let struct_ptr = parse_value(state)?;
     state.expect_char(',')?;
     let field_index_val = state.parse_integer()?;
@@ -919,8 +918,8 @@ fn parse_getfield<'a>(
     Ok(Instruction::GetFieldPtr {
         result,
         struct_ptr,
+        struct_type,
         field_index,
-        field_byte_offset: None,
     })
 }
 
@@ -930,7 +929,7 @@ fn parse_getelem<'a>(
 ) -> Result<Instruction<'a>, LaminaError> {
     require_type_suffix(
         state,
-        "getelem takes its element type as a suffix, because the index is scaled by the element size\n  Hint: Write 'getelem.<type> <ptr>, <index>', e.g. 'getelem.i8 %buf, 0'. For a struct field, use 'getfieldptr <ptr>, <index>', which takes no suffix",
+        "getelem takes its element type as a suffix, because the index is scaled by the element size\n  Hint: Write 'getelem.<type> <ptr>, <index>', e.g. 'getelem.i8 %buf, 0'. For a struct field, use 'getfieldptr.<struct-type> <ptr>, <index>'",
     )?;
     let element_type = parse_type_suffix(state)?;
     let array_ptr = parse_value(state)?;

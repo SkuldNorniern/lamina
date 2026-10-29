@@ -395,6 +395,24 @@ pub enum FunctionAnnotation {
     /// At most one alignment annotation is allowed per function.
     Align(u32),
 
+    /// Emit this function with no prologue or epilogue, written `@naked`.
+    ///
+    /// The body is exactly the inline assembly the author wrote, so an interrupt entry
+    /// point can save and restore its own state. Only a `void` function with no
+    /// parameters qualifies, and its body must be inline assembly with no operands,
+    /// ending in `unreachable`. Any other instruction is rejected, since it would
+    /// expect a frame.
+    Naked,
+
+    /// Promise that this function does not use the 128-byte System V red zone below
+    /// `%rsp`, written `@no_red_zone`.
+    ///
+    /// An interrupt clobbers that area, so code that runs with interrupts enabled must
+    /// not keep data in it. The backend never stores below `%rsp` without first moving
+    /// `%rsp`, so every function meets this promise already; the annotation makes the
+    /// requirement explicit in the source.
+    NoRedZone,
+
     /// Mark this function as unsafe (bypasses safety checks).
     ///
     /// Unsafe functions may perform operations that violate memory safety
@@ -1018,6 +1036,8 @@ impl fmt::Display for FunctionAnnotation {
             FunctionAnnotation::CallingConvention(cc) => write!(f, "@calling_convention({cc})"),
             FunctionAnnotation::Section(section) => write!(f, "@section(\"{section}\")"),
             FunctionAnnotation::Align(alignment) => write!(f, "@align({alignment})"),
+            FunctionAnnotation::Naked => write!(f, "@naked"),
+            FunctionAnnotation::NoRedZone => write!(f, "@no_red_zone"),
             FunctionAnnotation::Unsafe => write!(f, "@unsafe"),
             FunctionAnnotation::Deprecated(None) => write!(f, "@deprecated"),
             FunctionAnnotation::Deprecated(Some(msg)) => write!(f, "@deprecated({msg})"),

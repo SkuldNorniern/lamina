@@ -8,7 +8,6 @@ mod globals;
 #[cfg(test)]
 mod inline_asm_tests;
 mod instructions;
-mod offsets;
 pub mod state;
 mod types;
 #[cfg(test)]
@@ -180,6 +179,8 @@ pub fn get_annotation_names() -> &'static [&'static str] {
         "weak",
         "section",
         "align",
+        "naked",
+        "no_red_zone",
     ]
 }
 
@@ -492,7 +493,6 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     check_call_sites(&mut state, &module)?;
     check_typed_call_args(&mut state, &module)?;
     check_untyped_call_literals(&mut state, &module)?;
-    offsets::resolve_field_offsets(&mut module);
     module
         .validate()
         .map_err(|errors| LaminaError::ValidationError(errors.join("\n")))?;
@@ -954,7 +954,7 @@ mod tests {
                 %elem = load.i32 %elem_ptr
                 
                 %struct_ptr = stackalloc.struct { x: i32, y: i32 }
-                %y_ptr = getfieldptr %struct_ptr, 1
+                %y_ptr = getfieldptr.struct { x: i32, y: i32 } %struct_ptr, 1
                 %y_val = load.i32 %y_ptr
                 
                 ret.ptr %struct_ptr
@@ -1920,12 +1920,14 @@ ret.i64 0
     #[test]
     fn getelem_and_getfieldptr_name_each_other_in_their_errors() {
         let err = parse_error("%e = getelem %buf, 0");
-        assert!(err.contains("getfieldptr <ptr>, <index>"), "{err}");
+        assert!(
+            err.contains("getfieldptr.<struct-type> <ptr>, <index>"),
+            "{err}"
+        );
         assert!(err.contains("element size"), "{err}");
 
         let err = parse_error("%f = getfieldptr.i64 %buf, 0");
-        assert!(err.contains("getelem.<type> <ptr>, <index>"), "{err}");
-        assert!(err.contains("struct layout"), "{err}");
+        assert!(err.contains("needs a struct layout, found i64"), "{err}");
     }
 
     #[test]
@@ -1952,18 +1954,32 @@ ret.i64 0
     }
 
     #[test]
-    fn test_getfield_alias_and_ptr_suffix_are_rejected() {
-        let input = entry_body("%f = getfieldptr %p, 2");
-        assert!(matches!(
-            entry_instructions(&input)[0],
-            Instruction::GetFieldPtr { field_index: 2, .. }
-        ));
+    fn test_getfield_alias_and_untyped_are_rejected() {
+        let err = parse_error("%f = getfieldptr %p, 2");
+        assert!(
+            err.contains("getfieldptr.<struct-type> <ptr>, <index>"),
+            "{err}"
+        );
+        assert!(err.contains("e.g. 'getfieldptr.!Pair %p, 1'"), "{err}");
 
         let err = parse_error("%f = getfield %p, 2");
-        assert!(err.contains("getfieldptr"), "{err}");
+        assert!(
+            err.contains("getfieldptr.<struct-type> <ptr>, <index>"),
+            "{err}"
+        );
 
         let err = parse_error("%f = getfieldptr.ptr %p, 2");
-        assert!(err.contains("getfieldptr <ptr>, <index>"), "{err}");
+        assert!(err.contains("needs a struct layout, found ptr"), "{err}");
+    }
+
+    #[test]
+    fn test_getfieldptr_carries_its_layout() {
+        let input = entry_body("%f = getfieldptr.struct { a: i8, b: i32 } %p, 1");
+        assert!(matches!(
+            &entry_instructions(&input)[0],
+            Instruction::GetFieldPtr { field_index: 1, struct_type: Type::Struct(fields), .. }
+                if fields.len() == 2
+        ));
     }
 
     #[test]
@@ -2119,7 +2135,7 @@ entry:
   %p = stackalloc.i64
   %h = call @malloc(16)
   %s = stackalloc.struct { a: i64, b: i64 }
-  %f = getfieldptr %s, 1
+  %f = getfieldptr.struct { a: i64, b: i64 } %s, 1
   %e = getelem.i8 %h, 0
   %a = ptrtoint.i64 %p
   %q = inttoptr.i64 %a
@@ -2268,7 +2284,7 @@ entry:
         .store(&i64t, &var("s"), &var("sum"))
         .load("l", &i64t, &var("s"))
         .load("gl", &i64t, &OwnedValue::Global("g".to_string()))
-        .getfieldptr("fp", &var("ps"), 1)
+        .getfieldptr("fp", &var("ps"), pair.clone(), 1)
         .store(&i64t, &var("fp"), &OwnedValue::I64(3))
         .getelem("ge", &var("s"), &OwnedValue::I32(1), i32t.clone())
         .getelem(
