@@ -14,6 +14,7 @@ use crate::{
     },
     parser::parse_module,
 };
+use lamina_mir::RelocationModel;
 #[cfg(feature = "ssa-round-trip")]
 use lamina_mir::ssa::round_trip_module;
 use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem, cpu_count};
@@ -293,13 +294,14 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
             final_output_path.set_extension(final_output_ext);
         }
 
+        let linker_flags = pie_link_flags(&options.linker_flags, mir_mod.relocation)?;
         link(
             &assemble_result.output_path,
             &final_output_path,
             target.architecture,
             target.operating_system,
             linker_backend,
-            &options.linker_flags,
+            &linker_flags,
             options.verbose,
         )
         .map_err(|e| format!("Linking failed: {e}"))?;
@@ -324,4 +326,61 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+/// A `@pie` module links as an executable. `-pie` is added unless the user already passed it.
+fn pie_link_flags(
+    linker_flags: &[String],
+    relocation: RelocationModel,
+) -> Result<Vec<String>, String> {
+    let mut flags = linker_flags.to_vec();
+    if relocation != RelocationModel::Pie {
+        return Ok(flags);
+    }
+    if linker_flags.iter().any(|f| {
+        matches!(
+            f.as_str(),
+            "-no-pie" | "--no-pie" | "-static" | "--static" | "-Bstatic"
+        )
+    }) {
+        return Err(
+            "@pie module cannot link with -no-pie or -static\n  Hint: Remove the flag, or remove @pie from the module"
+                .to_string(),
+        );
+    }
+    if !flags.iter().any(|f| f == "-pie") {
+        flags.push("-pie".to_string());
+    }
+    Ok(flags)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::pie_link_flags;
+    use lamina_mir::RelocationModel;
+
+    #[test]
+    fn pie_module_links_with_pie_once() {
+        let flags = pie_link_flags(&["-lm".to_string()], RelocationModel::Pie).unwrap();
+        assert_eq!(flags, ["-lm", "-pie"]);
+        let flags = pie_link_flags(&["-pie".to_string()], RelocationModel::Pie).unwrap();
+        assert_eq!(flags, ["-pie"]);
+    }
+
+    #[test]
+    fn pie_module_rejects_no_pie_and_static() {
+        for flag in ["-no-pie", "--no-pie", "-static", "-Bstatic"] {
+            let err = pie_link_flags(&[flag.to_string()], RelocationModel::Pie).unwrap_err();
+            assert!(err.contains("@pie"), "{flag}: {err}");
+        }
+    }
+
+    #[test]
+    fn other_relocation_models_leave_flags_alone() {
+        let flags = pie_link_flags(&["-static".to_string()], RelocationModel::Pic).unwrap();
+        assert_eq!(flags, ["-static"]);
+        let flags = pie_link_flags(&[], RelocationModel::Static).unwrap();
+        assert!(flags.is_empty());
+    }
 }

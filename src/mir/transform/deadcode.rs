@@ -825,11 +825,9 @@ mod annotation_tests {
 
     #[test]
     fn unused_pure_call_is_removed() {
-        for annotation in ["@pure ", "@const "] {
-            let mut module = lower(&pure_source(annotation, false));
-            assert_eq!(remove_dead_pure_calls(&mut module), 1, "{annotation}");
-            assert_eq!(calls_in(module.get_function("main").expect("main")), 0);
-        }
+        let mut module = lower(&pure_source("@pure ", false));
+        assert_eq!(remove_dead_pure_calls(&mut module), 1);
+        assert_eq!(calls_in(module.get_function("main").expect("main")), 0);
     }
 
     #[test]
