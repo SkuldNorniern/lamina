@@ -658,18 +658,18 @@ mod atomic_target_tests {
         )
         .expect("parse atomic add");
         let mir = codegen::from_ir(&ir, "atomics").expect("lower atomic add");
-        for (arch, os, backend) in [(
+        let mut output = Vec::new();
+        let err = generate_mir_to_target(
+            &mir,
+            &mut output,
             TargetArchitecture::Wasm32,
             TargetOperatingSystem::Wasi,
-            "WASM",
-        )] {
-            let mut output = Vec::new();
-            let err = generate_mir_to_target(&mir, &mut output, arch, os, 1)
-                .expect_err("atomics must not reach a non-x86 encoder");
-            let message = err.to_string();
-            assert!(message.contains("atomic_add"), "{backend}: {message}");
-            assert!(message.contains(backend), "{backend}: {message}");
-        }
+            1,
+        )
+        .expect_err("atomics must not reach the wasm encoder");
+        let message = err.to_string();
+        assert!(message.contains("atomic_add"), "{message}");
+        assert!(message.contains("WASM"), "{message}");
     }
 }
 
