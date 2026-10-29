@@ -971,7 +971,18 @@ mod tests {
             .basic_blocks
             .get("entry")
             .expect("Entry block not found");
-        assert_eq!(entry.instructions.len(), 7); // stackalloc, getelem, load, stackalloc, getfieldptr, load, ret
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Alloc { .. },
+                Instruction::GetElemPtr { .. },
+                Instruction::Load { .. },
+                Instruction::Alloc { .. },
+                Instruction::GetFieldPtr { .. },
+                Instruction::Load { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         match &entry.instructions[0] {
             Instruction::Alloc {
@@ -1079,7 +1090,18 @@ mod tests {
             .get("entry")
             .expect("Entry block not found");
 
-        assert_eq!(entry.instructions.len(), 7); // 6 comparisons + ret
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Cmp { op: CmpOp::Eq, .. },
+                Instruction::Cmp { op: CmpOp::Ne, .. },
+                Instruction::Cmp { op: CmpOp::Lt, .. },
+                Instruction::Cmp { op: CmpOp::Le, .. },
+                Instruction::Cmp { op: CmpOp::Gt, .. },
+                Instruction::Cmp { op: CmpOp::Ge, .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         match &entry.instructions[0] {
             Instruction::Cmp {
@@ -1384,7 +1406,28 @@ fn @complex_math(i64 %a, i64 %b, i64 %c) -> i64 {
         assert_eq!(module.functions.len(), 1);
         let func = module.functions.get("complex_math").unwrap();
         assert_eq!(func.signature.params.len(), 3);
-        assert_eq!(func.basic_blocks["entry"].instructions.len(), 5);
+        assert!(matches!(
+            func.basic_blocks["entry"].instructions.as_slice(),
+            [
+                Instruction::Binary {
+                    op: BinaryOp::Mul,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Add,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Sub,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Div,
+                    ..
+                },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         Ok(())
     }
@@ -1508,13 +1551,18 @@ entry:
         let module = parse_module(source)?;
         let func = module.functions.get("f").unwrap();
         let instructions = &func.basic_blocks["entry"].instructions;
-        assert_eq!(instructions.len(), 7);
-        for instruction in &instructions[..6] {
-            assert!(
-                matches!(instruction, Instruction::Copy { .. }),
-                "{instruction:?}"
-            );
-        }
+        assert!(matches!(
+            instructions.as_slice(),
+            [
+                Instruction::Copy { .. },
+                Instruction::Copy { .. },
+                Instruction::Copy { .. },
+                Instruction::Copy { .. },
+                Instruction::Copy { .. },
+                Instruction::Copy { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
         Ok(())
     }
 
@@ -1545,7 +1593,24 @@ fn @test_memory_ops() -> i64 {
         assert_eq!(module.functions.len(), 3);
         let func = module.functions.get("test_memory_ops").unwrap();
 
-        assert_eq!(func.basic_blocks["entry"].instructions.len(), 10);
+        assert!(matches!(
+            func.basic_blocks["entry"].instructions.as_slice(),
+            [
+                Instruction::Call { .. },
+                Instruction::Call { .. },
+                Instruction::Store { .. },
+                Instruction::Store { .. },
+                Instruction::Load { .. },
+                Instruction::Load { .. },
+                Instruction::Binary {
+                    op: BinaryOp::Add,
+                    ..
+                },
+                Instruction::Call { .. },
+                Instruction::Call { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         Ok(())
     }
@@ -1572,8 +1637,21 @@ fn @large_function(i64 %input) -> i64 {
         assert_eq!(module.functions.len(), 1);
         let func = module.functions.get("large_function").unwrap();
 
-        // Should have 51 instructions (50 adds + 1 ret)
-        assert_eq!(func.basic_blocks["entry"].instructions.len(), 51);
+        let instructions = &func.basic_blocks["entry"].instructions;
+        assert_eq!(
+            instructions
+                .iter()
+                .filter(|i| matches!(
+                    i,
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        ..
+                    }
+                ))
+                .count(),
+            50
+        );
+        assert!(matches!(instructions.last(), Some(Instruction::Ret { .. })));
 
         Ok(())
     }
@@ -1632,8 +1710,39 @@ fn @test_instructions() -> i64 {
         assert_eq!(module.functions.len(), 1);
         let func = module.functions.get("test_instructions").unwrap();
 
-        // Should have 13 instructions (11 computations + 1 writebyte + 1 ret)
-        assert_eq!(func.basic_blocks["entry"].instructions.len(), 13);
+        assert!(matches!(
+            func.basic_blocks["entry"].instructions.as_slice(),
+            [
+                Instruction::Binary {
+                    op: BinaryOp::Add,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Sub,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Mul,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Div,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Rem,
+                    ..
+                },
+                Instruction::Cmp { op: CmpOp::Eq, .. },
+                Instruction::Cmp { op: CmpOp::Ne, .. },
+                Instruction::Cmp { op: CmpOp::Lt, .. },
+                Instruction::Cmp { op: CmpOp::Le, .. },
+                Instruction::Cmp { op: CmpOp::Gt, .. },
+                Instruction::Cmp { op: CmpOp::Ge, .. },
+                Instruction::WriteByte { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         Ok(())
     }

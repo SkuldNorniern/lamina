@@ -135,7 +135,15 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 4);
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Alloc { .. },
+                Instruction::Store { .. },
+                Instruction::Load { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         if let Instruction::Alloc {
             result,
@@ -388,7 +396,52 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 11);
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Binary {
+                    op: BinaryOp::Add,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Sub,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Mul,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Div,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Rem,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::And,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Or,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Xor,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Shl,
+                    ..
+                },
+                Instruction::Binary {
+                    op: BinaryOp::Shr,
+                    ..
+                },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         // Verify first instruction is Add
         if let Instruction::Binary { op, .. } = &entry.instructions[0] {
@@ -422,15 +475,18 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 7);
-
-        // Verify comparison operations
-        if let Instruction::Cmp { op, .. } = &entry.instructions[0] {
-            assert!(matches!(op, CmpOp::Eq));
-        }
-        if let Instruction::Cmp { op, .. } = &entry.instructions[1] {
-            assert!(matches!(op, CmpOp::Ne));
-        }
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Cmp { op: CmpOp::Eq, .. },
+                Instruction::Cmp { op: CmpOp::Ne, .. },
+                Instruction::Cmp { op: CmpOp::Lt, .. },
+                Instruction::Cmp { op: CmpOp::Le, .. },
+                Instruction::Cmp { op: CmpOp::Gt, .. },
+                Instruction::Cmp { op: CmpOp::Ge, .. },
+                Instruction::Ret { .. },
+            ]
+        ));
     }
 
     #[test]
@@ -475,7 +531,16 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 5);
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::ZeroExtend { .. },
+                Instruction::SignExtend { .. },
+                Instruction::Trunc { .. },
+                Instruction::Bitcast { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         // Verify zero extension
         if let Instruction::ZeroExtend {
@@ -529,7 +594,16 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 5);
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Alloc { .. },
+                Instruction::GetElemPtr { .. },
+                Instruction::Store { .. },
+                Instruction::Load { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         // Verify getelem
         if let Instruction::GetElemPtr {
@@ -604,7 +678,18 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 7);
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Alloc { .. },
+                Instruction::GetFieldPtr { .. },
+                Instruction::Store { .. },
+                Instruction::GetFieldPtr { .. },
+                Instruction::Store { .. },
+                Instruction::Load { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         // Verify getfieldptr
         if let Instruction::GetFieldPtr {
@@ -818,7 +903,18 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 7);
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Alloc { .. },
+                Instruction::Write { .. },
+                Instruction::Read { .. },
+                Instruction::WriteByte { .. },
+                Instruction::ReadByte { .. },
+                Instruction::WriteByte { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         // Verify write
         if let Instruction::Write {
@@ -1060,7 +1156,18 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 7);
+        assert!(matches!(
+            entry.instructions.as_slice(),
+            [
+                Instruction::Alloc { .. },
+                Instruction::AtomicStore { .. },
+                Instruction::AtomicLoad { .. },
+                Instruction::AtomicBinary { .. },
+                Instruction::AtomicCompareExchange { .. },
+                Instruction::Fence { .. },
+                Instruction::Ret { .. },
+            ]
+        ));
 
         // Verify atomic store
         if let Instruction::AtomicStore {
