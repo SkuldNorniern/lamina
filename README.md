@@ -238,7 +238,7 @@ The following results are from our 256×256 2D matrix multiplication benchmark (
 
 At v1:
 - `popcount` is lowered to the classic SWAR sequence instead of `popcntq`. This is a deliberate fallback. The sequence saves and restores `%rcx` and `%rdx`.
-- The SSE4.1 lane forms and `pmulld` are refused with a named error, for example ``instruction `pmulld` requires x86-64-v2, but the selected CPU level is x86-64-v1 (raise it with --cpu-level)``. These come from the nightly SIMD vector path.
+- The SSE4.1 lane forms and `pmulld` are refused with a named error, for example ``instruction `pmulld` requires x86-64-v2, but the selected CPU level is x86-64-v1 (raise it with --cpu-level)``. These come from the vector path.
 - 16-bit lane access and `pmullw` are SSE2 and are still emitted.
 
 `--cpu-level` applies only to x86_64 targets and is rejected for others. `--jit` runs the code on the host, so pick a level the host supports.
@@ -388,7 +388,7 @@ On WebAssembly, the non-WASI target imports these operations from the host under
 - **JIT Compilation**: Dynamic code execution engine
 - **Debugging Tools**: Enhanced debugging information, DWARF support, interactive debugger
 - **GPU Acceleration**: CUDA / Vulkan compute shader support
-- **SIMD Support**: Auto-vectorization and explicit SIMD types
+- **SIMD Support**: auto-vectorization. Explicit vectors have landed: `<N x T>` as a type suffix, with `splat`, `extractlane`, `insertlane` and `shuffle`
 
 
 

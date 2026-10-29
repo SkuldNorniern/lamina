@@ -84,66 +84,6 @@ impl fmt::Display for MemoryOrdering {
     }
 }
 
-/// SIMD (Single Instruction, Multiple Data) vector operations.
-///
-/// These operations perform parallel computations on multiple data elements
-/// simultaneously, providing significant performance improvements for
-/// data-parallel algorithms.
-#[cfg(feature = "nightly")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SimdOp {
-    /// Vector addition: `result = lhs + rhs` (element-wise)
-    Add,
-    /// Vector subtraction: `result = lhs - rhs` (element-wise)
-    Sub,
-    /// Vector multiplication: `result = lhs * rhs` (element-wise)
-    Mul,
-    /// Vector division: `result = lhs / rhs` (element-wise)
-    Div,
-    /// Vector minimum: `result = min(lhs, rhs)` (element-wise)
-    Min,
-    /// Vector maximum: `result = max(lhs, rhs)` (element-wise)
-    Max,
-    /// Vector absolute value: `result = abs(value)`
-    Abs,
-    /// Vector negation: `result = -value`
-    Neg,
-    /// Vector square root: `result = sqrt(value)`
-    Sqrt,
-    /// Vector fused multiply-add: `result = (lhs * rhs) + acc`
-    Fma,
-    /// Vector shuffle/rearrange elements according to mask
-    Shuffle,
-    /// Vector extract lane: extract single element from vector
-    ExtractLane,
-    /// Vector insert lane: insert single element into vector
-    InsertLane,
-    /// Vector splat: broadcast scalar to all vector lanes
-    Splat,
-}
-
-#[cfg(feature = "nightly")]
-impl fmt::Display for SimdOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SimdOp::Add => write!(f, "simd_add"),
-            SimdOp::Sub => write!(f, "simd_sub"),
-            SimdOp::Mul => write!(f, "simd_mul"),
-            SimdOp::Div => write!(f, "simd_div"),
-            SimdOp::Min => write!(f, "simd_min"),
-            SimdOp::Max => write!(f, "simd_max"),
-            SimdOp::Abs => write!(f, "simd_abs"),
-            SimdOp::Neg => write!(f, "simd_neg"),
-            SimdOp::Sqrt => write!(f, "simd_sqrt"),
-            SimdOp::Fma => write!(f, "simd_fma"),
-            SimdOp::Shuffle => write!(f, "simd_shuffle"),
-            SimdOp::ExtractLane => write!(f, "simd_extract_lane"),
-            SimdOp::InsertLane => write!(f, "simd_insert_lane"),
-            SimdOp::Splat => write!(f, "simd_splat"),
-        }
-    }
-}
-
 /// Atomic binary operations for concurrent programming.
 ///
 /// These operations perform read-modify-write sequences atomically,
@@ -824,75 +764,51 @@ pub enum Instruction<'a> {
         operands: Vec<AsmOperand<'a>>,
         clobbers: Vec<&'a str>,
     },
-    // --- SIMD Operations ---
-    #[cfg(feature = "nightly")]
-    SimdBinary {
-        // SIMD binary operation: element-wise computation
-        op: SimdOp,
+    // --- Vector Operations ---
+    /// An element-wise arithmetic or bitwise operation on `<lanes x element_type>`.
+    /// The opcode is the scalar one; only the type suffix differs.
+    VectorBinary {
+        op: BinaryOp,
         result: Identifier<'a>,
-        vector_type: Type<'a>, // SIMD vector type (e.g., v4f32, v8i32)
+        element_type: PrimitiveType,
+        lanes: u32,
         lhs: Value<'a>,
         rhs: Value<'a>,
     },
-    #[cfg(feature = "nightly")]
-    SimdUnary {
-        // SIMD unary operation: single operand vector computation
-        op: SimdOp,
+    /// Broadcasts one scalar into every lane.
+    VectorSplat {
         result: Identifier<'a>,
-        vector_type: Type<'a>,
-        operand: Value<'a>,
-    },
-    #[cfg(feature = "nightly")]
-    SimdTernary {
-        // SIMD ternary operation (e.g., fused multiply-add)
-        op: SimdOp,
-        result: Identifier<'a>,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-        acc: Value<'a>, // accumulator/third operand
-    },
-    #[cfg(feature = "nightly")]
-    SimdShuffle {
-        // SIMD shuffle/rearrange elements
-        result: Identifier<'a>,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-        mask: Value<'a>, // shuffle mask (constant or runtime)
-    },
-    #[cfg(feature = "nightly")]
-    SimdExtract {
-        // Extract single element from SIMD vector
-        result: Identifier<'a>,
-        scalar_type: PrimitiveType, // Type of extracted element
-        vector: Value<'a>,
-        lane_index: Value<'a>, // Which lane to extract (0-based)
-    },
-    #[cfg(feature = "nightly")]
-    SimdInsert {
-        // Insert single element into SIMD vector
-        result: Identifier<'a>,
-        vector_type: Type<'a>,
-        vector: Value<'a>,
-        scalar: Value<'a>,     // Element to insert
-        lane_index: Value<'a>, // Which lane to insert into (0-based)
-    },
-    #[cfg(feature = "nightly")]
-    SimdLoad {
-        // Load SIMD vector from memory
-        result: Identifier<'a>,
-        vector_type: Type<'a>,
-        ptr: Value<'a>,
-        alignment: Option<u32>, // Optional alignment hint
-    },
-    #[cfg(feature = "nightly")]
-    SimdStore {
-        // Store SIMD vector to memory
-        vector_type: Type<'a>,
-        ptr: Value<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
         value: Value<'a>,
-        alignment: Option<u32>, // Optional alignment hint
+    },
+    /// Reads one lane out as a scalar of the element type.
+    VectorExtractLane {
+        result: Identifier<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
+        vector: Value<'a>,
+        lane: u32,
+    },
+    /// Writes one scalar into one lane, yielding a new vector.
+    VectorInsertLane {
+        result: Identifier<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
+        vector: Value<'a>,
+        scalar: Value<'a>,
+        lane: u32,
+    },
+    /// Selects each result lane from the concatenation of `lhs` and `rhs`. The mask is
+    /// part of the instruction, never an operand: a vector selected at run time is a
+    /// different and far costlier operation.
+    VectorShuffle {
+        result: Identifier<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+        mask: Vec<u32>,
     },
     // --- Composite Type Operations ---
     GetFieldPtr {
@@ -1049,6 +965,11 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "funcaddr",
         "callptr",
         "select",
+        // Vector operations that have no scalar spelling
+        "splat",
+        "extractlane",
+        "insertlane",
+        "shuffle",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
         "stackalloc",
         "load",
@@ -1262,6 +1183,11 @@ impl<'a> Instruction<'a> {
             | Instruction::AtomicBinary { result, .. }
             | Instruction::AtomicCompareExchange { result, .. }
             | Instruction::VaArg { result, .. }
+            | Instruction::VectorBinary { result, .. }
+            | Instruction::VectorSplat { result, .. }
+            | Instruction::VectorExtractLane { result, .. }
+            | Instruction::VectorInsertLane { result, .. }
+            | Instruction::VectorShuffle { result, .. }
             | Instruction::InlineAsm {
                 result: Some((result, _)),
                 ..
@@ -1386,49 +1312,16 @@ impl<'a> Instruction<'a> {
                 push_value(desired, &mut vars);
             }
             Instruction::Copy { value, .. } => push_value(value, &mut vars),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdBinary { lhs, rhs, .. } => {
+            Instruction::VectorBinary { lhs, rhs, .. }
+            | Instruction::VectorShuffle { lhs, rhs, .. } => {
                 push_value(lhs, &mut vars);
                 push_value(rhs, &mut vars);
             }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdUnary { operand, .. } => push_value(operand, &mut vars),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdTernary { lhs, rhs, acc, .. } => {
-                push_value(lhs, &mut vars);
-                push_value(rhs, &mut vars);
-                push_value(acc, &mut vars);
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdShuffle { lhs, rhs, mask, .. } => {
-                push_value(lhs, &mut vars);
-                push_value(rhs, &mut vars);
-                push_value(mask, &mut vars);
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdExtract {
-                vector, lane_index, ..
-            } => {
-                push_value(vector, &mut vars);
-                push_value(lane_index, &mut vars);
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdInsert {
-                vector,
-                scalar,
-                lane_index,
-                ..
-            } => {
+            Instruction::VectorSplat { value, .. } => push_value(value, &mut vars),
+            Instruction::VectorExtractLane { vector, .. } => push_value(vector, &mut vars),
+            Instruction::VectorInsertLane { vector, scalar, .. } => {
                 push_value(vector, &mut vars);
                 push_value(scalar, &mut vars);
-                push_value(lane_index, &mut vars);
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdLoad { ptr, .. } => push_value(ptr, &mut vars),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdStore { ptr, value, .. } => {
-                push_value(ptr, &mut vars);
-                push_value(value, &mut vars);
             }
             _ => {}
         }
@@ -1646,73 +1539,62 @@ impl fmt::Display for Instruction<'_> {
                 "%{result} = atomic_cmpxchg.{ty} {ptr}, {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
             Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdBinary {
+            Instruction::VectorBinary {
                 op,
                 result,
-                vector_type,
+                element_type,
+                lanes,
                 lhs,
                 rhs,
-            } => write!(f, "%{result} = {op}.{vector_type} {lhs}, {rhs}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdUnary {
-                op,
+            } => write!(
+                f,
+                "%{result} = {op}.<{lanes} x {element_type}> {lhs}, {rhs}"
+            ),
+            Instruction::VectorSplat {
                 result,
-                vector_type,
-                operand,
-            } => write!(f, "%{result} = {op}.{vector_type} {operand}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdTernary {
-                op,
+                element_type,
+                lanes,
+                value,
+            } => write!(f, "%{result} = splat.<{lanes} x {element_type}> {value}"),
+            Instruction::VectorExtractLane {
                 result,
-                vector_type,
-                lhs,
-                rhs,
-                acc,
-            } => write!(f, "%{result} = {op}.{vector_type} {lhs}, {rhs}, {acc}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdShuffle {
+                element_type,
+                lanes,
+                vector,
+                lane,
+            } => write!(
+                f,
+                "%{result} = extractlane.<{lanes} x {element_type}> {vector}, {lane}"
+            ),
+            Instruction::VectorInsertLane {
                 result,
-                vector_type,
+                element_type,
+                lanes,
+                vector,
+                scalar,
+                lane,
+            } => write!(
+                f,
+                "%{result} = insertlane.<{lanes} x {element_type}> {vector}, {scalar}, {lane}"
+            ),
+            Instruction::VectorShuffle {
+                result,
+                element_type,
+                lanes,
                 lhs,
                 rhs,
                 mask,
-            } => write!(f, "%{result} = shuffle.{vector_type} {lhs}, {rhs}, {mask}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdExtract {
-                result,
-                scalar_type,
-                vector,
-                lane_index,
-            } => write!(
-                f,
-                "%{result} = extract_lane.{scalar_type} {vector}, {lane_index}"
-            ),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdInsert {
-                result,
-                vector_type,
-                vector,
-                scalar,
-                lane_index,
-            } => write!(
-                f,
-                "%{result} = insert_lane.{vector_type} {vector}, {scalar}, {lane_index}"
-            ),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdLoad {
-                result,
-                vector_type,
-                ptr,
-                alignment: _,
-            } => write!(f, "%{result} = load_simd.{vector_type} {ptr}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdStore {
-                vector_type,
-                ptr,
-                value,
-                alignment: _,
-            } => write!(f, "store_simd.{vector_type} {ptr}, {value}"),
+            } => {
+                let mask = mask
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    f,
+                    "%{result} = shuffle.<{lanes} x {element_type}> {lhs}, {rhs}, [{mask}]"
+                )
+            }
             Instruction::GetFieldPtr {
                 result,
                 struct_ptr,

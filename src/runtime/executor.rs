@@ -367,19 +367,6 @@ pub(crate) fn interpret_mir_function(
                         "Interpreter: variadic arguments not supported".to_owned(),
                     ));
                 }
-                #[cfg(feature = "nightly")]
-                Instruction::SimdBinary { .. }
-                | Instruction::SimdUnary { .. }
-                | Instruction::SimdTernary { .. }
-                | Instruction::SimdShuffle { .. }
-                | Instruction::SimdExtract { .. }
-                | Instruction::SimdInsert { .. }
-                | Instruction::SimdLoad { .. }
-                | Instruction::SimdStore { .. } => {
-                    return Err(LaminaError::RuntimeError(
-                        "Interpreter: SIMD instructions not supported".to_owned(),
-                    ));
-                }
             }
         }
 

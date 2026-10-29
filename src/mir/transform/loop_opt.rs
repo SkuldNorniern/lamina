@@ -339,15 +339,6 @@ impl LoopInvariantCodeMotion {
             || self.touches_memory_under_nightly(instr)
     }
 
-    #[cfg(feature = "nightly")]
-    fn touches_memory_under_nightly(&self, instr: &Instruction) -> bool {
-        matches!(
-            instr,
-            Instruction::SimdLoad { .. } | Instruction::SimdStore { .. }
-        )
-    }
-
-    #[cfg(not(feature = "nightly"))]
     fn touches_memory_under_nightly(&self, _instr: &Instruction) -> bool {
         false
     }

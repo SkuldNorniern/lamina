@@ -9,8 +9,6 @@ mod tests {
         instruction::{AllocType, BinaryOp, CmpOp, Instruction, UnaryOp},
         types::{Literal, PrimitiveType, StructField, Type},
     };
-    #[cfg(feature = "nightly")]
-    use std::f32::consts::PI;
 
     #[test]
     fn test_build_simple_function() {
@@ -1217,16 +1215,48 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "nightly")]
     #[test]
-    #[should_panic(expected = "SIMD instructions have no text form")]
-    fn test_simd_has_no_text_form() {
+    fn test_vector_builders_write_the_surface_syntax() {
         let mut builder = IRBuilder::new();
-        builder.function("simd_test", Type::Void).simd_add(
-            "result",
-            Type::Primitive(PrimitiveType::F32),
-            var("a"),
-            var("b"),
+        builder
+            .function("vectors", Type::Void)
+            .splat("v", PrimitiveType::I32, 4, i32(7))
+            .vector_binary(
+                BinaryOp::Add,
+                "s",
+                PrimitiveType::I32,
+                4,
+                var("v"),
+                var("v"),
+            )
+            .insert_lane("w", PrimitiveType::I32, 4, var("s"), i32(9), 1)
+            .extract_lane("x", PrimitiveType::I32, 4, var("w"), 2)
+            .shuffle(
+                "m",
+                PrimitiveType::I32,
+                4,
+                var("v"),
+                var("w"),
+                vec![0, 5, 2, 7],
+            )
+            .ret_void();
+
+        let module = builder.build();
+        let printed: Vec<String> = module.functions["vectors"].basic_blocks["entry"]
+            .instructions
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(
+            printed,
+            vec![
+                "%v = splat.<4 x i32> 7",
+                "%s = add.<4 x i32> %v, %v",
+                "%w = insertlane.<4 x i32> %s, 9, 1",
+                "%x = extractlane.<4 x i32> %w, 2",
+                "%m = shuffle.<4 x i32> %v, %w, [0, 5, 2, 7]",
+                "ret.void",
+            ]
         );
     }
 

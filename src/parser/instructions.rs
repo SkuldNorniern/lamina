@@ -11,7 +11,7 @@ use crate::{
         functions::alignment_from_bytes,
         globals::parse_value_with_type_hint,
         state::{CallSite, ParserState},
-        types::{parse_type, removed_char_error},
+        types::{parse_type, parse_vector_type, removed_char_error},
         values::parse_value,
     },
 };
@@ -35,6 +35,10 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
         match opcode_str {
             "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr"
             | "rotl" | "rotr" => parse_binary_op(state, result, opcode_str),
+            "splat" => parse_splat(state, result),
+            "extractlane" => parse_extract_lane(state, result),
+            "insertlane" => parse_insert_lane(state, result),
+            "shuffle" => parse_shuffle(state, result),
             "neg" | "not" | "sqrt" | "popcount" | "ctlz" | "cttz" | "bswap" => {
                 parse_unary_op(state, result, opcode_str)
             }
@@ -771,6 +775,23 @@ fn parse_binary_op<'a>(
             rhs,
         });
     }
+    if let Some((element_type, lanes)) = peek_vector_suffix(state)? {
+        let vector = Type::Vector {
+            element_type,
+            lanes,
+        };
+        let lhs = parse_typed_operand(state, &vector)?;
+        state.expect_char(',')?;
+        let rhs = parse_typed_operand(state, &vector)?;
+        return Ok(Instruction::VectorBinary {
+            op,
+            result,
+            element_type,
+            lanes,
+            lhs,
+            rhs,
+        });
+    }
     let ty = parse_primitive_type_suffix(state)?;
     if matches!(op, BinaryOp::Rotl | BinaryOp::Rotr) && !is_integer_type(ty) {
         return Err(state.error(format!("{op_str} takes an integer type, found {ty}")));
@@ -784,6 +805,152 @@ fn parse_binary_op<'a>(
         ty,
         lhs,
         rhs,
+    })
+}
+
+/// Consumes a `.<N x T>` suffix when the opcode carries one, leaving the input
+/// untouched when the suffix names a scalar type instead.
+fn peek_vector_suffix(
+    state: &mut ParserState<'_>,
+) -> Result<Option<(PrimitiveType, u32)>, LaminaError> {
+    state.skip_whitespace_and_comments();
+    if state.current_char() != Some('.') || state.peek_byte(1) != Some(b'<') {
+        return Ok(None);
+    }
+    state.expect_char('.')?;
+    match parse_vector_type(state)? {
+        Type::Vector {
+            element_type,
+            lanes,
+        } => Ok(Some((element_type, lanes))),
+        _ => unreachable!("parse_vector_type yields Type::Vector"),
+    }
+}
+
+/// Parses the `.<N x T>` suffix an explicit vector instruction always carries.
+fn parse_vector_suffix(
+    state: &mut ParserState<'_>,
+    opcode: &str,
+) -> Result<(PrimitiveType, u32), LaminaError> {
+    peek_vector_suffix(state)?.ok_or_else(|| {
+        state.error(format!(
+            "'{opcode}' takes a vector type suffix\n  Hint: Write '{opcode}.<4 x i32> ...'"
+        ))
+    })
+}
+
+fn parse_splat<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let (element_type, lanes) = parse_vector_suffix(state, "splat")?;
+    let value = parse_typed_operand(state, &Type::Primitive(element_type))?;
+    Ok(Instruction::VectorSplat {
+        result,
+        element_type,
+        lanes,
+        value,
+    })
+}
+
+fn parse_lane_index(state: &mut ParserState<'_>, opcode: &str) -> Result<u32, LaminaError> {
+    state.skip_whitespace_and_comments();
+    if state.current_char() == Some('%') {
+        return Err(state.error(format!(
+            "'{opcode}' takes a constant lane index\n  Hint: A lane chosen at run time is a different operation; branch over the lanes, or go through memory"
+        )));
+    }
+    let index = state.parse_integer()?;
+    u32::try_from(index).map_err(|_| state.error(format!("Invalid lane index: {index}")))
+}
+
+fn parse_extract_lane<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let (element_type, lanes) = parse_vector_suffix(state, "extractlane")?;
+    let vector = parse_value(state)?;
+    state.expect_char(',')?;
+    let lane = parse_lane_index(state, "extractlane")?;
+    Ok(Instruction::VectorExtractLane {
+        result,
+        element_type,
+        lanes,
+        vector,
+        lane,
+    })
+}
+
+fn parse_insert_lane<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let (element_type, lanes) = parse_vector_suffix(state, "insertlane")?;
+    let vector = parse_value(state)?;
+    state.expect_char(',')?;
+    let scalar = parse_typed_operand(state, &Type::Primitive(element_type))?;
+    state.expect_char(',')?;
+    let lane = parse_lane_index(state, "insertlane")?;
+    Ok(Instruction::VectorInsertLane {
+        result,
+        element_type,
+        lanes,
+        vector,
+        scalar,
+        lane,
+    })
+}
+
+fn parse_shuffle<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let (element_type, lanes) = parse_vector_suffix(state, "shuffle")?;
+    let vector = Type::Vector {
+        element_type,
+        lanes,
+    };
+    let lhs = parse_typed_operand(state, &vector)?;
+    state.expect_char(',')?;
+    let rhs = parse_typed_operand(state, &vector)?;
+    state.expect_char(',')?;
+    state.skip_whitespace_and_comments();
+    if state.current_char() != Some('[') {
+        return Err(state.error(
+            "shuffle takes a constant lane mask\n  Hint: Write the lanes out, as in 'shuffle.<4 x i32> %a, %b, [0, 5, 2, 7]'. A mask chosen at run time is a table lookup, not a shuffle, and costs far more than one instruction",
+        ));
+    }
+    state.expect_char('[')?;
+    let mut mask = Vec::new();
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(']') {
+            state.advance();
+            break;
+        }
+        if state.current_char() == Some('%') {
+            return Err(state.error(
+                "shuffle takes a constant lane mask\n  Hint: Every mask entry is a literal lane number. A mask chosen at run time is a table lookup, not a shuffle",
+            ));
+        }
+        let index = state.parse_integer()?;
+        let index = u32::try_from(index)
+            .map_err(|_| state.error(format!("Invalid shuffle lane index: {index}")))?;
+        mask.push(index);
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(']') {
+            state.advance();
+            break;
+        }
+        state.expect_char(',')?;
+    }
+    Ok(Instruction::VectorShuffle {
+        result,
+        element_type,
+        lanes,
+        lhs,
+        rhs,
+        mask,
     })
 }
 

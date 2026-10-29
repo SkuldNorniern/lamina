@@ -1,370 +1,105 @@
-//! SIMD operations for IR builder (nightly feature).
+//! Vector operations for the IR builder.
 //!
-//! This module provides methods for SIMD (Single Instruction, Multiple Data)
-//! operations including vector arithmetic, shuffling, and element extraction.
-//! These operations are only available when the `nightly` feature is enabled.
-//!
-//! SIMD instructions have no text form in Lamina IR yet, so the methods here panic
-//! instead of emitting IR the parser cannot read.
+//! A vector is a type, not a second family of operations: element-wise arithmetic
+//! reuses [`BinaryOp`] with a `<N x T>` suffix. Only the four operations that cannot
+//! be written any other way get their own builder methods.
 
-#[cfg(feature = "nightly")]
 use crate::builder::IRBuilder;
-#[cfg(feature = "nightly")]
-use crate::instruction::{Instruction, SimdOp};
-#[cfg(feature = "nightly")]
-use crate::types::{PrimitiveType, Type, Value};
+use crate::instruction::{BinaryOp, Instruction};
+use crate::types::{PrimitiveType, Value};
 
-#[cfg(feature = "nightly")]
 impl<'a> IRBuilder<'a> {
-    /// Performs a SIMD binary operation (element-wise).
-    pub fn simd_binary(
+    /// Element-wise `op` over `<lanes x element_type>`.
+    pub fn vector_binary(
         &mut self,
-        op: SimdOp,
+        op: BinaryOp,
         result: &'a str,
-        vector_type: Type<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
         lhs: Value<'a>,
         rhs: Value<'a>,
     ) -> &mut Self {
-        self.inst(Instruction::SimdBinary {
+        self.inst(Instruction::VectorBinary {
             op,
             result,
-            vector_type,
+            element_type,
+            lanes,
             lhs,
             rhs,
         })
     }
 
-    /// Performs a SIMD unary operation.
-    pub fn simd_unary(
+    /// Broadcasts `value` into every lane.
+    pub fn splat(
         &mut self,
-        op: SimdOp,
         result: &'a str,
-        vector_type: Type<'a>,
-        operand: Value<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
+        value: Value<'a>,
     ) -> &mut Self {
-        self.inst(Instruction::SimdUnary {
-            op,
+        self.inst(Instruction::VectorSplat {
             result,
-            vector_type,
-            operand,
+            element_type,
+            lanes,
+            value,
         })
     }
 
-    /// Performs a SIMD ternary operation (e.g., fused multiply-add).
-    pub fn simd_ternary(
+    /// Reads lane `lane` out as a scalar.
+    pub fn extract_lane(
         &mut self,
-        op: SimdOp,
         result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-        acc: Value<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
+        vector: Value<'a>,
+        lane: u32,
     ) -> &mut Self {
-        self.inst(Instruction::SimdTernary {
-            op,
+        self.inst(Instruction::VectorExtractLane {
             result,
-            vector_type,
-            lhs,
-            rhs,
-            acc,
+            element_type,
+            lanes,
+            vector,
+            lane,
         })
     }
 
-    /// Performs a SIMD shuffle operation.
-    pub fn simd_shuffle(
+    /// Writes `scalar` into lane `lane`.
+    pub fn insert_lane(
         &mut self,
         result: &'a str,
-        vector_type: Type<'a>,
+        element_type: PrimitiveType,
+        lanes: u32,
+        vector: Value<'a>,
+        scalar: Value<'a>,
+        lane: u32,
+    ) -> &mut Self {
+        self.inst(Instruction::VectorInsertLane {
+            result,
+            element_type,
+            lanes,
+            vector,
+            scalar,
+            lane,
+        })
+    }
+
+    /// Selects each result lane from `lhs ++ rhs` by a mask fixed at compile time.
+    pub fn shuffle(
+        &mut self,
+        result: &'a str,
+        element_type: PrimitiveType,
+        lanes: u32,
         lhs: Value<'a>,
         rhs: Value<'a>,
-        mask: Value<'a>,
+        mask: Vec<u32>,
     ) -> &mut Self {
-        self.inst(Instruction::SimdShuffle {
+        self.inst(Instruction::VectorShuffle {
             result,
-            vector_type,
+            element_type,
+            lanes,
             lhs,
             rhs,
             mask,
         })
-    }
-
-    /// Extracts a single element from a SIMD vector.
-    pub fn simd_extract(
-        &mut self,
-        result: &'a str,
-        scalar_type: PrimitiveType,
-        vector: Value<'a>,
-        lane_index: Value<'a>,
-    ) -> &mut Self {
-        self.inst(Instruction::SimdExtract {
-            result,
-            scalar_type,
-            vector,
-            lane_index,
-        })
-    }
-
-    /// Inserts a single element into a SIMD vector.
-    pub fn simd_insert(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        vector: Value<'a>,
-        scalar: Value<'a>,
-        lane_index: Value<'a>,
-    ) -> &mut Self {
-        self.inst(Instruction::SimdInsert {
-            result,
-            vector_type,
-            vector,
-            scalar,
-            lane_index,
-        })
-    }
-
-    /// Loads a SIMD vector from memory.
-    pub fn simd_load(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        ptr: Value<'a>,
-        alignment: Option<u32>,
-    ) -> &mut Self {
-        self.inst(Instruction::SimdLoad {
-            result,
-            vector_type,
-            ptr,
-            alignment,
-        })
-    }
-
-    /// Stores a SIMD vector to memory.
-    pub fn simd_store(
-        &mut self,
-        vector_type: Type<'a>,
-        ptr: Value<'a>,
-        value: Value<'a>,
-        alignment: Option<u32>,
-    ) -> &mut Self {
-        self.inst(Instruction::SimdStore {
-            vector_type,
-            ptr,
-            value,
-            alignment,
-        })
-    }
-
-    // --- Convenience methods for common SIMD operations ---
-
-    /// Performs SIMD addition: `result = lhs + rhs` (element-wise).
-    ///
-    /// # Panics
-    /// Panics: SIMD instructions have no text form in Lamina IR yet.
-    pub fn simd_add(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-    ) -> &mut Self {
-        self.simd_binary(SimdOp::Add, result, vector_type, lhs, rhs)
-    }
-
-    /// Performs SIMD subtraction: `result = lhs - rhs` (element-wise).
-    pub fn simd_sub(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-    ) -> &mut Self {
-        self.simd_binary(SimdOp::Sub, result, vector_type, lhs, rhs)
-    }
-
-    /// Performs SIMD multiplication: `result = lhs * rhs` (element-wise).
-    pub fn simd_mul(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-    ) -> &mut Self {
-        self.simd_binary(SimdOp::Mul, result, vector_type, lhs, rhs)
-    }
-
-    /// Performs SIMD division: `result = lhs / rhs` (element-wise).
-    pub fn simd_div(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-    ) -> &mut Self {
-        self.simd_binary(SimdOp::Div, result, vector_type, lhs, rhs)
-    }
-
-    /// Performs SIMD minimum: `result = min(lhs, rhs)` (element-wise).
-    pub fn simd_min(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-    ) -> &mut Self {
-        self.simd_binary(SimdOp::Min, result, vector_type, lhs, rhs)
-    }
-
-    /// Performs SIMD maximum: `result = max(lhs, rhs)` (element-wise).
-    pub fn simd_max(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-    ) -> &mut Self {
-        self.simd_binary(SimdOp::Max, result, vector_type, lhs, rhs)
-    }
-
-    /// Performs SIMD absolute value: `result = abs(value)`.
-    pub fn simd_abs(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        operand: Value<'a>,
-    ) -> &mut Self {
-        self.simd_unary(SimdOp::Abs, result, vector_type, operand)
-    }
-
-    /// Performs SIMD negation: `result = -value`.
-    pub fn simd_neg(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        operand: Value<'a>,
-    ) -> &mut Self {
-        self.simd_unary(SimdOp::Neg, result, vector_type, operand)
-    }
-
-    /// Performs SIMD square root: `result = sqrt(value)`.
-    pub fn simd_sqrt(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        operand: Value<'a>,
-    ) -> &mut Self {
-        self.simd_unary(SimdOp::Sqrt, result, vector_type, operand)
-    }
-
-    /// Performs SIMD fused multiply-add: `result = (lhs * rhs) + acc`.
-    ///
-    /// FMA operations are typically faster and more accurate than separate
-    /// multiply and add operations.
-    pub fn simd_fma(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        lhs: Value<'a>,
-        rhs: Value<'a>,
-        acc: Value<'a>,
-    ) -> &mut Self {
-        self.simd_ternary(SimdOp::Fma, result, vector_type, lhs, rhs, acc)
-    }
-
-    /// Broadcasts a scalar value to all lanes of a vector (splat).
-    ///
-    /// This creates a vector where all lanes contain the same scalar value.
-    ///
-    /// # Panics
-    /// Panics: SIMD instructions have no text form in Lamina IR yet.
-    pub fn simd_splat(
-        &mut self,
-        result: &'a str,
-        vector_type: Type<'a>,
-        scalar: Value<'a>,
-    ) -> &mut Self {
-        self.inst(Instruction::SimdUnary {
-            op: SimdOp::Splat,
-            result,
-            vector_type,
-            operand: scalar,
-        })
-    }
-
-    /// Creates a vector type with the specified element type and number of lanes.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
-    /// # #[cfg(feature = "nightly")]
-    /// # {
-    /// let mut builder = IRBuilder::new();
-    /// // Create a 4-lane vector of i32: <4 x i32>
-    /// let vec_type = builder.vector_type(PrimitiveType::I32, 4);
-    /// # }
-    /// ```
-    pub fn vector_type(&self, element_type: PrimitiveType, lanes: u32) -> Type<'a> {
-        Type::Vector {
-            element_type,
-            lanes,
-        }
-    }
-
-    /// Creates a 128-bit vector type (v128) with the specified element type.
-    ///
-    /// Automatically calculates the number of lanes based on the element size.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
-    /// # #[cfg(feature = "nightly")]
-    /// # {
-    /// let mut builder = IRBuilder::new();
-    /// // Creates <4 x i32> (4 * 32 = 128 bits)
-    /// let vec = builder.vector_128(PrimitiveType::I32);
-    /// # }
-    /// ```
-    pub fn vector_128(&self, element_type: PrimitiveType) -> Type<'a> {
-        let lane_size = match element_type {
-            PrimitiveType::I8 | PrimitiveType::U8 => 8,
-            PrimitiveType::I16 | PrimitiveType::U16 => 16,
-            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 32,
-            PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 64,
-            _ => 32, // Default fallback
-        };
-        Type::Vector {
-            element_type,
-            lanes: 128 / lane_size,
-        }
-    }
-
-    /// Creates a 256-bit vector type (v256) with the specified element type.
-    ///
-    /// Automatically calculates the number of lanes based on the element size.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
-    /// # #[cfg(feature = "nightly")]
-    /// # {
-    /// let mut builder = IRBuilder::new();
-    /// // Creates <8 x f32> (8 * 32 = 256 bits)
-    /// let vec = builder.vector_256(PrimitiveType::F32);
-    /// # }
-    /// ```
-    pub fn vector_256(&self, element_type: PrimitiveType) -> Type<'a> {
-        let lane_size = match element_type {
-            PrimitiveType::I8 | PrimitiveType::U8 => 8,
-            PrimitiveType::I16 | PrimitiveType::U16 => 16,
-            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 32,
-            PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 64,
-            _ => 32, // Default fallback
-        };
-        Type::Vector {
-            element_type,
-            lanes: 256 / lane_size,
-        }
     }
 }

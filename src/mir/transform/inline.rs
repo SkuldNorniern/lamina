@@ -509,8 +509,6 @@ impl ModuleInlining {
             | Instruction::StackMap { .. }
             | Instruction::PatchPoint { .. }
             | Instruction::Comment { .. } => {}
-            #[cfg(feature = "nightly")]
-            _ => return false,
         }
         true
     }

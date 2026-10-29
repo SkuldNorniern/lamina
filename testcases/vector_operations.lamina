@@ -1,0 +1,101 @@
+# Vector surface: splat, lane access, shuffle, element-wise arithmetic, load and store.
+fn @main() -> i64 {
+  entry:
+    %buf = stackalloc.[4 x i32]
+    %p0 = getelem.i32 %buf, 0
+    store.i32 %p0, 1
+    %p1 = getelem.i32 %buf, 1
+    store.i32 %p1, 2
+    %p2 = getelem.i32 %buf, 2
+    store.i32 %p2, 3
+    %p3 = getelem.i32 %buf, 3
+    store.i32 %p3, 4
+
+    %v = load.<4 x i32> %buf
+    %ten = splat.<4 x i32> 10
+    %scaled = mul.<4 x i32> %v, %ten
+    %masked = and.<4 x i32> %scaled, %ten
+    %diffed = sub.<4 x i32> %scaled, %v
+    %flipped = xor.<4 x i32> %diffed, %ten
+    %summed = add.<4 x i32> %flipped, %masked
+    %patched = insertlane.<4 x i32> %summed, 7, 0
+    %mixed = shuffle.<4 x i32> %patched, %v, [3, 4, 1, 0]
+    store.<4 x i32> %buf, %mixed
+
+    %q0 = getelem.i32 %buf, 0
+    %m0 = load.i32 %q0
+    %q1 = getelem.i32 %buf, 1
+    %m1 = load.i32 %q1
+    %q2 = getelem.i32 %buf, 2
+    %m2 = load.i32 %q2
+    %q3 = getelem.i32 %buf, 3
+    %m3 = load.i32 %q3
+    %w0 = extend.i32.i64 %m0
+    %w1 = extend.i32.i64 %m1
+    %w2 = extend.i32.i64 %m2
+    %w3 = extend.i32.i64 %m3
+    %d0 = call @print_number(%w0)
+    %s0 = writebyte 32
+    %d1 = call @print_number(%w1)
+    %s1 = writebyte 32
+    %d2 = call @print_number(%w2)
+    %s2 = writebyte 32
+    %d3 = call @print_number(%w3)
+    %nl = writebyte 10
+
+    %lane = extractlane.<4 x i32> %flipped, 2
+    %wide = extend.i32.i64 %lane
+    %d4 = call @print_number(%wide)
+    %nl2 = writebyte 10
+
+    %fbuf = stackalloc.[4 x f32]
+    %f0 = getelem.f32 %fbuf, 0
+    store.f32 %f0, 1.5
+    %f1 = getelem.f32 %fbuf, 1
+    store.f32 %f1, 2.5
+    %f2 = getelem.f32 %fbuf, 2
+    store.f32 %f2, 3.5
+    %f3 = getelem.f32 %fbuf, 3
+    store.f32 %f3, 4.5
+    %fv = load.<4 x f32> %fbuf
+    %two = splat.<4 x f32> 2.0
+    %fm = mul.<4 x f32> %fv, %two
+    %fs = shuffle.<4 x f32> %fm, %fv, [3, 0, 5, 2]
+    %flane = extractlane.<4 x f32> %fs, 0
+    %fint = fptoint.f32.i64 %flane
+    %d5 = call @print_number(%fint)
+    %nl3 = writebyte 10
+    ret.i64 0
+}
+
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, print_digits
+
+  print_zero:
+    %zero = writebyte 48
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %quotient = div.i64 %num, 10
+    %temp = mul.i64 %quotient, 10
+    %remainder = sub.i64 %num, %temp
+    %dummy = call @print_digits(%quotient)
+    %digit = add.i64 %remainder, 48
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}

@@ -497,19 +497,6 @@ pub(crate) fn emit_instruction<W: Write>(
                 "armv7 backend does not implement variadic argument reading".to_string(),
             ));
         }
-        #[cfg(feature = "nightly")]
-        MirInst::SimdBinary { .. }
-        | MirInst::SimdUnary { .. }
-        | MirInst::SimdTernary { .. }
-        | MirInst::SimdShuffle { .. }
-        | MirInst::SimdExtract { .. }
-        | MirInst::SimdInsert { .. }
-        | MirInst::SimdLoad { .. }
-        | MirInst::SimdStore { .. } => {
-            return Err(unsupported(
-                "armv7 backend does not implement SIMD operations".to_string(),
-            ));
-        }
     }
     Ok(())
 }

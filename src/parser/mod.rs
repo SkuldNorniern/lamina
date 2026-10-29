@@ -13,6 +13,8 @@ mod types;
 #[cfg(test)]
 mod validation_tests;
 mod values;
+#[cfg(test)]
+mod vector_tests;
 
 use std::{mem, str::from_utf8};
 

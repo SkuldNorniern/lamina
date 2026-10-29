@@ -919,16 +919,11 @@ fn touches_wide(
         | IRInst::VaStart { .. }
         | IRInst::VaEnd { .. }
         | IRInst::VaCopy { .. } => false,
-        #[cfg(feature = "nightly")]
-        IRInst::SimdExtract { scalar_type, .. } => is_wide_prim(*scalar_type, int64_regs),
-        #[cfg(feature = "nightly")]
-        IRInst::SimdBinary { .. }
-        | IRInst::SimdUnary { .. }
-        | IRInst::SimdTernary { .. }
-        | IRInst::SimdShuffle { .. }
-        | IRInst::SimdInsert { .. }
-        | IRInst::SimdLoad { .. }
-        | IRInst::SimdStore { .. } => false,
+        IRInst::VectorBinary { .. }
+        | IRInst::VectorSplat { .. }
+        | IRInst::VectorExtractLane { .. }
+        | IRInst::VectorInsertLane { .. }
+        | IRInst::VectorShuffle { .. } => false,
     };
     typed
         || instr
@@ -1643,15 +1638,11 @@ pub(super) fn lower_instruction<'a>(
                 "an atomic operation on a 64-bit integer on a 32-bit target: two words cannot be read or written atomically without a double-word atomic".to_string(),
             ));
         }
-        #[cfg(feature = "nightly")]
-        IRInst::SimdBinary { .. }
-        | IRInst::SimdUnary { .. }
-        | IRInst::SimdTernary { .. }
-        | IRInst::SimdShuffle { .. }
-        | IRInst::SimdExtract { .. }
-        | IRInst::SimdInsert { .. }
-        | IRInst::SimdLoad { .. }
-        | IRInst::SimdStore { .. } => return Err(FromIRError::UnsupportedInstruction),
+        IRInst::VectorBinary { .. }
+        | IRInst::VectorSplat { .. }
+        | IRInst::VectorExtractLane { .. }
+        | IRInst::VectorInsertLane { .. }
+        | IRInst::VectorShuffle { .. } => return Err(FromIRError::UnsupportedInstruction),
     }
     Ok(true)
 }

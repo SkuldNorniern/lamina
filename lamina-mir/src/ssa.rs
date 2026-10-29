@@ -185,13 +185,6 @@ fn result_type(
         | Instruction::AtomicBinary { ty, .. }
         | Instruction::AtomicCompareExchange { ty, .. }
         | Instruction::VaArg { ty, .. } => Some(*ty),
-        #[cfg(feature = "nightly")]
-        Instruction::SimdBinary { ty, .. }
-        | Instruction::SimdUnary { ty, .. }
-        | Instruction::SimdTernary { ty, .. }
-        | Instruction::SimdShuffle { ty, .. }
-        | Instruction::SimdInsert { ty, .. }
-        | Instruction::SimdLoad { ty, .. } => Some(*ty),
         _ => instruction_definition_type(instruction),
     }
 }

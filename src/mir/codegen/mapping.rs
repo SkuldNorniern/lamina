@@ -8,7 +8,10 @@ use crate::{
     ir::types::{PrimitiveType as IRPrim, Type as IRType, align_of_type, sizeof_type},
     mir::{
         codegen::error::FromIRError,
-        types::{Aggregate, AggregateClass, AggregateShape, MirType, ScalarType, Signedness},
+        types::{
+            Aggregate, AggregateClass, AggregateShape, MirType, ScalarType, Signedness, VectorLane,
+            VectorType,
+        },
     },
 };
 use lamina_platform::PointerWidth;
@@ -50,7 +53,44 @@ pub fn signedness_of(ty: &IRType<'_>) -> Signedness {
 pub fn map_ir_type(ty: &IRType<'_>) -> Result<MirType, FromIRError> {
     match ty {
         IRType::Primitive(p) => map_ir_prim(*p),
+        IRType::Vector {
+            element_type,
+            lanes,
+        } => map_ir_vector(*element_type, *lanes),
         _ => Err(FromIRError::UnsupportedType),
+    }
+}
+
+/// Maps `<lanes x element_type>` to the vector register that holds it. A shape that
+/// fills no register is refused rather than split across several.
+pub fn map_ir_vector(element_type: IRPrim, lanes: u32) -> Result<MirType, FromIRError> {
+    let lane = match element_type {
+        IRPrim::I8 | IRPrim::U8 => VectorLane::I8,
+        IRPrim::I16 | IRPrim::U16 => VectorLane::I16,
+        IRPrim::I32 | IRPrim::U32 => VectorLane::I32,
+        IRPrim::I64 | IRPrim::U64 => VectorLane::I64,
+        IRPrim::F32 => VectorLane::F32,
+        IRPrim::F64 => VectorLane::F64,
+        IRPrim::Bool | IRPrim::Ptr | IRPrim::I128 | IRPrim::U128 => {
+            return Err(FromIRError::UnsupportedType);
+        }
+    };
+    let bits = lanes
+        .checked_mul(lane_bits(lane))
+        .ok_or(FromIRError::UnsupportedType)?;
+    Ok(MirType::Vector(match bits {
+        128 => VectorType::V128(lane),
+        256 => VectorType::V256(lane),
+        _ => return Err(FromIRError::UnsupportedType),
+    }))
+}
+
+const fn lane_bits(lane: VectorLane) -> u32 {
+    match lane {
+        VectorLane::I8 => 8,
+        VectorLane::I16 => 16,
+        VectorLane::I32 | VectorLane::F32 => 32,
+        VectorLane::I64 | VectorLane::F64 => 64,
     }
 }
 

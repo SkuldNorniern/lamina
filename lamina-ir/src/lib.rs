@@ -29,8 +29,6 @@ pub use builder::IRBuilder;
 pub use function::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, SourceLoc,
 };
-#[cfg(feature = "nightly")]
-pub use instruction::SimdOp;
 pub use instruction::{
     AllocType, BinaryOp, CmpOp, Instruction, OverflowOp, UnaryOp, assignment_opcode_names,
     non_assignment_opcode_names,
@@ -40,4 +38,7 @@ pub use instruction::{AtomicBinOp, MemoryOrdering};
 pub use module::ModuleAnnotation;
 pub use module::{GlobalDeclaration, GlobalInit, Module, TlsModel, TypeDeclaration};
 pub use owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
-pub use types::{Identifier, Literal, PrimitiveType, StructField, Type, Value};
+pub use types::{
+    Identifier, Literal, PrimitiveType, StructField, Type, VECTOR_REGISTER_BITS, Value,
+    check_vector_shape, vector_lane_bits,
+};

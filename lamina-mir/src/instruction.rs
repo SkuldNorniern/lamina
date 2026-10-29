@@ -380,63 +380,6 @@ impl fmt::Display for VectorOp {
     }
 }
 
-/// SIMD (Single Instruction, Multiple Data) vector operations for MIR.
-#[cfg(feature = "nightly")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SimdOp {
-    /// Vector addition: `result = lhs + rhs` (element-wise)
-    Add,
-    /// Vector subtraction: `result = lhs - rhs` (element-wise)
-    Sub,
-    /// Vector multiplication: `result = lhs * rhs` (element-wise)
-    Mul,
-    /// Vector division: `result = lhs / rhs` (element-wise)
-    Div,
-    /// Vector minimum: `result = min(lhs, rhs)` (element-wise)
-    Min,
-    /// Vector maximum: `result = max(lhs, rhs)` (element-wise)
-    Max,
-    /// Vector absolute value: `result = abs(value)`
-    Abs,
-    /// Vector negation: `result = -value`
-    Neg,
-    /// Vector square root: `result = sqrt(value)`
-    Sqrt,
-    /// Vector fused multiply-add: `result = (lhs * rhs) + acc`
-    Fma,
-    /// Vector shuffle/rearrange elements according to mask
-    Shuffle,
-    /// Vector extract lane: extract single element from vector
-    ExtractLane,
-    /// Vector insert lane: insert single element into vector
-    InsertLane,
-    /// Vector splat: broadcast scalar to all vector lanes
-    Splat,
-}
-
-#[cfg(feature = "nightly")]
-impl fmt::Display for SimdOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            SimdOp::Add => "simd_add",
-            SimdOp::Sub => "simd_sub",
-            SimdOp::Mul => "simd_mul",
-            SimdOp::Div => "simd_div",
-            SimdOp::Min => "simd_min",
-            SimdOp::Max => "simd_max",
-            SimdOp::Abs => "simd_abs",
-            SimdOp::Neg => "simd_neg",
-            SimdOp::Sqrt => "simd_sqrt",
-            SimdOp::Fma => "simd_fma",
-            SimdOp::Shuffle => "simd_shuffle",
-            SimdOp::ExtractLane => "simd_extract_lane",
-            SimdOp::InsertLane => "simd_insert_lane",
-            SimdOp::Splat => "simd_splat",
-        };
-        write!(f, "{s}")
-    }
-}
-
 /// Memory ordering constraints for atomic operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryOrdering {
@@ -970,76 +913,6 @@ pub enum Instruction {
         id: u32,
     },
 
-    // --- SIMD Operations (Nightly) ---
-    #[cfg(feature = "nightly")]
-    SimdBinary {
-        op: SimdOp,
-        ty: MirType,
-        dst: Register,
-        lhs: Operand,
-        rhs: Operand,
-    },
-
-    #[cfg(feature = "nightly")]
-    SimdUnary {
-        op: SimdOp,
-        ty: MirType,
-        dst: Register,
-        src: Operand,
-    },
-
-    #[cfg(feature = "nightly")]
-    SimdTernary {
-        op: SimdOp,
-        ty: MirType,
-        dst: Register,
-        lhs: Operand,
-        rhs: Operand,
-        acc: Operand,
-    },
-
-    #[cfg(feature = "nightly")]
-    SimdShuffle {
-        ty: MirType,
-        dst: Register,
-        lhs: Operand,
-        rhs: Operand,
-        mask: Operand,
-    },
-
-    #[cfg(feature = "nightly")]
-    SimdExtract {
-        ty: MirType,
-        dst: Register,
-        vector: Operand,
-        lane_index: Operand,
-    },
-
-    #[cfg(feature = "nightly")]
-    SimdInsert {
-        ty: MirType,
-        dst: Register,
-        vector: Operand,
-        scalar: Operand,
-        lane_index: Operand,
-    },
-
-    #[cfg(feature = "nightly")]
-    SimdLoad {
-        ty: MirType,
-        dst: Register,
-        addr: AddressMode,
-        attrs: MemoryAttrs,
-    },
-
-    #[cfg(feature = "nightly")]
-    SimdStore {
-        ty: MirType,
-        src: Operand,
-        addr: AddressMode,
-        attrs: MemoryAttrs,
-    },
-
     // --- Atomic Operations (Nightly) ---
     AtomicLoad {
         ty: MirType,
@@ -1223,14 +1096,6 @@ impl Instruction {
                 result: Some((dst, _)),
                 ..
             } => Some(dst),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdBinary { dst, .. }
-            | Instruction::SimdUnary { dst, .. }
-            | Instruction::SimdTernary { dst, .. }
-            | Instruction::SimdShuffle { dst, .. }
-            | Instruction::SimdExtract { dst, .. }
-            | Instruction::SimdInsert { dst, .. }
-            | Instruction::SimdLoad { dst, .. } => Some(dst),
             Instruction::Call { ret: Some(dst), .. }
             | Instruction::CallIndirect { ret: Some(dst), .. } => Some(dst),
             _ => None,
@@ -1351,72 +1216,6 @@ impl Instruction {
                 }
                 if let Operand::Register(r) = src {
                     regs.push(r);
-                }
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdBinary { lhs, rhs, .. }
-            | Instruction::SimdShuffle { lhs, rhs, .. } => {
-                if let Operand::Register(r) = lhs {
-                    regs.push(r);
-                }
-                if let Operand::Register(r) = rhs {
-                    regs.push(r);
-                }
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdUnary { src, .. } | Instruction::SimdExtract { vector: src, .. } => {
-                if let Operand::Register(r) = src {
-                    regs.push(r);
-                }
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdTernary { lhs, rhs, acc, .. } => {
-                if let Operand::Register(r) = lhs {
-                    regs.push(r);
-                }
-                if let Operand::Register(r) = rhs {
-                    regs.push(r);
-                }
-                if let Operand::Register(r) = acc {
-                    regs.push(r);
-                }
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdInsert {
-                vector,
-                scalar,
-                lane_index,
-                ..
-            } => {
-                if let Operand::Register(r) = vector {
-                    regs.push(r);
-                }
-                if let Operand::Register(r) = scalar {
-                    regs.push(r);
-                }
-                if let Operand::Register(r) = lane_index {
-                    regs.push(r);
-                }
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdLoad { addr, .. } => match addr {
-                AddressMode::BaseOffset { base, .. } => regs.push(base),
-                AddressMode::BaseIndexScale { base, index, .. } => {
-                    regs.push(base);
-                    regs.push(index);
-                }
-            },
-            #[cfg(feature = "nightly")]
-            Instruction::SimdStore { src, addr, .. } => {
-                if let Operand::Register(r) = src {
-                    regs.push(r);
-                }
-                match addr {
-                    AddressMode::BaseOffset { base, .. } => regs.push(base),
-                    AddressMode::BaseIndexScale { base, index, .. } => {
-                        regs.push(base);
-                        regs.push(index);
-                    }
                 }
             }
             Instruction::AtomicLoad { addr, .. } => match addr {
@@ -1743,67 +1542,6 @@ impl fmt::Display for Instruction {
             Instruction::SafePoint => write!(f, "safepoint"),
             Instruction::StackMap { id } => write!(f, "stackmap {id}"),
             Instruction::PatchPoint { id } => write!(f, "patchpoint {id}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdBinary {
-                op,
-                ty,
-                dst,
-                lhs,
-                rhs,
-            } => write!(f, "{dst} = {op}.{ty} {lhs}, {rhs}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdUnary { op, ty, dst, src } => {
-                write!(f, "{dst} = {op}.{ty} {src}")
-            }
-            #[cfg(feature = "nightly")]
-            Instruction::SimdTernary {
-                op,
-                ty,
-                dst,
-                lhs,
-                rhs,
-                acc,
-            } => write!(f, "{dst} = {op}.{ty} {lhs}, {rhs}, {acc}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdShuffle {
-                ty,
-                dst,
-                lhs,
-                rhs,
-                mask,
-            } => write!(f, "{dst} = {ty}.shuffle {lhs} {rhs}, {mask}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdExtract {
-                ty,
-                dst,
-                vector,
-                lane_index,
-            } => write!(f, "{dst} = extract_lane.{ty} {vector}, {lane_index}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdInsert {
-                ty,
-                dst,
-                vector,
-                scalar,
-                lane_index,
-            } => write!(
-                f,
-                "{dst} = insert_lane.{ty} {vector}, {scalar}, {lane_index}"
-            ),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdLoad {
-                ty,
-                dst,
-                addr,
-                attrs: _,
-            } => write!(f, "{dst} = load_simd.{ty} {addr}"),
-            #[cfg(feature = "nightly")]
-            Instruction::SimdStore {
-                ty,
-                src,
-                addr,
-                attrs: _,
-            } => write!(f, "store_simd.{ty} {src}, {addr}"),
             Instruction::AtomicLoad {
                 ty,
                 dst,

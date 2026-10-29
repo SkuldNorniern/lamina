@@ -411,20 +411,6 @@ pub(crate) fn emit_instruction<W: Write>(
                 isa.target_name()
             )));
         }
-        #[cfg(feature = "nightly")]
-        MirInst::SimdBinary { .. }
-        | MirInst::SimdUnary { .. }
-        | MirInst::SimdTernary { .. }
-        | MirInst::SimdShuffle { .. }
-        | MirInst::SimdExtract { .. }
-        | MirInst::SimdInsert { .. }
-        | MirInst::SimdLoad { .. }
-        | MirInst::SimdStore { .. } => {
-            return Err(unsupported(format!(
-                "{} backend does not implement SIMD operations",
-                isa.target_name()
-            )));
-        }
     }
     Ok(())
 }

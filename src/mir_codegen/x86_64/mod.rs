@@ -18,6 +18,8 @@ mod simd;
 #[cfg(test)]
 mod tests;
 mod variadic;
+#[cfg(test)]
+mod vector_surface_tests;
 
 use function::*;
 use instruction::*;

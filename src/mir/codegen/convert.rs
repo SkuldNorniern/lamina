@@ -36,12 +36,13 @@ use crate::{
         AddressMode, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
         Global, Immediate, Instruction, IntBinOp, IntCmpOp, IntOverflowOp, IntRotOp, IntUnOp,
         MemoryAttrs, MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType,
-        Signature, SymbolVisibility, TlsModel as MirTlsModel, VirtualReg, VirtualRegAllocator,
+        Signature, SymbolVisibility, TlsModel as MirTlsModel, VectorOp, VirtualReg,
+        VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{
-                classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of,
-                wide_aggregate,
+                classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, map_ir_vector,
+                signedness_of, wide_aggregate,
             },
         },
         io_intrinsic_result_type,
@@ -50,15 +51,11 @@ use crate::{
 
 #[cfg(feature = "nightly")]
 use crate::ir::ModuleAnnotation;
-#[cfg(feature = "nightly")]
-use crate::ir::instruction::SimdOp as IRSimdOp;
 use crate::ir::instruction::{
     AsmOperand as IRAsmOperand, AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRMemOrd,
 };
 #[cfg(feature = "nightly")]
 use crate::mir::RelocationModel;
-#[cfg(feature = "nightly")]
-use crate::mir::SimdOp;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
 use lamina_codegen::abi::RuntimeSymbol;
 
@@ -2492,72 +2489,157 @@ fn convert_instruction<'a>(
                 }
             }
         }
-        #[cfg(feature = "nightly")]
-        IRInst::SimdBinary {
+        IRInst::VectorBinary {
             op,
             result,
-            vector_type,
+            element_type,
+            lanes,
             lhs,
             rhs,
         } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_vec());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
+            let ty = map_ir_vector(*element_type, *lanes)?;
+            let op = match op {
+                IRBin::Add => VectorOp::VAdd,
+                IRBin::Sub => VectorOp::VSub,
+                IRBin::Mul => VectorOp::VMul,
+                IRBin::And => VectorOp::VAnd,
+                IRBin::Or => VectorOp::VOr,
+                IRBin::Xor => VectorOp::VXor,
+                IRBin::Shl | IRBin::Shr | IRBin::Div | IRBin::Rem | IRBin::Rotl | IRBin::Rotr => {
+                    return Err(FromIRError::UnsupportedInstruction);
+                }
             };
-            let mir_ty = map_ir_type(vector_type)?;
-            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
-            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
-            let mir_op = match op {
-                IRSimdOp::Add => SimdOp::Add,
-                IRSimdOp::Sub => SimdOp::Sub,
-                IRSimdOp::Mul => SimdOp::Mul,
-                IRSimdOp::Div => SimdOp::Div,
-                IRSimdOp::Min => SimdOp::Min,
-                IRSimdOp::Max => SimdOp::Max,
-                IRSimdOp::Abs => SimdOp::Abs,
-                IRSimdOp::Neg => SimdOp::Neg,
-                IRSimdOp::Sqrt => SimdOp::Sqrt,
-                _ => return Err(FromIRError::UnsupportedInstruction),
-            };
-            Ok(vec![Instruction::SimdBinary {
-                op: mir_op,
-                ty: mir_ty,
+            let lhs = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
+            let rhs = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            Ok(vec![Instruction::VectorOp {
+                op,
+                ty,
                 dst,
-                lhs: lhs_op,
-                rhs: rhs_op,
+                operands: vec![lhs, rhs],
             }])
         }
-        #[cfg(feature = "nightly")]
-        IRInst::SimdUnary {
-            op,
+        IRInst::VectorSplat {
             result,
-            vector_type,
-            operand,
+            element_type,
+            lanes,
+            value,
         } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_vec());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
-            let mir_ty = map_ir_type(vector_type)?;
-            let src_op = resolve_operand(operand, vreg_alloc, var_to_reg, globals)?;
-            let mir_op = match op {
-                IRSimdOp::Abs => SimdOp::Abs,
-                IRSimdOp::Neg => SimdOp::Neg,
-                IRSimdOp::Sqrt => SimdOp::Sqrt,
-                _ => return Err(FromIRError::UnsupportedInstruction),
-            };
-            Ok(vec![Instruction::SimdUnary {
-                op: mir_op,
-                ty: mir_ty,
+            let ty = map_ir_vector(*element_type, *lanes)?;
+            let mut value = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            normalize_lowered_literal(&mut value, map_ir_prim(*element_type)?);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            Ok(vec![Instruction::VectorOp {
+                op: VectorOp::VSplat,
+                ty,
                 dst,
-                src: src_op,
+                operands: vec![value],
             }])
+        }
+        IRInst::VectorExtractLane {
+            result,
+            element_type,
+            lanes,
+            vector,
+            lane,
+        } => {
+            let ty = map_ir_vector(*element_type, *lanes)?;
+            let vector = resolve_operand(vector, vreg_alloc, var_to_reg, globals)?;
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            Ok(vec![Instruction::VectorOp {
+                op: VectorOp::VExtractLane,
+                ty,
+                dst,
+                operands: vec![vector, Operand::imm_i64(i64::from(*lane))],
+            }])
+        }
+        IRInst::VectorInsertLane {
+            result,
+            element_type,
+            lanes,
+            vector,
+            scalar,
+            lane,
+        } => {
+            let ty = map_ir_vector(*element_type, *lanes)?;
+            let vector = resolve_operand(vector, vreg_alloc, var_to_reg, globals)?;
+            let mut scalar = resolve_operand(scalar, vreg_alloc, var_to_reg, globals)?;
+            normalize_lowered_literal(&mut scalar, map_ir_prim(*element_type)?);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            Ok(vec![Instruction::VectorOp {
+                op: VectorOp::VInsertLane,
+                ty,
+                dst,
+                operands: vec![vector, scalar, Operand::imm_i64(i64::from(*lane))],
+            }])
+        }
+        IRInst::VectorShuffle {
+            result,
+            element_type,
+            lanes,
+            lhs,
+            rhs,
+            mask,
+        } => {
+            let ty = map_ir_vector(*element_type, *lanes)?;
+            let scalar_ty = map_ir_prim(*element_type)?;
+            let sources = [
+                resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?,
+                resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?,
+            ];
+            let float = matches!(element_type, IRPrim::F32 | IRPrim::F64);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            let mut zero = match element_type {
+                IRPrim::F32 => Operand::Immediate(Immediate::F32(0.0)),
+                IRPrim::F64 => Operand::Immediate(Immediate::F64(0.0)),
+                _ => Operand::imm_i64(0),
+            };
+            normalize_lowered_literal(&mut zero, scalar_ty);
+            let mut out = Vec::with_capacity(mask.len() * 2 + 1);
+            let mut acc = if mask.is_empty() {
+                dst.clone()
+            } else {
+                Register::Virtual(vreg_alloc.allocate_vec())
+            };
+            out.push(Instruction::VectorOp {
+                op: VectorOp::VSplat,
+                ty,
+                dst: acc.clone(),
+                operands: vec![zero],
+            });
+            for (lane, index) in mask.iter().enumerate() {
+                let source = sources[usize::from(*index >= *lanes)].clone();
+                let within = i64::from(index % (*lanes).max(1));
+                let scalar = Register::Virtual(if float {
+                    vreg_alloc.allocate_fpr()
+                } else {
+                    vreg_alloc.allocate_gpr()
+                });
+                out.push(Instruction::VectorOp {
+                    op: VectorOp::VExtractLane,
+                    ty,
+                    dst: scalar.clone(),
+                    operands: vec![source, Operand::imm_i64(within)],
+                });
+                let last = lane + 1 == mask.len();
+                let next = if last {
+                    dst.clone()
+                } else {
+                    Register::Virtual(vreg_alloc.allocate_vec())
+                };
+                out.push(Instruction::VectorOp {
+                    op: VectorOp::VInsertLane,
+                    ty,
+                    dst: next.clone(),
+                    operands: vec![
+                        Operand::Register(acc),
+                        Operand::Register(scalar),
+                        Operand::imm_i64(lane as i64),
+                    ],
+                });
+                acc = next;
+            }
+            Ok(out)
         }
         IRInst::AtomicLoad {
             result,
@@ -2685,13 +2767,6 @@ fn convert_instruction<'a>(
                 failure_ordering: ir_ordering_to_mir(failure_ordering),
             }])
         }
-        #[cfg(feature = "nightly")]
-        IRInst::SimdTernary { .. }
-        | IRInst::SimdShuffle { .. }
-        | IRInst::SimdExtract { .. }
-        | IRInst::SimdInsert { .. }
-        | IRInst::SimdLoad { .. }
-        | IRInst::SimdStore { .. } => Err(FromIRError::UnsupportedInstruction),
     }
 }
 
@@ -2846,6 +2921,15 @@ fn value_register_classes<'a>(
                 | IRInst::AtomicBinary { result, ty, .. }
                 | IRInst::Copy { result, ty, .. } => (*result, class_of_type(ty)),
                 IRInst::VaArg { result, ty, .. } => (*result, reg_class_for_prim(*ty)),
+                IRInst::VectorBinary { result, .. }
+                | IRInst::VectorSplat { result, .. }
+                | IRInst::VectorInsertLane { result, .. }
+                | IRInst::VectorShuffle { result, .. } => (*result, RegisterClass::Vec),
+                IRInst::VectorExtractLane {
+                    result,
+                    element_type,
+                    ..
+                } => (*result, reg_class_for_prim(*element_type)),
                 IRInst::Bitcast {
                     result,
                     target_type,
@@ -2895,7 +2979,6 @@ fn insert_register_class<'a>(
 fn reg_class_for_type(ty: &IRType<'_>) -> RegisterClass {
     match ty {
         IRType::Primitive(IRPrim::F32) | IRType::Primitive(IRPrim::F64) => RegisterClass::Fpr,
-        #[cfg(feature = "nightly")]
         IRType::Vector { .. } => RegisterClass::Vec,
         _ => RegisterClass::Gpr,
     }

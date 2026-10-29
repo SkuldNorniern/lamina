@@ -458,19 +458,6 @@ fn instruction_type(instruction: &MirInst) -> Option<&MirType> {
         | MirInst::Load { ty, .. }
         | MirInst::Store { ty, .. }
         | MirInst::VectorOp { ty, .. } => Some(ty),
-        #[cfg(feature = "nightly")]
-        MirInst::SimdBinary { ty, .. }
-        | MirInst::SimdUnary { ty, .. }
-        | MirInst::SimdTernary { ty, .. }
-        | MirInst::SimdShuffle { ty, .. }
-        | MirInst::SimdExtract { ty, .. }
-        | MirInst::SimdInsert { ty, .. }
-        | MirInst::SimdLoad { ty, .. }
-        | MirInst::SimdStore { ty, .. }
-        | MirInst::AtomicLoad { ty, .. }
-        | MirInst::AtomicStore { ty, .. }
-        | MirInst::AtomicBinary { ty, .. }
-        | MirInst::AtomicCompareExchange { ty, .. } => Some(ty),
         _ => None,
     }
 }

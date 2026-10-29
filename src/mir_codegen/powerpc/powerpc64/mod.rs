@@ -2025,6 +2025,11 @@ fn emit_instruction_ppc64<W: Write>(
                 pointer_width,
             )?;
         }
+        MirInst::VectorOp { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "PowerPC64 vector operations".to_string(),
+            )));
+        }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!("PowerPC64 backend: instruction not yet supported: {other:?}"),

@@ -254,13 +254,6 @@ impl DeadCodeElimination {
                 | Instruction::Lea { .. } => true,
 
             // SIMD register-only ops are also pure (nightly only)
-            #[cfg(feature = "nightly")]
-            Instruction::SimdBinary { .. }
-            | Instruction::SimdUnary { .. }
-            | Instruction::SimdTernary { .. }
-            | Instruction::SimdShuffle { .. }
-            | Instruction::SimdExtract { .. }
-            | Instruction::SimdInsert { .. } => true,
 
             // Instructions with side effects - never remove
             Instruction::Load { .. } // Reads memory (could fault)
@@ -294,8 +287,6 @@ impl DeadCodeElimination {
             | Instruction::VaCopy { .. } => false,
 
             // SIMD memory operations have side effects (nightly only)
-            #[cfg(feature = "nightly")]
-            Instruction::SimdLoad { .. } | Instruction::SimdStore { .. } => false,
         }
     }
 }

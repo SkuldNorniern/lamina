@@ -1215,17 +1215,6 @@ fn emit_instruction<W: Write>(
         | MirInst::VaCopy { .. } => {
             return Err(unsupported("mips64 variadic argument access"));
         }
-        #[cfg(feature = "nightly")]
-        MirInst::SimdBinary { .. }
-        | MirInst::SimdUnary { .. }
-        | MirInst::SimdTernary { .. }
-        | MirInst::SimdShuffle { .. }
-        | MirInst::SimdExtract { .. }
-        | MirInst::SimdInsert { .. }
-        | MirInst::SimdLoad { .. }
-        | MirInst::SimdStore { .. } => {
-            return Err(unsupported("mips64 SIMD operations"));
-        }
     }
     Ok(())
 }

@@ -986,17 +986,6 @@ fn emit_instruction<W: Write>(
                 "i686 received an integer conversion that was not lowered",
             ));
         }
-        #[cfg(feature = "nightly")]
-        MirInst::SimdBinary { .. }
-        | MirInst::SimdUnary { .. }
-        | MirInst::SimdTernary { .. }
-        | MirInst::SimdShuffle { .. }
-        | MirInst::SimdExtract { .. }
-        | MirInst::SimdInsert { .. }
-        | MirInst::SimdLoad { .. }
-        | MirInst::SimdStore { .. } => {
-            return Err(unsupported("i686 SIMD operations are not implemented"));
-        }
     }
     Ok(())
 }

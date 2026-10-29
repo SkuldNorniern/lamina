@@ -29,7 +29,6 @@
 //! ## FEAT:TODO - Missing Features Compared to LLVM IR
 //!
 //! ### Type System Gaps:
-//! - **Vector/SIMD types**: `<4 x i32>` for SIMD operations
 //! - **Function types**: First-class function types like `i32 (i32, i32)*`
 //! - **Address spaces**: Memory spaces like `i32 addrspace(1)*` for GPUs
 //! - **Packed structs**: `<{ i32, i8 }>` for compact memory layout
@@ -43,10 +42,11 @@
 //! - **Atomic operations**: richer `atomicrmw`/`cmpxchg`/`fence` variants
 //! - **Exception handling**: `invoke`, `landingpad`, `resume`
 //! - **Control flow**: `indirectbr`
-//! - **Vector operations**: additional SIMD arithmetic and operations (kept behind `nightly`)
+//! - **Vector operations**: `div`, `rem`, the rotates and the shifts have no `<N x T>` form
 //!
 //! ### Implemented (previously listed as missing):
 //! - `switch` — full multi-way branch lowered to cmp/jmp chains in all backends
+//! - Vector types, `<N x T>`, as an instruction's type suffix. See `Plan/simd-surface.md`
 //!
 //! ### Advanced Features:
 //! - **Debug information**: `!dbg`, `!llvm.dbg.value`
@@ -224,9 +224,9 @@ pub enum Type<'a> {
         element_type: Box<Type<'a>>,
         size: u64,
     },
-    #[cfg(feature = "nightly")]
-    /// SIMD vector type: `<N x T>` where N is the number of lanes and T is the element type
-    /// Examples: `<4 x i32>`, `<8 x f32>`, `<2 x i64>`
+    /// A fixed-width machine vector, written `<N x T>`. It names a value held in one
+    /// vector register and never has a memory layout of its own: it may appear as an
+    /// instruction's type suffix and nowhere else. See `Plan/simd-surface.md`.
     Vector {
         element_type: PrimitiveType,
         lanes: u32,
@@ -375,7 +375,6 @@ impl fmt::Display for Type<'_> {
             Type::Primitive(pt) => write!(f, "{pt}"),
             Type::Named(id) => write!(f, "!{id}"),
             Type::Array { element_type, size } => write!(f, "[{size} x {element_type}]"),
-            #[cfg(feature = "nightly")]
             Type::Vector {
                 element_type,
                 lanes,
@@ -452,6 +451,49 @@ pub const fn sizeof_primitive(ty: PrimitiveType, pointer: PointerWidth) -> u64 {
         PrimitiveType::Ptr => pointer.bytes() as u64,
         PrimitiveType::I128 | PrimitiveType::U128 => 16,
     }
+}
+
+/// Bit widths a machine vector register comes in. A `<N x T>` whose lanes do not add
+/// up to one of these has no register to live in and is refused rather than split.
+pub const VECTOR_REGISTER_BITS: [u32; 2] = [128, 256];
+
+/// The lane width in bits of a type that may be a vector lane, or `None` for one that
+/// may not. `bool`, `ptr` and the 128-bit integers have no lane form.
+pub const fn vector_lane_bits(element_type: PrimitiveType) -> Option<u32> {
+    Some(match element_type {
+        PrimitiveType::I8 | PrimitiveType::U8 => 8,
+        PrimitiveType::I16 | PrimitiveType::U16 => 16,
+        PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 32,
+        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 64,
+        PrimitiveType::Bool | PrimitiveType::Ptr | PrimitiveType::I128 | PrimitiveType::U128 => {
+            return None;
+        }
+    })
+}
+
+/// Checks `<lanes x element_type>` against the lane types and register widths that
+/// exist, returning the message to report when it names neither. `what` places the
+/// type for the reader.
+pub fn check_vector_shape(
+    element_type: PrimitiveType,
+    lanes: u32,
+    what: &str,
+) -> Result<(), String> {
+    let Some(bits) = vector_lane_bits(element_type) else {
+        return Err(format!(
+            "{what} has element type {element_type}, which has no vector lane form\n  Hint: vector lanes are i8, i16, i32, i64, their unsigned forms, f32 and f64"
+        ));
+    };
+    let total = lanes.checked_mul(bits).unwrap_or(0);
+    if !VECTOR_REGISTER_BITS.contains(&total) {
+        return Err(format!(
+            "<{lanes} x {element_type}> in {what} is {total} bits, which is no vector register width\n  Hint: a vector fills one register; widths are {} and {} bits, so write <{} x {element_type}> instead of splitting the value yourself",
+            VECTOR_REGISTER_BITS[0],
+            VECTOR_REGISTER_BITS[1],
+            VECTOR_REGISTER_BITS[0] / bits
+        ));
+    }
+    Ok(())
 }
 
 /// Resolves named types throughout an aggregate, rejecting unknown names and cycles.
@@ -640,7 +682,6 @@ mod tests {
             "packed struct { x: f32, y: f32 }"
         );
         assert_eq!(format!("{}", Type::Void), "void");
-        #[cfg(feature = "nightly")]
         {
             let vec_type = Type::Vector {
                 element_type: PrimitiveType::I32,

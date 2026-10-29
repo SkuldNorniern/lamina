@@ -36,8 +36,6 @@ pub use function::{
     CodePlacement, Function, FunctionBuilder, KernelMetadata, Parameter, Signature,
     SymbolVisibility,
 };
-#[cfg(feature = "nightly")]
-pub use instruction::SimdOp;
 pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
     IntOverflowOp, IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,

@@ -13,7 +13,6 @@ mod functions;
 mod io;
 mod memory;
 mod pointers;
-#[cfg(feature = "nightly")]
 mod simd;
 mod types;
 mod values;
@@ -114,11 +113,6 @@ impl<'a> IRBuilder<'a> {
     /// or when the instruction would print a string literal, which only global initializers
     /// may contain.
     pub(super) fn inst(&mut self, instruction: Instruction<'a>) -> &mut Self {
-        #[cfg(feature = "nightly")]
-        assert!(
-            !is_simd(&instruction),
-            "SIMD instructions have no text form in Lamina IR yet; use scalar operations"
-        );
         let text = instruction.to_string();
         assert!(
             !text.contains('"'),
@@ -224,19 +218,4 @@ impl<'a> IRBuilder<'a> {
         }
         module
     }
-}
-
-#[cfg(feature = "nightly")]
-fn is_simd(instruction: &Instruction<'_>) -> bool {
-    matches!(
-        instruction,
-        Instruction::SimdBinary { .. }
-            | Instruction::SimdUnary { .. }
-            | Instruction::SimdTernary { .. }
-            | Instruction::SimdShuffle { .. }
-            | Instruction::SimdExtract { .. }
-            | Instruction::SimdInsert { .. }
-            | Instruction::SimdLoad { .. }
-            | Instruction::SimdStore { .. }
-    )
 }

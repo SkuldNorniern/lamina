@@ -140,8 +140,10 @@ use std::{
 use crate::{
     calls::validate_calls,
     function::Function,
-    instruction::Instruction,
-    types::{Identifier, Literal, Type, Value, resolve_type_names},
+    instruction::{BinaryOp, Instruction},
+    types::{
+        Identifier, Literal, PrimitiveType, Type, Value, check_vector_shape, resolve_type_names,
+    },
 };
 
 /// A named type declaration (e.g., `type !Vec2 = struct { ... }`).
@@ -384,12 +386,190 @@ impl<'a> Module<'a> {
             }));
         }
         self.validate_named_types(&mut all_errors);
+        self.validate_vectors(&mut all_errors);
         self.validate_field_pointers(&mut all_errors);
         validate_calls(self, &mut all_errors);
         if all_errors.is_empty() {
             Ok(())
         } else {
             Err(all_errors)
+        }
+    }
+
+    /// Checks every use of `<N x T>`.
+    ///
+    /// A vector is an instruction's type suffix and the type of an SSA value. It has
+    /// no memory layout, so it may not appear in a declaration: not in a global, a
+    /// struct field, a named type, a parameter, a return type or a `stackalloc`.
+    /// See `Plan/simd-surface.md` for why.
+    fn validate_vectors(&self, errors: &mut Vec<String>) {
+        let mut declarations: Vec<(String, &Type<'_>)> = Vec::new();
+        for decl in self.type_declarations.values() {
+            declarations.push((format!("type '!{}'", decl.name), &decl.ty));
+        }
+        for global in self.global_declarations.values() {
+            declarations.push((format!("global '${}'", global.name), &global.ty));
+        }
+        for func in self.functions.values() {
+            for param in &func.signature.params {
+                declarations.push((
+                    format!("parameter '%{}' of '@{}'", param.name, func.name),
+                    &param.ty,
+                ));
+            }
+            declarations.push((
+                format!("return type of '@{}'", func.name),
+                &func.signature.return_type,
+            ));
+            for block in func.basic_blocks.values() {
+                for instr in &block.instructions {
+                    if let Instruction::Alloc { allocated_ty, .. } = instr {
+                        declarations
+                            .push((format!("stackalloc in '@{}'", func.name), allocated_ty));
+                    }
+                }
+            }
+        }
+        for (owner, ty) in declarations {
+            if type_mentions_vector(ty) {
+                errors.push(format!(
+                    "{owner} names a vector type\n  Hint: a vector is a value in a register, not a layout in memory; it may only be an instruction's type suffix. Declare the memory as [N x T] and use 'load.<N x T>' to read it"
+                ));
+            }
+        }
+
+        for func in self.functions.values() {
+            for block in func.basic_blocks.values() {
+                for instr in &block.instructions {
+                    self.validate_vector_instruction(func.name, instr, errors);
+                }
+            }
+        }
+    }
+
+    fn validate_vector_instruction(
+        &self,
+        func: &str,
+        instr: &Instruction<'_>,
+        errors: &mut Vec<String>,
+    ) {
+        let where_ = |what: &str| format!("{what} in '@{func}'");
+        let mut shape =
+            |element_type: PrimitiveType, lanes: u32, what: &str| match check_vector_shape(
+                element_type,
+                lanes,
+                &where_(what),
+            ) {
+                Ok(()) => true,
+                Err(message) => {
+                    errors.push(message);
+                    false
+                }
+            };
+        match instr {
+            Instruction::Load { ty, .. } | Instruction::Store { ty, .. } => {
+                let resolved = resolve_type_names(ty, &self.type_declarations);
+                if let Some(Type::Vector {
+                    element_type,
+                    lanes,
+                }) = resolved.as_ref().or(Some(ty))
+                {
+                    let what = if matches!(instr, Instruction::Load { .. }) {
+                        "load"
+                    } else {
+                        "store"
+                    };
+                    shape(*element_type, *lanes, what);
+                }
+            }
+            Instruction::VectorBinary {
+                op,
+                element_type,
+                lanes,
+                ..
+            } => {
+                if !shape(*element_type, *lanes, "vector operation") {
+                    return;
+                }
+                match op {
+                    BinaryOp::Add
+                    | BinaryOp::Sub
+                    | BinaryOp::Mul
+                    | BinaryOp::And
+                    | BinaryOp::Or
+                    | BinaryOp::Xor => {}
+                    BinaryOp::Shl | BinaryOp::Shr => errors.push(format!(
+                        "{} has no vector form\n  Hint: the vector shift every backend here implements takes one count for all lanes, read out of the low 64 bits of its second operand, so '{op}.<{lanes} x {element_type}>' would read as a per-lane shift and mean something else. Extract the lanes and shift them as scalars",
+                        where_(&format!("'{op}.<{lanes} x {element_type}>'"))
+                    )),
+                    BinaryOp::Div | BinaryOp::Rem | BinaryOp::Rotl | BinaryOp::Rotr => errors
+                        .push(format!(
+                            "{} has no vector form\n  Hint: extract the lanes, operate on them as scalars and insert the results",
+                            where_(&format!("'{op}.<{lanes} x {element_type}>'"))
+                        )),
+                }
+            }
+            Instruction::VectorSplat {
+                element_type,
+                lanes,
+                ..
+            } => {
+                shape(*element_type, *lanes, "splat");
+            }
+            Instruction::VectorExtractLane {
+                element_type,
+                lanes,
+                lane,
+                ..
+            } => {
+                if shape(*element_type, *lanes, "extractlane") && lane >= lanes {
+                    errors.push(format!(
+                        "{} reads lane {lane} of <{lanes} x {element_type}>",
+                        where_("extractlane")
+                    ));
+                }
+            }
+            Instruction::VectorInsertLane {
+                element_type,
+                lanes,
+                lane,
+                ..
+            } => {
+                if shape(*element_type, *lanes, "insertlane") && lane >= lanes {
+                    errors.push(format!(
+                        "{} writes lane {lane} of <{lanes} x {element_type}>",
+                        where_("insertlane")
+                    ));
+                }
+            }
+            Instruction::VectorShuffle {
+                element_type,
+                lanes,
+                mask,
+                ..
+            } => {
+                if !shape(*element_type, *lanes, "shuffle") {
+                    return;
+                }
+                if mask.len() as u64 != u64::from(*lanes) {
+                    errors.push(format!(
+                        "{} has {} mask entries for <{lanes} x {element_type}>\n  Hint: the mask names one source lane per result lane",
+                        where_("shuffle"),
+                        mask.len()
+                    ));
+                }
+                let sources = lanes.saturating_mul(2);
+                for index in mask {
+                    if *index >= sources {
+                        errors.push(format!(
+                            "{} selects lane {index}, but its two <{lanes} x {element_type}> operands hold lanes 0 to {}",
+                            where_("shuffle"),
+                            sources - 1
+                        ));
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -497,6 +677,15 @@ impl<'a> Module<'a> {
             }
         }
         false
+    }
+}
+
+fn type_mentions_vector(ty: &Type<'_>) -> bool {
+    match ty {
+        Type::Vector { .. } => true,
+        Type::Array { element_type, .. } => type_mentions_vector(element_type),
+        Type::Struct { fields, .. } => fields.iter().any(|f| type_mentions_vector(&f.ty)),
+        Type::Primitive(_) | Type::Named(_) | Type::Void | Type::VaList => false,
     }
 }
 

@@ -1950,19 +1950,6 @@ fn emit_block<W: Write>(
                     "inline assembly is not yet supported by the AArch64 backend; it is x86_64 Linux only".to_owned(),
                 )));
             }
-            #[cfg(feature = "nightly")]
-            MirInst::SimdBinary { .. }
-            | MirInst::SimdUnary { .. }
-            | MirInst::SimdTernary { .. }
-            | MirInst::SimdShuffle { .. }
-            | MirInst::SimdExtract { .. }
-            | MirInst::SimdInsert { .. }
-            | MirInst::SimdLoad { .. }
-            | MirInst::SimdStore { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "SIMD instructions not yet supported by AArch64 backend".to_string(),
-                )));
-            }
         }
     }
     Ok(())

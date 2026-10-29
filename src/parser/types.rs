@@ -103,6 +103,31 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
     }
 }
 
+/// Parses `<N x T>`: a machine vector of `N` lanes of the primitive type `T`.
+pub fn parse_vector_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
+    state.expect_char('<')?;
+    let lanes = state.parse_integer()?;
+    let Ok(lanes) = u32::try_from(lanes) else {
+        return Err(state.error(format!(
+            "Invalid vector lane count: {lanes}\n  Hint: Write '<4 x i32>'"
+        )));
+    };
+    state.consume_keyword("x")?;
+    let element_type = match parse_type(state)? {
+        Type::Primitive(primitive) => primitive,
+        other => {
+            return Err(state.error(format!(
+                "Vector lanes hold a primitive type, found '{other}'\n  Hint: Write '<4 x i32>'; a vector of aggregates has no machine form"
+            )));
+        }
+    };
+    state.expect_char('>')?;
+    Ok(Type::Vector {
+        element_type,
+        lanes,
+    })
+}
+
 /// Parses a type (primitive, composite, or named).
 pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.enter_type()?;
@@ -116,6 +141,7 @@ fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaE
     match state.current_char() {
         Some('!') => Ok(Type::Named(state.parse_named_type_identifier()?)),
         Some('[') => parse_composite_type(state),
+        Some('<') => parse_vector_type(state),
         Some('s') if state.peek_slice(6) == Some("struct") => parse_composite_type(state),
         Some('p') if state.peek_slice(6) == Some("packed") => parse_composite_type(state),
         _ => {
