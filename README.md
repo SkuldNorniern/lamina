@@ -304,7 +304,7 @@ call @free(%hptr)
 
 ```
 # Struct field access
-%field_ptr = getfieldptr %struct, 0
+%field_ptr = getfieldptr.!Point %struct, 0
 %value = load.f32 %field_ptr
 
 # Array element access

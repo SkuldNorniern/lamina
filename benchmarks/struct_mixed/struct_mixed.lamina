@@ -5,12 +5,12 @@
 fn @main() -> i64 {
   entry:
     %m = stackalloc.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 }
-    %ap = getfieldptr %m, 0
-    %bp = getfieldptr %m, 1
-    %cp = getfieldptr %m, 2
-    %dp = getfieldptr %m, 3
-    %fp = getfieldptr %m, 4
-    %gp = getfieldptr %m, 5
+    %ap = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 } %m, 0
+    %bp = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 } %m, 1
+    %cp = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 } %m, 2
+    %dp = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 } %m, 3
+    %fp = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 } %m, 4
+    %gp = getfieldptr.struct { a: i8, b: u16, c: i32, d: u64, f: bool, g: i8 } %m, 5
     %i = add.i64 0, 0
     %total = add.i64 0, 0
     jmp loop_head

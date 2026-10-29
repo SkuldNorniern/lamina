@@ -6,10 +6,10 @@
 fn @main() -> i64 {
   entry:
     %p = stackalloc.struct { x: i64, y: i64, vx: i64, vy: i64 }
-    %xp = getfieldptr %p, 0
-    %yp = getfieldptr %p, 1
-    %vxp = getfieldptr %p, 2
-    %vyp = getfieldptr %p, 3
+    %xp = getfieldptr.struct { x: i64, y: i64, vx: i64, vy: i64 } %p, 0
+    %yp = getfieldptr.struct { x: i64, y: i64, vx: i64, vy: i64 } %p, 1
+    %vxp = getfieldptr.struct { x: i64, y: i64, vx: i64, vy: i64 } %p, 2
+    %vyp = getfieldptr.struct { x: i64, y: i64, vx: i64, vy: i64 } %p, 3
     store.i64 %xp, 0
     store.i64 %yp, 0
     store.i64 %vxp, 3

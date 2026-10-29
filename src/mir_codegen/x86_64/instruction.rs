@@ -2773,3 +2773,101 @@ mod narrow_integer_tests {
         Ok(())
     }
 }
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+mod variadic_pointer_call_tests {
+    use crate::mir_codegen::{
+        simd_support::tools_available,
+        test_support::{PRINT_I64_HELPERS, compile},
+    };
+    use std::{
+        env,
+        error::Error,
+        fs,
+        process::{self, Command},
+    };
+
+    #[test]
+    fn callptr_passes_float_varargs_like_a_direct_call() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-callptr-variadic-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join("variadic.lamina");
+        fs::write(
+            &source,
+            format!(
+                r#"@extern
+fn @snprintf(ptr %buf, i64 %n, ptr %fmt, ...) -> i32
+
+global $fmt: [16 x i8] = "%.1f %.1f %.1f\n"
+
+fn @sum(i64 %n, ...) -> i64 {{
+entry:
+  %ap = stackalloc.valist
+  %dsum = stackalloc.f64
+  %i = stackalloc.i64
+  store.f64 %dsum, 0.0
+  store.i64 %i, 0
+  va_start %ap
+  jmp loop
+
+loop:
+  %iv = load.i64 %i
+  %c = lt.i64 %iv, %n
+  br %c, body, done
+
+body:
+  %y = va_arg.f64 %ap
+  %b = load.f64 %dsum
+  %t = add.f64 %b, %y
+  store.f64 %dsum, %t
+  %iv2 = add.i64 %iv, 1
+  store.i64 %i, %iv2
+  jmp loop
+
+done:
+  va_end %ap
+  %ds = load.f64 %dsum
+  %r = fptoint.f64.i64 %ds
+  ret.i64 %r
+}}
+
+@export
+fn @main() -> i64 {{
+entry:
+  %buf = stackalloc.i64
+  %a = add.f32 2.5, 0.0
+  %d = call @sum(i64 4, f64 10.0, f64 20.0, f64 30.0, f32 %a)
+  %p = funcaddr @sum
+  %c = callptr.i64 %p(i64 4, ..., f64 10.0, f64 20.0, f64 30.0, f32 %a)
+  %q = funcaddr @snprintf
+  %w = callptr.i32 %q(ptr %buf, i64 8, ptr $fmt, ..., f64 1234.5, f32 %a, f64 -7.5)
+  %n = extend.i32.i64 %w
+  call @print_i64(%d)
+  call @print_i64(%c)
+  call @print_i64(%n)
+  ret.i64 0
+}}
+{PRINT_I64_HELPERS}"#
+            ),
+        )?;
+        for level in ["0", "2"] {
+            let executable = directory.join(format!("variadic-{level}"));
+            compile(&source, &executable, &["--opt-level", level])?;
+            let output = Command::new("timeout")
+                .arg("10")
+                .arg(&executable)
+                .output()?;
+            assert!(output.status.success(), "O{level}: {output:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                "62\n62\n16\n",
+                "O{level}"
+            );
+        }
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}

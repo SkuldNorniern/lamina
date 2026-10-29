@@ -1221,8 +1221,8 @@ mod aggregate_c_abi_tests {
     const INCOMING: &str = r#"
 @export fn @take_pair(struct { a: i64, b: i64 } %p) -> i64 {
 entry:
- %ap = getfieldptr %p, 0
- %bp = getfieldptr %p, 1
+ %ap = getfieldptr.struct { a: i64, b: i64 } %p, 0
+ %bp = getfieldptr.struct { a: i64, b: i64 } %p, 1
  %a = load.i64 %ap
  %b = load.i64 %bp
  %s = add.i64 %a, %b
@@ -1230,8 +1230,8 @@ entry:
 }
 @export fn @take_small(struct { a: i32, b: i32 } %p) -> i64 {
 entry:
- %ap = getfieldptr %p, 0
- %bp = getfieldptr %p, 1
+ %ap = getfieldptr.struct { a: i32, b: i32 } %p, 0
+ %bp = getfieldptr.struct { a: i32, b: i32 } %p, 1
  %a = load.i32 %ap
  %b = load.i32 %bp
  %s = add.i32 %a, %b
@@ -1240,9 +1240,9 @@ entry:
 }
 @export fn @take_three(struct { a: i32, b: i32, c: i32 } %p) -> i64 {
 entry:
- %ap = getfieldptr %p, 0
- %bp = getfieldptr %p, 1
- %cp = getfieldptr %p, 2
+ %ap = getfieldptr.struct { a: i32, b: i32, c: i32 } %p, 0
+ %bp = getfieldptr.struct { a: i32, b: i32, c: i32 } %p, 1
+ %cp = getfieldptr.struct { a: i32, b: i32, c: i32 } %p, 2
  %a = load.i32 %ap
  %b = load.i32 %bp
  %c = load.i32 %cp
@@ -1258,8 +1258,8 @@ entry:
  %ef = add.i64 %e, %f
  %abcd = add.i64 %ab, %cd
  %scalars = add.i64 %abcd, %ef
- %ap = getfieldptr %p, 0
- %bp = getfieldptr %p, 1
+ %ap = getfieldptr.struct { a: i64, b: i64 } %p, 0
+ %bp = getfieldptr.struct { a: i64, b: i64 } %p, 1
  %x = load.i64 %ap
  %y = load.i64 %bp
  %xy = add.i64 %x, %y
@@ -1299,8 +1299,8 @@ entry:
 @export fn @send_pair() -> i64 {
 entry:
  %q = stackalloc.struct { a: i64, b: i64 }
- %qa = getfieldptr %q, 0
- %qb = getfieldptr %q, 1
+ %qa = getfieldptr.struct { a: i64, b: i64 } %q, 0
+ %qb = getfieldptr.struct { a: i64, b: i64 } %q, 1
  store.i64 %qa, 100
  store.i64 %qb, 7
  %r = call @c_pair(%q)
@@ -1309,8 +1309,8 @@ entry:
 @export fn @send_spilled() -> i64 {
 entry:
  %q = stackalloc.struct { a: i64, b: i64 }
- %qa = getfieldptr %q, 0
- %qb = getfieldptr %q, 1
+ %qa = getfieldptr.struct { a: i64, b: i64 } %q, 0
+ %qb = getfieldptr.struct { a: i64, b: i64 } %q, 1
  store.i64 %qa, 100
  store.i64 %qb, 7
  %r = call @c_spilled(1, 2, 3, 4, 5, 6, %q)
@@ -1339,8 +1339,8 @@ int main(void) {
 @export fn @make_pair(i64 %x) -> struct { a: i64, b: i64 } {
 entry:
  %p = stackalloc.struct { a: i64, b: i64 }
- %pa = getfieldptr %p, 0
- %pb = getfieldptr %p, 1
+ %pa = getfieldptr.struct { a: i64, b: i64 } %p, 0
+ %pb = getfieldptr.struct { a: i64, b: i64 } %p, 1
  store.i64 %pa, %x
  %y = add.i64 %x, 1
  store.i64 %pb, %y
@@ -1349,8 +1349,8 @@ entry:
 @export fn @make_small(i32 %x) -> struct { a: i32, b: i32 } {
 entry:
  %p = stackalloc.struct { a: i32, b: i32 }
- %pa = getfieldptr %p, 0
- %pb = getfieldptr %p, 1
+ %pa = getfieldptr.struct { a: i32, b: i32 } %p, 0
+ %pb = getfieldptr.struct { a: i32, b: i32 } %p, 1
  store.i32 %pa, %x
  store.i32 %pb, 9
  ret.ptr %p
@@ -1363,8 +1363,8 @@ entry:
 @export fn @take_c() -> i64 {
 entry:
  %r = call @c_make(10)
- %ra = getfieldptr %r, 0
- %rb = getfieldptr %r, 1
+ %ra = getfieldptr.struct { a: i64, b: i64 } %r, 0
+ %rb = getfieldptr.struct { a: i64, b: i64 } %r, 1
  %a = load.i64 %ra
  %b = load.i64 %rb
  %s = add.i64 %a, %b

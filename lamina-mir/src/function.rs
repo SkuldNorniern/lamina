@@ -126,6 +126,9 @@ pub struct Signature {
     /// Set by `@align(n)`; the function entry is aligned to `n` bytes.
     pub align: Option<u32>,
 
+    /// Set by `@naked`; the function is emitted with no prologue or epilogue.
+    pub naked: bool,
+
     /// Set by a trailing `...` on an `@extern` declaration. A call to one follows the
     /// variadic side of the platform convention.
     pub variadic: bool,
@@ -150,6 +153,7 @@ impl Signature {
             weak: false,
             section: None,
             align: None,
+            naked: false,
             variadic: false,
         }
     }

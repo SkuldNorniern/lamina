@@ -87,6 +87,19 @@ impl CommonSubexpressionElimination {
         }
     }
 
+    /// A computation over immediates alone. Recomputing it at each use is free, while
+    /// sharing its first result would keep that register live across the function.
+    fn reads_only_immediates(instr: &Instruction) -> bool {
+        let (lhs, rhs) = match instr {
+            Instruction::IntBinary { lhs, rhs, .. }
+            | Instruction::FloatBinary { lhs, rhs, .. }
+            | Instruction::IntCmp { lhs, rhs, .. }
+            | Instruction::FloatCmp { lhs, rhs, .. } => (lhs, rhs),
+            _ => return false,
+        };
+        matches!(lhs, Operand::Immediate(_)) && matches!(rhs, Operand::Immediate(_))
+    }
+
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let no_callee = |_: &str| -> Option<MirType> { None };
         let Ok(mut graph) = SsaFunction::build(func, &no_callee) else {
@@ -105,6 +118,9 @@ impl CommonSubexpressionElimination {
                 else {
                     continue;
                 };
+                if Self::reads_only_immediates(&inst.instruction) {
+                    continue;
+                }
                 let site = (b, i + 1);
                 let key = (text, inst.uses.clone());
                 let dst = &graph.values[defined.0 as usize].register;
@@ -225,7 +241,7 @@ fn between(reach: &[Vec<bool>], w: Site, from: Site, to: Site) -> bool {
 mod tests {
     use super::*;
     use crate::mir::{
-        FloatCmpOp, FunctionBuilder, Immediate, IntBinOp, ScalarType, VirtualReg,
+        FloatBinOp, FloatCmpOp, FunctionBuilder, Immediate, IntBinOp, ScalarType, VirtualReg,
         transform::test_utils::get_block,
     };
 
@@ -580,5 +596,80 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    fn float_div(ty: ScalarType, dst: u32, lhs: Immediate, rhs: Immediate) -> Instruction {
+        Instruction::FloatBinary {
+            op: FloatBinOp::FDiv,
+            ty: MirType::Scalar(ty),
+            dst: VirtualReg::fpr(dst).into(),
+            lhs: Operand::Immediate(lhs),
+            rhs: Operand::Immediate(rhs),
+        }
+    }
+
+    #[test]
+    fn cse_leaves_immediate_only_expressions_alone() {
+        let mut func = FunctionBuilder::new("consts")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(float_div(
+                ScalarType::F32,
+                0,
+                Immediate::F32(0.0),
+                Immediate::F32(0.0),
+            ))
+            .instr(float_div(
+                ScalarType::F32,
+                1,
+                Immediate::F32(0.0),
+                Immediate::F32(0.0),
+            ))
+            .instr(float_div(
+                ScalarType::F64,
+                2,
+                Immediate::F64(1.0),
+                Immediate::F64(0.0),
+            ))
+            .instr(float_div(
+                ScalarType::F64,
+                3,
+                Immediate::F64(1.0),
+                Immediate::F64(0.0),
+            ))
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Immediate(Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(2)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Immediate(Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(2)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        assert!(
+            !CommonSubexpressionElimination
+                .apply(&mut func)
+                .expect("should succeed")
+        );
+        let entry = get_block(&func, "entry");
+        assert!(
+            entry
+                .instructions
+                .iter()
+                .take(4)
+                .all(|instr| matches!(instr, Instruction::FloatBinary { .. })),
+            "{:?}",
+            entry.instructions
+        );
     }
 }

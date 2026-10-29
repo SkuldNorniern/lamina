@@ -128,6 +128,10 @@ pub(super) fn compile_single_function_x86_64(
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = simd::reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
+    let naked = func.sig.naked;
+    if naked {
+        ensure_naked_body(func_name, func, target_os)?;
+    }
     let mut output = RaxTrackingWriter {
         inner: Vec::new(),
         rax_value: None,
@@ -163,7 +167,7 @@ pub(super) fn compile_single_function_x86_64(
     let (stack_slots, total_slots);
 
     let mut saved_regs = Vec::new();
-    if settings.regalloc != RegallocStrategy::Incremental {
+    if settings.regalloc != RegallocStrategy::Incremental && !naked {
         let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
         let mut clobbers = ClobberIndex::default();
         let instructions = func.blocks.iter().flat_map(|block| &block.instructions);
@@ -226,10 +230,12 @@ pub(super) fn compile_single_function_x86_64(
     // An aggregate too large for the return registers travels through a hidden pointer
     // the caller passes in the first argument register. The callee keeps it in a slot
     // of its own, since the calls it makes would clobber that register.
-    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
-        for reg in super::inline_asm::touched_registers(inst) {
-            if callee_saved(reg, target_os) {
-                saved_regs.push(reg);
+    if !naked {
+        for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+            for reg in super::inline_asm::touched_registers(inst) {
+                if callee_saved(reg, target_os) {
+                    saved_regs.push(reg);
+                }
             }
         }
     }
@@ -264,11 +270,12 @@ pub(super) fn compile_single_function_x86_64(
         0
     };
     let stack_size = (va_base + va_slots) * 8;
-    let has_frame = settings.regalloc == RegallocStrategy::Incremental
-        || !is_leaf
-        || stack_size != 0
-        || func.sig.params.len() > abi.arg_registers().len()
-        || va_area.is_some();
+    let has_frame = !naked
+        && (settings.regalloc == RegallocStrategy::Incremental
+            || !is_leaf
+            || stack_size != 0
+            || func.sig.params.len() > abi.arg_registers().len()
+            || va_area.is_some());
     if has_frame {
         X86Frame::generate_prologue(&mut output, stack_size, unwind)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -580,6 +587,54 @@ pub(super) fn compile_single_function_x86_64(
         writeln!(output, "    .cfi_endproc").map_err(io_codegen_error)?;
     }
     Ok(strip_self_moves(output.inner))
+}
+
+/// A `@naked` body is emitted verbatim, so it must be inline assembly with no operands and
+/// nothing that expects a frame, parameters or a return value.
+fn ensure_naked_body(
+    func_name: &str,
+    func: &Function,
+    target_os: TargetOperatingSystem,
+) -> Result<(), CodegenError> {
+    let refuse = |reason: &str| {
+        CodegenError::InvalidMir(vec![format!("@naked function '{func_name}' {reason}")])
+    };
+    if target_os != TargetOperatingSystem::Linux {
+        return Err(CodegenError::UnsupportedFeature(format!(
+            "@naked function '{func_name}' is supported on x86_64 Linux only"
+        )));
+    }
+    if !func.sig.params.is_empty()
+        || func.sig.variadic
+        || func.sig.ret_ty.is_some()
+        || func.sig.ret_aggregate.is_some()
+    {
+        return Err(refuse("takes parameters or returns a value"));
+    }
+    let [block] = func.blocks.as_slice() else {
+        return Err(refuse("must have exactly one block"));
+    };
+    let Some((last, body)) = block.instructions.split_last() else {
+        return Err(refuse("has an empty body"));
+    };
+    if !matches!(last, MirInst::Unreachable) {
+        return Err(refuse("must end in unreachable"));
+    }
+    for inst in body {
+        match inst {
+            MirInst::InlineAsm {
+                operands,
+                result: None,
+                ..
+            } if operands.is_empty() => {}
+            _ => {
+                return Err(refuse(
+                    "contains an instruction other than operand-free inline asm",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn ensure_signature_support(sig: &Signature) -> Result<(), LaminaError> {
@@ -1342,13 +1397,13 @@ entry:
     %stack = stackalloc.struct { a: i8, b: i64, c: i8 }
     %other = stackalloc.[8 x i64]
     store.i64 %other, 4321
-    %middle = getfieldptr %stack, 1
-    %last = getfieldptr %stack, 2
+    %middle = getfieldptr.struct { a: i8, b: i64, c: i8 } %stack, 1
+    %last = getfieldptr.struct { a: i8, b: i64, c: i8 } %stack, 2
     store.i64 %middle, 1234
     store.i8 %last, 99
     %heap = call @malloc(48)
     %second = getelem.struct { a: i8, b: i64, c: i8 } %heap, 1
-    %heap_last = getfieldptr %second, 2
+    %heap_last = getfieldptr.struct { a: i8, b: i64, c: i8 } %second, 2
     store.i8 %heap_last, 77
     %x = load.i64 %middle
     %y = load.i8 %last
@@ -1394,5 +1449,95 @@ entry:
             }
         }
         fs::remove_dir_all(directory).expect("remove executable directory");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod naked_tests {
+    use super::*;
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+
+    fn assembly_for(
+        source: &str,
+        naked: bool,
+        os: TargetOperatingSystem,
+    ) -> Result<String, String> {
+        let ir = parse_module(source).expect("parse function");
+        let mut mir = from_ir(&ir, "naked").expect("lower function");
+        if naked {
+            mir.functions.get_mut("f").expect("function f").sig.naked = true;
+        }
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, os).map_err(|error| error.to_string())?;
+        Ok(String::from_utf8(output).expect("utf8 assembly"))
+    }
+
+    #[test]
+    fn naked_body_is_emitted_without_prologue_or_epilogue() {
+        let asm = assembly_for(
+            "fn @f() -> void {\nentry:\n    asm.void \"cli; hlt\"\n    unreachable\n}\n",
+            true,
+            TargetOperatingSystem::Linux,
+        )
+        .expect("naked function should emit");
+        let body: Vec<&str> = asm
+            .lines()
+            .skip_while(|line| !line.starts_with("f:"))
+            .skip(1)
+            .filter(|line| !line.trim_start().starts_with('.'))
+            .collect();
+        assert_eq!(body, vec!["    cli; hlt", "    ud2"], "{asm}");
+    }
+
+    #[test]
+    fn naked_body_with_an_ir_instruction_is_refused() {
+        let error = assembly_for(
+            "fn @f() -> void {\nentry:\n    %x = add.i64 1, 2\n    unreachable\n}\n",
+            true,
+            TargetOperatingSystem::Linux,
+        )
+        .expect_err("ret in a naked body must be refused");
+        assert!(
+            error.contains("@naked function 'f' contains an instruction other than"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn naked_function_is_refused_off_x86_64_linux() {
+        let error = assembly_for(
+            "fn @f() -> void {\nentry:\n    asm.void \"cli\"\n    unreachable\n}\n",
+            true,
+            TargetOperatingSystem::Windows,
+        )
+        .expect_err("naked must be refused off Linux");
+        assert!(error.contains("x86_64 Linux only"), "{error}");
+    }
+
+    #[test]
+    fn naked_function_with_a_parameter_is_refused() {
+        let error = assembly_for(
+            "fn @f(i64 %a) -> void {\nentry:\n    asm.void \"cli\"\n    unreachable\n}\n",
+            true,
+            TargetOperatingSystem::Linux,
+        )
+        .expect_err("naked with a parameter must be refused");
+        assert!(
+            error.contains("takes parameters or returns a value"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn frame_slots_are_addressed_from_rbp_never_below_rsp() {
+        let asm = assembly_for(
+            "fn @f() -> i64 {\nentry:\n    %p = stackalloc.[24 x i8]\n    ret.i64 0\n}\n",
+            false,
+            TargetOperatingSystem::Linux,
+        )
+        .expect("frame function should emit");
+        assert!(asm.contains("(%rbp)"), "{asm}");
+        assert!(!asm.contains("(%rsp)"), "{asm}");
     }
 }

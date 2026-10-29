@@ -87,6 +87,7 @@ pub enum TargetArchitecture {
     Wasm32,
     Wasm64,
     PowerPC64,
+    LoongArch64,
     Nvptx64,
     Amdgcn,
     #[cfg(feature = "nightly")]
@@ -113,6 +114,7 @@ impl FromStr for TargetArchitecture {
             "wasm64" => Ok(Self::Wasm64),
             "wasm" => Ok(Self::Wasm32),
             "ppc64" | "ppc64le" => Ok(Self::PowerPC64),
+            "loongarch64" | "loong64" => Ok(Self::LoongArch64),
             #[cfg(feature = "nightly")]
             "lisa" => Ok(Self::Lisa),
             _ => Err("Unknown architecture"),
@@ -201,6 +203,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Wasm32 => "wasm32",
             Self::Wasm64 => "wasm64",
             Self::PowerPC64 => "ppc64le",
+            Self::LoongArch64 => "loongarch64",
             #[cfg(feature = "nightly")]
             Self::Lisa => "lisa",
             Self::Unknown => "unknown",
@@ -279,6 +282,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "ppc64_linux",
     "ppc64le_linux",
     "ppc64_unknown",
+    "loongarch64_linux",
     #[cfg(feature = "nightly")]
     "riscv128_unknown",
 ];

@@ -18,30 +18,30 @@ mod native {
         let dir = temp_dir().join(format!("lamina-aggregate-storage-{}", process::id()));
         fs::create_dir_all(&dir)?;
         let cases = [
-            ("!Pair", "%last = getfieldptr %p, 1"),
+            ("!Pair", "%last = getfieldptr.!Pair %p, 1"),
             (
                 "struct { a: i8, b: i64, c: i64 }",
-                "%last = getfieldptr %p, 2",
+                "%last = getfieldptr.struct { a: i8, b: i64, c: i64 } %p, 2",
             ),
             (
                 "struct { x: i8, y: i64, z: i64 }",
-                "%last = getfieldptr %p, 2",
+                "%last = getfieldptr.struct { x: i8, y: i64, z: i64 } %p, 2",
             ),
             (
                 "struct { a: i8, inner: !Pair }",
-                "%inner = getfieldptr %p, 1\n%last = getfieldptr %inner, 1",
+                "%inner = getfieldptr.struct { a: i8, inner: !Pair } %p, 1\n%last = getfieldptr.!Pair %inner, 1",
             ),
             (
                 "struct { inner: !Pair, tail: i64 }",
-                "%last = getfieldptr %p, 1",
+                "%last = getfieldptr.struct { inner: !Pair, tail: i64 } %p, 1",
             ),
             (
                 "[3 x !Pair]",
-                "%element = getelem.!Pair %p, 2\n%last = getfieldptr %element, 1",
+                "%element = getelem.!Pair %p, 2\n%last = getfieldptr.!Pair %element, 1",
             ),
             (
                 "[3 x struct { a: i64, b: i64 }]",
-                "%element = getelem.struct { a: i64, b: i64 } %p, 2\n%last = getfieldptr %element, 1",
+                "%element = getelem.struct { a: i64, b: i64 } %p, 2\n%last = getfieldptr.struct { a: i64, b: i64 } %element, 1",
             ),
         ];
         for (case, (ty, address)) in cases.iter().enumerate() {

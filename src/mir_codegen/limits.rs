@@ -65,6 +65,7 @@ pub fn validate_module_call_parameters(
         TargetArchitecture::X86_64
             | TargetArchitecture::Aarch64
             | TargetArchitecture::Riscv64
+            | TargetArchitecture::LoongArch64
             | TargetArchitecture::PowerPC64
             | TargetArchitecture::Wasm32
             | TargetArchitecture::Wasm64

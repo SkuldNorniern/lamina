@@ -8,6 +8,7 @@ pub mod common;
 mod gpu;
 pub mod limits;
 pub mod link;
+pub mod loongarch64;
 pub mod ptx;
 pub mod settings;
 mod simd;
@@ -265,6 +266,15 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
                 writer,
                 RiscVTarget::from_arch(target_arch)
                     .unwrap_or_else(|| RiscVTarget::general(Xlen::Rv64)),
+                target_os,
+                codegen_units,
+                settings,
+            )?;
+        }
+        TargetArchitecture::LoongArch64 => {
+            loongarch64::generate_mir_loongarch64_with_units_and_settings(
+                module,
+                writer,
                 target_os,
                 codegen_units,
                 settings,

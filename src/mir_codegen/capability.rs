@@ -247,7 +247,8 @@ impl CapabilitySet {
             | TargetArchitecture::Aarch64
             | TargetArchitecture::Arx64
             | TargetArchitecture::Riscv32
-            | TargetArchitecture::Riscv64 => Self::standard_native(),
+            | TargetArchitecture::Riscv64
+            | TargetArchitecture::LoongArch64 => Self::standard_native(),
             #[cfg(feature = "nightly")]
             TargetArchitecture::Riscv128 => Self::standard_native(),
             TargetArchitecture::PowerPC64 => Self::standard_native(),

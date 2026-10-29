@@ -5,12 +5,12 @@
 fn @main() -> i64 {
   entry:
     %seg = stackalloc.struct { start: struct { x: i64, y: i64 }, end: struct { x: i64, y: i64 } }
-    %sp = getfieldptr %seg, 0
-    %ep = getfieldptr %seg, 1
-    %sx = getfieldptr %sp, 0
-    %sy = getfieldptr %sp, 1
-    %ex = getfieldptr %ep, 0
-    %ey = getfieldptr %ep, 1
+    %sp = getfieldptr.struct { start: struct { x: i64, y: i64 }, end: struct { x: i64, y: i64 } } %seg, 0
+    %ep = getfieldptr.struct { start: struct { x: i64, y: i64 }, end: struct { x: i64, y: i64 } } %seg, 1
+    %sx = getfieldptr.struct { x: i64, y: i64 } %sp, 0
+    %sy = getfieldptr.struct { x: i64, y: i64 } %sp, 1
+    %ex = getfieldptr.struct { x: i64, y: i64 } %ep, 0
+    %ey = getfieldptr.struct { x: i64, y: i64 } %ep, 1
     store.i64 %sx, 0
     store.i64 %sy, 0
     store.i64 %ex, 3

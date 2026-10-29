@@ -29,9 +29,9 @@ fn @accumulate(ptr %count_p, ptr %total_p, i64 %n) -> i64 {
 fn @main() -> i64 {
   entry:
     %s = stackalloc.struct { count: i64, total: i64, scale: i64 }
-    %cp = getfieldptr %s, 0
-    %tp = getfieldptr %s, 1
-    %sc = getfieldptr %s, 2
+    %cp = getfieldptr.struct { count: i64, total: i64, scale: i64 } %s, 0
+    %tp = getfieldptr.struct { count: i64, total: i64, scale: i64 } %s, 1
+    %sc = getfieldptr.struct { count: i64, total: i64, scale: i64 } %s, 2
     store.i64 %cp, 0
     store.i64 %tp, 0
     store.i64 %sc, 7
