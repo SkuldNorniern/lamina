@@ -348,16 +348,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             )?;
         }
         #[cfg(feature = "nightly")]
-        TargetArchitecture::Riscv128 => {
-            riscv::generate_mir_riscv_with_units_and_settings(
-                module,
-                writer,
-                riscv_target(settings.arch_variant),
-                target_os,
-                codegen_units,
-                settings,
-            )?;
-        }
+        TargetArchitecture::Riscv128 => return Err(not_implemented(target_arch, target_os)),
         TargetArchitecture::I686 => {
             i686::generate_mir_i686_with_units_and_settings(
                 module,

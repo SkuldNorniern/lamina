@@ -22,6 +22,7 @@ pub struct Target {
 pub enum PointerWidth {
     Bits32,
     Bits64,
+    Bits128,
 }
 
 impl PointerWidth {
@@ -29,6 +30,7 @@ impl PointerWidth {
         match self {
             Self::Bits32 => 4,
             Self::Bits64 => 8,
+            Self::Bits128 => 16,
         }
     }
 }
@@ -247,9 +249,7 @@ impl TargetArchitecture {
             | Self::Riscv32
             | Self::Wasm32 => PointerWidth::Bits32,
             #[cfg(feature = "nightly")]
-            Self::Riscv128 => {
-                panic!("rv128 needs 16-byte pointers, and PointerWidth has no 128-bit variant yet")
-            }
+            Self::Riscv128 => PointerWidth::Bits128,
             #[cfg(feature = "nightly")]
             Self::Arx64 | Self::Lisa => PointerWidth::Bits64,
         }
@@ -893,6 +893,7 @@ mod tests {
         assert_eq!(width("wasm64_unknown"), PointerWidth::Bits64);
         assert_eq!(PointerWidth::Bits32.bytes(), 4);
         assert_eq!(PointerWidth::Bits64.bytes(), 8);
+        assert_eq!(PointerWidth::Bits128.bytes(), 16);
     }
 
     #[test]

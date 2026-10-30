@@ -2355,7 +2355,7 @@ fn convert_instruction<'a>(
                 let from = operand_type(&index_op, register_types);
                 // Address arithmetic is done in the target's own word, so a 32-bit
                 // target neither widens the index nor asks for a 64-bit add.
-                let word = address_word(pointer);
+                let word = address_word(pointer)?;
                 let wide_index = Register::Virtual(vreg_alloc.allocate_gpr());
                 let scaled = Register::Virtual(vreg_alloc.allocate_gpr());
                 let address = Register::Virtual(vreg_alloc.allocate_gpr());
@@ -2834,10 +2834,11 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
 }
 
 /// The integer an address is computed in on a target with this pointer width.
-fn address_word(pointer: PointerWidth) -> MirType {
+fn address_word(pointer: PointerWidth) -> Result<MirType, FromIRError> {
     match pointer {
-        PointerWidth::Bits32 => MirType::Scalar(ScalarType::I32),
-        _ => MirType::Scalar(ScalarType::I64),
+        PointerWidth::Bits32 => Ok(MirType::Scalar(ScalarType::I32)),
+        PointerWidth::Bits64 => Ok(MirType::Scalar(ScalarType::I64)),
+        PointerWidth::Bits128 => Err(FromIRError::UnsupportedInstruction),
     }
 }
 

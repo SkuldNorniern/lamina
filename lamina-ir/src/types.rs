@@ -575,6 +575,7 @@ fn type_layout(ty: &Type<'_>, pointer: PointerWidth) -> Option<(u64, u64)> {
         Type::VaList => match pointer {
             PointerWidth::Bits64 => Some((24, 8)),
             PointerWidth::Bits32 => Some((4, 4)),
+            PointerWidth::Bits128 => None,
         },
         _ => None,
     }
