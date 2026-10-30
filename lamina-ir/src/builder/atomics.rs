@@ -42,9 +42,6 @@ impl<'a> IRBuilder<'a> {
 
     /// Performs an atomic binary operation (read-modify-write).
     /// Creates an atomic read-modify-write (`%result = <op>.<ty> <ptr>, <value>, <ordering>`).
-    ///
-    /// # Panics
-    /// Panics for `AtomicBinOp::CompareExchange`; use `atomic_compare_exchange`.
     pub fn atomic_binary(
         &mut self,
         op: AtomicBinOp,
@@ -54,10 +51,6 @@ impl<'a> IRBuilder<'a> {
         value: Value<'a>,
         ordering: MemoryOrdering,
     ) -> &mut Self {
-        assert!(
-            !matches!(op, AtomicBinOp::CompareExchange),
-            "atomic_binary has no compare-exchange form; use atomic_compare_exchange"
-        );
         self.inst(Instruction::AtomicBinary {
             op,
             result,

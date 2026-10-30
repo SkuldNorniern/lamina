@@ -2731,7 +2731,6 @@ fn convert_instruction<'a>(
                 IRAtomicBinOp::Or => AtomicBinOp::Or,
                 IRAtomicBinOp::Xor => AtomicBinOp::Xor,
                 IRAtomicBinOp::Exchange => AtomicBinOp::Exchange,
-                IRAtomicBinOp::CompareExchange => return Err(FromIRError::UnsupportedInstruction),
             };
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;

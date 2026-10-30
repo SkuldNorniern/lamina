@@ -102,8 +102,6 @@ pub enum AtomicBinOp {
     Xor,
     /// Atomic exchange: `result = *ptr; *ptr = value`
     Exchange,
-    /// Atomic compare-exchange: `if *ptr == expected { *ptr = value; return true } else { return false }`
-    CompareExchange,
 }
 
 impl fmt::Display for AtomicBinOp {
@@ -115,7 +113,6 @@ impl fmt::Display for AtomicBinOp {
             AtomicBinOp::Or => write!(f, "atomic_or"),
             AtomicBinOp::Xor => write!(f, "atomic_xor"),
             AtomicBinOp::Exchange => write!(f, "atomic_exchange"),
-            AtomicBinOp::CompareExchange => write!(f, "atomic_cmpxchg"),
         }
     }
 }
