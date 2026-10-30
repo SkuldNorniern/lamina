@@ -19,6 +19,8 @@ pub struct RiscvIsa {
     pub d: bool,
     /// C: compressed encodings.
     pub c: bool,
+    /// V: the vector extension.
+    pub v: bool,
 }
 
 impl RiscvIsa {
@@ -31,6 +33,7 @@ impl RiscvIsa {
             f: false,
             d: false,
             c: false,
+            v: false,
         }
     }
 
@@ -43,6 +46,7 @@ impl RiscvIsa {
             f: true,
             d: true,
             c: false,
+            v: false,
         }
     }
 
@@ -59,6 +63,7 @@ impl RiscvIsa {
             (self.f, 'f'),
             (self.d, 'd'),
             (self.c, 'c'),
+            (self.v, 'v'),
         ] {
             if present {
                 s.push(letter);
@@ -82,6 +87,9 @@ impl RiscvIsa {
         }
         if self.c {
             s.push('c');
+        }
+        if self.v {
+            s.push('v');
         }
         s
     }
@@ -123,6 +131,7 @@ impl FromStr for RiscvIsa {
                     isa.d = true;
                 }
                 'c' => isa.c = true,
+                'v' => isa.v = true,
                 _ => return Err("unknown RISC-V extension letter"),
             }
         }
@@ -330,12 +339,17 @@ mod tests {
         assert!("rv64gz".parse::<RiscvIsa>().is_err());
         assert!("rv64".parse::<RiscvIsa>().is_err());
         assert!("rv64mac".parse::<RiscvIsa>().is_err());
+        let gcv: RiscvIsa = "rv64gcv".parse().expect("rv64gcv");
+        assert!(gcv.v);
+        assert_eq!(gcv.name(), "rv64imafdcv");
+        assert_eq!(gcv.march(), "rv64gcv");
+        assert!(!gc.v);
     }
 
     #[test]
     fn bare_riscv_keeps_meaning_imafd() {
         let g = RiscvIsa::general(64);
-        assert!(g.m && g.a && g.f && g.d && !g.c);
+        assert!(g.m && g.a && g.f && g.d && !g.c && !g.v);
         assert_eq!(g.name(), "rv64imafd");
     }
 

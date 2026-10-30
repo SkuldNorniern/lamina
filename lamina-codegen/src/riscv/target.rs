@@ -79,7 +79,7 @@ impl RiscVTarget {
             f: isa.f,
             d: isa.d,
             c: isa.c,
-            v: false,
+            v: isa.v,
         }
     }
 
