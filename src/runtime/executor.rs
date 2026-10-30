@@ -6,14 +6,15 @@
 use crate::{
     error::LaminaError,
     mir::{
-        Function, Immediate, Instruction, IntCmpOp, MirType, Operand, Register, ScalarType,
-        Signature,
+        AddressMode, AtomicBinOp, Function, Immediate, Instruction, IntCmpOp, MemoryOrdering,
+        MirType, Operand, Register, ScalarType, Signature, VirtualReg,
     },
     runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic},
 };
+use lamina_platform::PointerWidth;
 #[cfg(target_arch = "aarch64")]
 use std::arch::asm;
-use std::{collections::HashMap, env};
+use std::{collections::HashMap, env, ops::Range};
 
 fn evaluate_operand(
     operand: &Operand,
@@ -38,6 +39,140 @@ fn evaluate_operand(
     }
 }
 
+fn register_value(
+    register: &Register,
+    register_values: &HashMap<Register, i64>,
+) -> Result<i64, LaminaError> {
+    evaluate_operand(&Operand::Register(register.clone()), register_values)
+}
+
+fn operand_bits(
+    operand: &Operand,
+    register_values: &HashMap<Register, i64>,
+) -> Result<i64, LaminaError> {
+    match operand {
+        Operand::Immediate(Immediate::F32(value)) => Ok(i64::from(value.to_bits())),
+        Operand::Immediate(Immediate::F64(value)) => Ok(value.to_bits() as i64),
+        _ => evaluate_operand(operand, register_values),
+    }
+}
+
+fn effective_address(
+    addr: &AddressMode,
+    register_values: &HashMap<Register, i64>,
+) -> Result<i64, LaminaError> {
+    match addr {
+        AddressMode::BaseOffset { base, offset, .. } => {
+            Ok(register_value(base, register_values)?.wrapping_add(i64::from(*offset)))
+        }
+        AddressMode::BaseIndexScale {
+            base,
+            index,
+            scale,
+            offset,
+            ..
+        } => Ok(register_value(base, register_values)?
+            .wrapping_add(register_value(index, register_values)?.wrapping_mul(i64::from(*scale)))
+            .wrapping_add(i64::from(*offset))),
+    }
+}
+
+fn atomic_address(
+    addr: &AddressMode,
+    register_values: &HashMap<Register, i64>,
+) -> Result<i64, LaminaError> {
+    match addr {
+        AddressMode::BaseOffset {
+            base, offset: 0, ..
+        } => register_value(base, register_values),
+        other => Err(LaminaError::RuntimeError(format!(
+            "Interpreter: atomic address mode {other:?} not supported"
+        ))),
+    }
+}
+
+fn access_size(ty: &MirType, pointer_width: PointerWidth) -> Result<usize, LaminaError> {
+    let size = ty.size_bytes(pointer_width);
+    if ty.is_vector() || !(1..=8).contains(&size) {
+        return Err(LaminaError::RuntimeError(format!(
+            "Interpreter: memory access of {ty:?} not supported"
+        )));
+    }
+    Ok(size)
+}
+
+fn loaded_value(ty: &MirType, raw: u64, pointer_width: PointerWidth) -> i64 {
+    if ty.is_float() {
+        raw as i64
+    } else {
+        ty.signed_integer(raw as i64, pointer_width)
+    }
+}
+
+fn unsupported_ordering(op: &str, ordering: &MemoryOrdering) -> LaminaError {
+    LaminaError::RuntimeError(format!(
+        "Interpreter: {ordering} ordering not supported for {op}"
+    ))
+}
+
+/// Byte-addressed memory for one interpreted call. Addresses below `NULL_GUARD`
+/// are never allocated, so a null or small integer pointer traps.
+struct Memory {
+    bytes: Vec<u8>,
+    slots: HashMap<VirtualReg, i64>,
+}
+
+const NULL_GUARD: usize = 16;
+
+impl Memory {
+    fn new() -> Self {
+        Self {
+            bytes: vec![0; NULL_GUARD],
+            slots: HashMap::new(),
+        }
+    }
+
+    fn stack_slot(&mut self, slot: VirtualReg, size: usize, align: usize) -> i64 {
+        if let Some(address) = self.slots.get(&slot) {
+            return *address;
+        }
+        let start = self.bytes.len().next_multiple_of(align.max(8));
+        self.bytes.resize(start + size, 0);
+        let address = start as i64;
+        self.slots.insert(slot, address);
+        address
+    }
+
+    fn range(&self, address: i64, size: usize) -> Result<Range<usize>, LaminaError> {
+        let start = usize::try_from(address)
+            .ok()
+            .filter(|start| *start >= NULL_GUARD);
+        start
+            .and_then(|start| {
+                let end = start.checked_add(size)?;
+                (end <= self.bytes.len()).then_some(start..end)
+            })
+            .ok_or_else(|| {
+                LaminaError::RuntimeError(format!(
+                    "Interpreter: invalid {size}-byte memory access at {address:#x}"
+                ))
+            })
+    }
+
+    fn load(&self, address: i64, size: usize) -> Result<u64, LaminaError> {
+        let range = self.range(address, size)?;
+        let mut raw = [0u8; 8];
+        raw[..size].copy_from_slice(&self.bytes[range]);
+        Ok(u64::from_le_bytes(raw))
+    }
+
+    fn store(&mut self, address: i64, size: usize, value: u64) -> Result<(), LaminaError> {
+        let range = self.range(address, size)?;
+        self.bytes[range].copy_from_slice(&value.to_le_bytes()[..size]);
+        Ok(())
+    }
+}
+
 pub(crate) fn interpret_mir_function(
     function: &Function,
     args: &[i64],
@@ -58,6 +193,7 @@ pub(crate) fn interpret_mir_function(
         );
     }
 
+    let mut memory = Memory::new();
     let mut block_index_by_label: HashMap<String, usize> = HashMap::new();
     for (index, block) in function.blocks.iter().enumerate() {
         block_index_by_label.insert(block.label.clone(), index);
@@ -83,11 +219,7 @@ pub(crate) fn interpret_mir_function(
                 | Instruction::Bitcast {
                     to: ty, dst, src, ..
                 } => {
-                    let value = match src {
-                        Operand::Immediate(Immediate::F32(value)) => i64::from(value.to_bits()),
-                        Operand::Immediate(Immediate::F64(value)) => value.to_bits() as i64,
-                        _ => evaluate_operand(src, &register_values)?,
-                    };
+                    let value = operand_bits(src, &register_values)?;
                     let value = if ty.is_float() {
                         value
                     } else {
@@ -327,12 +459,111 @@ pub(crate) fn interpret_mir_function(
                     ));
                 }
                 Instruction::Comment { .. } => {}
-                Instruction::Load { .. }
-                | Instruction::Store { .. }
-                | Instruction::StackAddr { .. }
-                | Instruction::SymbolAddress { .. }
+                Instruction::Load { ty, dst, addr, .. } => {
+                    let size = access_size(ty, function.pointer_width)?;
+                    let address = effective_address(addr, &register_values)?;
+                    let raw = memory.load(address, size)?;
+                    register_values
+                        .insert(dst.clone(), loaded_value(ty, raw, function.pointer_width));
+                }
+                Instruction::Store { ty, src, addr, .. } => {
+                    let size = access_size(ty, function.pointer_width)?;
+                    let address = effective_address(addr, &register_values)?;
+                    let value = operand_bits(src, &register_values)?;
+                    memory.store(address, size, value as u64)?;
+                }
+                Instruction::StackAddr { dst, slot } => {
+                    let reservations = function.stack_reservations.get(slot).copied().unwrap_or(0);
+                    let align = function.stack_alignments.get(slot).copied().unwrap_or(8);
+                    let address = memory.stack_slot(*slot, 8 * (reservations + 1), align);
+                    register_values.insert(dst.clone(), address);
+                }
+                Instruction::Lea { dst, base, offset } => {
+                    let value =
+                        register_value(base, &register_values)?.wrapping_add(i64::from(*offset));
+                    register_values.insert(dst.clone(), value);
+                }
+                Instruction::AtomicLoad {
+                    ty,
+                    dst,
+                    addr,
+                    ordering,
+                } => {
+                    if matches!(ordering, MemoryOrdering::Release | MemoryOrdering::AcqRel) {
+                        return Err(unsupported_ordering("atomic_load", ordering));
+                    }
+                    let size = access_size(ty, function.pointer_width)?;
+                    let address = atomic_address(addr, &register_values)?;
+                    let raw = memory.load(address, size)?;
+                    register_values
+                        .insert(dst.clone(), loaded_value(ty, raw, function.pointer_width));
+                }
+                Instruction::AtomicStore {
+                    ty,
+                    src,
+                    addr,
+                    ordering,
+                } => {
+                    if matches!(ordering, MemoryOrdering::Acquire | MemoryOrdering::AcqRel) {
+                        return Err(unsupported_ordering("atomic_store", ordering));
+                    }
+                    let size = access_size(ty, function.pointer_width)?;
+                    let address = atomic_address(addr, &register_values)?;
+                    let value = operand_bits(src, &register_values)?;
+                    memory.store(address, size, value as u64)?;
+                }
+                Instruction::AtomicBinary {
+                    op,
+                    ty,
+                    dst,
+                    addr,
+                    value,
+                    ..
+                } => {
+                    let size = access_size(ty, function.pointer_width)?;
+                    let address = atomic_address(addr, &register_values)?;
+                    let operand = operand_bits(value, &register_values)? as u64;
+                    let old = memory.load(address, size)?;
+                    let new = match op {
+                        AtomicBinOp::Add => old.wrapping_add(operand),
+                        AtomicBinOp::Sub => old.wrapping_sub(operand),
+                        AtomicBinOp::And => old & operand,
+                        AtomicBinOp::Or => old | operand,
+                        AtomicBinOp::Xor => old ^ operand,
+                        AtomicBinOp::Exchange => operand,
+                        AtomicBinOp::CompareExchange => {
+                            return Err(LaminaError::RuntimeError(
+                                "Interpreter: atomic_cmpxchg is not a binary operation".to_owned(),
+                            ));
+                        }
+                    };
+                    memory.store(address, size, new)?;
+                    register_values
+                        .insert(dst.clone(), loaded_value(ty, old, function.pointer_width));
+                }
+                Instruction::AtomicCompareExchange {
+                    ty,
+                    dst,
+                    addr,
+                    expected,
+                    desired,
+                    ..
+                } => {
+                    let size = access_size(ty, function.pointer_width)?;
+                    let address = atomic_address(addr, &register_values)?;
+                    let expected = operand_bits(expected, &register_values)? as u64;
+                    let desired = operand_bits(desired, &register_values)? as u64;
+                    let old = memory.load(address, size)?;
+                    let mask = u64::MAX >> (64 - 8 * size);
+                    if old & mask == expected & mask {
+                        memory.store(address, size, desired)?;
+                    }
+                    register_values
+                        .insert(dst.clone(), loaded_value(ty, old, function.pointer_width));
+                }
+                Instruction::Fence { .. } => {}
+                Instruction::SymbolAddress { .. }
                 | Instruction::ThreadLocalAddr { .. }
-                | Instruction::Lea { .. }
                 | Instruction::FloatBinary { .. }
                 | Instruction::FloatUnary { .. }
                 | Instruction::FloatCmp { .. }
@@ -343,15 +574,6 @@ pub(crate) fn interpret_mir_function(
                 | Instruction::PatchPoint { .. } => {
                     return Err(LaminaError::RuntimeError(
                         "Interpreter: unsupported instruction".to_owned(),
-                    ));
-                }
-                Instruction::AtomicLoad { .. }
-                | Instruction::AtomicStore { .. }
-                | Instruction::AtomicBinary { .. }
-                | Instruction::AtomicCompareExchange { .. }
-                | Instruction::Fence { .. } => {
-                    return Err(LaminaError::RuntimeError(
-                        "Interpreter: Atomic instructions not supported".to_owned(),
                     ));
                 }
                 Instruction::InlineAsm { .. } => {
@@ -713,3 +935,7 @@ mod tests {
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 #[path = "integer_tests.rs"]
 mod integer_tests;
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+#[path = "atomic_tests.rs"]
+mod atomic_tests;

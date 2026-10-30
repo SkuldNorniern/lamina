@@ -20,12 +20,12 @@ use std::{
     process::{self, Command},
 };
 
-type TestResult = Result<(), Box<dyn Error>>;
+pub(super) type TestResult = Result<(), Box<dyn Error>>;
 
-fn reg(id: u32) -> Register {
+pub(super) fn reg(id: u32) -> Register {
     Register::Virtual(VirtualReg::gpr(id))
 }
-fn imm(value: i64) -> Operand {
+pub(super) fn imm(value: i64) -> Operand {
     Operand::Immediate(Immediate::I64(value))
 }
 
@@ -67,7 +67,7 @@ fn operation(
     dst
 }
 
-fn module(mut block: Block) -> Module {
+pub(super) fn module(mut block: Block) -> Module {
     for instruction in &mut block.instructions {
         instruction.normalize_integer_immediates(Some(MirType::Scalar(ScalarType::I64)));
     }
@@ -79,21 +79,21 @@ fn module(mut block: Block) -> Module {
     module
 }
 
-fn available(tool: &str) -> bool {
+pub(super) fn available(tool: &str) -> bool {
     Command::new(tool)
         .arg("--version")
         .output()
         .is_ok_and(|out| out.status.success())
 }
 
-struct Native {
-    arch: TargetArchitecture,
-    triple: &'static str,
-    emulator: Option<&'static str>,
-    start: &'static str,
+pub(super) struct Native {
+    pub(super) arch: TargetArchitecture,
+    pub(super) triple: &'static str,
+    pub(super) emulator: Option<&'static str>,
+    pub(super) start: &'static str,
 }
 
-fn targets(include_unavailable: bool) -> Vec<Native> {
+pub(super) fn targets(include_unavailable: bool) -> Vec<Native> {
     let mut targets = vec![Native {
         arch: TargetArchitecture::X86_64,
         triple: "x86_64-linux-gnu",
@@ -151,7 +151,7 @@ fn emit(
     Ok(String::from_utf8(bytes)?)
 }
 
-fn run(
+pub(super) fn run(
     module: &Module,
     target: &Native,
     allocator: RegallocStrategy,
@@ -268,7 +268,7 @@ try {
     Ok(())
 }
 
-fn directory(name: &str) -> TempDir {
+pub(super) fn directory(name: &str) -> TempDir {
     TempDir::new(&format!("lamina-integer-{name}"))
 }
 
