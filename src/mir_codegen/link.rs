@@ -47,21 +47,21 @@ fn get_crt_file(compiler: &str, crt_name: &str, multilib: Option<&str>) -> Optio
 
 /// The driver whose start-up objects belong to the target: the host compiler for a
 /// host-architecture link, otherwise the target's cross compiler.
+fn target_compiler(target_arch: TargetArchitecture) -> Result<String, String> {
+    if host_matches(target_arch) {
+        return detect_compiler().map(str::to_string).ok_or_else(|| {
+            "no C compiler is installed on the host (looked for gcc and clang)".to_string()
+        });
+    }
+    gnu_tool(target_arch, "gcc").ok_or_else(|| no_gnu_tool("gcc", target_arch))
+}
+
 fn crt_compiler(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> Result<String, LaminaError> {
-    if host_matches(target_arch) {
-        return detect_compiler().map(str::to_string).ok_or_else(|| {
-            missing_crt_error(
-                target_arch,
-                target_os,
-                "no C compiler is installed on the host (looked for gcc and clang)",
-            )
-        });
-    }
-    gnu_tool(target_arch, "gcc")
-        .ok_or_else(|| missing_crt_error(target_arch, target_os, &no_gnu_tool("gcc", target_arch)))
+    target_compiler(target_arch)
+        .map_err(|reason| missing_crt_error(target_arch, target_os, &reason))
 }
 
 fn missing_crt_error(
@@ -453,7 +453,7 @@ fn build_dynamic_linker_arg(
 fn build_library_args(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
-) -> Vec<String> {
+) -> Result<Vec<String>, LaminaError> {
     let mut args = Vec::new();
 
     if os_uses_macho(target_os) {
@@ -470,15 +470,35 @@ fn build_library_args(
         args.push("-lSystem".to_string());
     } else if !cross_os(target_os) {
         args.push("-lc".to_string());
-        if host_matches(target_arch)
-            && let Some(libgcc) =
-                detect_compiler().and_then(|cc| get_libgcc_file(cc, multilib_flag(target_arch)))
-        {
-            args.push(libgcc);
-        }
+        args.push(required_libgcc_file(target_arch, target_os)?);
     }
 
-    args
+    Ok(args)
+}
+
+fn missing_libgcc_error(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    reason: &str,
+) -> LaminaError {
+    LaminaError::ValidationError(format!(
+        "cannot link {target_os:?} {target_arch:?}: {reason}; libgcc supplies the compiler runtime helpers (__divti3 and friends) that -lc does not and is required to link"
+    ))
+}
+
+fn required_libgcc_file(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Result<String, LaminaError> {
+    let compiler = target_compiler(target_arch)
+        .map_err(|reason| missing_libgcc_error(target_arch, target_os, &reason))?;
+    get_libgcc_file(&compiler, multilib_flag(target_arch)).ok_or_else(|| {
+        missing_libgcc_error(
+            target_arch,
+            target_os,
+            &format!("{compiler} cannot find libgcc.a"),
+        )
+    })
 }
 
 /// The compiler runtime archive. It supplies the 128-bit integer helpers (`__divti3`
@@ -509,7 +529,7 @@ fn build_unix_linker_args(
     args.push(input_path.to_string_lossy().to_string());
     args.extend(build_crt_args(target_arch, target_os, false)?);
     args.extend(build_entry_point_arg(target_os));
-    args.extend(build_library_args(target_arch, target_os));
+    args.extend(build_library_args(target_arch, target_os)?);
     args.extend(additional_flags.iter().cloned());
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
@@ -1188,7 +1208,12 @@ mod tests {
                 .expect("C runtime objects")
                 .is_empty()
         );
-        assert!(!build_library_args(arch, os).iter().any(|a| a == "-lc"));
+        assert!(
+            !build_library_args(arch, os)
+                .expect("library arguments")
+                .iter()
+                .any(|a| a == "-lc")
+        );
     }
 
     #[test]
@@ -1254,7 +1279,7 @@ mod tests {
                 "{os:?}"
             );
             assert_eq!(build_entry_point_arg(os), ["-e", "_main"], "{os:?}");
-            let libs = build_library_args(arch, os);
+            let libs = build_library_args(arch, os).expect("library arguments");
             assert!(libs.iter().any(|a| a == "-lSystem"), "{os:?}");
             assert!(!libs.iter().any(|a| a == "-lc"), "{os:?}");
             assert!(!libs.iter().any(|a| a == "-syslibroot"), "{os:?}");
