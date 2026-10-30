@@ -495,9 +495,6 @@ pub(crate) fn targets_elf(target_os: TargetOperatingSystem) -> bool {
 }
 
 fn ras_gap(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Option<String> {
-    if matches!(target_arch, TargetArchitecture::PowerPC64) {
-        return Some("ras has no PowerPC encoder".to_string());
-    }
     if !is_assembly_target_supported(target_arch, target_os)
         || !is_object_file_supported(target_arch, target_os)
     {
@@ -665,9 +662,10 @@ mod tests {
     }
 
     #[test]
-    fn ras_gap_covers_powerpc_and_gnu_cannot_write_mach_o_or_coff() {
-        assert!(ras_gap(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux).is_some());
+    fn ras_gap_clears_powerpc_and_gnu_cannot_write_mach_o_or_coff() {
+        assert!(ras_gap(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux).is_none());
         assert!(ras_gap(TargetArchitecture::X86_64, TargetOperatingSystem::Linux).is_none());
+        assert!(ras_gap(TargetArchitecture::Mips64, TargetOperatingSystem::Linux).is_some());
         assert!(targets_elf(TargetOperatingSystem::Linux));
         assert!(!targets_elf(TargetOperatingSystem::MacOS));
         assert!(!targets_elf(TargetOperatingSystem::Windows));
