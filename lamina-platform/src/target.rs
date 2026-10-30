@@ -525,7 +525,9 @@ impl FromStr for TargetArchitecture {
             "aarch64" => Ok(Self::Aarch64),
             #[cfg(feature = "nightly")]
             "arx64" => Ok(Self::Arx64),
-            "arm32" => Ok(Self::Arm32),
+            "arm32" => Err(
+                "Architecture 'arm32' is not implemented\n  Hint: 'arm32' names no ARM revision, floating-point ABI or profile, so there is no machine to generate code for. The implemented 32-bit ARM target is armv7, AAPCS with VFP hard float: write 'armv7' (e.g. armv7_linux), or 'thumbv6m'/'thumbv7m' for Cortex-M",
+            ),
             "armv7" | "armv7a" | "armv7hf" => Ok(Self::Armv7),
             "thumbv6m" | "armv6m" | "cortex-m0" => Ok(Self::Thumbv6m),
             "thumbv7m" | "armv7m" | "cortex-m3" => Ok(Self::Thumbv7m),
@@ -723,10 +725,6 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "aarch64_watchos",
     "aarch64_visionos",
     "aarch64_horizon",
-    "arm32_android",
-    "arm32_ios",
-    "arm32_watchos",
-    "arm32_vita",
     "x86_64_orbis",
     "x86_64_prospero",
     #[cfg(feature = "nightly")]
@@ -812,8 +810,8 @@ mod tests {
             Target::new(TargetArchitecture::Aarch64, TargetOperatingSystem::Horizon)
         );
         assert_eq!(
-            Target::from_str("arm32_vita").unwrap(),
-            Target::new(TargetArchitecture::Arm32, TargetOperatingSystem::Vita)
+            Target::from_str("armv7_linux").unwrap(),
+            Target::new(TargetArchitecture::Armv7, TargetOperatingSystem::Linux)
         );
     }
 
@@ -839,6 +837,17 @@ mod tests {
         );
         assert!(HOST_ARCH_LIST.contains(&"ppc64le_linux"));
         assert!(HOST_ARCH_LIST.contains(&"ppc64_linux"));
+    }
+
+    #[test]
+    fn arm32_refuses_and_names_armv7() {
+        for name in ["arm32_linux", "arm32_android", "arm32_vita"] {
+            let error = Target::from_str(name).expect_err("arm32 is not a machine");
+            assert!(error.contains("is not implemented"), "{name}: {error}");
+            assert!(error.contains("Hint:"), "{name}: {error}");
+            assert!(error.contains("armv7"), "{name}: {error}");
+            assert!(!HOST_ARCH_LIST.contains(&name), "{name}");
+        }
     }
 
     #[test]
@@ -888,7 +897,7 @@ mod tests {
         assert_eq!(width("aarch64_linux"), PointerWidth::Bits64);
         assert_eq!(width("riscv64_unknown"), PointerWidth::Bits64);
         assert_eq!(width("riscv32_unknown"), PointerWidth::Bits32);
-        assert_eq!(width("arm32_vita"), PointerWidth::Bits32);
+        assert_eq!(width("armv7_linux"), PointerWidth::Bits32);
         assert_eq!(width("wasm32_unknown"), PointerWidth::Bits32);
         assert_eq!(width("wasm64_unknown"), PointerWidth::Bits64);
         assert_eq!(PointerWidth::Bits32.bytes(), 4);
