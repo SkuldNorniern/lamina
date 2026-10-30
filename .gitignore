@@ -183,3 +183,4 @@ benchmarks/*/_*
 
 # Local-only cargo config (points lamina-ras at the sibling ras checkout)
 .cargo/
+__pycache__/

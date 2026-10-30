@@ -5,6 +5,7 @@ Runs test cases and verifies their expected outputs.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import glob
@@ -17,6 +18,58 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding='utf-8', errors='replace')
     except (AttributeError, ValueError):
         pass
+
+# Testcases the s390x backend refuses to compile, with the refusal it gives.
+# Any other testcase must compile, run and match its expected output.
+S390X_UNSUPPORTED = {
+    'atomic_cmpxchg': 'atomic operations and fences',
+    'atomic_orderings': 'atomic operations and fences',
+    'atomics': 'atomic operations and fences',
+    'bit_intrinsics': 'integer bit intrinsics',
+    'i128_bit_intrinsics': 'integer bit intrinsics',
+    'checked_arithmetic': 'checked arithmetic (x86_64 only)',
+    'inline_asm_clobber': 'inline assembly',
+    'inline_asm_loop': 'inline assembly',
+    'inline_asm_pressure': 'inline assembly',
+    'inline_asm_rdtsc': 'inline assembly',
+    'inline_asm_unused': 'inline assembly',
+    'thread_local_storage': 'thread-local storage (x86_64 only)',
+    'va_arg_chain': 'variadic argument access',
+    'va_arg_copy': 'variadic argument access',
+    'va_arg_copy_stack': 'variadic argument access',
+    'va_arg_mixed': 'variadic argument access',
+    'va_arg_narrow': 'variadic argument access',
+    'va_arg_no_variadic': 'variadic argument access',
+    'va_arg_sum': 'variadic argument access',
+    'vector_operations': 'vector operations',
+}
+
+
+# Cross targets run through `--target <name>`: each program is compiled for the
+# target, then executed under its user-mode emulator. Expected files are chosen
+# by the target's byte order, not the host's.
+CROSS_TARGETS = {
+    's390x_linux': {
+        'byteorder': 'big',
+        'compiler': 's390x-linux-gnu-gcc',
+        'emulator': 'qemu-s390x-static',
+        'sysroot': '/usr/s390x-linux-gnu',
+        'unsupported': S390X_UNSUPPORTED,
+    },
+}
+
+def cross_toolchain_problem(target):
+    """Return why `target` cannot be built and run here, or None when it can."""
+    spec = CROSS_TARGETS[target]
+    missing = []
+    for tool in (spec['compiler'], spec['emulator']):
+        if shutil.which(tool) is None:
+            missing.append(tool)
+    if not (Path(spec['sysroot']) / 'lib' / 'crt1.o').is_file():
+        missing.append(f"{spec['sysroot']}/lib/crt1.o")
+    if missing:
+        return "missing " + ", ".join(missing)
+    return None
 
 
 class Colors:
@@ -94,13 +147,13 @@ def execution_failure(stdout, stderr, code):
         parts.append(f"stdout: {stdout}")
     return "Execution failed: " + "; ".join(parts)
 
-def load_expected_output(test_path):
+def load_expected_output(test_path, byteorder=sys.byteorder):
     """Load expected output from .expected or expected_output.txt file"""
     test_path = Path(test_path)
-    
-    # A <stem>.<byteorder>.expected file takes precedence on hosts of that byte order.
+
+    # A <stem>.<byteorder>.expected file takes precedence for programs of that byte order.
     expected_path = test_path.with_suffix('.expected')
-    byte_order_path = test_path.with_name(f"{test_path.stem}.{sys.byteorder}.expected")
+    byte_order_path = test_path.with_name(f"{test_path.stem}.{byteorder}.expected")
     if byte_order_path.exists():
         expected_path = byte_order_path
     
@@ -126,11 +179,42 @@ def load_expected_output(test_path):
 
     return expected_values
 
-def run_raw_output(executable_path, project_root):
+def execution_argv(executable_path, target=None):
+    """Command line that runs a built program on the host or under a cross emulator."""
+    if target is None:
+        return [executable_path]
+    spec = CROSS_TARGETS[target]
+    return [spec['emulator'], '-L', spec['sysroot'], executable_path]
+
+def run_program(argv, cwd, stdin_input=None):
+    """Run a program and return (success, stdout, stderr, exit_code)."""
+    stdin_arg = {'input': stdin_input} if stdin_input is not None else {'stdin': subprocess.DEVNULL}
+    try:
+        result = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=60,
+            errors='replace',
+            **stdin_arg,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "", "Command timed out", None
+    except Exception as e:
+        return False, "", str(e), None
+    return (
+        result.returncode == 0,
+        result.stdout.strip(),
+        result.stderr.strip(),
+        result.returncode,
+    )
+
+def run_raw_output(argv, project_root):
     """Run a binary whose stdout is compared byte for byte (write sends raw memory)."""
     try:
         result = subprocess.run(
-            [executable_path],
+            argv,
             capture_output=True,
             cwd=project_root,
             stdin=subprocess.DEVNULL,
@@ -146,7 +230,7 @@ def run_raw_output(executable_path, project_root):
         )
     return True, result.stdout.replace(b"\r\n", b"\n")
 
-def compile_and_run_test(test_path, use_mir=False):
+def compile_and_run_test(test_path, use_mir=False, target=None):
     """Compile and run a test case, return the output lines"""
     project_root = Path(__file__).parent
     test_path = Path(test_path)
@@ -168,38 +252,22 @@ def compile_and_run_test(test_path, use_mir=False):
 
     # Compile the test
     cmd_flags = "--emit-asm" if use_mir else ""
+    target_flag = f"--target {target}" if target else ""
     compile_cmd = (
-        f'cargo run --release --quiet -- {test_path} {cmd_flags} -o "{executable_path}"'
+        f'cargo run --release --quiet -- {test_path} {cmd_flags} {target_flag} -o "{executable_path}"'
     )
     success, stdout, stderr, _ = run_command(compile_cmd, cwd=project_root)
 
     if not success:
         return False, f"Compilation failed: {stderr}"
 
+    argv = execution_argv(executable_path, target)
+
     if test_path.name == 'io_types.lamina':
-        return run_raw_output(executable_path, project_root)
+        return run_raw_output(argv, project_root)
 
     stdin_input = stdin_inputs.get(test_path.name)
-
-    if stdin_input:
-        try:
-            result = subprocess.run(
-                [executable_path],
-                capture_output=True,
-                text=True,
-                cwd=project_root,
-                input=stdin_input,
-                timeout=60,
-                errors='replace'
-            )
-            stdout = result.stdout.strip()
-            stderr = result.stderr.strip()
-            exit_code = result.returncode
-        except Exception as e:
-            return False, f"Execution failed: {str(e)}"
-    else:
-        run_cmd = f'"{executable_path}"'
-        _, stdout, stderr, exit_code = run_command(run_cmd, cwd=project_root)
+    _, stdout, stderr, exit_code = run_program(argv, project_root, stdin_input)
 
     if is_crash(exit_code):
         return False, execution_failure(stdout, stderr, exit_code)
@@ -209,31 +277,48 @@ def compile_and_run_test(test_path, use_mir=False):
 
     return True, output_lines
 
-def run_tests(use_mir=False):
+def run_tests(use_mir=False, target=None):
     """Run all test cases and report results"""
     mode = "MIR assembly" if use_mir else "default"
+    if target:
+        problem = cross_toolchain_problem(target)
+        if problem:
+            print_colored(f"⏭️  Skipping {target} run: {problem}", Colors.YELLOW)
+            print_colored("   Install the cross gcc and qemu-user, or drop --target.", Colors.YELLOW)
+            return
+        mode = f"{mode}, target {target}"
+    byteorder = CROSS_TARGETS[target]['byteorder'] if target else sys.byteorder
+
     print_colored(f"🧪 Running Lamina Test Suite ({mode})", Colors.BOLD + Colors.BLUE)
     print_colored("=" * 50, Colors.BLUE)
-    
+
     passed = 0
     failed = 0
+    skipped = 0
     failures = []
-    
+
     # Discover tests
     test_files = sorted(glob.glob("testcases/*.lamina"))
     benchmark_files = sorted(glob.glob("benchmarks/*/*.lamina"))
     all_tests = test_files + benchmark_files
-    
+
     for test_path in all_tests:
         test_name = Path(test_path).name
         print(f"\n📝 Testing {test_name}...", end="", flush=True)
-        
-        expected_output = load_expected_output(test_path)
+
+        unsupported = CROSS_TARGETS[target]['unsupported'] if target else {}
+        if Path(test_path).stem in unsupported:
+            reason = unsupported[Path(test_path).stem]
+            print_colored(f"\r📝 Testing {test_name}... ⏭️  SKIPPED (unsupported on {target}: {reason})", Colors.YELLOW)
+            skipped += 1
+            continue
+
+        expected_output = load_expected_output(test_path, byteorder)
         if expected_output is None:
              print_colored(f"\n⚠️  Skipping {test_name} (No expected output found)", Colors.YELLOW)
              continue
 
-        success, result = compile_and_run_test(test_path, use_mir)
+        success, result = compile_and_run_test(test_path, use_mir, target)
         
         if not success:
             print_colored(f"\n❌ FAILED {test_name}: {result}", Colors.RED)
@@ -259,6 +344,8 @@ def run_tests(use_mir=False):
     # Summary
     print_colored("\n" + "=" * 50, Colors.BLUE)
     total = passed + failed
+    if skipped:
+        print_colored(f"⏭️  {skipped} testcases skipped as unsupported on {target}", Colors.YELLOW)
     if failed == 0:
         print_colored(f"🎉 All {total} tests PASSED!", Colors.GREEN + Colors.BOLD)
     else:
@@ -285,7 +372,7 @@ def list_tests():
     for test_path in benchmark_files:
         print(f"  {Path(test_path).name} ({test_path})")
 
-def run_single_test(test_name, use_mir=False):
+def run_single_test(test_name, use_mir=False, target=None):
     """Run a single test case"""
     # Try to find the test file
     if os.path.exists(test_name):
@@ -302,14 +389,26 @@ def run_single_test(test_name, use_mir=False):
             list_tests()
             return
     
+    if target:
+        problem = cross_toolchain_problem(target)
+        if problem:
+            print_colored(f"⏭️  Skipping {target} run: {problem}", Colors.YELLOW)
+            return
+
     print_colored(f"🧪 Running single test: {test_path}", Colors.BOLD + Colors.BLUE)
     
-    expected_output = load_expected_output(test_path)
+    byteorder = CROSS_TARGETS[target]['byteorder'] if target else sys.byteorder
+    expected_output = load_expected_output(test_path, byteorder)
     if expected_output is None:
         print_colored(f"⚠️  No expected output found for {test_path}", Colors.YELLOW)
         return
 
-    success, result = compile_and_run_test(test_path, use_mir)
+    unsupported = CROSS_TARGETS[target]['unsupported'] if target else {}
+    if Path(test_path).stem in unsupported:
+        print_colored(f"⏭️  SKIPPED (unsupported on {target}: {unsupported[Path(test_path).stem]})", Colors.YELLOW)
+        return
+
+    success, result = compile_and_run_test(test_path, use_mir, target)
     
     if not success:
         print_colored(f"❌ FAILED: {result}", Colors.RED)
@@ -330,12 +429,15 @@ if __name__ == "__main__":
     parser.add_argument('test', nargs='?', help='Specific test case to run')
     parser.add_argument('--list', action='store_true', help='List available tests')
     parser.add_argument('--mir', action='store_true', help='Use MIR codegen backend')
+    parser.add_argument('--target', choices=sorted(CROSS_TARGETS),
+                        help='Compile for a cross target and run under its emulator; '
+                             'skipped with a message when the toolchain is absent')
     
     args = parser.parse_args()
     
     if args.list:
         list_tests()
     elif args.test:
-        run_single_test(args.test, args.mir)
+        run_single_test(args.test, args.mir, args.target)
     else:
-        run_tests(args.mir)
+        run_tests(args.mir, args.target)
