@@ -1,5 +1,5 @@
 use crate::test_support::TempDir;
-use crate::{mir::codegen::from_ir, parser::parse_module};
+use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 use std::error::Error;
 
 // Builds and runs a native program with the host toolchain.
@@ -46,7 +46,7 @@ mod native {
                 "type !Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\n%guard = stackalloc.i64\nstore.i64 %guard, 55\nstore.i64 %last, 99\ncall @print_i64(%sentinel)\n%live = load.i64 %guard\ncall @print_i64(%live)\n%stored = load.i64 %last\ncall @print_i64(%stored)\nret.i64 0\n}}\n{PRINT_I64_HELPERS}"
             );
             let ir = parse_module(&source)?;
-            let mir = from_ir(&ir, "aggregate").map_err(|error| error.to_string())?;
+            let mir = from_ir_x86_64(&ir, "aggregate").map_err(|error| error.to_string())?;
             let function = &mir.functions["main"];
             let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[0].instr
             else {
@@ -103,7 +103,7 @@ fn unsized_allocations_are_rejected() -> Result<(), Box<dyn Error>> {
             );
             let rejected = match parse_module(&source) {
                 Err(_) => true,
-                Ok(ir) => from_ir(&ir, "unsized").is_err(),
+                Ok(ir) => from_ir_x86_64(&ir, "unsized").is_err(),
             };
             assert!(rejected, "{source}");
         }
@@ -115,7 +115,7 @@ fn unsized_allocations_are_rejected() -> Result<(), Box<dyn Error>> {
             );
             let rejected = match parse_module(&source) {
                 Err(_) => true,
-                Ok(ir) => from_ir(&ir, "unsized").is_err(),
+                Ok(ir) => from_ir_x86_64(&ir, "unsized").is_err(),
             };
             assert!(rejected, "{source}");
         }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir};
+use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir_x86_64};
 use crate::mir_codegen::{simd_support::tool_available, test_support::PRINT_I64_HELPERS};
 use crate::parser::parse_module;
 use crate::test_support::TempDir;
@@ -119,7 +119,7 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
     }
     let source = format!("{source}\n{PRINT_I64_HELPERS}");
     let ir = parse_module(&source).expect("source should parse");
-    let mut mir = from_ir(&ir, "module").expect("source should lower");
+    let mut mir = from_ir_x86_64(&ir, "module").expect("source should lower");
     TransformPipeline::default_for_opt_level(opt_level)
         .apply_to_module(&mut mir)
         .expect("transforms should apply");
@@ -268,7 +268,7 @@ fn optimized_tail_calls_run_in_constant_stack() {
 
 fn emit_wat(source: &str, arch: TargetArchitecture) -> String {
     let ir = parse_module(source).expect("source should parse");
-    let mir = from_ir(&ir, "module").expect("source should lower");
+    let mir = from_ir_x86_64(&ir, "module").expect("source should lower");
     let mut wat = Vec::new();
     generate_mir_wasm(
         &mir,
@@ -361,7 +361,7 @@ fn call_through_pointer_indexes_function_table() {
 fn wasi_writes_without_a_console_import() {
     let source = "fn @main() -> i64 {\nentry:\n  %a = writebyte 79\n  %b = writebyte 75\n  %c = writebyte 10\n  ret.i64 0\n}\n";
     let ir = parse_module(source).expect("source should parse");
-    let mir = from_ir(&ir, "module").expect("source should lower");
+    let mir = from_ir_x86_64(&ir, "module").expect("source should lower");
     let mut wat = Vec::new();
     generate_mir_wasm(
         &mir,
@@ -399,7 +399,7 @@ fn wasi_writes_without_a_console_import() {
 #[test]
 fn wasi_has_no_wasm64_form() {
     let ir = parse_module("fn @main() -> i64 {\nentry:\n  ret.i64 0\n}\n").expect("parse");
-    let mir = from_ir(&ir, "module").expect("lower");
+    let mir = from_ir_x86_64(&ir, "module").expect("lower");
     let mut wat = Vec::new();
     let error = generate_mir_wasm(
         &mir,
@@ -460,7 +460,7 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, -1\n  %x = load.i8 %p\n  %pv0 = extend.i8.i64 %x\n  call @print_i64(%pv0)\n  ret.i64 0\n}}\n{PRINT_I64_HELPERS}"
     );
     let ir = parse_module(&source).expect("parse");
-    let mir = from_ir(&ir, "module").expect("lower");
+    let mir = from_ir_x86_64(&ir, "module").expect("lower");
     let mut wat = Vec::new();
     generate_mir_wasm(
         &mir,
@@ -500,7 +500,7 @@ fn imported_function_counts_as_declared() {
 
 fn emit_wasi(source: &str) -> Result<String, LaminaError> {
     let ir = parse_module(source).expect("source should parse");
-    let mir = from_ir(&ir, "module").expect("source should lower");
+    let mir = from_ir_x86_64(&ir, "module").expect("source should lower");
     let mut wat = Vec::new();
     generate_mir_wasm(
         &mir,

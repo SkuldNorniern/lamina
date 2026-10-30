@@ -423,7 +423,7 @@ mod emission_tests {
     fn ptx_scaffolding_declares_typed_registers_for_supported_kernels() -> Result<(), Box<dyn Error>>
     {
         use crate::{
-            mir::{TransformPipeline, codegen::from_ir},
+            mir::{TransformPipeline, codegen::from_ir_x86_64},
             mir_codegen::ptx,
             parser::parse_module,
         };
@@ -431,7 +431,7 @@ mod emission_tests {
 
         let ir = parse_module(include_str!("../amdgpu/amdgpu.lamina"))?;
         for level in 0..=3 {
-            let mut mir = from_ir(&ir, "ptx").map_err(|error| format!("{error:?}"))?;
+            let mut mir = from_ir_x86_64(&ir, "ptx").map_err(|error| format!("{error:?}"))?;
             TransformPipeline::default_for_opt_level(level)
                 .apply_to_module(&mut mir)
                 .map_err(|error| format!("{error:?}"))?;
@@ -527,7 +527,7 @@ mod emission_tests {
     #[test]
     fn ptx_scaffolding_rejects_unsupported_operations_without_partial_output()
     -> Result<(), Box<dyn Error>> {
-        use crate::{mir::codegen::from_ir, mir_codegen::ptx, parser::parse_module};
+        use crate::{mir::codegen::from_ir_x86_64, mir_codegen::ptx, parser::parse_module};
         for source in [
             "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
             "@kernel fn @bad(i64 %a) -> void {\nentry:\n%x = shl.i64 %a, %a\nret.void\n}",
@@ -535,7 +535,7 @@ mod emission_tests {
             "@kernel fn @bad() -> void {\nentry:\n%p = stackalloc.i64\nret.void\n}",
         ] {
             let ir = parse_module(source)?;
-            let mir = from_ir(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
+            let mir = from_ir_x86_64(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
             let mut output = Vec::new();
             assert!(ptx::emit(&mir, &mut output).is_err());
             assert!(output.is_empty());
@@ -546,7 +546,7 @@ mod emission_tests {
     #[test]
     fn gpu_immediate_shifts_mask_counts() -> Result<(), Box<dyn Error>> {
         use crate::{
-            mir::codegen::from_ir,
+            mir::codegen::from_ir_x86_64,
             mir_codegen::{amdgpu, ptx},
             parser::parse_module,
         };
@@ -555,7 +555,7 @@ mod emission_tests {
                 "@kernel fn @shift(i{width} %a) -> void {{\nentry:\n%x = shl.i{width} %a, {count}\nret.void\n}}"
             );
             let ir = parse_module(&source)?;
-            let mir = from_ir(&ir, "masked_shift").map_err(|error| format!("{error:?}"))?;
+            let mir = from_ir_x86_64(&ir, "masked_shift").map_err(|error| format!("{error:?}"))?;
             let mut output = Vec::new();
             ptx::emit(&mir, &mut output)?;
             let assembly = String::from_utf8(output)?;

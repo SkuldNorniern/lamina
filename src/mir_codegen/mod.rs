@@ -526,7 +526,7 @@ mod tests {
         "#;
 
         let ir_module = parser::parse_module(input).expect("Failed to parse module");
-        codegen::from_ir(&ir_module, "test_input").expect("Failed to lower to MIR")
+        codegen::from_ir_x86_64(&ir_module, "test_input").expect("Failed to lower to MIR")
     }
 
     #[test]
@@ -704,7 +704,8 @@ mod tests {
         "#;
 
         let ir_module = parser::parse_module(input).expect("Failed to parse");
-        let mir_module = codegen::from_ir(&ir_module, "test").expect("Failed to lower to MIR");
+        let mir_module =
+            codegen::from_ir_x86_64(&ir_module, "test").expect("Failed to lower to MIR");
 
         let targets = vec![
             TargetArchitecture::X86_64,
@@ -763,7 +764,7 @@ mod atomic_target_tests {
             "fn @f(ptr %p) -> i64 {\nentry:\n %old = atomic_add.i64 %p, 1, seqcst\n ret.i64 %old\n}",
         )
         .expect("parse atomic add");
-        let mir = codegen::from_ir(&ir, "atomics").expect("lower atomic add");
+        let mir = codegen::from_ir_x86_64(&ir, "atomics").expect("lower atomic add");
         let mut output = Vec::new();
         let err = generate_mir_to_target(
             &mir,
@@ -784,7 +785,7 @@ mod atomic_target_tests {
             "@naked\nfn @isr() -> void {\nentry:\n    asm.void \"cli; hlt\"\n    unreachable\n}\n",
         )
         .expect("parse naked");
-        let mir = codegen::from_ir(&ir, "naked").expect("lower naked");
+        let mir = codegen::from_ir_x86_64(&ir, "naked").expect("lower naked");
         for (arch, os) in [
             (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
             (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux),
@@ -834,7 +835,7 @@ mod runtime_symbol_tests {
 
     fn lower(input: &str) -> Module {
         let ir = parser::parse_module(input).expect("parse");
-        codegen::from_ir(&ir, "runtime_symbols").expect("lower")
+        codegen::from_ir_x86_64(&ir, "runtime_symbols").expect("lower")
     }
 
     fn emit_x86(module: &Module, target_os: TargetOperatingSystem) -> String {

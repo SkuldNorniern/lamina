@@ -714,7 +714,7 @@ mod tests {
 mod annotation_tests {
     use super::*;
     use crate::{
-        mir::{codegen::from_ir, transform::TransformPipeline},
+        mir::{codegen::from_ir_x86_64, transform::TransformPipeline},
         mir_codegen::x86_64::generate_mir_x86_64,
         parser::parse_module,
     };
@@ -722,7 +722,7 @@ mod annotation_tests {
 
     fn lower(source: &str) -> Module {
         let ir = parse_module(source).expect("parse");
-        from_ir(&ir, "annotated").expect("lower")
+        from_ir_x86_64(&ir, "annotated").expect("lower")
     }
 
     fn calls_in(func: &Function) -> usize {

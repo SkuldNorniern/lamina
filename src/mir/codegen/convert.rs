@@ -542,7 +542,7 @@ fn declared_align(align: Option<u32>) -> usize {
 /// decides where the words go. Anything MIR cannot express comes back as a
 /// [`FromIRError`] naming the value.
 /// Lowers for a 64-bit target. Use [`from_ir_for_target`] to lower for another width.
-pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
+pub fn from_ir_x86_64(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     from_ir_for_target(ir, name, TargetArchitecture::X86_64.data_layout())
 }
 

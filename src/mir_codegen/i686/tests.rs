@@ -104,7 +104,7 @@ fn debug_lines_follow_source_locations_and_skip_synthesized_instructions() {
     const SOURCE: &str = "fn @main() -> i32 {\n  entry:\n    %a = add.i32 10, 20\n    %b = mul.i32 %a, 3\n    %c = sub.i32 %b, 7\n    jmp tail\n\n  tail:\n    ret.i32 %c\n}\n";
 
     let ir = parser::parse_module(SOURCE).expect("parse");
-    let mut module = codegen::from_ir(&ir, "runtime_symbols").expect("lower");
+    let mut module = codegen::from_ir_x86_64(&ir, "runtime_symbols").expect("lower");
     let settings = MirCodegenSettings {
         emit_asm_debug_lines: true,
         ..Default::default()

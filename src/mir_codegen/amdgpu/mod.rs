@@ -913,7 +913,7 @@ mod emission_tests {
 
     #[test]
     fn amdgpu_rejects_unsupported_kernels_without_partial_output() -> Result<(), Box<dyn Error>> {
-        use crate::{mir::codegen::from_ir, mir_codegen::amdgpu, parser::parse_module};
+        use crate::{mir::codegen::from_ir_x86_64, mir_codegen::amdgpu, parser::parse_module};
 
         for source in [
             "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
@@ -923,7 +923,7 @@ mod emission_tests {
             "@kernel fn @bad() -> void {\nentry:\n%x = call @__lamina_gpu_lane_id()\nret.void\n}",
         ] {
             let ir = parse_module(source)?;
-            let mir = from_ir(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
+            let mir = from_ir_x86_64(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
             for target in [amdgpu::AmdGpuTarget::Gfx900, amdgpu::AmdGpuTarget::Gfx1200] {
                 let mut output = Vec::new();
                 assert!(

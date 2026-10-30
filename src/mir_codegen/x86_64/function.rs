@@ -1473,7 +1473,7 @@ entry:
 #[allow(clippy::expect_used)]
 mod naked_tests {
     use super::*;
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 
     fn assembly_for(
         source: &str,
@@ -1481,7 +1481,7 @@ mod naked_tests {
         os: TargetOperatingSystem,
     ) -> Result<String, String> {
         let ir = parse_module(source).expect("parse function");
-        let mut mir = from_ir(&ir, "naked").expect("lower function");
+        let mut mir = from_ir_x86_64(&ir, "naked").expect("lower function");
         if naked {
             mir.functions.get_mut("f").expect("function f").sig.naked = true;
         }

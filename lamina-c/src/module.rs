@@ -7,7 +7,7 @@ use std::str::FromStr;
 use lamina::LaminaError;
 use lamina::generate_mir_to_target;
 use lamina::mir::TransformPipeline;
-use lamina::mir::codegen::from_ir;
+use lamina::mir::codegen::from_ir_x86_64;
 use lamina::parser::parse_module;
 use lamina_platform::Target;
 
@@ -126,7 +126,7 @@ unsafe fn compile_to_buf(
 
     let result = (|| -> Result<Vec<u8>, LaminaError> {
         let ir_mod = parse_module(ir_str)?;
-        let mut mir_mod = from_ir(&ir_mod, "module")?;
+        let mut mir_mod = from_ir_x86_64(&ir_mod, "module")?;
 
         if level > 0 {
             let pipeline = TransformPipeline::default_for_opt_level(level);

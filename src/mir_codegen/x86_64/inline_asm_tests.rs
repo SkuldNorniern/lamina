@@ -1,11 +1,11 @@
 #![allow(clippy::expect_used)]
 
 use super::*;
-use crate::{mir::codegen::from_ir, parser::parse_module};
+use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 
 fn assembly_for(source: &str, os: TargetOperatingSystem) -> Result<String, String> {
     let ir = parse_module(source).expect("parse inline asm");
-    let mir = from_ir(&ir, "asm").expect("lower inline asm");
+    let mir = from_ir_x86_64(&ir, "asm").expect("lower inline asm");
     let mut output = Vec::new();
     generate_mir_x86_64(&mir, &mut output, os).map_err(|error| error.to_string())?;
     Ok(String::from_utf8(output).expect("utf8 assembly"))

@@ -10,7 +10,7 @@ use crate::error::{clear_error, set_error};
 use crate::types::{LaminaJit, LaminaModule};
 use crate::{LaminaStatus, catch, cstr_to_str};
 
-use lamina::mir::codegen::from_ir;
+use lamina::mir::codegen::from_ir_x86_64;
 use lamina::parser::parse_module;
 use lamina::runtime::compile_to_runtime;
 use lamina_platform::Target;
@@ -225,7 +225,7 @@ pub unsafe extern "C" fn lia_jit_call_i64_4(
 fn compile_jit(ir_str: &str, func_name: &str) -> Result<LaminaJit, String> {
     let host = Target::detect_host()?;
     let module = parse_module(ir_str).map_err(|e| format!("parse error: {}", e))?;
-    let mir_module = from_ir(&module, "jit_c").map_err(|e| format!("IR lowering error: {}", e))?;
+    let mir_module = from_ir_x86_64(&module, "jit_c").map_err(|e| format!("IR lowering error: {}", e))?;
     let lookup = func_name.strip_prefix('@').unwrap_or(func_name);
     let result = compile_to_runtime(
         &mir_module,

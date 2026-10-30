@@ -1110,7 +1110,7 @@ fn constant_trip_count(func: &Function, shape: &Shape) -> Option<u64> {
 mod tests {
     use super::*;
     use crate::{
-        mir::{codegen::from_ir, verify::verify_function_in_pipeline},
+        mir::{codegen::from_ir_x86_64, verify::verify_function_in_pipeline},
         parser::parse_module,
         runtime::executor::interpret_mir_function,
     };
@@ -1136,7 +1136,7 @@ exit:
 ret.i64 %b
 }}"
         );
-        from_ir(&parse_module(&source).unwrap(), "unroll")
+        from_ir_x86_64(&parse_module(&source).unwrap(), "unroll")
             .unwrap()
             .functions
             .remove("f")
@@ -1229,7 +1229,7 @@ ret.i64 %d
 composite:
 ret.i64 0
 }";
-        let original = from_ir(&parse_module(source).unwrap(), "guarded")
+        let original = from_ir_x86_64(&parse_module(source).unwrap(), "guarded")
             .unwrap()
             .functions
             .remove("f")
@@ -1263,7 +1263,7 @@ ret.i64 %r
 exit:
 ret.i64 %b
 }";
-        let mut func = from_ir(&parse_module(source).unwrap(), "tail")
+        let mut func = from_ir_x86_64(&parse_module(source).unwrap(), "tail")
             .unwrap()
             .functions
             .remove("f")

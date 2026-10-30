@@ -519,7 +519,7 @@ impl ModuleInlining {
 mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, Immediate, IntBinOp, MirType, ScalarType};
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 
     #[test]
     fn noinline_callees_are_never_inlined() {
@@ -527,7 +527,7 @@ mod tests {
             "@noinline fn @helper() -> i64 {\nentry:\nret.i64 7\n}\nfn @main() -> i64 {\nentry:\n%v = call @helper()\nret.i64 %v\n}",
         )
         .expect("parse noinline caller");
-        let mut module = from_ir(&ir, "noinline caller").expect("lower noinline caller");
+        let mut module = from_ir_x86_64(&ir, "noinline caller").expect("lower noinline caller");
         assert!(module.get_function("helper").expect("callee").sig.no_inline);
         let count = ModuleInlining::new()
             .inline_functions(&mut module)
@@ -541,7 +541,7 @@ mod tests {
             "@extern fn @helper() -> i64 {\nentry:\nret.i64 7\n}\nfn @main() -> i64 {\nentry:\n%v = call @helper()\nret.i64 %v\n}",
         )
         .expect("parse extern caller");
-        let mut module = from_ir(&ir, "extern caller").expect("lower extern caller");
+        let mut module = from_ir_x86_64(&ir, "extern caller").expect("lower extern caller");
         assert!(module.is_external("helper"));
         let count = ModuleInlining::new()
             .inline_functions(&mut module)
@@ -565,7 +565,7 @@ mod tests {
         let ir = parse_module(
             "fn @main() -> void {\nentry:\n%p = stackalloc.i64\ncall @leaf(%p)\nret.void\n}\nfn @leaf(ptr %p) -> i64 {\nentry:\n%x = add.i64 1, 2\nstore.i64 %p, %x\nret.i64 %x\n}",
         ).expect("parse stack caller");
-        let mut module = from_ir(&ir, "stack caller").expect("lower stack caller");
+        let mut module = from_ir_x86_64(&ir, "stack caller").expect("lower stack caller");
         let count = ModuleInlining::new()
             .inline_functions(&mut module)
             .expect("inline leaf");
@@ -614,7 +614,7 @@ ret.i64 %c
 }",
         )
         .unwrap();
-        let mut module = from_ir(&ir, "stack").unwrap();
+        let mut module = from_ir_x86_64(&ir, "stack").unwrap();
         assert_eq!(
             ModuleInlining::new().inline_functions(&mut module).unwrap(),
             2
@@ -668,7 +668,7 @@ ret.void
 }",
         ] {
             let ir = parse_module(source).unwrap();
-            let mut module = from_ir(&ir, "recursion").unwrap();
+            let mut module = from_ir_x86_64(&ir, "recursion").unwrap();
             let original = module.clone();
             assert_eq!(
                 ModuleInlining::new().inline_functions(&mut module).unwrap(),
@@ -835,7 +835,7 @@ mod execution_tests {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod inline_hint_tests {
     use super::*;
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 
     fn chain_callee(annotation: &str, body_len: usize) -> String {
         let mut body = String::from("entry:\n %t0 = add.i64 1, 1\n");
@@ -848,7 +848,7 @@ mod inline_hint_tests {
 
     fn inline_count(source: &str) -> (usize, Module) {
         let ir = parse_module(source).expect("parse");
-        let mut module = from_ir(&ir, "inline hint").expect("lower");
+        let mut module = from_ir_x86_64(&ir, "inline hint").expect("lower");
         let count = ModuleInlining::new()
             .inline_functions(&mut module)
             .expect("inline");

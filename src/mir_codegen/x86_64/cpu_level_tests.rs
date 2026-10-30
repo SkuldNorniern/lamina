@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::{
-    mir::{Module, VectorLane, VectorOp, VectorType, codegen::from_ir},
+    mir::{Module, VectorLane, VectorOp, VectorType, codegen::from_ir_x86_64},
     mir_codegen::{CodegenError, MirCodegenSettings, simd_support},
     parser::parse_module,
 };
@@ -29,7 +29,7 @@ fn popcount_module() -> Module {
         "fn @f(i64 %x) -> i64 {\nentry:\n    %p = popcount.i64 %x\n    ret.i64 %p\n}\n",
     )
     .expect("parse popcount");
-    from_ir(&ir, "popcount").expect("lower popcount")
+    from_ir_x86_64(&ir, "popcount").expect("lower popcount")
 }
 
 fn lane_module(op: VectorOp, lane: VectorLane) -> Module {
@@ -162,7 +162,7 @@ fn refusal_names_the_instruction_and_both_levels() {
 
 fn ir_module(source: &str, name: &str) -> Module {
     let ir = parse_module(source).expect("parse ir");
-    from_ir(&ir, name).expect("lower ir")
+    from_ir_x86_64(&ir, name).expect("lower ir")
 }
 
 #[test]

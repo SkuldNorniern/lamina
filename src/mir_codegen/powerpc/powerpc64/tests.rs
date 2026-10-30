@@ -310,10 +310,10 @@ fn float_memory_transfers_use_fpr_bits() {
 
 #[test]
 fn stack_arguments_sit_in_the_parameter_save_area() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @ten(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, i64 %i, i64 %j) -> i64 {\nentry:\n  %s = add.i64 %i, %j\n  ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n  %r = call @ten(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "stack_args").expect("lower stack arguments");
+    let mir = from_ir_x86_64(&module, "stack_args").expect("lower stack arguments");
     let mut output = Vec::new();
     generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -347,10 +347,10 @@ fn stack_arguments_sit_in_the_parameter_save_area() -> Result<(), Box<dyn Error>
 
 #[test]
 fn byte_io_goes_through_write_and_read_without_stdio() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %w = writebyte 72\n  %r = readbyte\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "byte_io").expect("lower byte io");
+    let mir = from_ir_x86_64(&module, "byte_io").expect("lower byte io");
     let mut output = Vec::new();
     generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -367,10 +367,10 @@ fn byte_io_goes_through_write_and_read_without_stdio() -> Result<(), Box<dyn Err
 
 #[test]
 fn floats_cross_the_boundary_in_f_registers() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @add(i64 %n, f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = inttofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(7, 1.5, 2.5)\n  %i = fptoint.f64.i64 %r\n  ret.i64 %i\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "floats").expect("lower floats");
+    let mir = from_ir_x86_64(&module, "floats").expect("lower floats");
     let mut output = Vec::new();
     generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -397,10 +397,10 @@ fn floats_cross_the_boundary_in_f_registers() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptoint.f64.i64 %f\n  %narrow = fptoint.f64.i8 %f\n  %unsigned = fptoint.f64.u32 %f\n  %back = inttofp.i64.f64 %wide\n  %from_u = inttofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "conversions").expect("lower conversions");
+    let mir = from_ir_x86_64(&module, "conversions").expect("lower conversions");
     let mut output = Vec::new();
     generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -420,10 +420,10 @@ fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn module_globals_are_addressed_through_toc_relocations() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "global $counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $counter\n  ret.i64 %a\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "globals").expect("lower global module");
+    let mir = from_ir_x86_64(&module, "globals").expect("lower global module");
     let mut output = Vec::new();
     generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -550,10 +550,10 @@ fn float_copy_emits_bit_move_not_add() {
 
 #[test]
 fn global_allocation_spills_values_that_outlive_a_call() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @id(i64 %x) -> i64 {\nentry:\n  %r = mul.i64 %x, 1\n  ret.i64 %r\n}\nfn @main() -> i64 {\nentry:\n  %a = add.i64 7, 0\n  %b = mul.i64 %a, 3\n  %c = call @id(5)\n  %d = add.i64 %b, %c\n  ret.i64 %d\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "across_call").expect("lower call");
+    let mir = from_ir_x86_64(&module, "across_call").expect("lower call");
     for regalloc in [
         RegallocStrategy::LinearScanGlobal,
         RegallocStrategy::GraphColorGlobal,
@@ -614,10 +614,10 @@ fn global_allocation_spills_values_that_outlive_a_call() -> Result<(), Box<dyn E
 
 #[test]
 fn variadic_callee_receives_floats_in_both_banks() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 $fmt, 0\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "variadic").expect("lower extern call");
+    let mir = from_ir_x86_64(&module, "variadic").expect("lower extern call");
     let mut output = Vec::new();
     generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -642,9 +642,9 @@ fn variadic_callee_receives_floats_in_both_banks() -> Result<(), Box<dyn Error>>
 }
 
 fn emit_aggregate_module(ir: &str, name: &str) -> Result<String, Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, name).expect("lower aggregates");
+    let mir = from_ir_x86_64(&module, name).expect("lower aggregates");
     let mut output = Vec::new();
     emit_ppc64_module(
         &mir,
@@ -816,10 +816,10 @@ fn aggregate_result_of_two_words_comes_back_in_r3_and_r4() -> Result<(), Box<dyn
 /// slot's own offset would pick up the other end.
 #[test]
 fn a_narrow_value_is_read_from_the_low_order_half_of_its_slot() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %a = add.i8 10, 20\n  %b = bitcast.i8.u8 %a\n  %c = extend.u8.i64 %b\n  ret.i64 %c\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "narrow_slot").expect("lower narrow slot");
+    let mir = from_ir_x86_64(&module, "narrow_slot").expect("lower narrow slot");
     let mut big = Vec::new();
     emit_ppc64_module(
         &mir,
@@ -858,10 +858,10 @@ fn a_narrow_value_is_read_from_the_low_order_half_of_its_slot() -> Result<(), Bo
 /// `bitcast` across the two register files reads the bytes the other wrote.
 #[test]
 fn a_single_shares_the_slot_half_a_narrow_integer_uses() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %f = inttofp.i8.f32 -128\n  %b = bitcast.f32.i32 %f\n  %w = extend.i32.i64 %b\n  ret.i64 %w\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "single_slot").expect("lower single slot");
+    let mir = from_ir_x86_64(&module, "single_slot").expect("lower single slot");
     for endianness in [Endianness::Little, Endianness::Big] {
         let mut output = Vec::new();
         emit_ppc64_module(
@@ -894,13 +894,13 @@ fn a_single_shares_the_slot_half_a_narrow_integer_uses() -> Result<(), Box<dyn E
 /// `struct { char a, b, c; } = {1,2,3}` as `0x0000000000010203`.
 #[test]
 fn a_composite_under_a_doubleword_is_right_justified_on_big_endian() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ty = "struct { a: i8, b: i8, c: i8 }";
     let ir = format!(
         "fn @third({ty} %s) -> i64 {{\nentry:\n  %p = getfieldptr.{ty} %s, 2\n  %v = load.i8 %p\n  %w = extend.i8.i64 %v\n  ret.i64 %w\n}}\nfn @main() -> i64 {{\nentry:\n  %s = stackalloc.{ty}\n  %pa = getfieldptr.{ty} %s, 0\n  store.i8 %pa, 1\n  %r = call @third({ty} %s)\n  ret.i64 %r\n}}\n"
     );
     let module = parse_module(&ir)?;
-    let mir = from_ir(&module, "small_aggregate").expect("lower small aggregate");
+    let mir = from_ir_x86_64(&module, "small_aggregate").expect("lower small aggregate");
     let emit = |endianness| -> Result<String, Box<dyn Error>> {
         let mut output = Vec::new();
         emit_ppc64_module(
@@ -930,13 +930,13 @@ fn a_composite_under_a_doubleword_is_right_justified_on_big_endian() -> Result<(
 /// wider one, are left exactly as the memory image has them in both byte orders.
 #[test]
 fn a_composite_over_a_doubleword_keeps_its_memory_image() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ty = "struct { a: i64, b: i8 }";
     let ir = format!(
         "fn @tail({ty} %s) -> i64 {{\nentry:\n  %p = getfieldptr.{ty} %s, 1\n  %v = load.i8 %p\n  %w = extend.i8.i64 %v\n  ret.i64 %w\n}}\nfn @main() -> i64 {{\nentry:\n  %s = stackalloc.{ty}\n  %pa = getfieldptr.{ty} %s, 0\n  store.i64 %pa, 1\n  %r = call @tail({ty} %s)\n  ret.i64 %r\n}}\n"
     );
     let module = parse_module(&ir)?;
-    let mir = from_ir(&module, "wide_aggregate").expect("lower wide aggregate");
+    let mir = from_ir_x86_64(&module, "wide_aggregate").expect("lower wide aggregate");
     for endianness in [Endianness::Little, Endianness::Big] {
         let mut output = Vec::new();
         emit_ppc64_module(

@@ -2097,7 +2097,7 @@ mod export_linkage_tests {
     use crate::mir_codegen::arx64::generate_mir_arx64;
     use crate::{
         error::LaminaError,
-        mir::{Module as MirModule, codegen::from_ir},
+        mir::{Module as MirModule, codegen::from_ir_x86_64},
         mir_codegen::{
             arm::aarch64::generate_mir_aarch64, powerpc::powerpc64::generate_mir_ppc64,
             riscv::generate_mir_riscv, x86_64::generate_mir_x86_64,
@@ -2130,7 +2130,7 @@ entry:
     #[test]
     fn only_exported_functions_and_main_are_global() {
         let ir = parse_module(SOURCE).expect("parse export module");
-        let mir = from_ir(&ir, "exports").expect("lower export module");
+        let mir = from_ir_x86_64(&ir, "exports").expect("lower export module");
         #[cfg_attr(not(feature = "nightly"), allow(unused_mut))]
         let mut emitters: Vec<(&str, Emitter, TargetOperatingSystem)> = vec![
             (
@@ -2209,7 +2209,7 @@ entry:
 
     fn emit_visibility_module(os: TargetOperatingSystem) -> String {
         let ir = parse_module(VISIBILITY_SOURCE).expect("parse visibility module");
-        let mir = from_ir(&ir, "visibility").expect("lower visibility module");
+        let mir = from_ir_x86_64(&ir, "visibility").expect("lower visibility module");
         let mut output = Vec::new();
         generate_mir_x86_64(&mir, &mut output, os).expect("emit visibility module");
         String::from_utf8(output).expect("utf8 assembly")
@@ -2284,7 +2284,7 @@ entry:
             "global $g: i64 = 1\nfn @main() -> i64 {\nentry:\n %x = load.i64 $g\n ret.i64 %x\n}\n",
         )
         .expect("parse global module");
-        let mir = from_ir(&ir, "globals").expect("lower global module");
+        let mir = from_ir_x86_64(&ir, "globals").expect("lower global module");
         use crate::mir_codegen::{amdgpu, ptx};
         type GpuEmitter = fn(&MirModule, &mut Vec<u8>) -> Result<(), LaminaError>;
         let rejecting: [(&str, GpuEmitter); 2] = [
@@ -2309,7 +2309,7 @@ entry:
             "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n %x = load.i64 $t\n ret.i64 %x\n}\n",
         )
         .expect("parse thread-local module");
-        let mir = from_ir(&ir, "tls").expect("lower thread-local module");
+        let mir = from_ir_x86_64(&ir, "tls").expect("lower thread-local module");
         for (name, backend) in [
             ("aarch64", "AArch64"),
             ("riscv64", "RISC-V"),
@@ -2329,7 +2329,7 @@ entry:
             "fn @main(ptr %p) -> i64 {\nentry:\n store.i32 %p, 1 align 1\n ret.i64 0\n}\n",
         )
         .expect("parse under-aligned module");
-        let mir = from_ir(&ir, "align").expect("lower under-aligned module");
+        let mir = from_ir_x86_64(&ir, "align").expect("lower under-aligned module");
         let error = reject_underaligned_accesses(&mir, PointerWidth::Bits64, "RISC-V")
             .expect_err("riscv faults on an unaligned store");
         let text = error.to_string();
@@ -2342,7 +2342,7 @@ entry:
         let ir =
             parse_module("fn @main(ptr %p) -> i64 {\nentry:\n store.i32 %p, 1\n ret.i64 0\n}\n")
                 .expect("parse natural module");
-        let mir = from_ir(&ir, "align").expect("lower natural module");
+        let mir = from_ir_x86_64(&ir, "align").expect("lower natural module");
         reject_underaligned_accesses(&mir, PointerWidth::Bits64, "RISC-V")
             .expect("a derived alignment is never a refusal");
     }
@@ -2363,7 +2363,7 @@ entry:
 "#,
         )
         .expect("parse global module");
-        let mir = from_ir(&ir, "globals").expect("lower global module");
+        let mir = from_ir_x86_64(&ir, "globals").expect("lower global module");
         let mut output = Vec::new();
         generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, TargetOperatingSystem::Linux)
             .expect("emit global module");
@@ -2388,7 +2388,7 @@ entry:
              fn @main() -> i64 {\nentry:\n ret.i64 0\n}\n",
         )
         .expect("parse aligned globals");
-        let mir = from_ir(&ir, "aligned").expect("lower aligned globals");
+        let mir = from_ir_x86_64(&ir, "aligned").expect("lower aligned globals");
         let mut output = Vec::new();
         generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, TargetOperatingSystem::Linux)
             .expect("emit aligned globals");
@@ -2406,7 +2406,7 @@ entry:
             "global $g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
         )
         .expect("parse sparse array global");
-        let mir = from_ir(&ir, "globals").expect("lower sparse array global");
+        let mir = from_ir_x86_64(&ir, "globals").expect("lower sparse array global");
         let mut output = Vec::new();
         generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, TargetOperatingSystem::Linux)
             .expect("emit sparse array global");
@@ -2420,7 +2420,7 @@ entry:
     #[test]
     fn elf_targets_mark_stack_non_executable() {
         let ir = parse_module("fn @main() -> i64 {\nentry:\n ret.i64 0\n}\n").expect("parse");
-        let mir = from_ir(&ir, "stack_note").expect("lower");
+        let mir = from_ir_x86_64(&ir, "stack_note").expect("lower");
         let note = ".section .note.GNU-stack,\"\",@progbits";
         for (os, expected) in [
             (TargetOperatingSystem::Linux, true),

@@ -766,10 +766,10 @@ fn base_isa_rejects_multiply_instead_of_emitting_it() {
 
 #[test]
 fn module_globals_are_addressed_through_symbol_loads() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "global $counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $counter\n  ret.i64 %a\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "globals").expect("lower global module");
+    let mir = from_ir_x86_64(&module, "globals").expect("lower global module");
     let mut output = Vec::new();
     generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -783,10 +783,10 @@ fn module_globals_are_addressed_through_symbol_loads() -> Result<(), Box<dyn Err
 
 #[test]
 fn floats_cross_the_boundary_in_fa_registers() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @add(f64 %a, i64 %n, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = inttofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(1.5, 7, 2.5)\n  %i = fptoint.f64.i64 %r\n  ret.i64 %i\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "floats").expect("lower floats");
+    let mir = from_ir_x86_64(&module, "floats").expect("lower floats");
     let mut output = Vec::new();
     generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -811,7 +811,7 @@ fn floats_cross_the_boundary_in_fa_registers() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn floats_past_the_float_bank_take_integer_registers() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let params: Vec<String> = (0..10).map(|i| format!("f64 %p{i}")).collect();
     let sums: Vec<String> = (0..10)
         .map(|i| format!("  %w{i} = fptoint.f64.i64 %p{i}\n  %a{i} = add.i64 %acc, %w{i}\n  %acc = add.i64 %a{i}, 0"))
@@ -824,7 +824,7 @@ fn floats_past_the_float_bank_take_integer_registers() -> Result<(), Box<dyn Err
         args.join(", ")
     );
     let module = parse_module(&ir)?;
-    let mir = from_ir(&module, "overflow").expect("lower overflowing floats");
+    let mir = from_ir_x86_64(&module, "overflow").expect("lower overflowing floats");
     let mut output = Vec::new();
     generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -849,10 +849,10 @@ fn floats_past_the_float_bank_take_integer_registers() -> Result<(), Box<dyn Err
 
 #[test]
 fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptoint.f64.i64 %f\n  %narrow = fptoint.f64.i8 %f\n  %unsigned = fptoint.f64.u32 %f\n  %back = inttofp.i64.f64 %wide\n  %from_u = inttofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "conversions").expect("lower conversions");
+    let mir = from_ir_x86_64(&module, "conversions").expect("lower conversions");
     let mut output = Vec::new();
     generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -878,10 +878,10 @@ fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn byte_io_goes_through_write_and_read_without_stdio() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %w = writebyte 72\n  %r = readbyte\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "byte_io").expect("lower byte io");
+    let mir = from_ir_x86_64(&module, "byte_io").expect("lower byte io");
     let mut output = Vec::new();
     generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -1007,10 +1007,10 @@ fn float_copy_emits_bit_move_not_add() {
 
 #[test]
 fn variadic_float_argument_travels_in_integer_bank() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 $fmt, 0\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, "riscv_variadic").expect("lower variadic call");
+    let mir = from_ir_x86_64(&module, "riscv_variadic").expect("lower variadic call");
     let mut output = Vec::new();
     generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
@@ -1026,9 +1026,9 @@ fn variadic_float_argument_travels_in_integer_bank() -> Result<(), Box<dyn Error
 }
 
 fn emit_aggregate_module(ir: &str, name: &str) -> Result<String, Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let module = parse_module(ir)?;
-    let mir = from_ir(&module, name).expect("lower aggregates");
+    let mir = from_ir_x86_64(&module, name).expect("lower aggregates");
     let mut output = Vec::new();
     emit_riscv_module(
         &mir,

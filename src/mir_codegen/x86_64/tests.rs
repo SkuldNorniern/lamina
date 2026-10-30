@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    mir::{FunctionBuilder, RelocationModel, ScalarType, codegen::from_ir},
+    mir::{FunctionBuilder, RelocationModel, ScalarType, codegen::from_ir_x86_64},
     parser::parse_module,
 };
 use lamina_mir::Located;
@@ -13,7 +13,7 @@ fn position_independent_modules_load_external_addresses_through_the_got() {
         "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n",
     )
     .unwrap();
-    let mut mir = from_ir(&ir, "pie").unwrap();
+    let mut mir = from_ir_x86_64(&ir, "pie").unwrap();
     let assemble = |module: &MirModule| {
         let mut output = Vec::new();
         generate_mir_x86_64(module, &mut output, TargetOperatingSystem::Linux).unwrap();
@@ -35,7 +35,7 @@ fn calls_that_may_be_variadic_report_vector_count_in_al() {
         "@extern\nfn @printf(ptr %fmt, ...) -> i32\n@extern\nfn @unknown(i64 %a, ...) -> i64\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @known(i64 %a) -> i64 {\nentry:\n    ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n    %k = call @known(1)\n    %u = call @unknown(1)\n    %f = getelem.i8 $fmt, 0\n    %p = call @printf(%f, 2.5)\n    ret.i64 %k\n}\n",
     )
     .unwrap();
-    let mir = from_ir(&ir, "al").unwrap();
+    let mir = from_ir_x86_64(&ir, "al").unwrap();
     let mut output = Vec::new();
     generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
     let assembly = String::from_utf8(output).unwrap();
@@ -81,7 +81,7 @@ exit:
 "#,
     )
     .unwrap();
-    let mir = from_ir(&ir, "shared_exit").unwrap();
+    let mir = from_ir_x86_64(&ir, "shared_exit").unwrap();
     let settings = MirCodegenSettings {
         regalloc: RegallocStrategy::LinearScanGlobal,
         ..Default::default()
@@ -319,7 +319,7 @@ fn global_leaf_omits_empty_frame_but_keeps_stack_argument_base() {
             ),
         ] {
             let ir = parse_module(source).expect("parse frame case");
-            let mir = from_ir(&ir, "frame").expect("lower frame case");
+            let mir = from_ir_x86_64(&ir, "frame").expect("lower frame case");
             let function = mir.get_function("f").expect("frame function");
             let assembly = compile_single_function_x86_64(
                 "f",
@@ -1484,7 +1484,7 @@ fn external_declarations_come_out_in_one_order() {
          %a = call @zeta(1)\n%b = call @alpha(2)\n%c = call @mu(3)\nret.i64 %a\n}\n",
     )
     .unwrap();
-    let mir = from_ir(&ir, "externs").unwrap();
+    let mir = from_ir_x86_64(&ir, "externs").unwrap();
 
     let emit = || {
         let mut output = Vec::new();
@@ -1571,7 +1571,7 @@ mod intrinsic_namespace_tests {
 
 fn x86_assembly_for(source: &str) -> String {
     let ir = parse_module(source).expect("parse atomics");
-    let mir = from_ir(&ir, "atomics").expect("lower atomics");
+    let mir = from_ir_x86_64(&ir, "atomics").expect("lower atomics");
     let mut output = Vec::new();
     generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).expect("emit atomics");
     String::from_utf8(output).expect("utf8 assembly")
@@ -1687,7 +1687,7 @@ fn narrow_atomic_add_uses_sized_locked_xadd_and_sign_extends() {
 fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() {
     let source = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %w = write %p, 4\n  %r = read %p, 4\n  %b = writebyte 65\n  ret.i64 %w\n}\n";
     let ir = parse_module(source).expect("parse io");
-    let mir = from_ir(&ir, "io").expect("lower io");
+    let mir = from_ir_x86_64(&ir, "io").expect("lower io");
     let mut mach = Vec::new();
     generate_mir_x86_64(&mir, &mut mach, TargetOperatingSystem::MacOS).expect("emit macos io");
     let mach = String::from_utf8(mach).expect("utf8 assembly");
@@ -1708,7 +1708,7 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() {
 fn freebsd_io_intrinsics_use_the_bsd_syscall_numbers() {
     let source = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %w = write %p, 4\n  %r = read %p, 4\n  %b = writebyte 65\n  %c = readbyte\n  ret.i64 %w\n}\n";
     let ir = parse_module(source).expect("parse io");
-    let mir = from_ir(&ir, "io").expect("lower io");
+    let mir = from_ir_x86_64(&ir, "io").expect("lower io");
     let mut output = Vec::new();
     generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::FreeBSD).expect("emit freebsd");
     let asm = String::from_utf8(output).expect("utf8 assembly");
@@ -1750,7 +1750,7 @@ fn thread_local_globals_emit_the_relocations_their_model_names() {
             "{annotation} global $t: i64 = 0\nfn @main() -> i64 {{\nentry:\n    store.i64 $t, 7\n    %v = load.i64 $t\n    ret.i64 %v\n}}\n"
         );
         let ir = parse_module(&source).unwrap();
-        let mir = from_ir(&ir, "tls").unwrap();
+        let mir = from_ir_x86_64(&ir, "tls").unwrap();
         let mut output = Vec::new();
         generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
         String::from_utf8(output).unwrap()
@@ -1777,7 +1777,7 @@ fn an_initialized_thread_local_goes_to_tdata() {
         "@thread_local global $t: i64 = 9\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
     )
     .unwrap();
-    let mir = from_ir(&ir, "tls").unwrap();
+    let mir = from_ir_x86_64(&ir, "tls").unwrap();
     let mut output = Vec::new();
     generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
     let assembly = String::from_utf8(output).unwrap();
@@ -1793,7 +1793,7 @@ fn thread_local_storage_is_refused_on_mach_o() {
         "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
     )
     .unwrap();
-    let mir = from_ir(&ir, "tls").unwrap();
+    let mir = from_ir_x86_64(&ir, "tls").unwrap();
     let mut output = Vec::new();
     let error = generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::MacOS)
         .expect_err("Mach-O has no .tbss");
@@ -1807,7 +1807,7 @@ fn overflow_flags_read_the_condition_the_signedness_names() {
             "fn @main(i64 %a, i64 %b) -> i64 {{\nentry:\n    {line}\n    %r = extend.bool.i64 %f\n    ret.i64 %r\n}}\n"
         );
         let ir = parse_module(&source).unwrap();
-        let mir = from_ir(&ir, "ovf").unwrap();
+        let mir = from_ir_x86_64(&ir, "ovf").unwrap();
         let mut output = Vec::new();
         generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
         String::from_utf8(output).unwrap()
@@ -1829,7 +1829,7 @@ fn overflow_flags_read_the_condition_the_signedness_names() {
 
     let source = "fn @main(i32 %a, i32 %b) -> i64 {\nentry:\n    %f = add.ovf.i32 %a, %b\n    %r = extend.bool.i64 %f\n    ret.i64 %r\n}\n";
     let ir = parse_module(source).unwrap();
-    let mir = from_ir(&ir, "ovf").unwrap();
+    let mir = from_ir_x86_64(&ir, "ovf").unwrap();
     let mut output = Vec::new();
     generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
     let narrow = String::from_utf8(output).unwrap();
@@ -1841,7 +1841,7 @@ fn a_stated_alignment_does_not_change_x86_64_code() {
     let assemble = |line: &str| {
         let source = format!("fn @main(ptr %p) -> i64 {{\nentry:\n    {line}\n    ret.i64 0\n}}\n");
         let ir = parse_module(&source).unwrap();
-        let mir = from_ir(&ir, "align").unwrap();
+        let mir = from_ir_x86_64(&ir, "align").unwrap();
         let mut output = Vec::new();
         generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
         String::from_utf8(output).unwrap()

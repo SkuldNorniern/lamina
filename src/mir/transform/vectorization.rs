@@ -741,11 +741,11 @@ fn rewrite(func: &mut Function, plan: &Plan, next: &mut u32) {
 mod tests {
     use super::*;
     use crate::mir::transform::TransformPipeline;
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 
     /// Runs the real O3 pipeline, so a test sees the MIR the pass sees in a build.
     fn vector_ops(source: &str, level: X86CpuLevel) -> usize {
-        let mut module = from_ir(&parse_module(source).unwrap(), "vectorization").unwrap();
+        let mut module = from_ir_x86_64(&parse_module(source).unwrap(), "vectorization").unwrap();
         TransformPipeline::default_for_opt_level_on(3, Some(VectorUnit::X86Sse2(level)))
             .apply_to_module(&mut module)
             .unwrap();

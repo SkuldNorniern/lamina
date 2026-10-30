@@ -3,14 +3,14 @@
 use super::*;
 use crate::error::LaminaError;
 use crate::{
-    mir::{Module, codegen::from_ir},
+    mir::{Module, codegen::from_ir_x86_64},
     mir_codegen::MirCodegenSettings,
     parser::parse_module,
 };
 use lamina_platform::X86CpuLevel;
 
 fn lower(source: &str) -> Module {
-    from_ir(&parse_module(source).expect("parse"), "vector").expect("lower")
+    from_ir_x86_64(&parse_module(source).expect("parse"), "vector").expect("lower")
 }
 
 fn assembly(module: &Module) -> String {

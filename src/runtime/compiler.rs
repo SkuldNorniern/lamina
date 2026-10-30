@@ -134,7 +134,7 @@ mod tests {
     #[cfg(not(feature = "encoder"))]
     use crate::mir::Module;
     #[cfg(all(feature = "encoder", target_arch = "x86_64", target_os = "linux"))]
-    use crate::mir::codegen::from_ir;
+    use crate::mir::codegen::from_ir_x86_64;
     #[cfg(all(feature = "encoder", target_arch = "x86_64", target_os = "linux"))]
     use crate::parser::parse_module;
     use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
@@ -156,7 +156,7 @@ mod tests {
         }
         "#;
         let ir_module = parse_module(input).expect("parse");
-        let module = from_ir(&ir_module, "jit_test").expect("lower");
+        let module = from_ir_x86_64(&ir_module, "jit_test").expect("lower");
 
         let handle = {
             let mut compiler = make_compiler();

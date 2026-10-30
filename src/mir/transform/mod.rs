@@ -635,7 +635,7 @@ mod tests {
         instruction::{Immediate, Instruction, IntBinOp, Operand},
         register::Register,
     };
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 
     #[test]
     fn oversized_blocks_are_optimized_at_every_level() {
@@ -646,7 +646,7 @@ mod tests {
         ir.push_str("  ret.i64 %v1599\n}\n");
         let parsed = parse_module(&ir).unwrap();
         for level in 0..=3 {
-            let mut module = from_ir(&parsed, "big").unwrap();
+            let mut module = from_ir_x86_64(&parsed, "big").unwrap();
             TransformPipeline::default_for_opt_level(level)
                 .apply_to_module(&mut module)
                 .unwrap_or_else(|e| panic!("O{level} failed on a 1600-instruction block: {e}"));
@@ -669,7 +669,7 @@ ret.i64 %s
         )
         .unwrap();
         for level in 0..=3 {
-            let mut module = from_ir(&ir, "pipeline").unwrap();
+            let mut module = from_ir_x86_64(&ir, "pipeline").unwrap();
             let stats = TransformPipeline::default_for_opt_level(level)
                 .apply_to_module(&mut module)
                 .unwrap();

@@ -7,7 +7,7 @@ use std::{fs, path::Path};
 use lamina_mir::{Module, ssa::SsaFunction};
 
 use crate::{
-    mir::{TransformPipeline, codegen::from_ir},
+    mir::{TransformPipeline, codegen::from_ir_x86_64},
     parser::parse_module,
 };
 
@@ -42,7 +42,7 @@ fn every_testcase_builds_and_verifies_ssa_at_each_opt_level() {
         let name = path.display().to_string();
         let ir = parse_module(&source).unwrap_or_else(|e| panic!("{name}: {e}"));
         for level in 0..=3u8 {
-            let mut mir = from_ir(&ir, &name).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let mut mir = from_ir_x86_64(&ir, &name).unwrap_or_else(|e| panic!("{name}: {e}"));
             if level > 0 {
                 TransformPipeline::default_for_opt_level(level)
                     .apply_to_module(&mut mir)
@@ -64,7 +64,7 @@ fn destroy_copies_on_a_real_loop_edge_round_trip() {
 
     let source = "fn @count(i64 %n) -> i64 {\nentry:\n    %i = add.i64 0, 0\n    jmp head\nhead:\n    %c = lt.i64 %i, %n\n    br %c, body, done\nbody:\n    %i = add.i64 %i, 1\n    jmp head\ndone:\n    ret.i64 %i\n}\n";
     let ir = parse_module(source).expect("parse loop");
-    let module = from_ir(&ir, "loop").expect("lower loop");
+    let module = from_ir_x86_64(&ir, "loop").expect("lower loop");
     let function = &module.functions["count"];
     let mut graph = SsaFunction::build(function, &|_| None).expect("build");
     graph.verify().expect("built graph verifies");
