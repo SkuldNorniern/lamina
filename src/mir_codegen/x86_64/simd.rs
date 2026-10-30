@@ -33,7 +33,9 @@ fn unsupported(message: impl Into<String>) -> LaminaError {
 fn lane(ty: MirType) -> Result<VectorLane, LaminaError> {
     match ty {
         MirType::Vector(VectorType::V128(lane)) => Ok(lane),
-        MirType::Vector(VectorType::V256(_)) => Err(unsupported("x86_64 V256 requires AVX")),
+        MirType::Vector(VectorType::V256(_)) => Err(unsupported(
+            "x86_64 V256 is not implemented: the backend emits only 128-bit SSE forms, at every CPU level",
+        )),
         _ => Err(unsupported(format!("expected V128, got {ty:?}"))),
     }
 }
