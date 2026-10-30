@@ -47,45 +47,71 @@ fn get_crt_file(compiler: &str, crt_name: &str, multilib: Option<&str>) -> Optio
 
 /// The driver whose start-up objects belong to the target: the host compiler for a
 /// host-architecture link, otherwise the target's cross compiler.
-fn crt_compiler(target_arch: TargetArchitecture) -> Option<String> {
+fn crt_compiler(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Result<String, LaminaError> {
     if host_matches(target_arch) {
-        detect_compiler().map(str::to_string)
-    } else {
-        gnu_tool(target_arch, "gcc")
+        return detect_compiler().map(str::to_string).ok_or_else(|| {
+            missing_crt_error(
+                target_arch,
+                target_os,
+                "no C compiler is installed on the host (looked for gcc and clang)",
+            )
+        });
     }
+    gnu_tool(target_arch, "gcc")
+        .ok_or_else(|| missing_crt_error(target_arch, target_os, &no_gnu_tool("gcc", target_arch)))
 }
 
-fn get_crt_files(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Vec<String> {
+fn missing_crt_error(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    reason: &str,
+) -> LaminaError {
+    LaminaError::ValidationError(format!(
+        "cannot link {target_os:?} {target_arch:?}: {reason}; crt1.o, crti.o and crtn.o come from that compiler and are required to link"
+    ))
+}
+
+fn required_crt_file(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    compiler: &str,
+    crt_name: &str,
+) -> Result<String, LaminaError> {
+    get_crt_file(compiler, crt_name, multilib_flag(target_arch)).ok_or_else(|| {
+        LaminaError::ValidationError(format!(
+            "cannot link {target_os:?} {target_arch:?}: {compiler} cannot find {crt_name}, which is required to link"
+        ))
+    })
+}
+
+fn get_crt_files(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Result<Vec<String>, LaminaError> {
     if os_uses_macho(target_os) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
-    let Some(compiler) = crt_compiler(target_arch) else {
-        return Vec::new();
-    };
-
-    let multilib = multilib_flag(target_arch);
+    let compiler = crt_compiler(target_arch, target_os)?;
     ["crt1.o", "crti.o"]
         .iter()
-        .filter_map(|name| get_crt_file(&compiler, name, multilib))
+        .map(|name| required_crt_file(target_arch, target_os, &compiler, name))
         .collect()
 }
 
 fn get_crtn_files(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
-) -> Vec<String> {
+) -> Result<Vec<String>, LaminaError> {
     if os_uses_macho(target_os) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
-    let Some(compiler) = crt_compiler(target_arch) else {
-        return Vec::new();
-    };
-
-    get_crt_file(&compiler, "crtn.o", multilib_flag(target_arch))
-        .into_iter()
-        .collect()
+    let compiler = crt_compiler(target_arch, target_os)?;
+    required_crt_file(target_arch, target_os, &compiler, "crtn.o").map(|path| vec![path])
 }
 
 fn windows_sdk_root() -> Option<PathBuf> {
@@ -350,9 +376,9 @@ fn build_crt_args(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     before_user_object: bool,
-) -> Vec<String> {
+) -> Result<Vec<String>, LaminaError> {
     if os_uses_macho(target_os) || cross_os(target_os) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     if before_user_object {
@@ -474,21 +500,21 @@ fn build_unix_linker_args(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     additional_flags: &[String],
-) -> Vec<String> {
+) -> Result<Vec<String>, LaminaError> {
     let mut args = Vec::new();
 
     args.extend(build_arch_emulation_flags(target_arch, target_os));
     args.extend(build_dynamic_linker_arg(target_arch, target_os));
-    args.extend(build_crt_args(target_arch, target_os, true));
+    args.extend(build_crt_args(target_arch, target_os, true)?);
     args.push(input_path.to_string_lossy().to_string());
-    args.extend(build_crt_args(target_arch, target_os, false));
+    args.extend(build_crt_args(target_arch, target_os, false)?);
     args.extend(build_entry_point_arg(target_os));
     args.extend(build_library_args(target_arch, target_os));
     args.extend(additional_flags.iter().cloned());
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
 
-    args
+    Ok(args)
 }
 
 /// Build args for weld as a freestanding, no-libc linker. weld synthesizes its
@@ -702,7 +728,7 @@ fn link_object(
                 target_arch,
                 target_os,
                 additional_flags,
-            );
+            )?;
             (cmd, args)
         }
         LinkerBackend::Lld => {
@@ -722,7 +748,7 @@ fn link_object(
                 target_arch,
                 target_os,
                 additional_flags,
-            );
+            )?;
             if target_os == TargetOperatingSystem::MacOS
                 && let Ok(out) = Command::new("xcrun").args(["--show-sdk-version"]).output()
                 && let Ok(sdk) = String::from_utf8(out.stdout)
@@ -755,7 +781,7 @@ fn link_object(
                 target_arch,
                 target_os,
                 additional_flags,
-            );
+            )?;
             ("mold".to_string(), args)
         }
         LinkerBackend::Weld => {
@@ -813,7 +839,7 @@ fn link_object(
                 target_arch,
                 target_os,
                 additional_flags,
-            );
+            )?;
             (name.to_string(), args)
         }
     };
@@ -845,7 +871,7 @@ fn link_with_gnu(
         target_arch,
         target_os,
         additional_flags,
-    );
+    )?;
     run_linker(&tool, args, verbose)
 }
 
@@ -1152,8 +1178,16 @@ mod tests {
         if cfg!(target_os = "freebsd") {
             return;
         }
-        assert!(build_crt_args(arch, os, true).is_empty());
-        assert!(build_crt_args(arch, os, false).is_empty());
+        assert!(
+            build_crt_args(arch, os, true)
+                .expect("C runtime objects")
+                .is_empty()
+        );
+        assert!(
+            build_crt_args(arch, os, false)
+                .expect("C runtime objects")
+                .is_empty()
+        );
         assert!(!build_library_args(arch, os).iter().any(|a| a == "-lc"));
     }
 
@@ -1207,8 +1241,18 @@ mod tests {
                 "{os:?}"
             );
             let arch = TargetArchitecture::Aarch64;
-            assert!(build_crt_args(arch, os, true).is_empty(), "{os:?}");
-            assert!(build_crt_args(arch, os, false).is_empty(), "{os:?}");
+            assert!(
+                build_crt_args(arch, os, true)
+                    .expect("C runtime objects")
+                    .is_empty(),
+                "{os:?}"
+            );
+            assert!(
+                build_crt_args(arch, os, false)
+                    .expect("C runtime objects")
+                    .is_empty(),
+                "{os:?}"
+            );
             assert_eq!(build_entry_point_arg(os), ["-e", "_main"], "{os:?}");
             let libs = build_library_args(arch, os);
             assert!(libs.iter().any(|a| a == "-lSystem"), "{os:?}");
