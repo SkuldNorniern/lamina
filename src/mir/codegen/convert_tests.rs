@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used)]
 
 use super::*;
+use crate::mir::{VectorLane, VectorType};
 
 fn lowered_global_module(source: &str) -> Result<Module, FromIRError> {
     let ir = parse_module(source).expect("parse globals");
@@ -141,7 +142,10 @@ fn lowering_rejects_undefined_and_forward_uses_before_initialization() {
     ] {
         let rejected = match parse_module(source) {
             Err(_) => true,
-            Ok(ir) => matches!(from_ir_x86_64(&ir, "invalid"), Err(FromIRError::InvalidMir(_))),
+            Ok(ir) => matches!(
+                from_ir_x86_64(&ir, "invalid"),
+                Err(FromIRError::InvalidMir(_))
+            ),
         };
         assert!(rejected, "{source}");
     }
@@ -1196,4 +1200,115 @@ fn an_element_of_a_packed_array_is_aligned_like_its_stride() {
         ),
         vec![(1, false)]
     );
+}
+
+#[test]
+fn variable_gep_index_of_unknown_width_is_refused() {
+    let source = "fn @gep(ptr %p) -> ptr {\nentry:\n%n = asm.i16 \"nop\", out(ax)\n%q = getelem.i16 %p, %n\nret.ptr %q\n}";
+    let ir = parse_module(source).expect("parse untyped index");
+    for arch in [
+        TargetArchitecture::Riscv32,
+        TargetArchitecture::I686,
+        TargetArchitecture::Armv7,
+        TargetArchitecture::X86_64,
+    ] {
+        let error = from_ir_for_target(&ir, "gep", arch.data_layout())
+            .expect_err("an index of unknown width must not be guessed");
+        assert!(
+            matches!(error, FromIRError::UnknownVariable),
+            "{arch:?}: {error}"
+        );
+    }
+}
+
+#[test]
+fn inttoptr_source_of_unknown_width_is_refused() {
+    let source = "fn @cast() -> ptr {\nentry:\n%n = asm.i16 \"nop\", out(ax)\n%p = inttoptr.i16 %n\nret.ptr %p\n}";
+    let ir = parse_module(source).expect("parse untyped inttoptr");
+    for arch in [TargetArchitecture::Riscv32, TargetArchitecture::X86_64] {
+        let error = from_ir_for_target(&ir, "cast", arch.data_layout())
+            .expect_err("a source of unknown width must not be guessed");
+        assert!(
+            matches!(error, FromIRError::UnknownVariable),
+            "{arch:?}: {error}"
+        );
+    }
+}
+
+#[test]
+fn unary_immediates_refuse_a_width_no_immediate_holds() {
+    let pointer = PointerWidth::Bits64;
+    for (ty, zero, ones) in [
+        (
+            MirType::Scalar(ScalarType::I8),
+            Immediate::I8(0),
+            Immediate::I8(-1),
+        ),
+        (
+            MirType::Scalar(ScalarType::I16),
+            Immediate::I16(0),
+            Immediate::I16(-1),
+        ),
+        (
+            MirType::Scalar(ScalarType::I32),
+            Immediate::I32(0),
+            Immediate::I32(-1),
+        ),
+        (
+            MirType::Scalar(ScalarType::I64),
+            Immediate::I64(0),
+            Immediate::I64(-1),
+        ),
+    ] {
+        assert_eq!(zero_immediate(ty, pointer).expect("zero"), zero);
+        assert_eq!(all_ones_immediate(ty, pointer).expect("ones"), ones);
+    }
+
+    for wide in [
+        MirType::Vector(VectorType::V128(VectorLane::I32)),
+        MirType::Vector(VectorType::V256(VectorLane::I32)),
+    ] {
+        assert_eq!(wide.size_bytes(pointer) % 8, 0);
+        assert!(
+            zero_immediate(wide, pointer).is_err(),
+            "{wide:?} has no zero immediate"
+        );
+        assert!(
+            all_ones_immediate(wide, pointer).is_err(),
+            "{wide:?} has no all-ones immediate"
+        );
+    }
+
+    assert!(
+        zero_immediate(MirType::Scalar(ScalarType::Ptr), PointerWidth::Bits128).is_err(),
+        "a 16-byte pointer has no zero immediate"
+    );
+}
+
+#[test]
+fn from_ir_x86_64_lowers_against_the_x86_64_layout_only() {
+    let source = "fn @gep(ptr %p, i32 %i) -> ptr {\nentry:\n%q = getelem.i64 %p, %i\nret.ptr %q\n}";
+    let ir = parse_module(source).expect("parse gep");
+    let named = from_ir_x86_64(&ir, "gep").expect("lower by name");
+    let explicit = from_ir_for_target(&ir, "gep", TargetArchitecture::X86_64.data_layout())
+        .expect("lower by layout");
+    let narrow = from_ir_for_target(&ir, "gep", TargetArchitecture::Riscv32.data_layout())
+        .expect("lower for riscv32");
+
+    let word = |module: &Module| {
+        module.get_function("gep").expect("gep function").blocks[0]
+            .instructions
+            .iter()
+            .find_map(|inst| match &inst.instr {
+                Instruction::IntBinary {
+                    op: IntBinOp::Mul,
+                    ty,
+                    ..
+                } => Some(*ty),
+                _ => None,
+            })
+    };
+    assert_eq!(word(&named), Some(MirType::Scalar(ScalarType::I64)));
+    assert_eq!(word(&named), word(&explicit));
+    assert_eq!(word(&narrow), Some(MirType::Scalar(ScalarType::I32)));
 }

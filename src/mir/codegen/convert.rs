@@ -535,13 +535,15 @@ fn declared_align(align: Option<u32>) -> usize {
     align.map_or(1, |align| align as usize)
 }
 
-/// Lowers an IR module to MIR, named `name`.
+/// Lowers an IR module to MIR, named `name`, against the x86_64 data layout.
 ///
-/// The result is target independent: an aggregate crossing a function boundary keeps
-/// its layout in an [`Aggregate`](crate::mir::types::Aggregate) marker and each backend
-/// decides where the words go. Anything MIR cannot express comes back as a
-/// [`FromIRError`] naming the value.
-/// Lowers for a 64-bit target. Use [`from_ir_for_target`] to lower for another width.
+/// Pointer width, endianness and register width come from that layout, so the result
+/// suits no other target. Every other target goes through [`from_ir_for_target`].
+///
+/// An aggregate crossing a function boundary keeps its layout in an
+/// [`Aggregate`](crate::mir::types::Aggregate) marker and each backend decides where
+/// the words go. Anything MIR cannot express comes back as a [`FromIRError`] naming
+/// the value.
 pub fn from_ir_x86_64(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     from_ir_for_target(ir, name, TargetArchitecture::X86_64.data_layout())
 }
@@ -1655,7 +1657,7 @@ fn convert_instruction<'a>(
                     op: IntBinOp::Sub,
                     ty: mir_ty,
                     dst,
-                    lhs: Operand::Immediate(zero_immediate(mir_ty, pointer)),
+                    lhs: Operand::Immediate(zero_immediate(mir_ty, pointer)?),
                     rhs: src,
                 },
                 (IRUnary::Not, false) => Instruction::IntBinary {
@@ -1663,7 +1665,7 @@ fn convert_instruction<'a>(
                     ty: mir_ty,
                     dst,
                     lhs: src,
-                    rhs: Operand::Immediate(all_ones_immediate(mir_ty, pointer)),
+                    rhs: Operand::Immediate(all_ones_immediate(mir_ty, pointer)?),
                 },
                 (IRUnary::Popcount | IRUnary::Ctlz | IRUnary::Cttz | IRUnary::Bswap, true) => {
                     return Err(FromIRError::UnsupportedInstruction);
@@ -2297,7 +2299,7 @@ fn convert_instruction<'a>(
         } => {
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg, globals)?;
-            let from = operand_type(&val_op, register_types);
+            let from = operand_type(&val_op, register_types)?;
             Ok(vec![Instruction::IntConvert {
                 from,
                 to: MirType::Scalar(ScalarType::Ptr),
@@ -2352,7 +2354,7 @@ fn convert_instruction<'a>(
                 Ok(displace_pointer(dst, base, offset, vreg_alloc))
             } else {
                 let index_op = resolve_operand(index, vreg_alloc, var_to_reg, globals)?;
-                let from = operand_type(&index_op, register_types);
+                let from = operand_type(&index_op, register_types)?;
                 // Address arithmetic is done in the target's own word, so a 32-bit
                 // target neither widens the index nor asks for a 64-bit add.
                 let word = address_word(pointer)?;
@@ -2897,37 +2899,42 @@ fn pointer_base<'a>(
     }
 }
 
-fn zero_immediate(ty: MirType, pointer: PointerWidth) -> Immediate {
+fn zero_immediate(ty: MirType, pointer: PointerWidth) -> Result<Immediate, FromIRError> {
     match ty.size_bytes(pointer) {
-        1 => Immediate::I8(0),
-        2 => Immediate::I16(0),
-        4 => Immediate::I32(0),
-        _ => Immediate::I64(0),
+        1 => Ok(Immediate::I8(0)),
+        2 => Ok(Immediate::I16(0)),
+        4 => Ok(Immediate::I32(0)),
+        8 => Ok(Immediate::I64(0)),
+        _ => Err(FromIRError::UnsupportedInstruction),
     }
 }
 
-fn all_ones_immediate(ty: MirType, pointer: PointerWidth) -> Immediate {
+fn all_ones_immediate(ty: MirType, pointer: PointerWidth) -> Result<Immediate, FromIRError> {
     match ty.size_bytes(pointer) {
-        1 => Immediate::I8(-1),
-        2 => Immediate::I16(-1),
-        4 => Immediate::I32(-1),
-        _ => Immediate::I64(-1),
+        1 => Ok(Immediate::I8(-1)),
+        2 => Ok(Immediate::I16(-1)),
+        4 => Ok(Immediate::I32(-1)),
+        8 => Ok(Immediate::I64(-1)),
+        _ => Err(FromIRError::UnsupportedInstruction),
     }
 }
 
-fn operand_type(operand: &Operand, types: &HashMap<Register, MirType>) -> MirType {
-    match operand {
+fn operand_type(
+    operand: &Operand,
+    types: &HashMap<Register, MirType>,
+) -> Result<MirType, FromIRError> {
+    Ok(match operand {
         Operand::Register(register) => types
             .get(register)
             .copied()
-            .unwrap_or(MirType::Scalar(ScalarType::I64)),
+            .ok_or(FromIRError::UnknownVariable)?,
         Operand::Immediate(Immediate::I8(_)) => MirType::Scalar(ScalarType::I8),
         Operand::Immediate(Immediate::I16(_)) => MirType::Scalar(ScalarType::I16),
         Operand::Immediate(Immediate::I32(_)) => MirType::Scalar(ScalarType::I32),
+        Operand::Immediate(Immediate::I64(_)) => MirType::Scalar(ScalarType::I64),
         Operand::Immediate(Immediate::F32(_)) => MirType::Scalar(ScalarType::F32),
         Operand::Immediate(Immediate::F64(_)) => MirType::Scalar(ScalarType::F64),
-        _ => MirType::Scalar(ScalarType::I64),
-    }
+    })
 }
 
 fn reg_class_for_prim(ty: IRPrim) -> RegisterClass {
