@@ -293,6 +293,8 @@ pub mod cli;
 pub mod mir_codegen;
 pub mod target; // Re-exports from lamina-platform for backward compatibility
 
+mod cache;
+
 pub mod error;
 pub mod ir;
 pub mod mir; // Re-exports from lamina-mir for backward compatibility

@@ -19,8 +19,8 @@ use crate::{
 use lamina_platform::{Target, TargetArchitecture, X86CpuLevel, cpu_count};
 
 use crate::LaminaError;
+use crate::cache::lamina_cache_dir;
 use std::{
-    env,
     fs::{create_dir_all, remove_dir_all, write},
     path::Path,
     process::{self, Command},
@@ -294,7 +294,7 @@ pub fn handle_jit_compilation(
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos();
-            let tmp_dir = env::temp_dir().join(format!("lamina_jit_{pid}_{nanos}"));
+            let tmp_dir = lamina_cache_dir()?.join(format!("jit_{pid}_{nanos}"));
             create_dir_all(&tmp_dir)?;
 
             let intermediate_ext =

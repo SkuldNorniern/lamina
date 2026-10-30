@@ -12,13 +12,13 @@ use crate::mir_codegen::simd::vector_slots;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    env::temp_dir,
     fs,
     sync::Arc,
 };
 
 use std::{io::Write, process::id, str};
 
+use crate::cache::lamina_cache_dir;
 use crate::error::LaminaError;
 
 use crate::{
@@ -188,14 +188,18 @@ impl<'a> Codegen for WasmCodegen<'a> {
         // Get the WAT content
         let wat_content = self.base.drain_output();
 
-        // Write WAT to temporary file
-        let temp_wat = temp_dir().join(format!("lamina_wasm_{}.wat", id()));
+        let cache_dir = lamina_cache_dir().map_err(|e| {
+            CodegenError::InvalidCodegenOptions(format!(
+                "Failed to create WASM cache directory: {e}"
+            ))
+        })?;
+        let temp_wat = cache_dir.join(format!("lamina_wasm_{}.wat", id()));
         fs::write(&temp_wat, &wat_content).map_err(|e| {
             CodegenError::InvalidCodegenOptions(format!("Failed to write temporary WAT file: {e}"))
         })?;
 
         // Convert WAT to binary WASM using wat2wasm
-        let temp_wasm = temp_dir().join(format!("lamina_wasm_{}.wasm", id()));
+        let temp_wasm = cache_dir.join(format!("lamina_wasm_{}.wasm", id()));
         let _assemble_result = assemble::assemble(
             &temp_wat,
             &temp_wasm,
