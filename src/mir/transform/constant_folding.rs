@@ -105,7 +105,8 @@ impl ConstantFolding {
             let saved_dst = dst.clone();
             let immediate = match saved_ty {
                 MirType::Scalar(ScalarType::F32) => Immediate::F32(result as f32),
-                _ => Immediate::F64(result),
+                MirType::Scalar(ScalarType::F64) => Immediate::F64(result),
+                _ => return false,
             };
             *instr = Instruction::Copy {
                 dst: saved_dst,
@@ -169,7 +170,49 @@ impl ConstantFolding {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{Block, IntBinOp, Register, VirtualReg, function::Signature};
+    use crate::mir::{
+        Block, IntBinOp, Register, VectorLane, VectorType, VirtualReg, function::Signature,
+    };
+
+    #[test]
+    fn float_folding_keeps_the_width_it_was_given() {
+        for (ty, expected) in [
+            (
+                MirType::Scalar(ScalarType::F32),
+                Some(Immediate::F32(3.0f32)),
+            ),
+            (
+                MirType::Scalar(ScalarType::F64),
+                Some(Immediate::F64(3.0f64)),
+            ),
+            (MirType::Vector(VectorType::V128(VectorLane::F32)), None),
+            (MirType::Vector(VectorType::V256(VectorLane::F64)), None),
+            (MirType::Scalar(ScalarType::I64), None),
+        ] {
+            let mut instruction = Instruction::FloatBinary {
+                op: FloatBinOp::FAdd,
+                ty,
+                dst: Register::Virtual(VirtualReg::fpr(0)),
+                lhs: Operand::Immediate(Immediate::F64(1.0)),
+                rhs: Operand::Immediate(Immediate::F64(2.0)),
+            };
+            assert_eq!(
+                ConstantFolding.try_fold_float(&mut instruction),
+                expected.is_some(),
+                "{ty}"
+            );
+            if let Some(expected) = expected {
+                let Instruction::Copy {
+                    src, ty: folded, ..
+                } = instruction
+                else {
+                    panic!("{ty}: expected copy")
+                };
+                assert_eq!(folded, ty);
+                assert_eq!(src, Operand::Immediate(expected), "{ty}");
+            }
+        }
+    }
 
     #[test]
     fn folds_wrapping_arithmetic_and_masked_shifts_preserving_traps() {
