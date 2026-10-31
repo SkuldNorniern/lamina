@@ -13,6 +13,7 @@
 mod abi;
 mod atomic;
 mod bit;
+mod inline_asm;
 mod operand;
 mod overflow;
 #[cfg(test)]
@@ -172,11 +173,9 @@ impl EmitCtx<'_> {
 
 /// Capabilities declared by this backend; see `CapabilitySet::for_architecture`.
 pub(crate) fn capabilities() -> CapabilitySet {
-    let mut caps = CapabilitySet::standard_native()
+    CapabilitySet::standard_native()
         .with(CodegenCapability::IndirectCalls)
-        .with(CodegenCapability::AggregateArguments);
-    caps.remove(&CodegenCapability::InlineAssembly);
-    caps
+        .with(CodegenCapability::AggregateArguments)
 }
 
 pub fn generate_mir_s390x_with_units_and_settings<W: Write>(
@@ -1154,9 +1153,7 @@ fn emit_instruction<W: Write>(
             atomic::emit(inst, writer, slots, ctx)?;
         }
         MirInst::InlineAsm { .. } => {
-            return Err(unsupported(
-                "inline assembly is not supported by the s390x backend",
-            ));
+            inline_asm::emit(inst, writer, slots)?;
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
