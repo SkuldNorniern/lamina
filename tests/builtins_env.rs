@@ -3,7 +3,7 @@
 mod common;
 
 use common::TempDir;
-use std::{fs, process, process::Command};
+use std::{fs, path::PathBuf, process, process::Command};
 
 const PROGRAM: &str = r#"
 @extern
@@ -32,7 +32,11 @@ fn @main() -> i32 {
 
 const OVERRIDES: &str = "malloc=k_alloc,dealloc=k_free,memcpy=k_cpy,memmove=k_mv,memset=k_set";
 
-fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
+fn run_compile(
+    tag: &str,
+    target: &str,
+    builtins: Option<&str>,
+) -> (process::Output, PathBuf, TempDir) {
     let guard = TempDir::new("lamina-builtins");
     let dir = guard.path();
     let stem = format!("lamina-builtins-{}-{tag}", process::id());
@@ -50,6 +54,11 @@ fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
         command.env("LAMINA_BUILTINS", value);
     }
     let run = command.output().expect("run lamina");
+    (run, output, guard)
+}
+
+fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
+    let (run, output, _guard) = run_compile(tag, target, builtins);
     assert!(
         run.status.success(),
         "{}",
@@ -57,6 +66,15 @@ fn compile_asm(tag: &str, target: &str, builtins: Option<&str>) -> String {
     );
 
     fs::read_to_string(&output).expect("read asm")
+}
+
+fn refusal(tag: &str, builtins: &str) -> String {
+    let (run, _output, _guard) = run_compile(tag, "x86_64_linux", Some(builtins));
+    assert!(
+        !run.status.success(),
+        "an override the compiler cannot apply must not compile"
+    );
+    String::from_utf8_lossy(&run.stderr).into_owned()
 }
 
 #[test]
@@ -86,4 +104,52 @@ fn lamina_builtins_retargets_every_runtime_call_aarch64_macos() {
         assert!(asm.contains(&format!("{name}\n")), "{name}:\n{asm}");
     }
     assert!(!asm.contains("_malloc"), "{asm}");
+}
+
+#[test]
+fn an_unknown_builtin_name_is_refused_not_dropped() {
+    let message = refusal("unknown-name", "malloc=k_alloc,mallocc=k_alloc");
+    assert!(message.contains("mallocc"), "{message}");
+    assert!(message.contains("malloc"), "{message}");
+}
+
+#[test]
+fn a_malformed_builtins_entry_is_refused() {
+    let message = refusal("malformed", "malloc");
+    assert!(message.contains("name=symbol"), "{message}");
+
+    let empty = refusal("empty-side", "malloc=");
+    assert!(empty.contains("empty"), "{empty}");
+}
+
+#[test]
+fn lamina_builtins_retargets_a_compiler_runtime_libcall() {
+    const DIVIDE: &str = r#"
+fn @divide(i64 %a, i64 %b) -> i64 {
+  entry:
+    %q = div.i64 %a, %b
+    ret.i64 %q
+}
+"#;
+    let guard = TempDir::new("lamina-builtins-libcall");
+    let dir = guard.path();
+    let input = dir.join("libcall.lamina");
+    let output = dir.join("libcall.s");
+    fs::write(&input, DIVIDE).expect("write program");
+
+    let run = Command::new(env!("CARGO_BIN_EXE_lamina"))
+        .arg(&input)
+        .args(["--emit-asm", "--target", "i686_linux", "-o"])
+        .arg(&output)
+        .env("LAMINA_BUILTINS", "__divdi3=k_divdi3")
+        .output()
+        .expect("run lamina");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let asm = fs::read_to_string(&output).expect("read asm");
+    assert!(asm.contains("k_divdi3"), "{asm}");
+    assert!(!asm.contains("__divdi3"), "{asm}");
 }

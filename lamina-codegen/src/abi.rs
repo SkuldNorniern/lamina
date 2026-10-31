@@ -92,7 +92,7 @@
 
 use crate::target_support::os_uses_macho;
 use lamina_platform::TargetOperatingSystem;
-use std::{collections::HashMap, env};
+use std::{collections::HashMap, env, error::Error, fmt};
 
 /// Runtime helpers the compiler calls by name.
 ///
@@ -262,8 +262,18 @@ impl BuiltinLibrary {
         }
     }
 
-    pub fn from_env(target_os: TargetOperatingSystem) -> Self {
-        Self::new(target_os, builtin_overrides_from_env())
+    /// The library `LAMINA_BUILTINS` describes, or why that value could not be read.
+    pub fn from_env(target_os: TargetOperatingSystem) -> Result<Self, BuiltinOverrideError> {
+        Ok(Self::new(target_os, builtin_overrides_from_env()?))
+    }
+
+    /// [`Self::from_env`] for callers with nowhere to put the error.
+    ///
+    /// A `LAMINA_BUILTINS` the compiler cannot read is refused by the codegen entry
+    /// point before any backend runs, so reaching this with an unreadable value means
+    /// the caller skipped that entry point; it then behaves as if nothing was set.
+    pub fn from_env_or_unset(target_os: TargetOperatingSystem) -> Self {
+        Self::new(target_os, builtin_overrides_from_env().unwrap_or_default())
     }
 
     pub fn has_overrides(&self) -> bool {
@@ -296,27 +306,111 @@ fn decorate_symbol(target_os: TargetOperatingSystem, name: &str) -> String {
     }
 }
 
-/// Parses `name=symbol,name=symbol`. Entries with an unknown name or an empty side are skipped.
-pub fn parse_builtin_overrides(value: &str) -> HashMap<RuntimeSymbol, String> {
-    let mut overrides = HashMap::new();
-    for entry in value.split(',') {
-        let mut parts = entry.splitn(2, '=');
-        let name = parts.next().unwrap_or("").trim();
-        let symbol = parts.next().unwrap_or("").trim();
-        if symbol.is_empty() {
-            continue;
-        }
-        if let Some(runtime) = RuntimeSymbol::from_builtin_name(name) {
-            overrides.insert(runtime, symbol.to_string());
-        }
-    }
-    overrides
+/// Why a `LAMINA_BUILTINS` value could not be read.
+///
+/// An override that cannot be understood is reported rather than dropped: a typo in
+/// the variable would otherwise leave the default symbol in the output, with nothing
+/// said about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum BuiltinOverrideError {
+    /// An entry with no `=`, so it names neither a builtin nor a replacement.
+    MalformedEntry(String),
+    /// An entry whose left side is not a runtime helper this compiler calls.
+    UnknownBuiltin(String),
+    /// An entry with an empty builtin name or an empty replacement symbol.
+    EmptySide(String),
+    /// Two entries naming the same builtin, with different replacements.
+    Conflict {
+        builtin: &'static str,
+        first: String,
+        second: String,
+    },
 }
 
-fn builtin_overrides_from_env() -> HashMap<RuntimeSymbol, String> {
-    env::var("LAMINA_BUILTINS")
-        .map(|value| parse_builtin_overrides(&value))
-        .unwrap_or_default()
+impl fmt::Display for BuiltinOverrideError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BuiltinOverrideError::MalformedEntry(entry) => {
+                write!(f, "LAMINA_BUILTINS entry `{entry}` is not `name=symbol`")
+            }
+            BuiltinOverrideError::UnknownBuiltin(name) => write!(
+                f,
+                "LAMINA_BUILTINS names `{name}`, which is not a runtime helper this compiler calls; the names are {}",
+                builtin_name_list()
+            ),
+            BuiltinOverrideError::EmptySide(entry) => {
+                write!(f, "LAMINA_BUILTINS entry `{entry}` leaves one side empty")
+            }
+            BuiltinOverrideError::Conflict {
+                builtin,
+                first,
+                second,
+            } => write!(
+                f,
+                "LAMINA_BUILTINS sets `{builtin}` twice, to `{first}` and to `{second}`"
+            ),
+        }
+    }
+}
+
+impl Error for BuiltinOverrideError {}
+
+fn builtin_name_list() -> String {
+    let mut names: Vec<&str> = RuntimeSymbol::ALL
+        .into_iter()
+        .map(RuntimeSymbol::c_name)
+        .collect();
+    names.push("dealloc");
+    names.sort_unstable();
+    names.join(", ")
+}
+
+/// Parses `name=symbol,name=symbol`.
+///
+/// Every entry must name a runtime helper and a replacement symbol. An entry that does
+/// not is an error, not a silent omission: it reaches the real codegen path, and a
+/// dropped override would change the emitted symbols without saying so.
+pub fn parse_builtin_overrides(
+    value: &str,
+) -> Result<HashMap<RuntimeSymbol, String>, BuiltinOverrideError> {
+    let mut overrides: HashMap<RuntimeSymbol, String> = HashMap::new();
+    for entry in value.split(',') {
+        if entry.trim().is_empty() {
+            continue;
+        }
+        let Some((name, symbol)) = entry.split_once('=') else {
+            return Err(BuiltinOverrideError::MalformedEntry(
+                entry.trim().to_owned(),
+            ));
+        };
+        let name = name.trim();
+        let symbol = symbol.trim();
+        if name.is_empty() || symbol.is_empty() {
+            return Err(BuiltinOverrideError::EmptySide(entry.trim().to_owned()));
+        }
+        let Some(runtime) = RuntimeSymbol::from_builtin_name(name) else {
+            return Err(BuiltinOverrideError::UnknownBuiltin(name.to_owned()));
+        };
+        if let Some(first) = overrides.get(&runtime)
+            && first != symbol
+        {
+            return Err(BuiltinOverrideError::Conflict {
+                builtin: runtime.c_name(),
+                first: first.clone(),
+                second: symbol.to_owned(),
+            });
+        }
+        overrides.insert(runtime, symbol.to_owned());
+    }
+    Ok(overrides)
+}
+
+fn builtin_overrides_from_env() -> Result<HashMap<RuntimeSymbol, String>, BuiltinOverrideError> {
+    match env::var("LAMINA_BUILTINS") {
+        Ok(value) => parse_builtin_overrides(&value),
+        Err(_) => Ok(HashMap::new()),
+    }
 }
 
 /// Trait defining the common interface for all ABI implementations.
@@ -349,7 +443,7 @@ pub trait Abi {
     fn mangle_function_name(&self, name: &str) -> String;
 
     fn builtin_library(&self) -> BuiltinLibrary {
-        BuiltinLibrary::from_env(self.target_os())
+        BuiltinLibrary::from_env_or_unset(self.target_os())
     }
 
     /// Maps well-known intrinsic/runtime names to platform symbol stubs.
@@ -412,7 +506,7 @@ pub fn get_free_symbol(target_os: TargetOperatingSystem) -> &'static str {
 /// Resolves a builtin name through the environment-configured [`BuiltinLibrary`].
 /// Backends can use this to reduce duplication in their `call_stub` implementations.
 pub fn common_call_stub(name: &str, target_os: TargetOperatingSystem) -> Option<String> {
-    BuiltinLibrary::from_env(target_os).resolve(name)
+    BuiltinLibrary::from_env_or_unset(target_os).resolve(name)
 }
 
 #[cfg(test)]
@@ -456,18 +550,18 @@ mod tests {
 
     #[test]
     fn test_builtin_library_default_symbols() {
-        let lib_macos = BuiltinLibrary::from_env(TargetOperatingSystem::MacOS);
+        let lib_macos = BuiltinLibrary::from_env_or_unset(TargetOperatingSystem::MacOS);
         assert_eq!(lib_macos.resolve("malloc"), Some("_malloc".to_string()));
         assert_eq!(lib_macos.resolve("dealloc"), Some("_free".to_string()));
 
-        let lib_linux = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        let lib_linux = BuiltinLibrary::from_env_or_unset(TargetOperatingSystem::Linux);
         assert_eq!(lib_linux.resolve("malloc"), Some("malloc".to_string()));
         assert_eq!(lib_linux.resolve("dealloc"), Some("free".to_string()));
     }
 
     #[test]
     fn test_builtin_library_unknown_symbol() {
-        let lib = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        let lib = BuiltinLibrary::from_env_or_unset(TargetOperatingSystem::Linux);
         assert_eq!(lib.resolve("unknown_function"), None);
     }
 
@@ -533,7 +627,7 @@ mod runtime_symbol_tests {
     fn resolve_maps_legacy_builtin_keys() {
         let lib = BuiltinLibrary::new(
             TargetOperatingSystem::Linux,
-            parse_builtin_overrides("dealloc=k_free"),
+            parse_builtin_overrides("dealloc=k_free").expect("a known builtin parses"),
         );
         assert_eq!(lib.resolve("dealloc"), Some("k_free".to_string()));
         assert_eq!(lib.resolve("free"), Some("k_free".to_string()));
@@ -541,8 +635,9 @@ mod runtime_symbol_tests {
     }
 
     #[test]
-    fn parse_builtin_overrides_skips_unknown_and_empty_entries() {
-        let parsed = parse_builtin_overrides(" malloc = k_alloc ,bogus=x,memset=,=y,exit=k_exit");
+    fn parse_builtin_overrides_accepts_padded_known_entries() {
+        let parsed =
+            parse_builtin_overrides(" malloc = k_alloc ,exit=k_exit").expect("both are builtins");
         assert_eq!(parsed.len(), 2);
         assert_eq!(
             parsed.get(&RuntimeSymbol::Malloc).map(String::as_str),
@@ -552,6 +647,44 @@ mod runtime_symbol_tests {
             parsed.get(&RuntimeSymbol::Exit).map(String::as_str),
             Some("k_exit")
         );
+    }
+
+    #[test]
+    fn parse_builtin_overrides_refuses_what_it_cannot_apply() {
+        assert_eq!(
+            parse_builtin_overrides("malloc=k_alloc,bogus=x"),
+            Err(BuiltinOverrideError::UnknownBuiltin("bogus".to_owned()))
+        );
+        assert_eq!(
+            parse_builtin_overrides("memset="),
+            Err(BuiltinOverrideError::EmptySide("memset=".to_owned()))
+        );
+        assert_eq!(
+            parse_builtin_overrides("=y"),
+            Err(BuiltinOverrideError::EmptySide("=y".to_owned()))
+        );
+        assert_eq!(
+            parse_builtin_overrides("malloc"),
+            Err(BuiltinOverrideError::MalformedEntry("malloc".to_owned()))
+        );
+        assert_eq!(
+            parse_builtin_overrides("free=a,dealloc=b"),
+            Err(BuiltinOverrideError::Conflict {
+                builtin: "free",
+                first: "a".to_owned(),
+                second: "b".to_owned(),
+            })
+        );
+        assert!(parse_builtin_overrides("free=a,dealloc=a").is_ok());
+        assert!(parse_builtin_overrides("").is_ok());
+    }
+
+    #[test]
+    fn unknown_builtin_message_lists_the_names() {
+        let message = BuiltinOverrideError::UnknownBuiltin("bogus".to_owned()).to_string();
+        assert!(message.contains("bogus"), "{message}");
+        assert!(message.contains("malloc"), "{message}");
+        assert!(message.contains("__divti3"), "{message}");
     }
 
     #[test]

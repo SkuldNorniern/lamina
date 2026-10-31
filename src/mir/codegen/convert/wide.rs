@@ -15,8 +15,7 @@ use super::*;
 use crate::ir::instruction::{AsmOperand as IRAsmOperand, UnaryOp};
 use crate::ir::types::Literal;
 use crate::mir::codegen::mapping::wide_aggregate;
-use lamina_codegen::abi::BuiltinLibrary;
-use lamina_platform::{Endianness, TargetDataLayout, TargetOperatingSystem};
+use lamina_platform::{Endianness, TargetDataLayout};
 
 /// The integer that takes two registers on a target with this register width: `i128`
 /// where a register holds 64 bits, `i64` where it holds 32.
@@ -547,9 +546,7 @@ impl<'c, 'a> Cx<'c, 'a> {
         params: Vec<Abi>,
         ret: Option<Abi>,
     ) -> String {
-        let name = BuiltinLibrary::from_env(TargetOperatingSystem::Unknown)
-            .c_name(symbol)
-            .to_string();
+        let name = symbol.c_name().to_string();
         self.vars
             .libcalls
             .entry(name.clone())
