@@ -40,6 +40,6 @@ pub use module::ModuleAnnotation;
 pub use module::{GlobalDeclaration, GlobalInit, Module, TlsModel, TypeDeclaration};
 pub use owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
 pub use types::{
-    Identifier, Literal, PrimitiveType, StructField, Type, VECTOR_REGISTER_BITS, Value,
-    VectorShiftForm, check_vector_shape, classify_vector_shift, vector_lane_bits,
+    Identifier, Literal, PrimitiveType, StructField, Type, Value, VectorShiftForm,
+    check_vector_shape, classify_vector_shift, vector_lane_bits,
 };
