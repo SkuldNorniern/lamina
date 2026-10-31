@@ -11,9 +11,13 @@
 //! index register.
 
 mod abi;
+mod atomic;
+mod bit;
 mod operand;
+mod overflow;
 #[cfg(test)]
 mod tests;
+mod variadic;
 
 use crate::mir_codegen::capability::{CapabilitySet, CodegenCapability};
 use crate::mir_codegen::common::emit_source_loc;
@@ -23,7 +27,6 @@ use crate::mir_codegen::common::{
     external_names, integer_conversion_with_width, lamina_to_codegen_error, parallel_codegen_error,
     promoted_argument_type,
 };
-use crate::mir_codegen::common::{unsupported_overflow_flag, unsupported_thread_local};
 use crate::{
     error::LaminaError,
     mir::{
@@ -39,7 +42,7 @@ use abi::{
     A0, A1, ARG_FPRS, ARG_GPRS, ArgKind, ArgPlace, DIV_HI, DIV_LO, FA0, FA1, FP, SP, T0, T1, T2,
     TRAP, WORD,
 };
-use lamina_mir::SourceLoc;
+use lamina_mir::{SourceLoc, TlsModel};
 use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use operand::{
     Slots, load_float_operand, load_operand, phys, slot, store_float, store_register, unsupported,
@@ -151,6 +154,8 @@ struct EmitCtx<'a> {
     /// Frame offset of the hidden result pointer, when the aggregate is too wide to
     /// come back in a register.
     sret: Option<i32>,
+    /// Set in a variadic function: where its `va_list` operations read from.
+    va: Option<variadic::VaArea>,
 }
 
 impl EmitCtx<'_> {
@@ -273,6 +278,21 @@ fn compile_function(
         .is_some_and(|a| a.size > abi::WORD as usize);
     let sret = hidden.then(|| -(locals as i32) - abi::WORD);
     let locals = locals + usize::from(hidden) * abi::WORD as usize;
+    let va = func.sig.variadic.then(|| {
+        let kinds: Vec<ArgKind> = func
+            .sig
+            .params
+            .iter()
+            .map(|p| ArgKind {
+                ty: p.ty,
+                aggregate: p.aggregate,
+            })
+            .collect();
+        let first_gpr = usize::from(hidden);
+        let places = abi::classify_kinds(&kinds, first_gpr);
+        variadic::VaArea::new(-(locals as i32) - variadic::SAVE_BYTES, &places, first_gpr)
+    });
+    let locals = locals + usize::from(func.sig.variadic) * variadic::SAVE_BYTES as usize;
     let locals = if aligned {
         locals + abi::ALIGN_SLACK
     } else {
@@ -281,6 +301,9 @@ fn compile_function(
     abi::prologue(&mut output, locals, outgoing, aligned).map_err(io)?;
     if let Some(offset) = sret {
         abi::fp_store(&mut output, "stg", ARG_GPRS[0], offset, T0).map_err(io)?;
+    }
+    if let Some(area) = &va {
+        variadic::spill_save_area(&mut output, area).map_err(lamina_to_codegen)?;
     }
     store_incoming_arguments(&mut output, func, &slots, aligned, usize::from(hidden))
         .map_err(lamina_to_codegen)?;
@@ -300,6 +323,7 @@ fn compile_function(
             .filter(|ty| func.sig.ret_aggregate.is_none() && ty.is_float()),
         ret_aggregate: func.sig.ret_aggregate,
         sret,
+        va,
     };
     let plan = FunctionEmissionPlan::new(func);
     if plan
@@ -680,11 +704,18 @@ fn emit_instruction<W: Write>(
         writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
     }
     match inst {
-        MirInst::ThreadLocalAddr { .. } => {
-            return Err(unsupported_thread_local("s390x"));
+        MirInst::ThreadLocalAddr { dst, symbol, model } => {
+            emit_thread_local(writer, slots, ctx, dst, symbol, *model)?;
         }
-        MirInst::IntOverflow { .. } => {
-            return Err(unsupported_overflow_flag("s390x"));
+        MirInst::IntOverflow {
+            op,
+            ty,
+            signed,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            overflow::emit(writer, slots, ctx, op, ty, *signed, dst, lhs, rhs)?;
         }
         MirInst::Copy { ty, dst, src } => {
             if ty.is_vector() {
@@ -1100,13 +1131,17 @@ fn emit_instruction<W: Write>(
                 "s390x received an integer conversion that was not lowered",
             ));
         }
-        MirInst::IntUnary { .. } => {
-            return Err(unsupported(
-                "s390x integer bit intrinsics (popcount, ctlz, cttz, bswap)",
-            ));
+        MirInst::IntUnary { op, ty, dst, src } => {
+            bit::emit_int_unary(writer, slots, *op, ty, dst, src)?;
         }
-        MirInst::IntRotate { .. } => {
-            return Err(unsupported("s390x integer rotates"));
+        MirInst::IntRotate {
+            op,
+            ty,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            bit::emit_int_rotate(writer, slots, *op, ty, dst, lhs, rhs)?;
         }
         MirInst::VectorOp { .. } => {
             return Err(unsupported("s390x vector operations"));
@@ -1116,7 +1151,7 @@ fn emit_instruction<W: Write>(
         | MirInst::AtomicBinary { .. }
         | MirInst::AtomicCompareExchange { .. }
         | MirInst::Fence { .. } => {
-            return Err(unsupported("s390x atomic operations and fences"));
+            atomic::emit(inst, writer, slots, ctx)?;
         }
         MirInst::InlineAsm { .. } => {
             return Err(unsupported(
@@ -1127,10 +1162,47 @@ fn emit_instruction<W: Write>(
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }
         | MirInst::VaCopy { .. } => {
-            return Err(unsupported("s390x variadic argument access"));
+            variadic::emit(inst, writer, slots, ctx)?;
         }
     }
     Ok(())
+}
+
+/// The address of a thread-local symbol in the running thread's block.
+///
+/// The thread pointer is two halves read out of access registers `%a0` and `%a1`.
+/// Under local exec the offset from it is a link-time constant, which only a data
+/// relocation can hold, so it goes in a literal the load reaches relative to the
+/// program counter; under initial exec that literal is the GOT entry the linker
+/// builds instead.
+fn emit_thread_local<W: Write>(
+    writer: &mut W,
+    slots: &Slots,
+    ctx: &mut EmitCtx<'_>,
+    dst: &Register,
+    symbol: &str,
+    model: TlsModel,
+) -> Result<(), LaminaError> {
+    writeln!(writer, "    ear {A0}, %a0")?;
+    writeln!(writer, "    sllg {A0}, {A0}, 32")?;
+    writeln!(writer, "    ear {A0}, %a1")?;
+    match model {
+        TlsModel::LocalExec => {
+            let literal = ctx.fresh_label("tls");
+            writeln!(writer, "    .section .rodata.cst8,\"aM\",@progbits,8")?;
+            writeln!(writer, "    .align 8")?;
+            writeln!(writer, "{literal}:")?;
+            writeln!(writer, "    .quad {symbol}@NTPOFF")?;
+            writeln!(writer, "    .text")?;
+            writeln!(writer, "    lgrl {T0}, {literal}")?;
+        }
+        TlsModel::InitialExec => {
+            writeln!(writer, "    larl {T0}, {symbol}@INDNTPOFF")?;
+            writeln!(writer, "    lg {T0}, 0({T0})")?;
+        }
+    }
+    writeln!(writer, "    agr {A0}, {T0}")?;
+    store_result(writer, A0, dst, slots)
 }
 
 /// Moves a value between frame slots, converting between the integer and the

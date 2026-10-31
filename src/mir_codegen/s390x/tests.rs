@@ -1,7 +1,13 @@
 use super::abi::{
     ArgKind, ArgPlace, call_area, classify_kinds, frame_bytes, incoming_stack_offset,
 };
-use crate::mir::{Aggregate, AggregateClass, AggregateShape, MirType, ScalarType};
+use super::bit::{emit_int_rotate, emit_int_unary};
+use super::variadic::{SAVE_BYTES, VaArea};
+use crate::mir::{
+    Aggregate, AggregateClass, AggregateShape, IntRotOp, IntUnOp, MirType, Operand, Register,
+    ScalarType, VirtualReg,
+};
+use std::collections::HashMap;
 
 fn scalars(types: &[MirType]) -> Vec<ArgKind> {
     types.iter().copied().map(ArgKind::scalar).collect()
@@ -130,4 +136,87 @@ fn load_imm_reconstructs_every_boundary_value() {
     for value in values {
         assert_eq!(run_load_imm(value), value, "load_imm({value:#x})");
     }
+}
+
+fn one_slot() -> (HashMap<VirtualReg, i32>, VirtualReg) {
+    let vreg = VirtualReg::gpr(1);
+    let mut slots = HashMap::new();
+    slots.insert(vreg, -8);
+    (slots, vreg)
+}
+
+fn unary_asm(op: IntUnOp, ty: MirType) -> String {
+    let (slots, vreg) = one_slot();
+    let mut out = Vec::new();
+    emit_int_unary(
+        &mut out,
+        &slots,
+        op,
+        &ty,
+        &Register::Virtual(vreg),
+        &Operand::Register(Register::Virtual(vreg)),
+    )
+    .expect("emit");
+    String::from_utf8(out).expect("utf8")
+}
+
+#[test]
+fn bit_intrinsics_use_the_z_architecture_instructions() {
+    let i64_ty = MirType::Scalar(ScalarType::I64);
+    assert!(unary_asm(IntUnOp::Popcount, i64_ty).contains("popcnt"));
+    assert!(unary_asm(IntUnOp::Ctlz, i64_ty).contains("flogr"));
+    assert!(unary_asm(IntUnOp::Cttz, i64_ty).contains("popcnt"));
+    assert!(unary_asm(IntUnOp::Bswap, i64_ty).contains("lrvgr"));
+}
+
+#[test]
+fn a_byte_wide_ctlz_corrects_for_the_doubleword_flogr_counts_over() {
+    let asm = unary_asm(IntUnOp::Ctlz, MirType::Scalar(ScalarType::I8));
+    assert!(asm.contains("aghi %r2, -56"), "{asm}");
+}
+
+#[test]
+fn a_byte_bswap_is_the_identity() {
+    let asm = unary_asm(IntUnOp::Bswap, MirType::Scalar(ScalarType::I8));
+    assert!(!asm.contains("lrvgr"), "{asm}");
+}
+
+#[test]
+fn a_rotate_masks_its_count_to_the_operand_width() {
+    let (slots, vreg) = one_slot();
+    let mut out = Vec::new();
+    emit_int_rotate(
+        &mut out,
+        &slots,
+        IntRotOp::Rotl,
+        &MirType::Scalar(ScalarType::I16),
+        &Register::Virtual(vreg),
+        &Operand::Register(Register::Virtual(vreg)),
+        &Operand::Register(Register::Virtual(vreg)),
+    )
+    .expect("emit");
+    let asm = String::from_utf8(out).expect("utf8");
+    assert!(asm.contains("lghi %r1, 15"), "{asm}");
+    assert!(asm.contains("sllg") && asm.contains("srlg"), "{asm}");
+}
+
+#[test]
+fn the_va_list_cursors_start_past_the_named_parameters() {
+    let places = [
+        ArgPlace::Gpr(0),
+        ArgPlace::Fpr(0),
+        ArgPlace::Gpr(1),
+        ArgPlace::Stack(0),
+    ];
+    let area = VaArea::new(-SAVE_BYTES, &places, 0);
+    assert_eq!(area.gpr, 16);
+    assert_eq!(area.fpr, 40 + 8);
+    assert_eq!(area.overflow, incoming_stack_offset(1));
+    assert_eq!(area.save, -72);
+}
+
+#[test]
+fn a_hidden_result_pointer_counts_against_the_va_list_registers() {
+    let area = VaArea::new(-SAVE_BYTES, &[ArgPlace::Gpr(1)], 1);
+    assert_eq!(area.gpr, 16);
 }
