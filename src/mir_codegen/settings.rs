@@ -10,7 +10,9 @@ use lamina_platform::{SimdCapabilities, Target};
 /// How virtual GPRs are assigned before instruction emission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RegallocStrategy {
-    /// Per-instruction `ensure_mapping` (legacy behavior).
+    /// Per-instruction `ensure_mapping`. The only strategy every backend implements,
+    /// which is why it is the default of a target-agnostic [`MirCodegenSettings`];
+    /// [`RegallocStrategy::default_for`] picks a better one once the target is known.
     #[default]
     Incremental,
     /// One global pass using [`lamina_codegen::LinearScanAllocator`].
@@ -20,6 +22,7 @@ pub enum RegallocStrategy {
 }
 
 impl RegallocStrategy {
+    /// The allocator an optimization level asks for, on a target that has one.
     pub fn for_opt_level(opt_level: u8) -> Self {
         if opt_level >= 1 {
             Self::LinearScanGlobal
@@ -27,10 +30,56 @@ impl RegallocStrategy {
             Self::Incremental
         }
     }
+
+    /// Whether `architecture`'s backend runs a global allocation pass at all.
+    ///
+    /// A backend that does not either refuses the strategy by name or ignores it, so
+    /// the choice is made here rather than left to surface as one or the other.
+    pub fn global_is_implemented(architecture: TargetArchitecture) -> bool {
+        match architecture {
+            TargetArchitecture::X86_64
+            | TargetArchitecture::Aarch64
+            | TargetArchitecture::Riscv32
+            | TargetArchitecture::Riscv64
+            | TargetArchitecture::PowerPC64
+            | TargetArchitecture::PowerPC64Be => true,
+            TargetArchitecture::I686
+            | TargetArchitecture::S390x
+            | TargetArchitecture::Mips64
+            | TargetArchitecture::Mips64El
+            | TargetArchitecture::LoongArch64
+            | TargetArchitecture::Arm32
+            | TargetArchitecture::Armv7
+            | TargetArchitecture::Thumbv6m
+            | TargetArchitecture::Thumbv7m
+            | TargetArchitecture::Wasm32
+            | TargetArchitecture::Wasm64
+            | TargetArchitecture::Nvptx64
+            | TargetArchitecture::Amdgcn => false,
+            #[cfg(feature = "nightly")]
+            TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {
+                false
+            }
+        }
+    }
+
+    /// The allocator to use for `architecture` at `opt_level` when none was named.
+    pub fn default_for(architecture: TargetArchitecture, opt_level: u8) -> Self {
+        if Self::global_is_implemented(architecture) {
+            Self::for_opt_level(opt_level)
+        } else {
+            Self::Incremental
+        }
+    }
 }
 
 /// Tunables for `generate_mir_to_target_with_settings`.
+///
+/// Non-exhaustive: start from [`MirCodegenSettings::default`] and set the fields that
+/// matter. The set grows with the backends, and `simd` already appears only under the
+/// `nightly` feature, so a struct literal was never portable.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct MirCodegenSettings {
     pub amdgpu_target: super::amdgpu::AmdGpuTarget,
     pub regalloc: RegallocStrategy,
@@ -57,7 +106,7 @@ impl Default for MirCodegenSettings {
     fn default() -> Self {
         Self {
             amdgpu_target: Default::default(),
-            regalloc: RegallocStrategy::Incremental,
+            regalloc: RegallocStrategy::default(),
             arch_variant: ArchVariant::None,
             environment: None,
             emit_asm_debug_lines: false,

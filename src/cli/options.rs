@@ -1,12 +1,14 @@
 //! CLI option parsing for the lamina compiler driver.
 
-use std::{env::args, path::PathBuf, process::exit};
+use std::{env::args, path::PathBuf, process::exit, str::FromStr};
 
 use crate::mir_codegen::{
     MirCodegenSettings, RegallocStrategy, amdgpu::AmdGpuTarget, assemble::AssemblerBackend,
     link::LinkerBackend,
 };
-use lamina_platform::{ArchVariant, Target, TargetOperatingSystem, X86CpuLevel, host_arch_list};
+use lamina_platform::{
+    ArchVariant, Target, TargetArchitecture, TargetOperatingSystem, X86CpuLevel, host_arch_list,
+};
 use ras::ObjectWriteOptions;
 
 pub struct CompileOptions {
@@ -24,6 +26,9 @@ pub struct CompileOptions {
     pub jit: bool,
     pub sandbox: bool,
     pub codegen_units: Option<usize>,
+    /// True when `--cpu-level` named the x86-64 level, false when it was defaulted.
+    /// A defaulted level is checked against the host before an AOT build for the host.
+    pub cpu_level_explicit: bool,
     pub mir_codegen_settings: MirCodegenSettings,
 }
 
@@ -44,6 +49,21 @@ impl CompileOptions {
             o.dwarf_decl_file_name = self.mir_codegen_settings.debug_file_tag.clone();
         }
         o
+    }
+}
+
+/// The architecture the driver will build for, as far as the arguments say.
+///
+/// `None` when neither the named target nor the host resolves; the driver reports that
+/// for itself, and the register allocator then stays on its portable default.
+fn selected_architecture(options: &CompileOptions) -> Option<TargetArchitecture> {
+    let named = options
+        .target_arch
+        .as_deref()
+        .and_then(|target| Target::from_str(target).ok());
+    match named {
+        Some(target) => Some(target.architecture),
+        None => Target::detect_host().ok().map(|host| host.architecture),
     }
 }
 
@@ -120,7 +140,7 @@ pub fn print_usage() {
         "  -g                      Emit assembler .file/.loc and minimal ELF DWARF when using ras"
     );
     eprintln!(
-        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O1+ on x86_64, incremental otherwise)"
+        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O1+, incremental at O0)"
     );
     eprintln!("  -h, --help              Display this help message");
 }
@@ -153,11 +173,11 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
         jit: false,
         sandbox: false,
         codegen_units: None,
+        cpu_level_explicit: false,
         mir_codegen_settings: MirCodegenSettings::default(),
     };
 
     let mut regalloc_explicit = false;
-    let mut cpu_level_explicit = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -253,7 +273,7 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                         .parse::<X86CpuLevel>()
                         .map_err(|e| format!("--cpu-level: {e}"))?,
                 );
-                cpu_level_explicit = true;
+                options.cpu_level_explicit = true;
                 i += 2;
             }
             "--opt-level" => {
@@ -356,6 +376,20 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
         return Err("No input file specified".to_string());
     }
 
+    if options.jit && options.emit_asm_only {
+        return Err(
+            "--emit-asm and --jit ask for different things: --jit runs the code and writes no assembly file. Pick one".to_string(),
+        );
+    }
+    if options.jit && options.emit_mir {
+        return Err(
+            "--emit-mir and --jit ask for different things: --jit runs the code and writes no MIR file. Pick one".to_string(),
+        );
+    }
+    if options.sandbox && !options.jit {
+        return Err("--sandbox applies only to --jit, which is what it sandboxes".to_string());
+    }
+
     let x86_64 = options
         .target_arch
         .as_deref()
@@ -366,11 +400,12 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
         options.mir_codegen_settings.debug_file_tag =
             options.input_file.to_string_lossy().into_owned();
     }
-    if cpu_level_explicit && !x86_64 {
+    if options.cpu_level_explicit && !x86_64 {
         return Err("--cpu-level applies only to x86_64 targets".to_string());
     }
-    if !regalloc_explicit && x86_64 {
-        options.mir_codegen_settings.regalloc = RegallocStrategy::for_opt_level(options.opt_level);
+    if !regalloc_explicit && let Some(architecture) = selected_architecture(&options) {
+        options.mir_codegen_settings.regalloc =
+            RegallocStrategy::default_for(architecture, options.opt_level);
     }
     Ok(options)
 }
@@ -408,8 +443,47 @@ mod tests {
     }
 
     #[test]
+    fn jit_refuses_the_flags_that_would_emit_nothing() {
+        for flag in ["--emit-asm", "--emit-mir"] {
+            let error = parse(&["--jit", flag]).err().expect("refused");
+            assert!(error.contains("--jit"), "{error}");
+            assert!(error.contains(flag), "{error}");
+        }
+    }
+
+    #[test]
+    fn sandbox_without_jit_is_refused() {
+        let error = parse(&["--sandbox"]).err().expect("refused");
+        assert!(error.contains("--jit"), "{error}");
+        parse(&["--sandbox", "--jit"]).expect("--sandbox is for --jit");
+    }
+
+    #[test]
+    fn regalloc_default_follows_the_backend_not_the_architecture_name() {
+        let aarch64 = parse(&["--target", "aarch64_linux", "--opt-level", "2"])
+            .expect("aarch64 at O2 parses");
+        assert_eq!(
+            aarch64.mir_codegen_settings.regalloc,
+            RegallocStrategy::LinearScanGlobal
+        );
+        let s390x =
+            parse(&["--target", "s390x_linux", "--opt-level", "2"]).expect("s390x at O2 parses");
+        assert_eq!(
+            s390x.mir_codegen_settings.regalloc,
+            RegallocStrategy::Incremental
+        );
+        let aarch64_o0 = parse(&["--target", "aarch64_linux", "--opt-level", "0"])
+            .expect("aarch64 at O0 parses");
+        assert_eq!(
+            aarch64_o0.mir_codegen_settings.regalloc,
+            RegallocStrategy::Incremental
+        );
+    }
+
+    #[test]
     fn cpu_level_defaults_to_v2() {
         let options = parse(&[]).expect("default arguments parse");
+        assert!(!options.cpu_level_explicit);
         assert_eq!(
             options.mir_codegen_settings.x86_cpu_level(),
             X86CpuLevel::V2
@@ -420,6 +494,7 @@ mod tests {
     fn cpu_level_flag_selects_the_level() {
         let options =
             parse(&["--cpu-level", "v1", "--target", "x86_64_linux"]).expect("v1 parses on x86_64");
+        assert!(options.cpu_level_explicit);
         assert_eq!(
             options.mir_codegen_settings.x86_cpu_level(),
             X86CpuLevel::V1
