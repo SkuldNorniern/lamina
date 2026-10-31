@@ -3,7 +3,7 @@
   <br/>
   <h1 style="font-size: 3.5em; margin: 0.2em 0 0 0; color: #2c3e50;">Lamina</h1>
   <p style="font-size: 1.3em; margin: 0.5em 0 1.5em 0; color: #7f8c8d; font-weight: 300;">
-    <em>High-Performance Compiler Backend</em>
+    <em>A compiler backend for the Lamina IR</em>
   </p>
   
   <p align="center">
@@ -33,21 +33,21 @@ Lamina IR serves as a mid-level intermediate representation.
 - Block-based control flow with explicit typing
 - Named, typed values: a name may be reassigned, but not to a different type
 - Strong type system with both primitive and composite types
-- Explicit memory model distinguishing between stack and heap
+- Explicit stack allocation; heap memory comes from the C allocator through `@extern`
 - Designed for easy lowering to machine code
 
 ## Features
 
 ### Core Features
 - **Type System**: Primitive and composite types
-- **Memory Model**: Stack and heap allocations
+- **Memory Model**: Stack slots and raw load/store; there is no heap instruction
 - **Control Flow**: Basic blocks and branching
 - **Reassignable Values**: A name may be assigned again, keeping its type
 - **Function System**: Typed parameters and returns
 
 ### Capabilities
-- **Targets**: x86_64, AArch64, RISC-V, WebAssembly
-- **MIR optimization pipeline**: O0–O3 with a transform pipeline
+- **Targets**: x86_64 Linux is the reference and is the one target executed here. AArch64, RISC-V, s390x, PowerPC64 and WebAssembly emit assembly; see the [targets page](https://lamina.sh/docs/targets) for what each has been run against
+- **MIR optimization pipeline**: `--opt-level 0` to `--opt-level 3` with a transform pipeline
 - **Native codegen**: emits assembly without LLVM/Cranelift
 - **Tests**: an automated test suite
 - **IRBuilder API**: programmatic IR construction
@@ -63,12 +63,14 @@ Lamina IR → MIR (Machine IR) → Optimizations → Native Assembly
 
 ### MIR Optimization Pipeline
 
-Lamina includes an optimization pipeline with configurable optimization levels:
+Lamina includes an optimization pipeline with configurable optimization levels. The
+level is selected with `--opt-level <0|1|2|3>`. There is no `-O0` spelling; `-O0` is
+rejected as an unknown argument.
 
-- **-O0**: No optimizations (fastest compilation)
-- **-O1**: Stable, conservative optimizations (CFG simplification, jump threading)
-- **-O2**: Additional optimizations (constant folding, memory optimization, addressing canonicalization)
-- **-O3**: Aggressive optimizations (function inlining, strength reduction)
+- **`--opt-level 0`**: No optimizations (fastest compilation)
+- **`--opt-level 1`**: Stable, conservative optimizations (CFG simplification, jump threading)
+- **`--opt-level 2`**: Additional optimizations (constant folding, memory optimization, addressing canonicalization)
+- **`--opt-level 3`**: Aggressive optimizations (function inlining, strength reduction)
 
 The pipeline includes transforms for:
 - Control flow optimization (CFG simplification, jump threading)
@@ -83,9 +85,9 @@ The pipeline includes transforms for:
 Lamina directly generates machine code for multiple target architectures without relying on external backends.
 
 **Notes:**
-- **Targets**: x86_64, AArch64, RISC-V, WebAssembly
+- **Targets**: see [Available Targets](#available-targets). x86_64 Linux is the one run here; s390x is run under emulation; the rest are assembly only
 - **No external backend**: no LLVM/Cranelift
-- **Cross-platform**: macOS, Linux, Windows
+- **Hosts**: Linux is the host the compiler is developed and run on. macOS and Windows objects are written cross from Linux and are not executed here
 
 ## Current Status
 
@@ -93,10 +95,9 @@ Lamina directly generates machine code for multiple target architectures without
 - **Basic Arithmetic**: All arithmetic operations (add, sub, mul, div, rem, bitwise ops)
 - **Control Flow**: Conditionals, loops, branching, and `copy` assignments in each predecessor for merging values
 - **Function Calls**: Recursive and non-recursive function calls with proper ABI
-- **Memory Operations**: Stack and heap allocations, load/store operations
+- **Memory Operations**: Stack allocation, load and store; heap memory through a `call @malloc`
 - **Type System**: Primitives, arrays, structs, and pointers
 - **I/O Operations**: Raw byte I/O (`write`, `read`, `writebyte`, `readbyte`) on all supported architectures, plus libc calls such as `printf` through `@extern` declarations
-- **Performance**: Competitive with systems languages in benchmarks
 - **Optimization Pipeline**: Configurable optimization levels with multiple transform passes
 
 
@@ -167,7 +168,12 @@ fn @add(i32 %a, i32 %b) -> i32 {
 
 ## Performance Benchmarks
 
-The following results are from our 256×256 2D matrix multiplication benchmark (500 runs):
+The following results are from our 256×256 2D matrix multiplication benchmark (500 runs).
+On this benchmark Lamina is the slowest of the compiled languages measured: about four
+times the runtime of C and about eighteen times that of Zig. It is ahead of the
+interpreted and JIT languages. One benchmark on one machine is not a general
+statement about the backend, but it is the measurement that exists.
+
 
 ### Benchmark Results (AMD Ryzen 9 9900X)
 
@@ -196,7 +202,7 @@ The following results are from our 256×256 2D matrix multiplication benchmark (
 ## Getting Started
 
 ### Prerequisites
-- Rust 1.89+ (2024 edition)
+- The Rust version named by `rust-version` in `Cargo.toml`, on edition 2024
 - Clang/GCC for linking generated assembly
 - macOS, Linux, or Windows
 
@@ -218,7 +224,6 @@ The following results are from our 256×256 2D matrix multiplication benchmark (
 **RISC-V**
 - `riscv32_unknown`: RISC-V 32-bit
 - `riscv64_linux`: RISC-V 64-bit Linux (`riscv64_unknown` and `riscv64gc_linux` are accepted aliases)
-- `riscv128_unknown`: RISC-V 128-bit (nightly feature)
 
 **WebAssembly**
 - `wasm32_unknown`: WebAssembly 32-bit
@@ -368,7 +373,7 @@ literal operand is materialised as and what the ABI classifies the argument by, 
 
 ### I/O Operations
 
-`write`, `read`, `writebyte` and `readbyte` return the same values on every backend that implements them. This contract is frozen for 0.2.0.
+`write`, `read`, `writebyte` and `readbyte` return the same values on every backend that implements them.
 
 | Operation | Success | End of input | Failure |
 |-----------|---------|--------------|---------|
@@ -399,9 +404,9 @@ Please feel free to submit pull requests or open issues for bugs and feature req
 
 <div align="center">
   <p>
-    <strong>Lamina</strong> - A Modern Compiler Backend
+    <strong>Lamina</strong>
   </p>
   <p>
-    Built with Rust | Designed for Performance | Open Source
+    Built with Rust | Open Source
   </p>
 </div>
