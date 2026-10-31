@@ -545,13 +545,18 @@ fn build_unix_linker_args(
 fn build_weld_linker_args(
     input_path: &Path,
     output_path: &Path,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     runtime_objects: &[PathBuf],
     additional_flags: &[String],
 ) -> Vec<String> {
+    let target_os = target.operating_system;
     let mut args = Vec::new();
     args.push(input_path.to_string_lossy().to_string());
     args.extend(object_args(runtime_objects));
+    if let Some(interpreter) = target.interpreter() {
+        args.push("--dynamic-linker".to_string());
+        args.push(interpreter.to_string());
+    }
     match target_os {
         TargetOperatingSystem::Windows => {
             // weld detects PE from .exe output suffix; no entry-point arg needed.
@@ -846,7 +851,7 @@ fn link_object(
             let args = build_weld_linker_args(
                 input_path,
                 output_path,
-                target_os,
+                target,
                 runtime_objects,
                 additional_flags,
             );
@@ -1211,16 +1216,35 @@ mod tests {
     fn weld_args_include_libc_on_linux() {
         let input = Path::new("module.o");
         let output = Path::new("module");
-        let args = build_weld_linker_args(input, output, TargetOperatingSystem::Linux, &[], &[]);
+        let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
+        let args = build_weld_linker_args(input, output, &target, &[], &[]);
         // weld links against libc for printf/fflush access.
         assert!(
             args.iter().any(|a| a == "-lc"),
             "expected -lc in args: {args:?}"
         );
         assert!(args.iter().any(|a| a == "-o"));
-        // No CRT objects or dynamic-linker args — weld handles those itself.
-        assert!(!args.iter().any(|a| a == "--dynamic-linker"));
         assert!(!args.iter().any(|a| a.contains("crt1.o")));
+    }
+
+    #[test]
+    fn weld_args_name_the_interpreter_the_environment_asks_for() {
+        let input = Path::new("module.o");
+        let output = Path::new("module");
+        for (environment, interpreter) in [
+            (TargetEnvironment::Gnu, "/lib64/ld-linux-x86-64.so.2"),
+            (TargetEnvironment::Musl, "/lib/ld-musl-x86_64.so.1"),
+        ] {
+            let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+                .with_environment(environment)
+                .expect("x86_64 linux takes gnu and musl");
+            let args = build_weld_linker_args(input, output, &target, &[], &[]);
+            let named = args
+                .windows(2)
+                .find(|pair| pair[0] == "--dynamic-linker")
+                .map(|pair| pair[1].as_str());
+            assert_eq!(named, Some(interpreter), "{environment:?}");
+        }
     }
 
     #[test]
