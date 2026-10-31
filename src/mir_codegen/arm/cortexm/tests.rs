@@ -261,3 +261,29 @@ fn both_targets_are_thirty_two_bit_with_no_sixty_four_bit_registers() {
     );
     assert!(!m.environment.hardware_float(), "the backend emits no VFP");
 }
+
+#[test]
+fn an_underaligned_access_is_refused_by_name_on_both() {
+    for (arch, name) in [
+        (TargetArchitecture::Thumbv6m, "thumbv6m"),
+        (TargetArchitecture::Thumbv7m, "thumbv7m"),
+    ] {
+        for (source, operation) in [
+            (
+                "fn @main() -> i32 {\nentry:\n  %b = stackalloc.[16 x i8]\n  \
+                 %p = getelem.i8 %b, 1\n  store.i32 %p, 7 align 1\n  ret.i32 0\n}\n",
+                "store",
+            ),
+            (
+                "fn @main() -> i32 {\nentry:\n  %b = stackalloc.[16 x i8]\n  \
+                 %p = getelem.i8 %b, 1\n  %v = load.i32 %p align 1\n  ret.i32 0\n}\n",
+                "load",
+            ),
+        ] {
+            let error = try_compile(arch, source).expect_err("no unaligned access on Cortex-M");
+            assert!(error.contains(name), "{error}");
+            assert!(error.contains(operation), "{error}");
+            assert!(error.contains("1-byte alignment"), "{error}");
+        }
+    }
+}

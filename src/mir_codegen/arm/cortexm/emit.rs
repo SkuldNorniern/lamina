@@ -72,8 +72,12 @@ pub(crate) fn reject_float(isa: Isa, operation: &str, ty: &MirType) -> LaminaErr
 }
 
 /// ARMv6-M has no unaligned load or store: an `ldr` or `ldrh` whose address is not a
-/// multiple of its size takes a HardFault. ARMv7-M permits both. Refused by name
-/// rather than lowered to a byte-at-a-time sequence, which this backend does not emit.
+/// multiple of its size takes a HardFault. ARMv7-M permits one only while
+/// `CCR.UNALIGN_TRP` is clear, which this backend cannot establish — it emits no
+/// startup code and the field is writable by whatever does — so an `ldr` or `str`
+/// there is a UsageFault the moment a system turns the trap on. Both are refused by
+/// name rather than lowered to a byte-at-a-time sequence, which this backend does not
+/// emit.
 fn check_alignment(
     isa: Isa,
     operation: &str,
@@ -81,10 +85,17 @@ fn check_alignment(
     attrs: &MemoryAttrs,
 ) -> Result<(), LaminaError> {
     let size = ty.size_bytes(POINTER_WIDTH);
-    if isa == Isa::Thumb1 && usize::from(attrs.align) < size {
+    if usize::from(attrs.align) < size {
+        let fault = match isa {
+            Isa::Thumb1 => "takes a HardFault on an unaligned access",
+            Isa::Thumb2 => {
+                "takes a UsageFault on an unaligned access whenever CCR.UNALIGN_TRP is set"
+            }
+        };
         return Err(unsupported(format!(
-            "thumbv6m takes a HardFault on an unaligned access, and this `{operation}` of {ty} \
-             declares {}-byte alignment for a {size}-byte value",
+            "{} {fault}, and this `{operation}` of {ty} declares {}-byte alignment for a \
+             {size}-byte value",
+            isa.target_name(),
             attrs.align
         )));
     }
