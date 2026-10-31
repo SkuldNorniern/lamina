@@ -1,32 +1,9 @@
 //! Source locations carried from the `.lamina` input down to the backends.
 
 use crate::instruction::Instruction;
+pub use lamina_platform::SourceLoc;
 use std::fmt;
-use std::num::NonZeroU32;
 use std::ops::{Deref, DerefMut};
-
-/// A position in the original `.lamina` source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SourceLoc {
-    pub line: NonZeroU32,
-    pub column: u32,
-}
-
-impl SourceLoc {
-    pub fn new(line: u32, column: u32) -> Option<Self> {
-        NonZeroU32::new(line).map(|line| Self { line, column })
-    }
-
-    pub fn line(self) -> u32 {
-        self.line.get()
-    }
-}
-
-impl fmt::Display for SourceLoc {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
-    }
-}
 
 /// An instruction together with the `.lamina` line it came from, if any.
 ///

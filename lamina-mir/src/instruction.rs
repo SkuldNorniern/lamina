@@ -11,6 +11,7 @@ use crate::{
 };
 use std::fmt;
 
+pub use lamina_platform::MemoryOrdering;
 use lamina_platform::PointerWidth;
 
 /// Result type of the I/O intrinsics: a byte count, -1 at end of input, or -2 on error.
@@ -385,34 +386,6 @@ impl fmt::Display for VectorOp {
             VectorOp::VSplat => "vsplat",
             VectorOp::VExtractLane => "vextractlane",
             VectorOp::VInsertLane => "vinsertlane",
-        };
-        write!(f, "{s}")
-    }
-}
-
-/// Memory ordering constraints for atomic operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemoryOrdering {
-    /// Relaxed ordering - no synchronization
-    Relaxed,
-    /// Acquire ordering - synchronizes with previous releases
-    Acquire,
-    /// Release ordering - synchronizes with subsequent acquires
-    Release,
-    /// Acquire and release ordering
-    AcqRel,
-    /// Sequentially consistent ordering - strongest guarantee
-    SeqCst,
-}
-
-impl fmt::Display for MemoryOrdering {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            MemoryOrdering::Relaxed => "relaxed",
-            MemoryOrdering::Acquire => "acquire",
-            MemoryOrdering::Release => "release",
-            MemoryOrdering::AcqRel => "acqrel",
-            MemoryOrdering::SeqCst => "seqcst",
         };
         write!(f, "{s}")
     }

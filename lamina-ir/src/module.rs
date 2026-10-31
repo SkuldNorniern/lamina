@@ -137,6 +137,8 @@ use std::{
     fmt,
 };
 
+pub use lamina_platform::TlsModel;
+
 use crate::{
     calls::{validate_calls, value_types},
     function::Function,
@@ -232,36 +234,6 @@ pub struct GlobalDeclaration<'a> {
     /// The thread-local model this global is placed under (declared with
     /// `@thread_local`), or `None` for ordinary static storage.
     pub thread_local: Option<TlsModel>,
-}
-
-/// How a thread-local symbol's address is computed.
-///
-/// Only the two models that need no runtime support are here. General-dynamic and
-/// local-dynamic both call `__tls_get_addr`, which a freestanding target does not have,
-/// so the parser names them and refuses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TlsModel {
-    /// The offset from the thread pointer is a link-time constant. Only valid in an
-    /// executable that defines the symbol itself.
-    LocalExec,
-    /// The offset from the thread pointer is loaded from the GOT, so the symbol may be
-    /// defined by a shared object present at program start.
-    InitialExec,
-}
-
-impl TlsModel {
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            TlsModel::LocalExec => "local_exec",
-            TlsModel::InitialExec => "initial_exec",
-        }
-    }
-}
-
-impl fmt::Display for TlsModel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 /// A complete Lamina IR module (file).

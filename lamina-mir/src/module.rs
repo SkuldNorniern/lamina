@@ -4,6 +4,8 @@
 //! top-level unit of organization in LUMIR and can be compiled independently.
 use lamina_platform::PointerWidth;
 
+pub use lamina_platform::TlsModel;
+
 use crate::{
     function::Function,
     types::MirType,
@@ -42,31 +44,6 @@ pub struct Global {
     /// The thread-local model this symbol is placed under, or `None` for ordinary
     /// static storage.
     pub thread_local: Option<TlsModel>,
-}
-
-/// How a thread-local symbol's address is computed. Mirrors `lamina_ir::TlsModel`;
-/// the models that need a `__tls_get_addr` call are not represented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TlsModel {
-    /// Offset from the thread pointer is a link-time constant.
-    LocalExec,
-    /// Offset from the thread pointer is loaded from the GOT.
-    InitialExec,
-}
-
-impl TlsModel {
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            TlsModel::LocalExec => "local_exec",
-            TlsModel::InitialExec => "initial_exec",
-        }
-    }
-}
-
-impl fmt::Display for TlsModel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 impl Global {

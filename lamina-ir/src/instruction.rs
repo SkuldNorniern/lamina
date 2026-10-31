@@ -45,44 +45,7 @@
 use std::fmt;
 
 use crate::types::{Identifier, Label, Literal, PrimitiveType, Type, Value};
-
-/// Memory ordering constraints for atomic operations.
-///
-/// These specify the ordering guarantees for atomic operations relative to
-/// other memory operations in the same thread and across threads.
-///
-/// # Memory Ordering Levels
-///
-/// - **Relaxed**: No ordering constraints with other operations
-/// - **Acquire**: Subsequent loads cannot move before this operation
-/// - **Release**: Previous stores cannot move after this operation
-/// - **AcqRel**: Both acquire and release semantics
-/// - **SeqCst**: Sequentially consistent (strongest ordering)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemoryOrdering {
-    /// Relaxed ordering - no synchronization or ordering constraints
-    Relaxed,
-    /// Acquire ordering - prevents reordering of subsequent loads
-    Acquire,
-    /// Release ordering - prevents reordering of previous stores
-    Release,
-    /// Acquire-release ordering - both acquire and release semantics
-    AcqRel,
-    /// Sequentially consistent - strongest ordering guarantee
-    SeqCst,
-}
-
-impl fmt::Display for MemoryOrdering {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MemoryOrdering::Relaxed => write!(f, "relaxed"),
-            MemoryOrdering::Acquire => write!(f, "acquire"),
-            MemoryOrdering::Release => write!(f, "release"),
-            MemoryOrdering::AcqRel => write!(f, "acqrel"),
-            MemoryOrdering::SeqCst => write!(f, "seqcst"),
-        }
-    }
-}
+pub use lamina_platform::MemoryOrdering;
 
 /// Atomic binary operations for concurrent programming.
 ///

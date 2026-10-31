@@ -19,7 +19,9 @@ pub mod arch_variant;
 pub mod cpu_level;
 pub mod detection;
 pub mod environment;
+pub mod shared;
 pub mod target;
+pub mod vector;
 
 #[cfg(feature = "nightly")]
 pub mod simd;
@@ -35,10 +37,12 @@ pub use arch_variant::{
 pub use cpu_level::X86CpuLevel;
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
 pub use environment::{CompilerRuntime, Libc, TargetEnvironment};
+pub use shared::{MemoryOrdering, SourceLoc, TlsModel};
 pub use target::{
     Target, TargetOperatingSystem, default_environment, host_arch_list, parse_arch_token,
     parse_architecture,
 };
+pub use vector::any_vector_register_bits;
 
 #[cfg(feature = "nightly")]
 pub use simd::{ArmSimdExtension, RiscvSimdExtension, SimdCapabilities, X86SimdExtension};
