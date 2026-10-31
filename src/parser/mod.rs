@@ -2319,6 +2319,39 @@ ret.i64 0
     }
 
     #[test]
+    fn a_removed_opcode_names_its_replacement_in_assignment_form_too() {
+        for (statement, assignment, replacement) in [
+            (
+                "print 1",
+                "%x = print.i64 1",
+                "'writebyte <value>' for one byte",
+            ),
+            ("heapfree %h", "%x = heapfree.i64 %h", "call @free(<ptr>)"),
+            ("dealloc %h", "%x = dealloc.i64 %h", "call @free(<ptr>)"),
+            (
+                "memcpy %d, %s, 8",
+                "%x = memcpy.i64 %d, %s, 8",
+                "call @memcpy(<dst>, <src>, <size>)",
+            ),
+            (
+                "memmove %d, %s, 8",
+                "%x = memmove.i64 %d, %s, 8",
+                "call @memmove(<dst>, <src>, <size>)",
+            ),
+            (
+                "memset %d, 0, 8",
+                "%x = memset.i64 %d, 0, 8",
+                "call @memset(<dst>, <value>, <size>)",
+            ),
+        ] {
+            for form in [statement, assignment] {
+                let error = parse_error(form);
+                assert!(error.contains(replacement), "{form}: {error}");
+            }
+        }
+    }
+
+    #[test]
     fn test_opcode_name_lists_follow_new_spellings() {
         let assignment = get_assignment_opcode_names();
         assert!(assignment.contains(&"stackalloc"));
@@ -2723,13 +2756,21 @@ entry:
 
     #[test]
     fn atomic_cmpxchg_parses_and_displays_round_trip() {
-        let success = ["relaxed", "acquire", "release", "acqrel", "seqcst"];
-        let failure = ["relaxed", "acquire", "seqcst"];
+        let pairs = [
+            ("relaxed", "relaxed"),
+            ("acquire", "relaxed"),
+            ("acquire", "acquire"),
+            ("release", "relaxed"),
+            ("release", "acquire"),
+            ("acqrel", "relaxed"),
+            ("acqrel", "acquire"),
+            ("seqcst", "relaxed"),
+            ("seqcst", "acquire"),
+            ("seqcst", "seqcst"),
+        ];
         let mut expected = Vec::new();
-        for s in success {
-            for f in failure {
-                expected.push(format!("%old = atomic_cmpxchg.i32 %p, 1, 2, {s}, {f}"));
-            }
+        for (s, f) in pairs {
+            expected.push(format!("%old = atomic_cmpxchg.i32 %p, 1, 2, {s}, {f}"));
         }
         expected.push("%old = atomic_cmpxchg.u8 %p, 255, 0, seqcst, seqcst".to_string());
 
@@ -2833,6 +2874,14 @@ entry:
             (
                 "%r = atomic_cmpxchg.i64 %p, 1, 2, seqcst, acqrel",
                 "atomic_cmpxchg cannot use acqrel failure ordering",
+            ),
+            (
+                "%r = atomic_cmpxchg.i64 %p, 1, 2, relaxed, acquire",
+                "may not be stronger than the success ordering",
+            ),
+            (
+                "%r = atomic_cmpxchg.i64 %p, 1, 2, acqrel, seqcst",
+                "may not be stronger than the success ordering",
             ),
             (
                 "atomic_cmpxchg.i64 %p, 1, 2, seqcst, seqcst",
