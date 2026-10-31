@@ -4,7 +4,7 @@ use crate::mir::asm;
 use crate::{
     LaminaError,
     ir::{
-        AllocType, AtomicBinOp, BinaryOp, CmpOp, Identifier, Instruction, MemoryOrdering,
+        AllocType, AtomicBinOp, BinaryOp, CmpOp, Identifier, Instruction, Literal, MemoryOrdering,
         OverflowOp, PrimitiveType, Type, UnaryOp, Value, instruction::AsmOperand,
     },
     parser::{
@@ -783,6 +783,7 @@ fn parse_binary_op<'a>(
         let lhs = parse_typed_operand(state, &vector)?;
         state.expect_char(',')?;
         let rhs = parse_typed_operand(state, &vector)?;
+        reject_out_of_range_shift(state, &op, element_type, &rhs)?;
         return Ok(Instruction::VectorBinary {
             op,
             result,
@@ -799,6 +800,7 @@ fn parse_binary_op<'a>(
     let lhs = parse_typed_operand(state, &Type::Primitive(ty))?;
     state.expect_char(',')?;
     let rhs = parse_typed_operand(state, &Type::Primitive(ty))?;
+    reject_out_of_range_shift(state, &op, ty, &rhs)?;
     Ok(Instruction::Binary {
         op,
         result,
@@ -806,6 +808,50 @@ fn parse_binary_op<'a>(
         lhs,
         rhs,
     })
+}
+
+fn integer_bit_width(ty: PrimitiveType) -> Option<u32> {
+    Some(match ty {
+        PrimitiveType::I8 | PrimitiveType::U8 => 8,
+        PrimitiveType::I16 | PrimitiveType::U16 => 16,
+        PrimitiveType::I32 | PrimitiveType::U32 => 32,
+        PrimitiveType::I64 | PrimitiveType::U64 => 64,
+        PrimitiveType::I128 | PrimitiveType::U128 => 128,
+        _ => return None,
+    })
+}
+
+/// Rejects a shift whose count is a literal the compiler can see to fall outside
+/// `0..bit_width(ty)`. A count computed at run time keeps the masked semantic.
+fn reject_out_of_range_shift(
+    state: &ParserState<'_>,
+    op: &BinaryOp,
+    ty: PrimitiveType,
+    rhs: &Value<'_>,
+) -> Result<(), LaminaError> {
+    if !matches!(op, BinaryOp::Shl | BinaryOp::Shr) {
+        return Ok(());
+    }
+    let Some(width) = integer_bit_width(ty) else {
+        return Ok(());
+    };
+    let Value::Constant(literal) = rhs else {
+        return Ok(());
+    };
+    let (in_range, shown) = match literal {
+        Literal::U128(value) => (*value < u128::from(width), value.to_string()),
+        _ => match literal.as_integer() {
+            Some(count) => ((0..i128::from(width)).contains(&count), count.to_string()),
+            None => return Ok(()),
+        },
+    };
+    if in_range {
+        return Ok(());
+    }
+    Err(state.error(format!(
+        "{op}.{ty} shifts by {shown}, which is out of range for a {width}-bit operand\n  Hint: A constant count must lie in 0..{width}; only a count computed at run time is masked with {}",
+        width - 1
+    )))
 }
 
 /// Consumes a `.<N x T>` suffix when the opcode carries one, leaving the input
@@ -1181,10 +1227,9 @@ fn parse_ptrtoint<'a>(
 ) -> Result<Instruction<'a>, LaminaError> {
     require_type_suffix(
         state,
-        "ptrtoint takes its target type as a suffix\n  Hint: Write 'ptrtoint.i64 %ptr' instead of 'ptrtoint %ptr, .i64'",
+        "ptrtoint takes its integer type as a suffix\n  Hint: Write 'ptrtoint.i64 %ptr' instead of 'ptrtoint %ptr, .i64'",
     )?;
     let target_type = parse_type_suffix(state)?;
-    let ptr_value = parse_value(state)?;
 
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
@@ -1194,6 +1239,12 @@ fn parse_ptrtoint<'a>(
             ));
         }
     };
+    if !is_integer_type(target_primitive_type) {
+        return Err(state.error(format!(
+            "ptrtoint.{target_primitive_type} names {target_primitive_type}, which is not an integer type\n  Hint: The suffix names the integer the pointer becomes, as in 'ptrtoint.i64 %ptr'"
+        )));
+    }
+    let ptr_value = parse_typed_operand(state, &Type::Primitive(PrimitiveType::Ptr))?;
 
     Ok(Instruction::PtrToInt {
         result,
@@ -1208,10 +1259,9 @@ fn parse_inttoptr<'a>(
 ) -> Result<Instruction<'a>, LaminaError> {
     require_type_suffix(
         state,
-        "inttoptr takes its target type as a suffix\n  Hint: Write 'inttoptr.i64 %addr' instead of 'inttoptr %addr, .i64'",
+        "inttoptr takes its integer type as a suffix\n  Hint: Write 'inttoptr.i64 %addr' instead of 'inttoptr %addr, .i64'",
     )?;
     let target_type = parse_type_suffix(state)?;
-    let int_value = parse_value(state)?;
 
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
@@ -1221,6 +1271,12 @@ fn parse_inttoptr<'a>(
             ));
         }
     };
+    if !is_integer_type(target_primitive_type) {
+        return Err(state.error(format!(
+            "inttoptr.{target_primitive_type} names {target_primitive_type}, which is not an integer type\n  Hint: The suffix names the integer the pointer is built from, as in 'inttoptr.i64 %addr'; the result is always ptr"
+        )));
+    }
+    let int_value = parse_typed_operand(state, &Type::Primitive(target_primitive_type))?;
 
     Ok(Instruction::IntToPtr {
         result,

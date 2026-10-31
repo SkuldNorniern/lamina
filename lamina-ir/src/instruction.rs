@@ -828,13 +828,15 @@ pub enum Instruction<'a> {
     PtrToInt {
         result: Identifier<'a>,
         ptr_value: Value<'a>,
-        target_type: PrimitiveType, // Usually i64 for addresses
+        /// The integer type the address becomes, and the type of `result`.
+        target_type: PrimitiveType,
     },
     // Convert integer back to pointer
     IntToPtr {
         result: Identifier<'a>,
         int_value: Value<'a>,
-        target_type: PrimitiveType, // The pointer type (usually ptr)
+        /// The integer type of `int_value`. `result` is always `ptr`.
+        target_type: PrimitiveType,
     },
     // --- Function Calls ---
     /// Call a function by name.

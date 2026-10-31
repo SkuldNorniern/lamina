@@ -1274,6 +1274,17 @@ fn a_register_of_unrecorded_type_is_refused() {
 }
 
 #[test]
+fn inttoptr_suffix_must_match_its_operand_width() {
+    let source = "fn @cast(ptr %p) -> ptr {\nentry:\n%a = ptrtoint.i64 %p\n%q = inttoptr.i32 %a\nret.ptr %q\n}";
+    let ir = parse_module(source).expect("parse inttoptr");
+    let err = from_ir_x86_64(&ir, "cast").expect_err("mismatched suffix must be rejected");
+    assert!(
+        format!("{err}").contains("inttoptr.i32"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn inttoptr_of_inline_asm_keeps_its_source_width() {
     let source = "fn @cast() -> ptr {\nentry:\n%n = asm.i16 \"nop\", out(ax)\n%p = inttoptr.i16 %n\nret.ptr %p\n}";
     for arch in [TargetArchitecture::Riscv32, TargetArchitecture::X86_64] {

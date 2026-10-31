@@ -1857,6 +1857,97 @@ ret.i64 0
     }
 
     #[test]
+    fn test_ptrtoint_and_inttoptr_suffix_must_name_an_integer() {
+        for spelling in ["%a = ptrtoint.f64 %ptr", "%a = ptrtoint.bool %ptr"] {
+            let err = parse_error(spelling);
+            assert!(err.contains("is not an integer type"), "{err}");
+        }
+
+        for spelling in [
+            "%p = inttoptr.ptr %addr",
+            "%p = inttoptr.f64 %addr",
+            "%p = inttoptr.bool %addr",
+        ] {
+            let err = parse_error(spelling);
+            assert!(err.contains("is not an integer type"), "{err}");
+        }
+    }
+
+    #[test]
+    fn test_inttoptr_suffix_types_its_operand() {
+        let input = entry_body("%p = inttoptr.i64 %addr");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::IntToPtr {
+                target_type: PrimitiveType::I64,
+                ..
+            }
+        ));
+
+        let err = parse_error("%p = inttoptr.i8 4096");
+        assert!(err.contains("out of range for i8"), "{err}");
+    }
+
+    #[test]
+    fn test_constant_out_of_range_shift_is_rejected() {
+        for (line, width) in [
+            ("%r = shl.i8 1, 8", 8),
+            ("%r = shr.i8 1, 100", 8),
+            ("%r = shl.i16 1, 16", 16),
+            ("%r = shl.i32 1, 64", 32),
+            ("%r = shl.i32 1, 40", 32),
+            ("%r = shr.i32 1, 32", 32),
+            ("%r = shl.u32 1, 32", 32),
+            ("%r = shl.i64 1, 64", 64),
+            ("%r = shr.u64 1, 64", 64),
+            ("%r = shl.i128 1, 128", 128),
+            ("%r = shr.u128 1, 128", 128),
+            ("%r = shl.<4 x i32> 1, 32", 32),
+            ("%r = shr.<2 x i64> 1, 64", 64),
+        ] {
+            let err = parse_error(line);
+            assert!(err.contains("which is out of range"), "{line}: {err}");
+            assert!(
+                err.contains(&format!("for a {width}-bit operand")),
+                "{line}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_negative_constant_shift_is_rejected() {
+        let err = parse_error("%r = shl.i32 1, -1");
+        assert!(err.contains("shifts by -1"), "{err}");
+    }
+
+    #[test]
+    fn test_shift_by_width_minus_one_is_accepted() {
+        for line in [
+            "%r = shl.i8 1, 7",
+            "%r = shr.i8 1, 7",
+            "%r = shl.i16 1, 15",
+            "%r = shl.i32 1, 31",
+            "%r = shr.i32 1, 31",
+            "%r = shl.u32 1, 31",
+            "%r = shl.i64 1, 63",
+            "%r = shr.u64 1, 63",
+            "%r = shl.i128 1, 127",
+            "%r = shr.u128 1, 127",
+            "%r = shl.i32 1, 0",
+            "%r = shl.<4 x i32> 1, 31",
+            "%r = shr.<2 x i64> 1, 63",
+        ] {
+            parse_module(&entry_body(line)).unwrap_or_else(|e| panic!("{line}: {e}"));
+        }
+    }
+
+    #[test]
+    fn test_dynamic_shift_count_is_still_masked() {
+        parse_module(&entry_body("%r = shl.i64 1, %addr")).expect("dynamic count stays legal");
+        parse_module(&entry_body("%r = rotl.i32 1, 64")).expect("rotate count stays modular");
+    }
+
+    #[test]
     fn test_getelem_takes_element_type_in_suffix() {
         let input = entry_body("%e = getelem.i8 %buf, 0");
         assert!(matches!(
@@ -2414,7 +2505,7 @@ entry:
             },
         )
         .ptrtoint("pi", &var("s"), PrimitiveType::I64)
-        .inttoptr("ip", &var("pi"), PrimitiveType::Ptr)
+        .inttoptr("ip", &var("pi"), PrimitiveType::I64)
         .zext("z", PrimitiveType::U8, PrimitiveType::I32, &var("l"))
         .sext("sx", PrimitiveType::I8, PrimitiveType::I64, &var("l"))
         .trunc("tr", PrimitiveType::I64, PrimitiveType::I32, &var("sum"))

@@ -812,7 +812,8 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends an integer-to-pointer cast.
+    /// Appends an integer-to-pointer cast. `target_type` is the integer type of
+    /// `int_value`; the result is always `ptr`.
     pub fn inttoptr(
         &mut self,
         result: impl AsRef<str>,

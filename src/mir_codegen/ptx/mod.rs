@@ -546,16 +546,32 @@ mod emission_tests {
     #[test]
     fn gpu_immediate_shifts_mask_counts() -> Result<(), Box<dyn Error>> {
         use crate::{
-            mir::codegen::from_ir_x86_64,
+            mir::{Immediate, Instruction, Operand, codegen::from_ir_x86_64},
             mir_codegen::{amdgpu, ptx},
             parser::parse_module,
         };
         for (width, count) in [(32, 32), (32, 1025), (64, 64), (64, 4097)] {
             let source = format!(
-                "@kernel fn @shift(i{width} %a) -> void {{\nentry:\n%x = shl.i{width} %a, {count}\nret.void\n}}"
+                "@kernel fn @shift(i{width} %a) -> void {{\nentry:\n%x = shl.i{width} %a, 1\nret.void\n}}"
             );
             let ir = parse_module(&source)?;
-            let mir = from_ir_x86_64(&ir, "masked_shift").map_err(|error| format!("{error:?}"))?;
+            let mut mir =
+                from_ir_x86_64(&ir, "masked_shift").map_err(|error| format!("{error:?}"))?;
+            for function in mir.functions.values_mut() {
+                for block in &mut function.blocks {
+                    for instruction in &mut block.instructions {
+                        if let Instruction::IntBinary { rhs, .. } = &mut instruction.instr {
+                            let narrow = matches!(rhs, Operand::Immediate(Immediate::I32(_)));
+                            *rhs = Operand::Immediate(if narrow {
+                                Immediate::I32(count)
+                            } else {
+                                Immediate::I64(i64::from(count))
+                            });
+                        }
+                    }
+                }
+            }
+            let mir = mir;
             let mut output = Vec::new();
             ptx::emit(&mir, &mut output)?;
             let assembly = String::from_utf8(output)?;

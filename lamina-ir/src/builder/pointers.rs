@@ -40,7 +40,8 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Convert integer back to pointer
+    /// Convert integer back to pointer. `target_type` is the integer type of
+    /// `int_value`; the result is always `ptr`.
     pub fn inttoptr(
         &mut self,
         result: &'a str,

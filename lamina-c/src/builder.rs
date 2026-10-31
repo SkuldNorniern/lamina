@@ -767,6 +767,22 @@ pub unsafe extern "C" fn lia_builder_getfieldptr_typed(
     }))
 }
 
+fn is_integer_primitive(ty: PrimitiveType) -> bool {
+    matches!(
+        ty,
+        PrimitiveType::I8
+            | PrimitiveType::I16
+            | PrimitiveType::I32
+            | PrimitiveType::I64
+            | PrimitiveType::I128
+            | PrimitiveType::U8
+            | PrimitiveType::U16
+            | PrimitiveType::U32
+            | PrimitiveType::U64
+            | PrimitiveType::U128
+    )
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_ptrtoint(
     builder: *mut LaminaBuilder,
@@ -779,12 +795,14 @@ pub unsafe extern "C" fn lia_builder_ptrtoint(
         let r = require_str!(result, "result");
         let p = require_ref!(ptr_value, "ptr_value");
         let tt = require_ref!(target_type, "target_type");
-        if let OwnedType::Primitive(prim) = tt.0 {
+        if let OwnedType::Primitive(prim) = tt.0
+            && is_integer_primitive(prim)
+        {
             b.0.ptrtoint(r, &p.0, prim);
             clear_error();
             LaminaStatus::Ok
         } else {
-            set_error("ptrtoint target_type must be primitive");
+            set_error("ptrtoint target_type must be an integer primitive");
             LaminaStatus::ErrorInvalidArgument
         }
     }))
@@ -802,12 +820,14 @@ pub unsafe extern "C" fn lia_builder_inttoptr(
         let r = require_str!(result, "result");
         let iv = require_ref!(int_value, "int_value");
         let tt = require_ref!(target_type, "target_type");
-        if let OwnedType::Primitive(prim) = tt.0 {
+        if let OwnedType::Primitive(prim) = tt.0
+            && is_integer_primitive(prim)
+        {
             b.0.inttoptr(r, &iv.0, prim);
             clear_error();
             LaminaStatus::Ok
         } else {
-            set_error("inttoptr target_type must be primitive");
+            set_error("inttoptr target_type must be an integer primitive");
             LaminaStatus::ErrorInvalidArgument
         }
     }))
