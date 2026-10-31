@@ -873,7 +873,67 @@ mod tests {
         let error = Target::from_str("x86_64_linux_eabihf").expect_err("x86_64 has no EABI");
         assert!(error.contains("eabihf"), "{error}");
         assert!(error.contains("Hint:"), "{error}");
-        assert!(error.contains("gnu, musl, none"), "{error}");
+        assert!(error.contains("gnu, musl, lamina, none"), "{error}");
+    }
+
+    #[test]
+    fn lamina_is_a_target_string_that_names_no_interpreter_and_no_toolchain() {
+        for name in ["x86_64_linux_lamina", "aarch64_linux_lamina"] {
+            let target: Target = name.parse().expect(name);
+            assert_eq!(target.environment, TargetEnvironment::Lamina, "{name}");
+            assert_eq!(target.environment.libc(), Some(Libc::Lamina), "{name}");
+            assert_eq!(
+                target.environment.compiler_runtime(),
+                CompilerRuntime::LaminaBuiltins,
+                "{name}"
+            );
+            assert_eq!(target.interpreter(), None, "{name}");
+            assert_eq!(
+                target.spec().toolchain_triple(TargetEnvironment::Lamina),
+                None,
+                "{name}"
+            );
+            assert_eq!(target.to_string(), name, "{name}");
+        }
+    }
+
+    #[test]
+    fn an_architecture_that_does_not_accept_lamina_says_so_by_name() {
+        for name in ["s390x_linux_lamina", "riscv64_linux_lamina"] {
+            let error = Target::from_str(name).expect_err(name);
+            assert!(error.contains("lamina"), "{error}");
+            assert!(error.contains("not supported"), "{error}");
+        }
+    }
+
+    #[test]
+    fn no_architecture_states_a_lamina_interpreter_or_toolchain_yet() {
+        for architecture in TargetArchitecture::all() {
+            let spec = architecture.spec();
+            assert_eq!(spec.interpreters.lamina, None, "{architecture:?}");
+            assert_eq!(spec.toolchain.lamina, None, "{architecture:?}");
+            assert_eq!(
+                spec.interpreter(TargetEnvironment::Lamina),
+                None,
+                "{architecture:?}"
+            );
+            assert_eq!(
+                spec.toolchain_triple(TargetEnvironment::Lamina),
+                None,
+                "{architecture:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_architecture_defaults_to_the_lamina_environment() {
+        for architecture in TargetArchitecture::all() {
+            assert_ne!(
+                architecture.spec().hosted_environment,
+                TargetEnvironment::Lamina,
+                "{architecture:?}"
+            );
+        }
     }
 
     #[test]

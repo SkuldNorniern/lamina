@@ -68,7 +68,37 @@ fn target_compiler(
             gnu_tool(target_arch, "gcc").ok_or_else(|| no_gnu_tool("gcc", target_arch))
         }
         Libc::Musl => musl_tool(target_arch, "gcc"),
+        Libc::Lamina => Err(unimplemented_libc_message(Libc::Lamina)),
     }
+}
+
+/// Refusal for a C library lamina names but cannot yet link.
+///
+/// Reached before any start-up object, interpreter path or library is chosen, so a
+/// target that asks for an unimplemented libc fails by name instead of quietly taking
+/// another C library's.
+fn unimplemented_libc_message(libc: Libc) -> String {
+    let reason = libc
+        .unavailable_reason()
+        .unwrap_or("this C library cannot be linked");
+    format!("cannot link against the {libc} C library: {reason}")
+}
+
+/// Refuse a target whose environment names a C library lamina has no implementation of.
+fn check_libc_is_implemented(target: &Target) -> Result<(), LaminaError> {
+    let Some(libc) = target.environment.libc() else {
+        return Ok(());
+    };
+    if libc.is_implemented() {
+        return Ok(());
+    }
+    let base = format!("{}_{}", target.arch_token(), target.operating_system);
+    Err(LaminaError::ValidationError(format!(
+        "cannot link {target}: {}; write `{base}` for the environment this target declares, `{base}_{}` for musl, or `{base}_{}` for a freestanding binary",
+        unimplemented_libc_message(libc),
+        TargetEnvironment::Musl,
+        TargetEnvironment::Freestanding,
+    )))
 }
 
 /// The musl cross driver for a target, found by the architecture's musl triple.
@@ -718,6 +748,7 @@ fn link_object(
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<(), LaminaError> {
+    check_libc_is_implemented(target)?;
     let (target_arch, target_os) = (target.architecture, target.operating_system);
     match target_arch.output_artifact() {
         OutputArtifact::Executable => {}
@@ -1280,6 +1311,50 @@ mod tests {
         let libs = build_library_args(&target).expect("library arguments");
         assert!(!libs.iter().any(|a| a == "-lc"), "{libs:?}");
         assert!(!libs.iter().any(|a| a.ends_with("libgcc.a")), "{libs:?}");
+    }
+
+    #[test]
+    fn a_lamina_libc_target_refuses_to_link_and_names_the_library() {
+        for arch in [TargetArchitecture::X86_64, TargetArchitecture::Aarch64] {
+            let target = Target::new(arch, TargetOperatingSystem::Linux)
+                .with_environment(TargetEnvironment::Lamina)
+                .expect("x86_64 and aarch64 accept the lamina environment");
+            let error = check_libc_is_implemented(&target).expect_err("no Lamina libc exists");
+            let message = error.to_string();
+            assert!(message.contains("lamina"), "{message}");
+            assert!(message.contains("not implemented yet"), "{message}");
+            assert!(message.contains("musl"), "{message}");
+            let reason = target_compiler(arch, TargetEnvironment::Lamina)
+                .expect_err("no compiler supplies a Lamina C runtime");
+            assert!(reason.contains("Lamina C library"), "{reason}");
+        }
+    }
+
+    #[test]
+    fn a_lamina_libc_target_names_no_interpreter_so_none_is_guessed() {
+        let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+            .with_environment(TargetEnvironment::Lamina)
+            .expect("x86_64 accepts the lamina environment");
+        assert!(build_dynamic_linker_arg(&target).is_empty());
+        let gnu = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
+        assert_eq!(
+            build_dynamic_linker_arg(&gnu),
+            ["--dynamic-linker", "/lib64/ld-linux-x86-64.so.2"]
+        );
+    }
+
+    #[test]
+    fn an_implemented_libc_passes_the_link_gate() {
+        for environment in [
+            TargetEnvironment::Gnu,
+            TargetEnvironment::Musl,
+            TargetEnvironment::Freestanding,
+        ] {
+            let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+                .with_environment(environment)
+                .expect("x86_64 linux takes gnu, musl and none");
+            check_libc_is_implemented(&target).expect("an implemented libc links");
+        }
     }
 
     #[test]

@@ -12,6 +12,9 @@ use std::{fmt, str::FromStr};
 pub enum Libc {
     Glibc,
     Musl,
+    /// Lamina's own C library. The name is reserved and the plumbing is in place; no
+    /// implementation exists yet, so [`Libc::is_implemented`] answers `false` for it.
+    Lamina,
 }
 
 impl Libc {
@@ -20,6 +23,28 @@ impl Libc {
         match self {
             Self::Glibc => "gnu",
             Self::Musl => "musl",
+            Self::Lamina => "lamina",
+        }
+    }
+
+    /// Whether lamina has an implementation of this C library to link a program against.
+    ///
+    /// `false` is a promise that the link refuses and names the library, rather than
+    /// taking another C library's interpreter, start-up objects and symbols instead.
+    pub const fn is_implemented(self) -> bool {
+        match self {
+            Self::Glibc | Self::Musl => true,
+            Self::Lamina => false,
+        }
+    }
+
+    /// Why this C library cannot be linked, for a diagnostic, or `None` when it can.
+    pub const fn unavailable_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Glibc | Self::Musl => None,
+            Self::Lamina => Some(
+                "the Lamina C library is not implemented yet: there is no Lamina libc to link, no start-up objects and no dynamic loader for it",
+            ),
         }
     }
 }
@@ -29,6 +54,7 @@ impl fmt::Display for Libc {
         let s = match self {
             Self::Glibc => "glibc",
             Self::Musl => "musl",
+            Self::Lamina => "lamina",
         };
         write!(f, "{s}")
     }
@@ -55,6 +81,12 @@ pub enum TargetEnvironment {
     Gnu,
     /// musl libc.
     Musl,
+    /// Lamina's own C library, beside musl rather than on top of it.
+    ///
+    /// Reserved: the axis carries the choice so the target grammar is settled, but no
+    /// Lamina libc has been written. Every environment-derived property that would name
+    /// a file answers `None` for it, and a link refuses by name.
+    Lamina,
     /// ARM EABI with the soft-float calling convention.
     Eabi,
     /// ARM EABI with the hard-float calling convention: floats in VFP registers.
@@ -66,9 +98,10 @@ pub enum TargetEnvironment {
 
 impl TargetEnvironment {
     /// Every environment a target string may name, in the order the diagnostics list them.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Gnu,
         Self::Musl,
+        Self::Lamina,
         Self::Eabi,
         Self::Eabihf,
         Self::Freestanding,
@@ -79,6 +112,7 @@ impl TargetEnvironment {
         match self {
             Self::Gnu => "gnu",
             Self::Musl => "musl",
+            Self::Lamina => "lamina",
             Self::Eabi => "eabi",
             Self::Eabihf => "eabihf",
             Self::Freestanding => "none",
@@ -90,6 +124,7 @@ impl TargetEnvironment {
         match self {
             Self::Gnu | Self::Eabi | Self::Eabihf => Some(Libc::Glibc),
             Self::Musl => Some(Libc::Musl),
+            Self::Lamina => Some(Libc::Lamina),
             Self::Freestanding => None,
         }
     }
@@ -97,7 +132,9 @@ impl TargetEnvironment {
     /// Where the 128-bit integer helpers and the other compiler-runtime symbols come from.
     pub const fn compiler_runtime(self) -> CompilerRuntime {
         match self {
-            Self::Gnu | Self::Musl | Self::Eabi | Self::Eabihf => CompilerRuntime::LaminaBuiltins,
+            Self::Gnu | Self::Musl | Self::Lamina | Self::Eabi | Self::Eabihf => {
+                CompilerRuntime::LaminaBuiltins
+            }
             Self::Freestanding => CompilerRuntime::None,
         }
     }
@@ -106,7 +143,7 @@ impl TargetEnvironment {
     /// registers. This is the eabi/eabihf distinction on 32-bit ARM.
     pub const fn hardware_float(self) -> bool {
         match self {
-            Self::Gnu | Self::Musl | Self::Eabihf => true,
+            Self::Gnu | Self::Musl | Self::Lamina | Self::Eabihf => true,
             Self::Eabi | Self::Freestanding => false,
         }
     }
@@ -130,6 +167,7 @@ impl FromStr for TargetEnvironment {
         match s {
             "gnu" => Ok(Self::Gnu),
             "musl" => Ok(Self::Musl),
+            "lamina" => Ok(Self::Lamina),
             "eabi" => Ok(Self::Eabi),
             "eabihf" => Ok(Self::Eabihf),
             "none" => Ok(Self::Freestanding),
@@ -185,6 +223,40 @@ mod tests {
                 CompilerRuntime::None
             };
             assert_eq!(env.compiler_runtime(), expected, "{env}");
+        }
+    }
+
+    #[test]
+    fn lamina_is_a_libc_of_its_own_taking_our_own_compiler_runtime() {
+        let env = TargetEnvironment::Lamina;
+        assert_eq!(env.token(), "lamina");
+        assert_eq!(env.libc(), Some(Libc::Lamina));
+        assert_eq!(env.compiler_runtime(), CompilerRuntime::LaminaBuiltins);
+        assert!(env.is_hosted());
+        assert!(env.hardware_float());
+        assert_eq!(Libc::Lamina.triple_component(), "lamina");
+        assert_eq!(Libc::Lamina.to_string(), "lamina");
+    }
+
+    #[test]
+    fn the_lamina_libc_is_the_one_that_is_not_implemented_yet() {
+        assert!(Libc::Glibc.is_implemented());
+        assert!(Libc::Musl.is_implemented());
+        assert!(!Libc::Lamina.is_implemented());
+        assert_eq!(Libc::Glibc.unavailable_reason(), None);
+        assert_eq!(Libc::Musl.unavailable_reason(), None);
+        let reason = Libc::Lamina
+            .unavailable_reason()
+            .expect("an unimplemented libc states why");
+        assert!(reason.contains("Lamina C library"), "{reason}");
+        assert!(reason.contains("not implemented"), "{reason}");
+    }
+
+    #[test]
+    fn an_unimplemented_libc_is_still_a_hosted_environment() {
+        for env in TargetEnvironment::ALL {
+            let hosted = env.libc().is_some();
+            assert_eq!(env.is_hosted(), hosted, "{env}");
         }
     }
 

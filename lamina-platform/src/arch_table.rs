@@ -106,6 +106,9 @@ pub struct LinuxInterpreters {
     pub gnu_soft_float: Option<&'static str>,
     /// musl libc.
     pub musl: Option<&'static str>,
+    /// Lamina's own C library. `None` on every architecture today: no Lamina libc has
+    /// been written, so there is no loader to name. A port fills this in here.
+    pub lamina: Option<&'static str>,
 }
 
 /// Cross-toolchain triples, by C library.
@@ -113,6 +116,9 @@ pub struct LinuxInterpreters {
 pub struct ToolchainTriples {
     pub gnu: Option<&'static str>,
     pub musl: Option<&'static str>,
+    /// Lamina's own toolchain. `None` on every architecture today: nothing outside this
+    /// repository supplies a Lamina-libc cross compiler, and nothing should be guessed.
+    pub lamina: Option<&'static str>,
 }
 
 /// Everything an architecture states about itself.
@@ -178,6 +184,7 @@ impl ArchSpec {
             TargetEnvironment::Gnu | TargetEnvironment::Eabihf => self.interpreters.gnu,
             TargetEnvironment::Eabi => self.interpreters.gnu_soft_float,
             TargetEnvironment::Musl => self.interpreters.musl,
+            TargetEnvironment::Lamina => self.interpreters.lamina,
             TargetEnvironment::Freestanding => None,
         }
     }
@@ -189,6 +196,7 @@ impl ArchSpec {
                 self.toolchain.gnu
             }
             TargetEnvironment::Musl => self.toolchain.musl,
+            TargetEnvironment::Lamina => self.toolchain.lamina,
             TargetEnvironment::Freestanding => self.toolchain.gnu,
         }
     }
@@ -216,8 +224,13 @@ macro_rules! arch_table {
             output_artifact: $artifact:ident,
             hosted_environment: $hosted:ident,
             environments: [$($environment:ident),* $(,)?],
-            interpreters: { gnu: $i_gnu:expr, gnu_soft_float: $i_soft:expr, musl: $i_musl:expr },
-            toolchain: { gnu: $t_gnu:expr, musl: $t_musl:expr },
+            interpreters: {
+                gnu: $i_gnu:expr,
+                gnu_soft_float: $i_soft:expr,
+                musl: $i_musl:expr,
+                lamina: $i_lamina:expr
+            },
+            toolchain: { gnu: $t_gnu:expr, musl: $t_musl:expr, lamina: $t_lamina:expr },
             msvc_library_arch: $msvc:expr,
             variants: $axis:expr,
         }
@@ -258,8 +271,13 @@ macro_rules! arch_table {
                                 gnu: $i_gnu,
                                 gnu_soft_float: $i_soft,
                                 musl: $i_musl,
+                                lamina: $i_lamina,
                             },
-                            toolchain: ToolchainTriples { gnu: $t_gnu, musl: $t_musl },
+                            toolchain: ToolchainTriples {
+                                gnu: $t_gnu,
+                                musl: $t_musl,
+                                lamina: $t_lamina,
+                            },
                             msvc_library_arch: $msvc,
                             variants: $axis,
                         },
@@ -308,13 +326,14 @@ arch_table! {
         honors_argument_alignment: true,
         output_artifact: Executable,
         hosted_environment: Gnu,
-        environments: [Gnu, Musl],
+        environments: [Gnu, Musl, Lamina],
         interpreters: {
             gnu: Some("/lib64/ld-linux-x86-64.so.2"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-x86_64.so.1")
+            musl: Some("/lib/ld-musl-x86_64.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("x86_64-linux-gnu"), musl: Some("x86_64-linux-musl") },
+        toolchain: { gnu: Some("x86_64-linux-gnu"), musl: Some("x86_64-linux-musl"), lamina: None },
         msvc_library_arch: Some("x64"),
         variants: VariantAxis::X86(X86CpuLevel::V2),
     }
@@ -335,13 +354,14 @@ arch_table! {
         honors_argument_alignment: true,
         output_artifact: Executable,
         hosted_environment: Gnu,
-        environments: [Gnu, Musl],
+        environments: [Gnu, Musl, Lamina],
         interpreters: {
             gnu: Some("/lib/ld-linux-aarch64.so.1"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-aarch64.so.1")
+            musl: Some("/lib/ld-musl-aarch64.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("aarch64-linux-gnu"), musl: Some("aarch64-linux-musl") },
+        toolchain: { gnu: Some("aarch64-linux-gnu"), musl: Some("aarch64-linux-musl"), lamina: None },
         msvc_library_arch: Some("arm64"),
         variants: VariantAxis::Aarch64(Aarch64Level::V8_0),
     }
@@ -361,8 +381,8 @@ arch_table! {
         output_artifact: Executable,
         hosted_environment: Freestanding,
         environments: [],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -382,8 +402,8 @@ arch_table! {
         output_artifact: Executable,
         hosted_environment: Eabi,
         environments: [Eabi, Eabihf],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: Some("arm"),
         variants: VariantAxis::None,
     }
@@ -404,9 +424,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib/ld-linux-armhf.so.3"),
             gnu_soft_float: Some("/lib/ld-linux.so.3"),
-            musl: None
+            musl: None,
+            lamina: None
         },
-        toolchain: { gnu: Some("arm-linux-gnueabihf"), musl: None },
+        toolchain: { gnu: Some("arm-linux-gnueabihf"), musl: None, lamina: None },
         msvc_library_arch: Some("arm"),
         variants: VariantAxis::Armv7(Armv7Variant::cortex_a7()),
     }
@@ -425,8 +446,8 @@ arch_table! {
         output_artifact: Executable,
         hosted_environment: Eabi,
         environments: [Eabi],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: Some("arm"),
         variants: VariantAxis::None,
     }
@@ -445,8 +466,8 @@ arch_table! {
         output_artifact: Executable,
         hosted_environment: Eabi,
         environments: [Eabi],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: Some("arm"),
         variants: VariantAxis::Armv7(Armv7Variant::cortex_m3()),
     }
@@ -467,9 +488,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib/ld-linux.so.2"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-i386.so.1")
+            musl: Some("/lib/ld-musl-i386.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("i686-linux-gnu"), musl: Some("i686-linux-musl") },
+        toolchain: { gnu: Some("i686-linux-gnu"), musl: Some("i686-linux-musl"), lamina: None },
         msvc_library_arch: Some("x86"),
         variants: VariantAxis::None,
     }
@@ -490,9 +512,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib/ld-linux-riscv32-ilp32d.so.1"),
             gnu_soft_float: Some("/lib/ld-linux-riscv32-ilp32.so.1"),
-            musl: Some("/lib/ld-musl-riscv32.so.1")
+            musl: Some("/lib/ld-musl-riscv32.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("riscv32-linux-gnu"), musl: Some("riscv32-linux-musl") },
+        toolchain: { gnu: Some("riscv32-linux-gnu"), musl: Some("riscv32-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::Riscv(RiscvIsa::general(32)),
     }
@@ -513,9 +536,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib/ld-linux-riscv64-lp64d.so.1"),
             gnu_soft_float: Some("/lib/ld-linux-riscv64-lp64.so.1"),
-            musl: Some("/lib/ld-musl-riscv64.so.1")
+            musl: Some("/lib/ld-musl-riscv64.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("riscv64-linux-gnu"), musl: Some("riscv64-linux-musl") },
+        toolchain: { gnu: Some("riscv64-linux-gnu"), musl: Some("riscv64-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::Riscv(RiscvIsa::general(64)),
     }
@@ -534,8 +558,8 @@ arch_table! {
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::Riscv(RiscvIsa::general(128)),
     }
@@ -553,8 +577,8 @@ arch_table! {
         output_artifact: Module,
         hosted_environment: Freestanding,
         environments: [],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -572,8 +596,8 @@ arch_table! {
         output_artifact: Module,
         hosted_environment: Freestanding,
         environments: [],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -595,9 +619,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib64/ld64.so.2"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-powerpc64le.so.1")
+            musl: Some("/lib/ld-musl-powerpc64le.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("powerpc64le-linux-gnu"), musl: Some("powerpc64le-linux-musl") },
+        toolchain: { gnu: Some("powerpc64le-linux-gnu"), musl: Some("powerpc64le-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::Power(PowerLevel::Power8),
     }
@@ -619,9 +644,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib64/ld64.so.2"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-powerpc64.so.1")
+            musl: Some("/lib/ld-musl-powerpc64.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("powerpc64-linux-gnu"), musl: Some("powerpc64-linux-musl") },
+        toolchain: { gnu: Some("powerpc64-linux-gnu"), musl: Some("powerpc64-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::Power(PowerLevel::Power8),
     }
@@ -642,9 +668,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib64/ld.so.1"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-mips64.so.1")
+            musl: Some("/lib/ld-musl-mips64.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("mips64-linux-gnuabi64"), musl: Some("mips64-linux-musl") },
+        toolchain: { gnu: Some("mips64-linux-gnuabi64"), musl: Some("mips64-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -665,9 +692,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib64/ld.so.1"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-mips64el.so.1")
+            musl: Some("/lib/ld-musl-mips64el.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("mips64el-linux-gnuabi64"), musl: Some("mips64el-linux-musl") },
+        toolchain: { gnu: Some("mips64el-linux-gnuabi64"), musl: Some("mips64el-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -688,9 +716,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib64/ld-linux-loongarch-lp64d.so.1"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-loongarch64.so.1")
+            musl: Some("/lib/ld-musl-loongarch64.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("loongarch64-linux-gnu"), musl: Some("loongarch64-linux-musl") },
+        toolchain: { gnu: Some("loongarch64-linux-gnu"), musl: Some("loongarch64-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -711,9 +740,10 @@ arch_table! {
         interpreters: {
             gnu: Some("/lib/ld64.so.1"),
             gnu_soft_float: None,
-            musl: Some("/lib/ld-musl-s390x.so.1")
+            musl: Some("/lib/ld-musl-s390x.so.1"),
+            lamina: None
         },
-        toolchain: { gnu: Some("s390x-linux-gnu"), musl: Some("s390x-linux-musl") },
+        toolchain: { gnu: Some("s390x-linux-gnu"), musl: Some("s390x-linux-musl"), lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -731,8 +761,8 @@ arch_table! {
         output_artifact: Text,
         hosted_environment: Freestanding,
         environments: [],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -750,8 +780,8 @@ arch_table! {
         output_artifact: Text,
         hosted_environment: Freestanding,
         environments: [],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
@@ -770,8 +800,8 @@ arch_table! {
         output_artifact: Executable,
         hosted_environment: Freestanding,
         environments: [],
-        interpreters: { gnu: None, gnu_soft_float: None, musl: None },
-        toolchain: { gnu: None, musl: None },
+        interpreters: { gnu: None, gnu_soft_float: None, musl: None, lamina: None },
+        toolchain: { gnu: None, musl: None, lamina: None },
         msvc_library_arch: None,
         variants: VariantAxis::None,
     }
