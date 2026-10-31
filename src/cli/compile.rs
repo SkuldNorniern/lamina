@@ -1,4 +1,5 @@
 use super::{
+    host_cpu::check_host_runs_level,
     jit::handle_jit_compilation,
     options::{CompileOptions, toolchain_backends},
 };
@@ -7,8 +8,7 @@ use crate::{
     mir::{TransformPipeline, codegen::from_ir_for_target},
     mir_codegen::{
         assemble::{
-            assemble_with_ras_object_options, get_assembly_output_extension,
-            get_intermediate_extension,
+            assemble_with_ras_object_options, assembler_input_extension, assembler_output_extension,
         },
         generate_mir_to_target_with_settings,
         link::{get_output_extension, link_with_runtime},
@@ -19,7 +19,9 @@ use crate::{
 use lamina_mir::RelocationModel;
 #[cfg(feature = "ssa-round-trip")]
 use lamina_mir::ssa::round_trip_module;
-use lamina_platform::{OutputArtifact, Target, TargetOperatingSystem, cpu_count};
+use lamina_platform::{
+    OutputArtifact, Target, TargetArchitecture, TargetOperatingSystem, cpu_count,
+};
 use std::{
     error::Error,
     fs::File,
@@ -28,6 +30,35 @@ use std::{
     process,
     str::FromStr,
 };
+
+/// Refuses an AOT build for this host whose x86-64 level the host cannot execute.
+///
+/// Only the defaulted level is checked. An explicit `--cpu-level` names a machine the
+/// operator chose, which an AOT build is free to be some other machine than this one;
+/// the default is not a choice, so code the host cannot run is a mistake rather than an
+/// intent, and it would otherwise surface as SIGILL from the compiler's own output.
+fn check_default_cpu_level_runs_here(
+    options: &CompileOptions,
+    target: Target,
+) -> Result<(), Box<dyn Error>> {
+    if options.cpu_level_explicit || target.architecture != TargetArchitecture::X86_64 {
+        return Ok(());
+    }
+    let host = Target::detect_host()?;
+    if host.architecture != target.architecture || host.operating_system != target.operating_system
+    {
+        return Ok(());
+    }
+    let level = options.mir_codegen_settings.x86_cpu_level();
+    check_host_runs_level(
+        level,
+        "the default --cpu-level",
+        &format!(
+            "name a level this host runs, such as --cpu-level v1, or --target a machine that runs {level}"
+        ),
+    )?;
+    Ok(())
+}
 
 pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     let input_path = &options.input_file;
@@ -173,6 +204,8 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         default_target
     };
 
+    check_default_cpu_level_runs_here(&options, target)?;
+
     let ir_mod = parse_module(&ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
     let mut mir_mod = from_ir_for_target(
         &ir_mod,
@@ -221,7 +254,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     )
     .map_err(|e| format!("Code generation failed: {e}"))?;
 
-    let intermediate_ext = get_intermediate_extension(target.architecture, target.operating_system);
+    let intermediate_ext = assembler_input_extension(target.architecture, target.operating_system);
     let mut intermediate_path = output_stem.clone();
     intermediate_path.set_extension(intermediate_ext);
 
@@ -268,7 +301,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let assembly_output_ext = get_assembly_output_extension(target.architecture);
+    let assembly_output_ext = assembler_output_extension(target.architecture);
     let mut assembly_output_path = output_stem.clone();
     assembly_output_path.set_extension(assembly_output_ext);
 
@@ -387,8 +420,41 @@ fn pie_link_flags(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::pie_link_flags;
+    use super::{check_default_cpu_level_runs_here, pie_link_flags};
+    use crate::cli::options::{CompileOptions, parse_args_from};
     use lamina_mir::RelocationModel;
+    use lamina_platform::{Target, TargetArchitecture};
+    use std::str::FromStr;
+
+    fn options(args: &[&str]) -> CompileOptions {
+        let mut all = vec!["lamina".to_string(), "prog.lamina".to_string()];
+        all.extend(args.iter().map(ToString::to_string));
+        parse_args_from(all).expect("arguments parse")
+    }
+
+    #[test]
+    fn the_cpu_level_host_check_only_judges_a_defaulted_level_for_this_host() {
+        let foreign = Target::from_str("aarch64_linux").expect("aarch64_linux is a target");
+        assert!(check_default_cpu_level_runs_here(&options(&[]), foreign).is_ok());
+
+        let x86 = Target::from_str("x86_64_linux").expect("x86_64_linux is a target");
+        let named = options(&["--cpu-level", "v4", "--target", "x86_64_linux"]);
+        assert!(named.cpu_level_explicit);
+        assert!(
+            check_default_cpu_level_runs_here(&named, x86).is_ok(),
+            "an explicitly named level is the operator's choice of machine"
+        );
+
+        let host = Target::detect_host().expect("host is a supported target");
+        let defaulted = options(&[]);
+        assert!(!defaulted.cpu_level_explicit);
+        if host.architecture == TargetArchitecture::X86_64 {
+            assert!(
+                check_default_cpu_level_runs_here(&defaulted, host).is_ok(),
+                "this host builds and runs its own default level"
+            );
+        }
+    }
 
     #[test]
     fn pie_module_links_with_pie_once() {
