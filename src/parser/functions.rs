@@ -185,6 +185,12 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
         });
     }
 
+    if annotations.contains(&FunctionAnnotation::Extern) {
+        return Err(state.error(format!(
+            "@extern function '{name}' has a body\n  Hint: @extern declares a symbol defined elsewhere; drop the body to declare it, or drop @extern to define it here"
+        )));
+    }
+
     state.expect_char('{')?;
 
     let mut basic_blocks = HashMap::new();
@@ -415,6 +421,16 @@ mod tests {
             .to_string();
         assert!(err.contains("@const was removed"), "{err}");
         assert!(err.contains("@pure"), "{err}");
+    }
+
+    #[test]
+    fn extern_with_a_body_is_rejected() {
+        let source = "@extern\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n";
+        let err = parse_module(source)
+            .expect_err("@extern names a symbol defined elsewhere")
+            .to_string();
+        assert!(err.contains("has a body"), "{err}");
+        parse_module("@extern\nfn @g() -> i64\n").expect("@extern without a body declares");
     }
 
     #[test]

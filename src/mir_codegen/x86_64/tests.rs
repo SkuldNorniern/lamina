@@ -562,22 +562,10 @@ fn @plain_helper() -> i64 {
 entry:
  ret.i64 7
 }
-@extern fn @dirty_i8() -> i8 {
-entry:
- ret.i8 0
-}
-@extern fn @dirty_u8() -> u8 {
-entry:
- ret.u8 0
-}
-@extern fn @dirty_i16() -> i16 {
-entry:
- ret.i16 0
-}
-@extern fn @dirty_i32() -> i32 {
-entry:
- ret.i32 0
-}
+@extern fn @dirty_i8() -> i8
+@extern fn @dirty_u8() -> u8
+@extern fn @dirty_i16() -> i16
+@extern fn @dirty_i32() -> i32
 @export fn @call_dirty_i8() -> i64 {
 entry:
  %r = call @dirty_i8()
@@ -851,30 +839,12 @@ int main(void) {
 
     /// Each `probe_*` materializes a narrow constant and passes it to a raw callee.
     const OUTGOING: &str = r#"
-@extern fn @raw_u8(u8 %x) -> i64 {
-entry:
- ret.i64 0
-}
-@extern fn @raw_i8(i8 %x) -> i64 {
-entry:
- ret.i64 0
-}
-@extern fn @raw_u16(u16 %x) -> i64 {
-entry:
- ret.i64 0
-}
-@extern fn @raw_i16(i16 %x) -> i64 {
-entry:
- ret.i64 0
-}
-@extern fn @raw_u32(u32 %x) -> i64 {
-entry:
- ret.i64 0
-}
-@extern fn @raw_i32(i32 %x) -> i64 {
-entry:
- ret.i64 0
-}
+@extern fn @raw_u8(u8 %x) -> i64
+@extern fn @raw_i8(i8 %x) -> i64
+@extern fn @raw_u16(u16 %x) -> i64
+@extern fn @raw_i16(i16 %x) -> i64
+@extern fn @raw_u32(u32 %x) -> i64
+@extern fn @raw_i32(i32 %x) -> i64
 @export fn @probe_u8() -> i64 {
 entry:
  %v = add.u8 255, 0
@@ -911,30 +881,12 @@ entry:
  %r = call @raw_i32(%v)
  ret.i64 %r
 }
-@extern fn @raw_ret_u8() -> u8 {
-entry:
- ret.u8 0
-}
-@extern fn @raw_ret_i8() -> i8 {
-entry:
- ret.i8 0
-}
-@extern fn @raw_ret_u16() -> u16 {
-entry:
- ret.u16 0
-}
-@extern fn @raw_ret_i16() -> i16 {
-entry:
- ret.i16 0
-}
-@extern fn @raw_ret_u32() -> u32 {
-entry:
- ret.u32 0
-}
-@extern fn @raw_ret_i32() -> i32 {
-entry:
- ret.i32 0
-}
+@extern fn @raw_ret_u8() -> u8
+@extern fn @raw_ret_i8() -> i8
+@extern fn @raw_ret_u16() -> u16
+@extern fn @raw_ret_i16() -> i16
+@extern fn @raw_ret_u32() -> u32
+@extern fn @raw_ret_i32() -> i32
 @export fn @probe_ret_u8() -> i64 {
 entry:
  %r = call @raw_ret_u8()
@@ -1126,19 +1078,9 @@ mod float_c_abi_tests {
     use std::error::Error;
 
     const OUTGOING: &str = r#"
-@extern fn @c_mix(i64 %a, f64 %x, i64 %b, f32 %y, f64 %z) -> f64 {
-entry:
- ret.f64 0.0
-}
-@extern fn @c_spill(i64 %i0, f64 %f0, i64 %i1, f64 %f1, i64 %i2, f64 %f2, i64 %i3, f32 %f3, i64 %i4, f64 %f4, i64 %i5, f64 %f5, i64 %i6, f64 %f6, f64 %f7, f64 %f8) -> f64 {
-entry:
- ret.f64 0.0
-}
-@extern fn @c_f32(f32 %x, i64 %n) -> f32 {
-entry:
- %z = add.f32 0.0, 0.0
- ret.f32 %z
-}
+@extern fn @c_mix(i64 %a, f64 %x, i64 %b, f32 %y, f64 %z) -> f64
+@extern fn @c_spill(i64 %i0, f64 %f0, i64 %i1, f64 %f1, i64 %i2, f64 %f2, i64 %i3, f32 %f3, i64 %i4, f64 %f4, i64 %i5, f64 %f5, i64 %i6, f64 %f6, f64 %f7, f64 %f8) -> f64
+@extern fn @c_f32(f32 %x, i64 %n) -> f32
 @export fn @run_mix() -> f64 {
 entry:
  %y = add.f32 2.25, 0.0
@@ -1337,14 +1279,8 @@ int main(void) {
 "#;
 
     const OUTGOING: &str = r#"
-@extern fn @c_pair(struct { a: i64, b: i64 } %p) -> i64 {
-entry:
- ret.i64 0
-}
-@extern fn @c_spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, struct { a: i64, b: i64 } %p) -> i64 {
-entry:
- ret.i64 0
-}
+@extern fn @c_pair(struct { a: i64, b: i64 } %p) -> i64
+@extern fn @c_spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, struct { a: i64, b: i64 } %p) -> i64
 @export fn @send_pair() -> i64 {
 entry:
  %q = stackalloc.struct { a: i64, b: i64 }
@@ -1404,11 +1340,7 @@ entry:
  store.i32 %pb, 9
  ret.struct { a: i32, b: i32 } %p
 }
-@extern fn @c_make(i64 %x) -> struct { a: i64, b: i64 } {
-entry:
- %p = stackalloc.struct { a: i64, b: i64 }
- ret.struct { a: i64, b: i64 } %p
-}
+@extern fn @c_make(i64 %x) -> struct { a: i64, b: i64 }
 @export fn @take_c() -> i64 {
 entry:
  %r = call @c_make(10)

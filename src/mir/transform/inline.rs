@@ -538,7 +538,7 @@ mod tests {
     #[test]
     fn external_callees_are_never_inlined() {
         let ir = parse_module(
-            "@extern fn @helper() -> i64 {\nentry:\nret.i64 7\n}\nfn @main() -> i64 {\nentry:\n%v = call @helper()\nret.i64 %v\n}",
+            "@extern fn @helper() -> i64\nfn @main() -> i64 {\nentry:\n%v = call @helper()\nret.i64 %v\n}",
         )
         .expect("parse extern caller");
         let mut module = from_ir_x86_64(&ir, "extern caller").expect("lower extern caller");
