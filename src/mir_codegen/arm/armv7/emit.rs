@@ -1,6 +1,8 @@
 //! Instruction lowering for the armv7 backend.
 
-use crate::mir_codegen::common::{unsupported_overflow_flag, unsupported_thread_local};
+use crate::mir_codegen::common::{
+    unsupported_inline_asm, unsupported_overflow_flag, unsupported_thread_local,
+};
 use std::io::Write;
 
 use crate::{
@@ -485,9 +487,7 @@ pub(crate) fn emit_instruction<W: Write>(
             ));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(unsupported(
-                "armv7 backend does not implement inline assembly".to_string(),
-            ));
+            return Err(unsupported_inline_asm("armv7"));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }

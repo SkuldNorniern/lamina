@@ -19,8 +19,8 @@ use crate::mir_codegen::common::{
     promoted_argument_type,
 };
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, reject_underaligned_accesses, unsupported_overflow_flag,
-    unsupported_thread_local,
+    reject_thread_local_globals, reject_underaligned_accesses, unsupported_inline_asm,
+    unsupported_overflow_flag, unsupported_thread_local,
 };
 use crate::{
     error::LaminaError,
@@ -1011,9 +1011,7 @@ fn emit_instruction<W: Write>(
             return Err(unsupported("LoongArch64 atomic operations and fences"));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(unsupported(
-                "inline assembly is not supported by the LoongArch64 backend",
-            ));
+            return Err(unsupported_inline_asm("LoongArch64"));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }

@@ -2,7 +2,9 @@
 
 use std::io::Write;
 
-use crate::mir_codegen::common::{unsupported_overflow_flag, unsupported_thread_local};
+use crate::mir_codegen::common::{
+    unsupported_inline_asm, unsupported_overflow_flag, unsupported_thread_local,
+};
 use crate::{
     error::LaminaError,
     mir::{
@@ -408,10 +410,7 @@ pub(crate) fn emit_instruction<W: Write>(
             )));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(unsupported(format!(
-                "{} backend does not implement inline assembly",
-                isa.target_name()
-            )));
+            return Err(unsupported_inline_asm(isa.target_name()));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }

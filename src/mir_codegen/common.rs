@@ -2423,6 +2423,28 @@ entry:
     }
 
     #[test]
+    fn every_backend_without_inline_asm_names_the_same_supported_set() {
+        use crate::mir_codegen::common::unsupported_inline_asm;
+        for backend in [
+            "WASM",
+            "armv7",
+            "thumbv6m",
+            "thumbv7m",
+            "LoongArch64",
+            "AArch64",
+            "RISC-V",
+            "mips64",
+            "i686",
+            "PowerPC64",
+        ] {
+            let text = unsupported_inline_asm(backend).to_string();
+            assert!(text.contains(backend), "{text}");
+            assert!(text.contains("x86_64 Linux and s390x"), "{text}");
+            assert!(!text.contains("x86_64 Linux only"), "{text}");
+        }
+    }
+
+    #[test]
     fn s390x_implements_what_the_refusal_messages_credit_it_with() {
         for source in [
             "fn @main() -> i64 {\nentry:\n %f = add.ovf.i64 1, 2\n %z = extend.bool.i64 %f\n ret.i64 %z\n}\n",

@@ -6,7 +6,8 @@ use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::reject_function_placement;
 use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
+    reject_thread_local_globals, unsupported_inline_asm, unsupported_overflow_flag,
+    unsupported_thread_local,
 };
 use crate::mir_codegen::simd::vector_slots;
 
@@ -1788,10 +1789,7 @@ fn emit_instruction_wasm(
             )));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "inline assembly is not supported by the WASM backend; it is x86_64 Linux only"
-                    .to_string(),
-            )));
+            return Err(unsupported_inline_asm("WASM"));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
