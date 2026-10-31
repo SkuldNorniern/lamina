@@ -7,8 +7,8 @@ use crate::mir_codegen::common::{
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, reject_underaligned_accesses, unsupported_overflow_flag,
-    unsupported_thread_local,
+    reject_thread_local_globals, reject_underaligned_accesses, unsupported_inline_asm,
+    unsupported_overflow_flag, unsupported_thread_local,
 };
 use lamina_mir::SourceLoc;
 mod atomic;
@@ -2221,10 +2221,7 @@ fn emit_instruction_riscv<W: Write>(
             return Err(unsupported_overflow_flag("RISC-V"));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "inline assembly is not supported by the RISC-V backend; it is x86_64 Linux only"
-                    .to_string(),
-            )));
+            return Err(unsupported_inline_asm("RISC-V"));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }

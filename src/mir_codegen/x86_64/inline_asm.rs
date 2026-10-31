@@ -185,7 +185,7 @@ pub(super) fn emit<W: Write>(
     };
     if target_os != TargetOperatingSystem::Linux {
         return Err(LaminaError::ValidationError(
-            "inline assembly is supported on x86_64 Linux only".to_owned(),
+            "the x86_64 backend emits inline assembly for Linux only".to_owned(),
         ));
     }
     let bindings = bind(operands, clobbers)?;

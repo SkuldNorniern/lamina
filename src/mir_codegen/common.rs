@@ -1,6 +1,6 @@
 //! Common code for MIR codegen backends.
 
-use lamina_mir::{Instruction as MirInstruction, ScalarType, SourceLoc};
+use lamina_mir::{Instruction as MirInstruction, ScalarType, SourceLoc, instruction::AddressMode};
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt::{Debug, Display},
@@ -21,7 +21,7 @@ use crate::{
     mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
 use lamina_codegen::{Allocation, LiveInterval, os_uses_coff, os_uses_macho};
-use lamina_platform::{PointerWidth, TargetOperatingSystem};
+use lamina_platform::{MemoryOrdering, PointerWidth, TargetOperatingSystem};
 
 pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
@@ -33,15 +33,23 @@ pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError
 /// to the wrapping arithmetic alone.
 pub fn unsupported_overflow_flag(backend: &str) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "checked arithmetic ('<op>.ovf') is not supported by the {backend} backend; it is x86_64 only"
+        "checked arithmetic ('<op>.ovf') is not supported by the {backend} backend; it is implemented for x86_64 and s390x"
     )))
 }
 
 /// The refusal a backend gives for a thread-local address, whose relocations are
-/// target-specific and implemented for x86_64 alone.
+/// target-specific and implemented for x86_64 and s390x.
 pub fn unsupported_thread_local(backend: &str) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "thread-local storage ('@thread_local') is not supported by the {backend} backend; it is x86_64 only"
+        "thread-local storage ('@thread_local') is not supported by the {backend} backend; it is implemented for x86_64 and s390x"
+    )))
+}
+
+/// The refusal a backend gives for inline assembly, whose operand placement and
+/// clobber names are target-specific and implemented for x86_64 Linux and s390x.
+pub fn unsupported_inline_asm(backend: &str) -> LaminaError {
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+        "inline assembly is not supported by the {backend} backend; it is implemented for x86_64 Linux and s390x"
     )))
 }
 
@@ -56,10 +64,85 @@ pub fn reject_thread_local_globals(module: &MirModule, backend: &str) -> Result<
         None => Ok(()),
         Some((name, _)) => Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
             format!(
-                "thread-local storage is not supported by the {backend} backend; it is x86_64 only (global '{name}')"
+                "thread-local storage is not supported by the {backend} backend; it is implemented for x86_64 and s390x (global '{name}')"
             ),
         ))),
     }
+}
+
+/// Rejects a compare-exchange whose failure ordering is not one a failed exchange can
+/// carry. The rule lives in [`MemoryOrdering::cmpxchg_failure_rejection`]; this walks a
+/// module so every backend gets it from one place.
+pub fn reject_invalid_cmpxchg_orderings(module: &MirModule) -> Result<(), LaminaError> {
+    for (name, function) in &module.functions {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let MirInstruction::AtomicCompareExchange {
+                    success_ordering,
+                    failure_ordering,
+                    ..
+                } = &instruction.instr
+                else {
+                    continue;
+                };
+                if let Some(reason) =
+                    MemoryOrdering::cmpxchg_failure_rejection(*success_ordering, *failure_ordering)
+                {
+                    return Err(LaminaError::ValidationError(format!(
+                        "atomic_cmpxchg cannot use {failure_ordering} failure ordering with \
+                         {success_ordering} success ordering: {reason} (function '{name}')"
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Rejects an atomic access whose address cannot hold the natural alignment of its
+/// type.
+///
+/// An atomic access is naturally aligned by rule: an LL/SC target faults outright on
+/// any other address, and the lock-prefixed forms that do not fault carry a cost the
+/// IR never asks for. No atomic instruction states an alignment, so the base register
+/// is the program's responsibility, but a displacement the address mode adds to it is
+/// this compiler's: an offset, or an index scale, that is not a multiple of the
+/// accessed size moves a naturally aligned base off its boundary.
+pub fn reject_underaligned_atomics(
+    module: &MirModule,
+    pointer: PointerWidth,
+) -> Result<(), LaminaError> {
+    for (name, function) in &module.functions {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let (ty, addr, what) = match &instruction.instr {
+                    MirInstruction::AtomicLoad { ty, addr, .. } => (ty, addr, "atomic load"),
+                    MirInstruction::AtomicStore { ty, addr, .. } => (ty, addr, "atomic store"),
+                    MirInstruction::AtomicBinary { ty, addr, .. } => {
+                        (ty, addr, "atomic read-modify-write")
+                    }
+                    MirInstruction::AtomicCompareExchange { ty, addr, .. } => {
+                        (ty, addr, "atomic compare-exchange")
+                    }
+                    _ => continue,
+                };
+                let natural = ty.alignment(pointer) as i64;
+                let (displacement, step) = match addr {
+                    AddressMode::BaseOffset { offset, .. } => (i64::from(*offset), natural),
+                    AddressMode::BaseIndexScale { offset, scale, .. } => {
+                        (i64::from(*offset), i64::from(*scale))
+                    }
+                };
+                if displacement % natural != 0 || step % natural != 0 {
+                    return Err(LaminaError::ValidationError(format!(
+                        "a {what} of {ty} must be naturally aligned ({natural} bytes), and the \
+                         address {addr} cannot be (function '{name}')"
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Rejects a load or store that states an alignment below the natural alignment of
@@ -2094,6 +2177,7 @@ mod export_linkage_tests {
     use super::{reject_thread_local_globals, reject_underaligned_accesses};
     #[cfg(feature = "nightly")]
     use crate::mir_codegen::arx64::generate_mir_arx64;
+    use crate::mir_codegen::{MirCodegenSettings, generate_mir_to_target_with_settings};
     use crate::{
         error::LaminaError,
         mir::{Module as MirModule, codegen::from_ir_x86_64},
@@ -2104,7 +2188,7 @@ mod export_linkage_tests {
         parser::parse_module,
     };
     use lamina_platform::PointerWidth;
-    use lamina_platform::TargetOperatingSystem;
+    use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
 
     const SOURCE: &str = r#"
 @export fn @answer() -> i64 {
@@ -2319,6 +2403,43 @@ entry:
             assert!(text.contains("thread-local storage"), "{name}: {text}");
             assert!(text.contains(backend), "{name}: {text}");
             assert!(text.contains("'t'"), "{name}: {text}");
+        }
+    }
+
+    #[test]
+    fn refusal_messages_name_every_backend_that_implements_the_feature() {
+        use crate::mir_codegen::common::{
+            unsupported_inline_asm, unsupported_overflow_flag, unsupported_thread_local,
+        };
+        for text in [
+            unsupported_overflow_flag("AArch64").to_string(),
+            unsupported_thread_local("AArch64").to_string(),
+            unsupported_inline_asm("AArch64").to_string(),
+        ] {
+            assert!(text.contains("x86_64"), "{text}");
+            assert!(text.contains("s390x"), "{text}");
+            assert!(!text.contains("x86_64 only"), "{text}");
+        }
+    }
+
+    #[test]
+    fn s390x_implements_what_the_refusal_messages_credit_it_with() {
+        for source in [
+            "fn @main() -> i64 {\nentry:\n %f = add.ovf.i64 1, 2\n %z = extend.bool.i64 %f\n ret.i64 %z\n}\n",
+            "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n %x = load.i64 $t\n ret.i64 %x\n}\n",
+            "fn @main() -> i64 {\nentry:\n %r = asm.i64 \"lghi $0, 7\", out(r2)\n ret.i64 %r\n}\n",
+        ] {
+            let ir = parse_module(source).expect("parse s390x feature module");
+            let mir = from_ir_x86_64(&ir, "s390x").expect("lower s390x feature module");
+            let mut out = Vec::new();
+            generate_mir_to_target_with_settings(
+                &mir,
+                &mut out,
+                &Target::new(TargetArchitecture::S390x, TargetOperatingSystem::Linux),
+                1,
+                &MirCodegenSettings::default(),
+            )
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
         }
     }
 

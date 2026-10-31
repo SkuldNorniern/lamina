@@ -31,7 +31,8 @@ use crate::mir_codegen::common::{
     emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
+    reject_thread_local_globals, unsupported_inline_asm, unsupported_overflow_flag,
+    unsupported_thread_local,
 };
 use lamina_mir::SourceLoc;
 
@@ -1983,9 +1984,7 @@ fn emit_instruction_ppc64<W: Write>(
             atomic::emit(inst, writer, reg_alloc, stack_slots, pointer_width)?
         }
         MirInst::InlineAsm { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "inline assembly is not supported by the PowerPC64 backend; it is x86_64 Linux only".to_string(),
-            )));
+            return Err(unsupported_inline_asm("PowerPC64"));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }

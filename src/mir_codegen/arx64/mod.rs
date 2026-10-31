@@ -11,7 +11,9 @@ use crate::mir_codegen::common::{
     CopyLocation, emit_global_directives, integer_conversion, self_tail_arguments,
     self_tail_schedule,
 };
-use crate::mir_codegen::common::{reject_thread_local_globals, reject_underaligned_accesses};
+use crate::mir_codegen::common::{
+    reject_thread_local_globals, reject_underaligned_accesses, unsupported_inline_asm,
+};
 
 use std::{
     cmp::Ordering as CmpOrdering,
@@ -491,9 +493,7 @@ fn emit_instruction<W: Write>(
         | Instruction::VaCopy { .. } => {
             unsupported("ARX64 backend does not support variadic arguments yet")
         }
-        Instruction::InlineAsm { .. } => {
-            unsupported("ARX64 backend does not support inline assembly; it is x86_64 Linux only")
-        }
+        Instruction::InlineAsm { .. } => Err(unsupported_inline_asm("ARX64")),
         other => unsupported(format!("ARX64 backend does not support MIR op {other:?}")),
     }
 }

@@ -26,8 +26,8 @@ use crate::mir_codegen::common::{
     FunctionEmissionPlan, assign_stack_slots, compile_functions_parallel, emit_debug_file,
     emit_global_data, emit_global_directives, emit_gnu_stack_note, emit_symbol_visibility,
     external_names, integer_conversion_with_width, lamina_to_codegen_error, parallel_codegen_error,
-    promoted_argument_type, reject_thread_local_globals, unsupported_overflow_flag,
-    unsupported_thread_local,
+    promoted_argument_type, reject_thread_local_globals, unsupported_inline_asm,
+    unsupported_overflow_flag, unsupported_thread_local,
 };
 use crate::{
     error::LaminaError,
@@ -1205,9 +1205,7 @@ fn emit_instruction<W: Write>(
             return Err(unsupported("mips64 atomic operations and fences"));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(unsupported(
-                "inline assembly is not supported by the mips64 backend",
-            ));
+            return Err(unsupported_inline_asm("mips64"));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }

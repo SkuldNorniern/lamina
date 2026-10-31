@@ -50,7 +50,7 @@ fn inline_asm_is_rejected_off_x86_64_linux() {
             os,
         )
         .expect_err("inline asm must be rejected off Linux");
-        assert!(error.contains("x86_64 Linux only"), "{error}");
+        assert!(error.contains("inline assembly for Linux only"), "{error}");
     }
 }
 
