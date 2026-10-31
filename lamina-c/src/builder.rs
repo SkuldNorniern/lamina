@@ -730,17 +730,6 @@ pub unsafe extern "C" fn lia_builder_getelem(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_getfieldptr(
-    _builder: *mut LaminaBuilder,
-    _result: *const c_char,
-    _struct_ptr: *const LaminaValue,
-    _field_index: usize,
-) -> LaminaStatus {
-    set_error("getfieldptr needs its struct layout; call lia_builder_getfieldptr_typed");
-    LaminaStatus::ErrorInvalidArgument
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_getfieldptr_typed(
     builder: *mut LaminaBuilder,
     result: *const c_char,
@@ -1080,17 +1069,22 @@ mod tests {
     }
 
     #[test]
-    fn getfieldptr_without_layout_fails_and_typed_form_builds() {
+    fn getfieldptr_typed_form_builds() {
         unsafe {
             let builder = lia_builder_create();
+            let ret = lia_type_i64();
+            let fname = cs("f");
+            assert_eq!(
+                lia_builder_function(builder, fname.as_ptr(), std::ptr::null(), 0, ret),
+                LaminaStatus::Ok
+            );
             let result = cs("p");
             let ptr = lia_value_var(cs("s").as_ptr());
-            let untyped = lia_builder_getfieldptr(builder, result.as_ptr(), ptr, 1);
-            assert_eq!(untyped, LaminaStatus::ErrorInvalidArgument);
             let layout = lia_type_named(cs("Pair").as_ptr());
             let typed = lia_builder_getfieldptr_typed(builder, result.as_ptr(), ptr, layout, 1);
             assert_eq!(typed, LaminaStatus::Ok);
             lia_type_free(layout);
+            lia_type_free(ret);
             lia_value_free(ptr);
             lia_builder_free(builder);
         }
