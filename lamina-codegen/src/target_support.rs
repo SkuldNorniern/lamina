@@ -46,9 +46,14 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
                 TargetOperatingSystem::Unknown | TargetOperatingSystem::Linux
             )
         }
-        TargetArchitecture::PowerPC64
-        | TargetArchitecture::PowerPC64Be
-        | TargetArchitecture::Arm32 => false,
+        TargetArchitecture::PowerPC64 => {
+            matches!(
+                os,
+                TargetOperatingSystem::Linux | TargetOperatingSystem::Unknown
+            )
+        }
+        TargetArchitecture::PowerPC64Be => os == TargetOperatingSystem::Linux,
+        TargetArchitecture::Arm32 => false,
         #[cfg(feature = "nightly")]
         TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => false,
     }
@@ -117,7 +122,7 @@ fn os_supported_for_riscv(os: TargetOperatingSystem) -> bool {
 
 /// Returns a short description of supported targets for error messages.
 pub fn supported_assembly_targets_hint() -> &'static str {
-    "Supported: x86_64/aarch64/riscv32/riscv64/wasm32 on Linux, macOS, Windows, BSD, Redox \n and for bare-metal. Use lamina_platform::Target for cross-compilation."
+    "Supported: x86_64 and aarch64 on Linux, Android, macOS, iOS, Windows, BSD, Redox and bare metal; \n riscv32/riscv64 on Linux, BSD and bare metal; i686, armv7, ppc64le, ppc64, s390x, mips64, mips64el \n and loongarch64 on Linux; thumbv6m/thumbv7m on Linux and bare metal; wasm32 on Linux, WASI and \n bare metal, wasm64 on Linux and bare metal; nvptx64 on CUDA and amdgcn on AMDHSA. \n Use lamina_platform::Target for cross-compilation."
 }
 
 /// Returns true if the given OS uses ELF object format (Linux, BSD, Redox, Horizon, Orbis, Prospero).
@@ -284,6 +289,26 @@ mod tests {
         assert!(!is_assembly_supported(
             TargetArchitecture::Arm32,
             TargetOperatingSystem::Linux
+        ));
+    }
+
+    #[test]
+    fn test_powerpc64_assembly_supported() {
+        assert!(is_assembly_supported(
+            TargetArchitecture::PowerPC64,
+            TargetOperatingSystem::Linux
+        ));
+        assert!(is_assembly_supported(
+            TargetArchitecture::PowerPC64,
+            TargetOperatingSystem::Unknown
+        ));
+        assert!(is_assembly_supported(
+            TargetArchitecture::PowerPC64Be,
+            TargetOperatingSystem::Linux
+        ));
+        assert!(!is_assembly_supported(
+            TargetArchitecture::PowerPC64Be,
+            TargetOperatingSystem::Windows
         ));
     }
 
