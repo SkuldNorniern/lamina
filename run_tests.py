@@ -22,25 +22,11 @@ for _stream in (sys.stdout, sys.stderr):
 # Testcases the s390x backend refuses to compile, with the refusal it gives.
 # Any other testcase must compile, run and match its expected output.
 S390X_UNSUPPORTED = {
-    'atomic_cmpxchg': 'atomic operations and fences',
-    'atomic_orderings': 'atomic operations and fences',
-    'atomics': 'atomic operations and fences',
-    'bit_intrinsics': 'integer bit intrinsics',
-    'i128_bit_intrinsics': 'integer bit intrinsics',
-    'checked_arithmetic': 'checked arithmetic (x86_64 only)',
     'inline_asm_clobber': 'inline assembly',
     'inline_asm_loop': 'inline assembly',
     'inline_asm_pressure': 'inline assembly',
     'inline_asm_rdtsc': 'inline assembly',
     'inline_asm_unused': 'inline assembly',
-    'thread_local_storage': 'thread-local storage (x86_64 only)',
-    'va_arg_chain': 'variadic argument access',
-    'va_arg_copy': 'variadic argument access',
-    'va_arg_copy_stack': 'variadic argument access',
-    'va_arg_mixed': 'variadic argument access',
-    'va_arg_narrow': 'variadic argument access',
-    'va_arg_no_variadic': 'variadic argument access',
-    'va_arg_sum': 'variadic argument access',
     'vector_operations': 'vector operations',
 }
 
