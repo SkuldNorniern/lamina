@@ -648,7 +648,7 @@ pub fn compile_module_to_object_with_options(
     if options.opt_level > 0 {
         TransformPipeline::default_for_opt_level_on(
             options.opt_level,
-            vector_unit_for(target.architecture, options.settings.x86_cpu_level),
+            vector_unit_for(target.architecture, options.settings.x86_cpu_level()),
         )
         .apply_to_module(&mut mir_module)
         .map_err(|e| LaminaError::ValidationError(format!("MIR optimization failed: {e}")))?;
@@ -658,7 +658,11 @@ pub fn compile_module_to_object_with_options(
         .map_err(|e| LaminaError::ValidationError(format!("SSA round trip failed: {e}")))?;
 
     let mut text = Vec::new();
-    let settings = options.settings.clone().with_arch_variant(target.variant);
+    let settings = options
+        .settings
+        .clone()
+        .with_target_variant(target.variant)
+        .with_environment(target.environment);
     generate_mir_to_target_with_settings(
         &mir_module,
         &mut text,

@@ -11,7 +11,9 @@
 use crate::error::LaminaError;
 use crate::mir_codegen::assemble::{gnu_tool, host_matches, no_gnu_tool, targets_elf};
 use lamina_codegen::os_uses_macho;
-use lamina_platform::{OutputArtifact, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{
+    Libc, OutputArtifact, Target, TargetArchitecture, TargetEnvironment, TargetOperatingSystem,
+};
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
@@ -47,39 +49,64 @@ fn get_crt_file(compiler: &str, crt_name: &str, multilib: Option<&str>) -> Optio
 
 /// The driver whose start-up objects belong to the target: the host compiler for a
 /// host-architecture link, otherwise the target's cross compiler.
-fn target_compiler(target_arch: TargetArchitecture) -> Result<String, String> {
-    if host_matches(target_arch) {
-        return detect_compiler().map(str::to_string).ok_or_else(|| {
-            "no C compiler is installed on the host (looked for gcc and clang)".to_string()
-        });
+fn target_compiler(
+    target_arch: TargetArchitecture,
+    environment: TargetEnvironment,
+) -> Result<String, String> {
+    let Some(libc) = environment.libc() else {
+        return Err(format!(
+            "the {environment} environment links no C library, so there is no compiler to take C runtime objects from"
+        ));
+    };
+    match libc {
+        Libc::Glibc => {
+            if host_matches(target_arch) {
+                return detect_compiler().map(str::to_string).ok_or_else(|| {
+                    "no C compiler is installed on the host (looked for gcc and clang)".to_string()
+                });
+            }
+            gnu_tool(target_arch, "gcc").ok_or_else(|| no_gnu_tool("gcc", target_arch))
+        }
+        Libc::Musl => musl_tool(target_arch, "gcc"),
     }
-    gnu_tool(target_arch, "gcc").ok_or_else(|| no_gnu_tool("gcc", target_arch))
 }
 
-fn crt_compiler(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-) -> Result<String, LaminaError> {
-    target_compiler(target_arch)
-        .map_err(|reason| missing_crt_error(target_arch, target_os, &reason))
+/// The musl cross driver for a target, found by the architecture's musl triple.
+fn musl_tool(target_arch: TargetArchitecture, tool: &str) -> Result<String, String> {
+    let triple = target_arch
+        .spec()
+        .toolchain
+        .musl
+        .ok_or_else(|| format!("no musl toolchain triple is declared for {target_arch:?}"))?;
+    let name = format!("{triple}-{tool}");
+    Command::new(&name)
+        .arg("--version")
+        .output()
+        .ok()
+        .map(|_| name.clone())
+        .ok_or_else(|| {
+            format!("no musl {tool} is installed for {target_arch:?} (looked for {name})")
+        })
 }
 
-fn missing_crt_error(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-    reason: &str,
-) -> LaminaError {
+fn crt_compiler(target: &Target) -> Result<String, LaminaError> {
+    target_compiler(target.architecture, target.environment)
+        .map_err(|reason| missing_crt_error(target, &reason))
+}
+
+fn missing_crt_error(target: &Target, reason: &str) -> LaminaError {
+    let (target_os, target_arch) = (target.operating_system, target.architecture);
     LaminaError::ValidationError(format!(
         "cannot link {target_os:?} {target_arch:?}: {reason}; crt1.o, crti.o and crtn.o come from that compiler and are required to link"
     ))
 }
 
 fn required_crt_file(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     compiler: &str,
     crt_name: &str,
 ) -> Result<String, LaminaError> {
+    let (target_os, target_arch) = (target.operating_system, target.architecture);
     get_crt_file(compiler, crt_name, multilib_flag(target_arch)).ok_or_else(|| {
         LaminaError::ValidationError(format!(
             "cannot link {target_os:?} {target_arch:?}: {compiler} cannot find {crt_name}, which is required to link"
@@ -87,31 +114,25 @@ fn required_crt_file(
     })
 }
 
-fn get_crt_files(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-) -> Result<Vec<String>, LaminaError> {
-    if os_uses_macho(target_os) {
+fn get_crt_files(target: &Target) -> Result<Vec<String>, LaminaError> {
+    if os_uses_macho(target.operating_system) || !target.environment.is_hosted() {
         return Ok(Vec::new());
     }
 
-    let compiler = crt_compiler(target_arch, target_os)?;
+    let compiler = crt_compiler(target)?;
     ["crt1.o", "crti.o"]
         .iter()
-        .map(|name| required_crt_file(target_arch, target_os, &compiler, name))
+        .map(|name| required_crt_file(target, &compiler, name))
         .collect()
 }
 
-fn get_crtn_files(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-) -> Result<Vec<String>, LaminaError> {
-    if os_uses_macho(target_os) {
+fn get_crtn_files(target: &Target) -> Result<Vec<String>, LaminaError> {
+    if os_uses_macho(target.operating_system) || !target.environment.is_hosted() {
         return Ok(Vec::new());
     }
 
-    let compiler = crt_compiler(target_arch, target_os)?;
-    required_crt_file(target_arch, target_os, &compiler, "crtn.o").map(|path| vec![path])
+    let compiler = crt_compiler(target)?;
+    required_crt_file(target, &compiler, "crtn.o").map(|path| vec![path])
 }
 
 fn windows_sdk_root() -> Option<PathBuf> {
@@ -148,23 +169,28 @@ fn windows_sdk_version(sdk_root: &Path) -> Option<String> {
         })
 }
 
-fn msvc_library_arch(target_arch: TargetArchitecture) -> &'static str {
-    match target_arch {
-        TargetArchitecture::Aarch64 => "arm64",
-        _ => "x64",
-    }
+/// Directory name this architecture's import libraries live under in the Windows SDK.
+///
+/// Stated per architecture in the arch table. An architecture Windows has no layout for
+/// is an error here, not a search of the x86_64 directories.
+fn msvc_library_arch(target_arch: TargetArchitecture) -> Result<&'static str, LaminaError> {
+    target_arch.spec().msvc_library_arch.ok_or_else(|| {
+        LaminaError::ValidationError(format!(
+            "cannot link Windows {target_arch:?}: the Windows SDK has no library directory for this architecture, so there is nothing to search"
+        ))
+    })
 }
 
-fn build_msvc_library_paths(target_arch: TargetArchitecture) -> Vec<String> {
+fn build_msvc_library_paths(target_arch: TargetArchitecture) -> Result<Vec<String>, LaminaError> {
+    let library_arch = msvc_library_arch(target_arch)?;
     let Some(sdk_root) = windows_sdk_root() else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let Some(sdk_version) = windows_sdk_version(&sdk_root) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
 
-    let library_arch = msvc_library_arch(target_arch);
-    ["ucrt", "um"]
+    let paths = ["ucrt", "um"]
         .into_iter()
         .map(|library_family| {
             sdk_root
@@ -175,7 +201,8 @@ fn build_msvc_library_paths(target_arch: TargetArchitecture) -> Vec<String> {
         })
         .filter(|library_path| library_path.is_dir())
         .map(|library_path| format!("/LIBPATH:{}", library_path.display()))
-        .collect()
+        .collect::<Vec<_>>();
+    Ok(paths)
 }
 
 fn latest_child_directory(parent: &Path) -> Option<PathBuf> {
@@ -242,14 +269,17 @@ fn visual_studio_tool_roots() -> Vec<PathBuf> {
     tool_roots
 }
 
-fn build_msvc_toolchain_library_paths(target_arch: TargetArchitecture) -> Vec<String> {
-    let library_arch = msvc_library_arch(target_arch);
-    visual_studio_tool_roots()
+fn build_msvc_toolchain_library_paths(
+    target_arch: TargetArchitecture,
+) -> Result<Vec<String>, LaminaError> {
+    let library_arch = msvc_library_arch(target_arch)?;
+    let paths = visual_studio_tool_roots()
         .into_iter()
         .map(|tool_root| tool_root.join("lib").join(library_arch))
         .filter(|library_path| library_path.is_dir())
         .map(|library_path| format!("/LIBPATH:{}", library_path.display()))
-        .collect()
+        .collect::<Vec<_>>();
+    Ok(paths)
 }
 
 /// Return the full path to MSVC `link.exe`, or `None` if unavailable.
@@ -264,7 +294,7 @@ fn build_msvc_toolchain_library_paths(target_arch: TargetArchitecture) -> Vec<St
 /// word `"Microsoft"`, ensuring non-MSVC tools also named `link` (e.g. the
 /// Unix-style symlink bundled with Git for Windows or MSYS2) are rejected.
 fn resolve_msvc_link_cmd(target_arch: TargetArchitecture) -> Option<String> {
-    let target_binary_arch = msvc_library_arch(target_arch);
+    let target_binary_arch = msvc_library_arch(target_arch).ok()?;
     // The `Host*` subdirectory is the **host** machine architecture, not the
     // target. Try all known host archs so the correct path is found regardless
     // of whether the host is x64, arm64, or x86.
@@ -372,19 +402,15 @@ fn build_arch_emulation_flags(
     args
 }
 
-fn build_crt_args(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-    before_user_object: bool,
-) -> Result<Vec<String>, LaminaError> {
-    if os_uses_macho(target_os) || cross_os(target_os) {
+fn build_crt_args(target: &Target, before_user_object: bool) -> Result<Vec<String>, LaminaError> {
+    if os_uses_macho(target.operating_system) || cross_os(target.operating_system) {
         return Ok(Vec::new());
     }
 
     if before_user_object {
-        get_crt_files(target_arch, target_os)
+        get_crt_files(target)
     } else {
-        get_crtn_files(target_arch, target_os)
+        get_crtn_files(target)
     }
 }
 
@@ -408,10 +434,8 @@ fn cross_os(target_os: TargetOperatingSystem) -> bool {
     target_os == TargetOperatingSystem::FreeBSD && !cfg!(target_os = "freebsd")
 }
 
-fn build_dynamic_linker_arg(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-) -> Vec<String> {
+fn build_dynamic_linker_arg(target: &Target) -> Vec<String> {
+    let target_os = target.operating_system;
     if target_os == TargetOperatingSystem::FreeBSD {
         return vec![
             "--dynamic-linker".to_string(),
@@ -422,38 +446,14 @@ fn build_dynamic_linker_arg(
         return Vec::new();
     }
 
-    let interpreter = match target_arch {
-        TargetArchitecture::X86_64 => "/lib64/ld-linux-x86-64.so.2",
-        TargetArchitecture::Aarch64 => "/lib/ld-linux-aarch64.so.1",
-        TargetArchitecture::Riscv32 => "/lib/ld-linux-riscv32-ilp32d.so.1",
-        TargetArchitecture::Armv7 => "/lib/ld-linux-armhf.so.3",
-        TargetArchitecture::I686 => "/lib/ld-linux.so.2",
-        TargetArchitecture::Riscv64 => "/lib/ld-linux-riscv64-lp64d.so.1",
-        TargetArchitecture::LoongArch64 => "/lib64/ld-linux-loongarch-lp64d.so.1",
-        TargetArchitecture::S390x => "/lib/ld64.so.1",
-        TargetArchitecture::PowerPC64Be => "/lib64/ld64.so.1",
-        TargetArchitecture::Mips64 | TargetArchitecture::Mips64El => "/lib64/ld.so.1",
-        TargetArchitecture::Thumbv6m
-        | TargetArchitecture::Thumbv7m
-        | TargetArchitecture::Arm32
-        | TargetArchitecture::Wasm32
-        | TargetArchitecture::Wasm64
-        | TargetArchitecture::PowerPC64
-        | TargetArchitecture::Nvptx64
-        | TargetArchitecture::Amdgcn => return Vec::new(),
-        #[cfg(feature = "nightly")]
-        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {
-            return Vec::new();
-        }
+    let Some(interpreter) = target.interpreter() else {
+        return Vec::new();
     };
-
     vec!["--dynamic-linker".to_string(), interpreter.to_string()]
 }
 
-fn build_library_args(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-) -> Result<Vec<String>, LaminaError> {
+fn build_library_args(target: &Target) -> Result<Vec<String>, LaminaError> {
+    let target_os = target.operating_system;
     let mut args = Vec::new();
 
     if os_uses_macho(target_os) {
@@ -468,12 +468,13 @@ fn build_library_args(
             }
         }
         args.push("-lSystem".to_string());
-    } else if !cross_os(target_os) {
+    } else if !cross_os(target_os) && target.environment.libc().is_some() {
         args.push("-lc".to_string());
-        match libgcc_file(target_arch) {
+        let runtime = target.environment.compiler_runtime();
+        match libgcc_file(target) {
             Some(libgcc) => args.push(libgcc),
-            None if needs_libgcc(target_arch) => {
-                return Err(missing_libgcc_error(target_arch, target_os));
+            None if runtime.requires_host_runtime(&target.spec()) => {
+                return Err(missing_libgcc_error(target));
             }
             None => {}
         }
@@ -482,18 +483,9 @@ fn build_library_args(
     Ok(args)
 }
 
-/// Whether libgcc is required rather than merely welcome. `builtins/` covers the
-/// 128-bit helpers for every target, but a target whose integer registers hold 32
-/// bits also splits `i64`, and the `__divdi3` family that costs is not ours.
-fn needs_libgcc(target_arch: TargetArchitecture) -> bool {
-    target_arch.max_int_register_bits() < 64
-}
-
-fn missing_libgcc_error(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-) -> LaminaError {
-    let reason = target_compiler(target_arch).map_or_else(
+fn missing_libgcc_error(target: &Target) -> LaminaError {
+    let (target_os, target_arch) = (target.operating_system, target.architecture);
+    let reason = target_compiler(target_arch, target.environment).map_or_else(
         |reason| reason,
         |compiler| format!("{compiler} cannot find libgcc.a"),
     );
@@ -502,8 +494,9 @@ fn missing_libgcc_error(
     ))
 }
 
-fn libgcc_file(target_arch: TargetArchitecture) -> Option<String> {
-    let compiler = target_compiler(target_arch).ok()?;
+fn libgcc_file(target: &Target) -> Option<String> {
+    let target_arch = target.architecture;
+    let compiler = target_compiler(target_arch, target.environment).ok()?;
     get_libgcc_file(&compiler, multilib_flag(target_arch))
 }
 
@@ -523,21 +516,21 @@ fn get_libgcc_file(compiler: &str, multilib: Option<&str>) -> Option<String> {
 fn build_unix_linker_args(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     runtime_objects: &[PathBuf],
     additional_flags: &[String],
 ) -> Result<Vec<String>, LaminaError> {
+    let (target_arch, target_os) = (target.architecture, target.operating_system);
     let mut args = Vec::new();
 
     args.extend(build_arch_emulation_flags(target_arch, target_os));
-    args.extend(build_dynamic_linker_arg(target_arch, target_os));
-    args.extend(build_crt_args(target_arch, target_os, true)?);
+    args.extend(build_dynamic_linker_arg(target));
+    args.extend(build_crt_args(target, true)?);
     args.push(input_path.to_string_lossy().to_string());
     args.extend(object_args(runtime_objects));
-    args.extend(build_crt_args(target_arch, target_os, false)?);
+    args.extend(build_crt_args(target, false)?);
     args.extend(build_entry_point_arg(target_os));
-    args.extend(build_library_args(target_arch, target_os)?);
+    args.extend(build_library_args(target)?);
     args.extend(additional_flags.iter().cloned());
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
@@ -646,8 +639,7 @@ const EI_OSABI: u64 = 7;
 pub fn link(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     backend: Option<LinkerBackend>,
     additional_flags: &[String],
     verbose: bool,
@@ -655,8 +647,7 @@ pub fn link(
     link_with_runtime(
         input_path,
         output_path,
-        target_arch,
-        target_os,
+        target,
         backend,
         &[],
         additional_flags,
@@ -669,8 +660,7 @@ pub fn link(
 pub fn link_with_runtime(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     backend: Option<LinkerBackend>,
     runtime_objects: &[PathBuf],
     additional_flags: &[String],
@@ -679,14 +669,13 @@ pub fn link_with_runtime(
     link_object(
         input_path,
         output_path,
-        target_arch,
-        target_os,
+        target,
         backend,
         runtime_objects,
         additional_flags,
         verbose,
     )?;
-    if target_os == TargetOperatingSystem::FreeBSD {
+    if target.operating_system == TargetOperatingSystem::FreeBSD {
         brand_freebsd(output_path)?;
     }
     Ok(())
@@ -734,13 +723,13 @@ fn brand_freebsd(output_path: &Path) -> Result<(), LaminaError> {
 fn link_object(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     backend: Option<LinkerBackend>,
     runtime_objects: &[PathBuf],
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<(), LaminaError> {
+    let (target_arch, target_os) = (target.architecture, target.operating_system);
     match target_arch.output_artifact() {
         OutputArtifact::Executable => {}
         OutputArtifact::Module => {
@@ -771,8 +760,7 @@ fn link_object(
         return link_with_gnu(
             input_path,
             output_path,
-            target_arch,
-            target_os,
+            target,
             runtime_objects,
             additional_flags,
             verbose,
@@ -794,8 +782,7 @@ fn link_object(
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
-                target_arch,
-                target_os,
+                target,
                 runtime_objects,
                 additional_flags,
             )?;
@@ -816,8 +803,7 @@ fn link_object(
             let mut args = build_unix_linker_args(
                 input_path,
                 output_path,
-                target_arch,
-                target_os,
+                target,
                 runtime_objects,
                 additional_flags,
             )?;
@@ -850,8 +836,7 @@ fn link_object(
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
-                target_arch,
-                target_os,
+                target,
                 runtime_objects,
                 additional_flags,
             )?;
@@ -870,8 +855,7 @@ fn link_object(
                 WeldRun::Failed(reason) if defaulted => link_with_gnu(
                     input_path,
                     output_path,
-                    target_arch,
-                    target_os,
+                    target,
                     runtime_objects,
                     additional_flags,
                     verbose,
@@ -897,8 +881,8 @@ fn link_object(
             let mut args = vec!["/nologo".to_string()];
             args.push("/subsystem:console".to_string());
             args.push("/entry:main".to_string());
-            args.extend(build_msvc_library_paths(target_arch));
-            args.extend(build_msvc_toolchain_library_paths(target_arch));
+            args.extend(build_msvc_library_paths(target_arch)?);
+            args.extend(build_msvc_toolchain_library_paths(target_arch)?);
             args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
             args.extend(object_args(runtime_objects));
@@ -917,8 +901,7 @@ fn link_object(
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
-                target_arch,
-                target_os,
+                target,
                 runtime_objects,
                 additional_flags,
             )?;
@@ -933,13 +916,13 @@ fn link_object(
 fn link_with_gnu(
     input_path: &Path,
     output_path: &Path,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     runtime_objects: &[PathBuf],
     additional_flags: &[String],
     verbose: bool,
     reason: &str,
 ) -> Result<(), LaminaError> {
+    let (target_arch, target_os) = (target.architecture, target.operating_system);
     if !targets_elf(target_os) {
         return Err(LaminaError::ValidationError(format!(
             "{reason}; GNU ld cannot produce {target_os:?} executables, so select -c clang or -c msvc"
@@ -952,8 +935,7 @@ fn link_with_gnu(
     let args = build_unix_linker_args(
         input_path,
         output_path,
-        target_arch,
-        target_os,
+        target,
         runtime_objects,
         additional_flags,
     )?;
@@ -1246,36 +1228,108 @@ mod tests {
         assert_eq!(FREEBSD_INTERPRETER, "/libexec/ld-elf.so.1");
         for arch in [TargetArchitecture::X86_64, TargetArchitecture::Aarch64] {
             assert_eq!(
-                build_dynamic_linker_arg(arch, TargetOperatingSystem::FreeBSD),
+                build_dynamic_linker_arg(&Target::new(arch, TargetOperatingSystem::FreeBSD)),
                 ["--dynamic-linker", "/libexec/ld-elf.so.1"],
                 "{arch:?}"
             );
         }
         assert_eq!(
-            build_dynamic_linker_arg(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
+            build_dynamic_linker_arg(&Target::new(
+                TargetArchitecture::X86_64,
+                TargetOperatingSystem::Linux
+            )),
             ["--dynamic-linker", "/lib64/ld-linux-x86-64.so.2"]
         );
     }
 
     #[test]
+    fn the_environment_picks_the_interpreter_not_the_host_toolchain() {
+        let gnu = Target::new(TargetArchitecture::S390x, TargetOperatingSystem::Linux);
+        assert_eq!(
+            build_dynamic_linker_arg(&gnu),
+            ["--dynamic-linker", "/lib/ld64.so.1"]
+        );
+        let musl = gnu
+            .with_environment(TargetEnvironment::Musl)
+            .expect("s390x accepts musl");
+        assert_eq!(
+            build_dynamic_linker_arg(&musl),
+            ["--dynamic-linker", "/lib/ld-musl-s390x.so.1"]
+        );
+    }
+
+    #[test]
+    fn a_freestanding_target_links_no_libc_and_no_compiler_runtime() {
+        let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+            .with_environment(TargetEnvironment::Freestanding)
+            .expect("every architecture accepts a freestanding environment");
+        assert!(build_dynamic_linker_arg(&target).is_empty());
+        assert!(
+            build_crt_args(&target, true)
+                .expect("C runtime objects")
+                .is_empty()
+        );
+        let libs = build_library_args(&target).expect("library arguments");
+        assert!(!libs.iter().any(|a| a == "-lc"), "{libs:?}");
+        assert!(!libs.iter().any(|a| a.ends_with("libgcc.a")), "{libs:?}");
+    }
+
+    #[test]
+    fn the_host_runtime_is_required_only_where_our_builtins_fall_short() {
+        let wide = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
+        assert!(
+            !wide
+                .environment
+                .compiler_runtime()
+                .requires_host_runtime(&wide.spec())
+        );
+        let narrow = Target::new(TargetArchitecture::I686, TargetOperatingSystem::Linux);
+        assert!(
+            narrow
+                .environment
+                .compiler_runtime()
+                .requires_host_runtime(&narrow.spec())
+        );
+        let freestanding = narrow
+            .with_environment(TargetEnvironment::Freestanding)
+            .expect("every architecture accepts a freestanding environment");
+        assert!(
+            !freestanding
+                .environment
+                .compiler_runtime()
+                .requires_host_runtime(&freestanding.spec())
+        );
+    }
+
+    #[test]
+    fn an_architecture_windows_has_no_layout_for_is_refused_by_name() {
+        let error = msvc_library_arch(TargetArchitecture::S390x)
+            .expect_err("the Windows SDK has no s390x directory");
+        assert!(format!("{error}").contains("S390x"), "{error}");
+        assert_eq!(
+            msvc_library_arch(TargetArchitecture::Aarch64).expect("aarch64 is an SDK arch"),
+            "arm64"
+        );
+    }
+
+    #[test]
     fn freebsd_link_args_leave_out_the_host_c_runtime() {
-        let arch = TargetArchitecture::X86_64;
-        let os = TargetOperatingSystem::FreeBSD;
+        let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::FreeBSD);
         if cfg!(target_os = "freebsd") {
             return;
         }
         assert!(
-            build_crt_args(arch, os, true)
+            build_crt_args(&target, true)
                 .expect("C runtime objects")
                 .is_empty()
         );
         assert!(
-            build_crt_args(arch, os, false)
+            build_crt_args(&target, false)
                 .expect("C runtime objects")
                 .is_empty()
         );
         assert!(
-            !build_library_args(arch, os)
+            !build_library_args(&target)
                 .expect("library arguments")
                 .iter()
                 .any(|a| a == "-lc")
@@ -1331,21 +1385,21 @@ mod tests {
                 ["-arch", "x86_64"],
                 "{os:?}"
             );
-            let arch = TargetArchitecture::Aarch64;
+            let target = Target::new(TargetArchitecture::Aarch64, os);
             assert!(
-                build_crt_args(arch, os, true)
+                build_crt_args(&target, true)
                     .expect("C runtime objects")
                     .is_empty(),
                 "{os:?}"
             );
             assert!(
-                build_crt_args(arch, os, false)
+                build_crt_args(&target, false)
                     .expect("C runtime objects")
                     .is_empty(),
                 "{os:?}"
             );
             assert_eq!(build_entry_point_arg(os), ["-e", "_main"], "{os:?}");
-            let libs = build_library_args(arch, os).expect("library arguments");
+            let libs = build_library_args(&target).expect("library arguments");
             assert!(libs.iter().any(|a| a == "-lSystem"), "{os:?}");
             assert!(!libs.iter().any(|a| a == "-lc"), "{os:?}");
             assert!(!libs.iter().any(|a| a == "-syslibroot"), "{os:?}");

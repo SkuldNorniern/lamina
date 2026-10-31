@@ -4,6 +4,6 @@
 //! New code should use `lamina_platform` directly.
 
 pub use lamina_platform::{
-    HOST_ARCH_LIST, Target, TargetArchitecture, TargetOperatingSystem,
-    detect_host_architecture_only, detect_host_os,
+    Target, TargetArchitecture, TargetOperatingSystem, detect_host_architecture_only,
+    detect_host_os, host_arch_list,
 };

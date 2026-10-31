@@ -429,31 +429,9 @@ pub(crate) fn gnu_tool(target_arch: TargetArchitecture, tool: &str) -> Option<St
         .map(|_| name)
 }
 
+/// GNU cross-toolchain triple, from the architecture table.
 fn gnu_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
-    match target_arch {
-        TargetArchitecture::X86_64 => Some("x86_64-linux-gnu"),
-        TargetArchitecture::Aarch64 => Some("aarch64-linux-gnu"),
-        TargetArchitecture::Riscv32 => Some("riscv32-linux-gnu"),
-        TargetArchitecture::Riscv64 => Some("riscv64-linux-gnu"),
-        TargetArchitecture::LoongArch64 => Some("loongarch64-linux-gnu"),
-        TargetArchitecture::S390x => Some("s390x-linux-gnu"),
-        TargetArchitecture::PowerPC64Be => Some("powerpc64-linux-gnu"),
-        TargetArchitecture::Mips64 => Some("mips64-linux-gnuabi64"),
-        TargetArchitecture::Mips64El => Some("mips64el-linux-gnuabi64"),
-        TargetArchitecture::PowerPC64 => Some("powerpc64le-linux-gnu"),
-        TargetArchitecture::Armv7 => Some("arm-linux-gnueabihf"),
-        TargetArchitecture::I686 => Some("i686-linux-gnu"),
-        // The Cortex-M toolchain is `arm-none-eabi`, not a Linux GNU triple.
-        TargetArchitecture::Thumbv6m
-        | TargetArchitecture::Thumbv7m
-        | TargetArchitecture::Arm32
-        | TargetArchitecture::Wasm32
-        | TargetArchitecture::Wasm64
-        | TargetArchitecture::Nvptx64
-        | TargetArchitecture::Amdgcn => None,
-        #[cfg(feature = "nightly")]
-        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => None,
-    }
+    target_arch.spec().toolchain.gnu
 }
 
 pub(crate) fn host_matches(target_arch: TargetArchitecture) -> bool {
@@ -517,7 +495,23 @@ pub fn get_assembly_output_extension(target_arch: TargetArchitecture) -> &'stati
         TargetArchitecture::Nvptx64 => "ptx",
         TargetArchitecture::Amdgcn => "s",
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wasm",
-        _ => "o", // Object file for native targets
+        TargetArchitecture::X86_64
+        | TargetArchitecture::Aarch64
+        | TargetArchitecture::Arm32
+        | TargetArchitecture::Armv7
+        | TargetArchitecture::Thumbv6m
+        | TargetArchitecture::Thumbv7m
+        | TargetArchitecture::I686
+        | TargetArchitecture::Riscv32
+        | TargetArchitecture::Riscv64
+        | TargetArchitecture::PowerPC64
+        | TargetArchitecture::PowerPC64Be
+        | TargetArchitecture::Mips64
+        | TargetArchitecture::Mips64El
+        | TargetArchitecture::LoongArch64
+        | TargetArchitecture::S390x => "o",
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => "o",
     }
 }
 
@@ -553,7 +547,22 @@ fn gas_arch_flags(
             // string the toolchains expect for a bare riscv target carries them.
             args.push(format!("-march={}c", isa.march().trim_end_matches('c')));
         }
-        _ => {}
+        TargetArchitecture::Arm32
+        | TargetArchitecture::Armv7
+        | TargetArchitecture::Thumbv6m
+        | TargetArchitecture::Thumbv7m
+        | TargetArchitecture::PowerPC64
+        | TargetArchitecture::PowerPC64Be
+        | TargetArchitecture::Mips64
+        | TargetArchitecture::Mips64El
+        | TargetArchitecture::LoongArch64
+        | TargetArchitecture::S390x
+        | TargetArchitecture::Wasm32
+        | TargetArchitecture::Wasm64
+        | TargetArchitecture::Nvptx64
+        | TargetArchitecture::Amdgcn => {}
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {}
     }
     args
 }
@@ -565,13 +574,34 @@ pub fn get_intermediate_extension(
     match target_arch {
         TargetArchitecture::Nvptx64 => "ptx",
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wat",
-        _ => {
-            if target_os == TargetOperatingSystem::Windows {
-                "asm"
-            } else {
-                "s"
-            }
+        TargetArchitecture::X86_64
+        | TargetArchitecture::Aarch64
+        | TargetArchitecture::Arm32
+        | TargetArchitecture::Armv7
+        | TargetArchitecture::Thumbv6m
+        | TargetArchitecture::Thumbv7m
+        | TargetArchitecture::I686
+        | TargetArchitecture::Riscv32
+        | TargetArchitecture::Riscv64
+        | TargetArchitecture::PowerPC64
+        | TargetArchitecture::PowerPC64Be
+        | TargetArchitecture::Mips64
+        | TargetArchitecture::Mips64El
+        | TargetArchitecture::LoongArch64
+        | TargetArchitecture::S390x
+        | TargetArchitecture::Amdgcn => text_assembly_extension(target_os),
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Arx64 | TargetArchitecture::Riscv128 | TargetArchitecture::Lisa => {
+            text_assembly_extension(target_os)
         }
+    }
+}
+
+/// Extension for assembly text, which Windows toolchains spell `.asm`.
+const fn text_assembly_extension(target_os: TargetOperatingSystem) -> &'static str {
+    match target_os {
+        TargetOperatingSystem::Windows => "asm",
+        _ => "s",
     }
 }
 

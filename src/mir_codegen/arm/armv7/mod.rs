@@ -394,11 +394,12 @@ pub fn generate_mir_armv7_with_units_and_settings<W: Write>(
         )));
     }
     let variant = settings.arch_variant.armv7().unwrap_or_default();
-    if !variant.hard_float {
+    let environment = settings.environment(TargetArchitecture::Armv7, target_os);
+    if !environment.hardware_float() {
         return Err(unsupported(format!(
-            "armv7 code generation needs a VFP unit; {} has no hardware float and this \
-             backend does not lower to soft-float libcalls",
-            variant.profile.arch_name()
+            "armv7 code generation needs a VFP unit; the {environment} environment passes \
+             floats in integer registers and this backend does not lower to soft-float \
+             libcalls"
         )));
     }
     if !variant.hardware_divide {
@@ -425,7 +426,7 @@ pub fn generate_mir_armv7_with_units_and_settings<W: Write>(
     if variant.hardware_divide {
         writeln!(writer, ".arch_extension idiv")?;
     }
-    if let Some(fpu) = variant.fpu {
+    if let Some(fpu) = variant.fpu.filter(|_| environment.hardware_float()) {
         writeln!(writer, ".fpu {fpu}")?;
     }
     writeln!(writer, ".eabi_attribute 28, 1")?;

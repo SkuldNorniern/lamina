@@ -7,7 +7,7 @@ use crate::{
     mir_codegen::MirCodegenSettings,
     parser::parse_module,
 };
-use lamina_platform::X86CpuLevel;
+use lamina_platform::{ArchVariant, X86CpuLevel};
 
 fn lower(source: &str) -> Module {
     from_ir_x86_64(&parse_module(source).expect("parse"), "vector").expect("lower")
@@ -25,7 +25,7 @@ fn assembly_at(module: &Module, level: X86CpuLevel) -> Result<String, LaminaErro
         TargetOperatingSystem::Linux,
         1,
         &MirCodegenSettings {
-            x86_cpu_level: level,
+            arch_variant: ArchVariant::X86(level),
             ..MirCodegenSettings::default()
         },
     )?;

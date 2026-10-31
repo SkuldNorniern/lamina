@@ -5,6 +5,9 @@
 
 use std::{fmt, str::FromStr};
 
+use crate::arch_table::ArchSpec;
+use crate::cpu_level::X86CpuLevel;
+
 /// RISC-V base width plus the standard extensions the backend decides on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RiscvIsa {
@@ -166,9 +169,9 @@ impl Armv7Profile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Armv7Variant {
     pub profile: Armv7Profile,
-    /// Floats in VFP registers rather than lowered to soft-float libcalls.
-    pub hard_float: bool,
-    /// The VFP unit, for the `.fpu` directive. `None` with soft float.
+    /// The VFP unit, for the `.fpu` directive. `None` when the profile has no FPU.
+    /// Whether floats are *passed* in those registers is the environment's answer,
+    /// [`crate::TargetEnvironment::hardware_float`], not the variant's.
     pub fpu: Option<&'static str>,
     pub neon: bool,
     /// Hardware `sdiv`/`udiv`. Cortex-A7 and later in the A profile; always in R and M.
@@ -181,7 +184,6 @@ impl Armv7Variant {
     pub const fn cortex_m3() -> Self {
         Self {
             profile: Armv7Profile::M,
-            hard_float: false,
             fpu: None,
             neon: false,
             hardware_divide: true,
@@ -192,7 +194,6 @@ impl Armv7Variant {
     pub const fn cortex_a7() -> Self {
         Self {
             profile: Armv7Profile::A,
-            hard_float: true,
             fpu: Some("vfpv3-d16"),
             neon: false,
             hardware_divide: true,
@@ -272,34 +273,71 @@ pub enum ArchVariant {
     Armv7(Armv7Variant),
     Aarch64(Aarch64Level),
     PowerPC64(PowerLevel),
+    X86(X86CpuLevel),
 }
 
 impl ArchVariant {
     pub fn riscv(self) -> Option<RiscvIsa> {
         match self {
             Self::Riscv(isa) => Some(isa),
-            Self::None | Self::Armv7(_) | Self::Aarch64(_) | Self::PowerPC64(_) => None,
+            Self::None | Self::Armv7(_) | Self::Aarch64(_) | Self::PowerPC64(_) | Self::X86(_) => {
+                None
+            }
         }
     }
 
     pub fn armv7(self) -> Option<Armv7Variant> {
         match self {
             Self::Armv7(v) => Some(v),
-            Self::None | Self::Riscv(_) | Self::Aarch64(_) | Self::PowerPC64(_) => None,
+            Self::None | Self::Riscv(_) | Self::Aarch64(_) | Self::PowerPC64(_) | Self::X86(_) => {
+                None
+            }
         }
     }
 
     pub fn aarch64(self) -> Option<Aarch64Level> {
         match self {
             Self::Aarch64(level) => Some(level),
-            Self::None | Self::Riscv(_) | Self::Armv7(_) | Self::PowerPC64(_) => None,
+            Self::None | Self::Riscv(_) | Self::Armv7(_) | Self::PowerPC64(_) | Self::X86(_) => {
+                None
+            }
+        }
+    }
+
+    pub fn x86(self) -> Option<X86CpuLevel> {
+        match self {
+            Self::X86(level) => Some(level),
+            Self::None
+            | Self::Riscv(_)
+            | Self::Armv7(_)
+            | Self::Aarch64(_)
+            | Self::PowerPC64(_) => None,
+        }
+    }
+
+    /// The architecture's spec as this variant refines it.
+    ///
+    /// The single place a sub-architecture changes a property the architecture stated.
+    /// A RISC-V ISA without `d` is the soft-float ABI, which takes a different ELF
+    /// interpreter than the one the bare architecture names.
+    pub fn refine(self, mut spec: ArchSpec) -> ArchSpec {
+        match self {
+            Self::Riscv(isa) => {
+                if !isa.d {
+                    spec.interpreters.gnu = spec.interpreters.gnu_soft_float;
+                }
+                spec
+            }
+            Self::None | Self::Armv7(_) | Self::Aarch64(_) | Self::PowerPC64(_) | Self::X86(_) => {
+                spec
+            }
         }
     }
 
     pub fn powerpc64(self) -> Option<PowerLevel> {
         match self {
             Self::PowerPC64(level) => Some(level),
-            Self::None | Self::Riscv(_) | Self::Armv7(_) | Self::Aarch64(_) => None,
+            Self::None | Self::Riscv(_) | Self::Armv7(_) | Self::Aarch64(_) | Self::X86(_) => None,
         }
     }
 }
@@ -313,10 +351,11 @@ impl fmt::Display for ArchVariant {
                 f,
                 "{}{}",
                 v.profile.arch_name(),
-                if v.hard_float { "+hf" } else { "+sf" }
+                if v.neon { "+neon" } else { "" }
             ),
             Self::Aarch64(level) => write!(f, "{}", level.march()),
             Self::PowerPC64(level) => write!(f, "{}", level.name()),
+            Self::X86(level) => write!(f, "{level}"),
         }
     }
 }
@@ -358,7 +397,7 @@ mod tests {
         let v = Armv7Variant::default();
         assert_eq!(v.profile.arch_name(), "armv7-a");
         assert_eq!(v.fpu, Some("vfpv3-d16"));
-        assert!(v.hardware_divide && v.hard_float && !v.neon);
+        assert!(v.hardware_divide && !v.neon);
     }
 
     #[test]
@@ -380,5 +419,63 @@ mod tests {
             ArchVariant::PowerPC64(PowerLevel::Power10).to_string(),
             "power10"
         );
+    }
+}
+
+/// The sub-architecture axis an architecture has, carrying the value a bare architecture
+/// name selects.
+///
+/// Stated once per architecture in the arch table. Giving an architecture an axis it does
+/// not have yet is one more arm here and one changed line there; nothing else in the tree
+/// has to know.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VariantAxis {
+    /// The architecture has no sub-architecture axis.
+    None,
+    Riscv(RiscvIsa),
+    Armv7(Armv7Variant),
+    Aarch64(Aarch64Level),
+    Power(PowerLevel),
+    X86(X86CpuLevel),
+}
+
+impl VariantAxis {
+    /// Sub-architecture a bare architecture name selects. Each value is what that name
+    /// has always meant to the backend.
+    pub const fn default_variant(self) -> ArchVariant {
+        match self {
+            Self::None => ArchVariant::None,
+            Self::Riscv(isa) => ArchVariant::Riscv(isa),
+            Self::Armv7(variant) => ArchVariant::Armv7(variant),
+            Self::Aarch64(level) => ArchVariant::Aarch64(level),
+            Self::Power(level) => ArchVariant::PowerPC64(level),
+            Self::X86(level) => ArchVariant::X86(level),
+        }
+    }
+
+    /// `chosen` when it belongs to this axis, the axis default otherwise.
+    ///
+    /// Every route into a [`crate::Target`] goes through this, so a target cannot hold a
+    /// variant of a family its architecture does not have.
+    pub const fn accept(self, chosen: ArchVariant) -> ArchVariant {
+        let belongs = match (self, chosen) {
+            (Self::Riscv(_), ArchVariant::Riscv(_))
+            | (Self::Armv7(_), ArchVariant::Armv7(_))
+            | (Self::Aarch64(_), ArchVariant::Aarch64(_))
+            | (Self::Power(_), ArchVariant::PowerPC64(_))
+            | (Self::X86(_), ArchVariant::X86(_))
+            | (Self::None, ArchVariant::None) => true,
+            (Self::None, _)
+            | (Self::Riscv(_), _)
+            | (Self::Armv7(_), _)
+            | (Self::Aarch64(_), _)
+            | (Self::Power(_), _)
+            | (Self::X86(_), _) => false,
+        };
+        if belongs {
+            chosen
+        } else {
+            self.default_variant()
+        }
     }
 }

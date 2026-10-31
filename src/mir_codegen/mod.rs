@@ -28,7 +28,7 @@ pub use capability::{CapabilitySet, CodegenCapability};
 pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};
 
-use std::{borrow::Cow, collections::HashMap, fmt, io::Write, mem::discriminant};
+use std::{borrow::Cow, collections::HashMap, fmt, io::Write};
 
 use crate::{
     error::LaminaError,
@@ -141,17 +141,6 @@ fn check_compiler_runtime_symbols(
     Ok(())
 }
 
-/// The variant a backend runs with: the one the target named, or the architecture's
-/// default when the settings carry none or carry another family's.
-fn effective_variant(arch: TargetArchitecture, chosen: ArchVariant) -> ArchVariant {
-    let default = arch.default_variant();
-    if discriminant(&chosen) == discriminant(&default) {
-        chosen
-    } else {
-        default
-    }
-}
-
 /// The RISC-V the backend emits for: the ISA the target named.
 fn riscv_target(variant: ArchVariant) -> RiscVTarget {
     variant
@@ -178,7 +167,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     let pointer_width = target_arch.pointer_width();
     let resolved_settings = settings
         .clone()
-        .with_arch_variant(effective_variant(target_arch, settings.arch_variant));
+        .with_arch_variant(target_arch.spec().variants.accept(settings.arch_variant))
+        .with_environment(settings.environment(target_arch, target_os));
     let settings = &resolved_settings;
     let builtins = BuiltinLibrary::from_env(target_os);
     let retargeted = retarget_runtime_calls(input, &builtins);

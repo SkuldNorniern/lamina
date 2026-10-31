@@ -1,69 +1,54 @@
-//! Target architecture and operating system definitions.
+//! Targets: an architecture, an environment, an operating system and a variant.
+//!
+//! Every per-architecture property comes from the table in [`crate::arch_table`]. This
+//! module holds the other three axes and the target-string grammar that selects them.
 
 use std::{fmt, str::FromStr};
 
+use crate::arch_table::{
+    ArchSpec, Endianness, OutputArtifact, PointerWidth, REFUSED_SPELLINGS, TargetDataLayout,
+};
 use crate::arch_variant::{
     Aarch64Level, ArchVariant, Armv7Profile, Armv7Variant, PowerLevel, RiscvIsa,
 };
 use crate::detection::{detect_host_architecture_only, detect_host_os};
+use crate::environment::TargetEnvironment;
 
+pub use crate::arch_table::TargetArchitecture;
+
+/// A target: what to generate code for, and what to link it against.
+///
+/// The four axes are independent and each is declared, never inferred from the build
+/// machine. The target-string grammar is `<architecture>_<operating-system>[_<environment>]`,
+/// where the architecture field may name a sub-architecture variant (`rv64gc`,
+/// `aarch64v8.2`) and the environment field may be left out, in which case the
+/// architecture's declared default for that operating system applies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Target {
     pub architecture: TargetArchitecture,
     pub operating_system: TargetOperatingSystem,
-    /// Sub-architecture the target string selected. An added axis: every spelling that
-    /// names only the architecture gets [`TargetArchitecture::default_variant`], which is
-    /// what that spelling has always meant.
+    /// The C runtime and ABI. Left out of a target string, it is
+    /// [`default_environment`] for the architecture and operating system.
+    pub environment: TargetEnvironment,
+    /// Sub-architecture the target string selected. Every spelling that names only the
+    /// architecture gets the architecture's [`crate::VariantAxis`] default, which is what
+    /// that spelling has always meant.
     pub variant: ArchVariant,
 }
 
-/// Width of a data pointer. Pointer size and alignment derive from it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PointerWidth {
-    Bits32,
-    Bits64,
-    Bits128,
-}
-
-impl PointerWidth {
-    pub const fn bytes(self) -> usize {
-        match self {
-            Self::Bits32 => 4,
-            Self::Bits64 => 8,
-            Self::Bits128 => 16,
-        }
-    }
-}
-
-/// Byte order of multi-byte values in memory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Endianness {
-    Little,
-    Big,
-}
-
-/// What a finished compilation of this target is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum OutputArtifact {
-    /// Object files that a linker turns into an executable.
-    Executable,
-    /// A self-contained module, assembled but never linked.
-    Module,
-    /// Assembly text handed on as-is.
-    Text,
-}
-
-/// The facts a target-independent lowering needs to turn IR into MIR.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TargetDataLayout {
-    pub pointer_width: PointerWidth,
-    pub int_register_bits: u32,
-    pub endianness: Endianness,
-}
-
-impl TargetDataLayout {
-    pub const fn has_64bit_int_registers(self) -> bool {
-        self.int_register_bits >= 64
+/// The environment a target means when its target string names none.
+///
+/// Declared, not discovered: an operating system that supplies its own C runtime, or none
+/// at all, declares [`TargetEnvironment::Freestanding`], and every other operating system
+/// takes the architecture's own `hosted_environment` from the arch table.
+pub const fn default_environment(
+    architecture: TargetArchitecture,
+    operating_system: TargetOperatingSystem,
+) -> TargetEnvironment {
+    if operating_system.links_a_c_runtime() {
+        architecture.spec().hosted_environment
+    } else {
+        TargetEnvironment::Freestanding
     }
 }
 
@@ -72,62 +57,103 @@ impl Target {
         Self {
             architecture,
             operating_system,
-            variant: architecture.default_variant(),
+            environment: default_environment(architecture, operating_system),
+            variant: architecture.spec().variants.default_variant(),
         }
     }
 
+    /// Select a sub-architecture. A variant of another family is replaced by the
+    /// architecture's default, so the target stays consistent.
     pub fn with_variant(mut self, variant: ArchVariant) -> Self {
-        self.variant = variant;
+        self.variant = self.architecture.spec().variants.accept(variant);
         self
+    }
+
+    /// Select an environment the architecture accepts.
+    pub fn with_environment(mut self, environment: TargetEnvironment) -> Result<Self, String> {
+        let spec = self.architecture.spec();
+        if !spec.accepts_environment(environment) {
+            return Err(format!(
+                "Environment '{environment}' is not supported for {}\n  Hint: {} accepts {}",
+                spec.token,
+                spec.token,
+                accepted_environments(&spec)
+            ));
+        }
+        self.environment = environment;
+        Ok(self)
+    }
+
+    /// Everything the architecture states, as this target's variant refines it.
+    pub fn spec(&self) -> ArchSpec {
+        self.variant.refine(self.architecture.spec())
     }
 
     /// Architecture half of the target string, carrying the variant when it is not the
     /// default, so `Display` and `FromStr` stay inverses.
     pub fn arch_token(&self) -> String {
-        if self.variant == self.architecture.default_variant() {
-            return self.architecture.to_string();
+        let spec = self.architecture.spec();
+        if self.variant == spec.variants.default_variant() {
+            return spec.token.to_string();
         }
         match self.variant {
             ArchVariant::Riscv(isa) => isa.march(),
             ArchVariant::None
             | ArchVariant::Armv7(_)
             | ArchVariant::Aarch64(_)
-            | ArchVariant::PowerPC64(_) => VARIANT_SPELLINGS
-                .iter()
-                .find(|(_, arch, variant)| *arch == self.architecture && *variant == self.variant)
-                .map_or_else(
-                    || self.architecture.to_string(),
-                    |(name, _, _)| (*name).to_string(),
-                ),
+            | ArchVariant::PowerPC64(_)
+            | ArchVariant::X86(_) => self
+                .variant_spelling()
+                .map_or_else(|| spec.token.to_string(), |(name, _)| name.to_string()),
         }
     }
 
+    fn variant_spelling(&self) -> Option<(&'static str, Option<TargetEnvironment>)> {
+        VARIANT_SPELLINGS
+            .iter()
+            .find(|(_, arch, variant, _)| *arch == self.architecture && *variant == self.variant)
+            .map(|(name, _, _, environment)| (*name, *environment))
+    }
+
+    /// The environment the rest of the target string already implies, and so the one the
+    /// environment field is left out for.
+    pub fn implied_environment(&self) -> TargetEnvironment {
+        self.variant_spelling()
+            .and_then(|(_, environment)| environment)
+            .unwrap_or_else(|| default_environment(self.architecture, self.operating_system))
+    }
+
     pub fn pointer_width(&self) -> PointerWidth {
-        self.architecture.pointer_width()
+        self.spec().pointer_width
     }
 
     pub fn has_64bit_int_registers(&self) -> bool {
-        self.architecture.has_64bit_int_registers()
+        self.spec().has_64bit_int_registers()
     }
 
     pub fn endianness(&self) -> Endianness {
-        self.architecture.endianness()
+        self.spec().endianness
     }
 
     pub fn stack_alignment_at_call(&self) -> usize {
-        self.architecture.stack_alignment_at_call()
+        self.spec().stack_alignment_at_call
     }
 
     pub fn honors_argument_alignment(&self) -> bool {
-        self.architecture.honors_argument_alignment()
+        self.spec().honors_argument_alignment
     }
 
     pub fn output_artifact(&self) -> OutputArtifact {
-        self.architecture.output_artifact()
+        self.spec().output_artifact
     }
 
     pub fn data_layout(&self) -> TargetDataLayout {
-        self.architecture.data_layout()
+        self.spec().data_layout()
+    }
+
+    /// The ELF interpreter this target's environment asks for, if it asks for one.
+    pub fn interpreter(&self) -> Option<&'static str> {
+        self.spec().interpreter(self.environment)
     }
 
     pub fn gpu_triple(&self) -> Option<&'static str> {
@@ -143,7 +169,7 @@ impl Target {
     }
 
     pub fn to_str(&self) -> String {
-        format!("{}_{}", self.arch_token(), self.operating_system)
+        self.to_string()
     }
 
     /// Detect the host system's target.
@@ -161,7 +187,7 @@ impl Target {
     pub fn detect_host() -> Result<Self, String> {
         let arch = detect_host_architecture_only();
         let os = detect_host_os();
-        let architecture = TargetArchitecture::from_str(arch)
+        let architecture = parse_architecture(arch)
             .map_err(|_| format!("host architecture '{arch}' has no lamina backend"))?;
         let operating_system = TargetOperatingSystem::from_str(os)
             .map_err(|_| format!("host operating system '{os}' has no lamina backend"))?;
@@ -169,280 +195,70 @@ impl Target {
     }
 }
 
+fn accepted_environments(spec: &ArchSpec) -> String {
+    let mut names: Vec<&str> = spec
+        .environments
+        .iter()
+        .map(|environment| environment.token())
+        .collect();
+    names.push(TargetEnvironment::Freestanding.token());
+    names.join(", ")
+}
+
 impl FromStr for Target {
-    type Err = &'static str;
+    type Err = String;
 
     fn from_str(target: &str) -> Result<Self, Self::Err> {
-        let target = TARGET_ALIASES
+        let (head, named_environment) = split_environment(target);
+        let head = TARGET_ALIASES
             .iter()
-            .find(|(alias, _)| *alias == target)
-            .map_or(target, |(_, canonical)| canonical);
-        let parts: Vec<&str> = target.rsplitn(2, '_').collect();
+            .find(|(alias, _)| *alias == head)
+            .map_or(head, |(_, canonical)| *canonical);
+        let parts: Vec<&str> = head.rsplitn(2, '_').collect();
         if parts.len() != 2 {
-            return Err("Invalid target format: expected 'architecture_os'");
+            return Err("Invalid target format: expected 'architecture_os'".to_string());
         }
-        let (architecture, variant) = parse_arch_token(parts[1])?;
-        let os = TargetOperatingSystem::from_str(parts[0])?;
-        Ok(Self::new(architecture, os).with_variant(variant))
+        let (architecture, variant, spelling_environment) = parse_arch_token(parts[1])?;
+        let os = TargetOperatingSystem::from_str(parts[0]).map_err(str::to_string)?;
+        let target = Self::new(architecture, os).with_variant(variant);
+        match named_environment.or(spelling_environment) {
+            Some(environment) => target.with_environment(environment),
+            None => Ok(target),
+        }
+    }
+}
+
+/// Split a trailing environment field off a target string. The last underscore field is
+/// the environment only when it names one, so `x86_64_linux` is unaffected.
+fn split_environment(target: &str) -> (&str, Option<TargetEnvironment>) {
+    match target.rsplit_once('_') {
+        Some((head, tail)) => match tail.parse::<TargetEnvironment>() {
+            Ok(environment) => (head, Some(environment)),
+            Err(_) => (target, None),
+        },
+        None => (target, None),
     }
 }
 
 impl fmt::Display for Target {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}_{}", self.arch_token(), self.operating_system)
+        write!(f, "{}_{}", self.arch_token(), self.operating_system)?;
+        if self.environment != self.implied_environment() {
+            write!(f, "_{}", self.environment)?;
+        }
+        Ok(())
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TargetArchitecture {
-    X86_64,
-    Aarch64,
-    #[cfg(feature = "nightly")]
-    Arx64,
-    Arm32,
-    Armv7,
-    /// ARMv6-M, Thumb-1 only: Cortex-M0 and M0+.
-    Thumbv6m,
-    /// ARMv7-M, Thumb-2: Cortex-M3, M4 and M7.
-    Thumbv7m,
-    I686,
-    Riscv32,
-    Riscv64,
-    #[cfg(feature = "nightly")]
-    Riscv128,
-    Wasm32,
-    Wasm64,
-    PowerPC64,
-    PowerPC64Be,
-    Mips64,
-    Mips64El,
-    LoongArch64,
-    S390x,
-    Nvptx64,
-    Amdgcn,
-    #[cfg(feature = "nightly")]
-    Lisa,
-}
-
-impl TargetArchitecture {
-    /// Exhaustive on purpose: a new architecture does not compile until its pointer
-    /// width is chosen.
-    pub const fn pointer_width(self) -> PointerWidth {
-        match self {
-            Self::X86_64
-            | Self::Aarch64
-            | Self::Riscv64
-            | Self::PowerPC64
-            | Self::PowerPC64Be
-            | Self::Mips64
-            | Self::Mips64El
-            | Self::LoongArch64
-            | Self::S390x
-            | Self::Wasm64
-            | Self::Nvptx64
-            | Self::Amdgcn => PointerWidth::Bits64,
-            Self::Arm32
-            | Self::Armv7
-            | Self::Thumbv6m
-            | Self::Thumbv7m
-            | Self::I686
-            | Self::Riscv32
-            | Self::Wasm32 => PointerWidth::Bits32,
-            #[cfg(feature = "nightly")]
-            Self::Riscv128 => PointerWidth::Bits128,
-            #[cfg(feature = "nightly")]
-            Self::Arx64 | Self::Lisa => PointerWidth::Bits64,
-        }
-    }
-
-    /// Widest integer one register holds. A wider integer is lowered to a tuple of
-    /// registers or to a libcall. Not the pointer width: wasm32 has 32-bit pointers and
-    /// 64-bit integer registers. Exhaustive on purpose, like `pointer_width`.
-    pub const fn max_int_register_bits(self) -> u32 {
-        match self {
-            Self::X86_64
-            | Self::Aarch64
-            | Self::Riscv64
-            | Self::PowerPC64
-            | Self::PowerPC64Be
-            | Self::Mips64
-            | Self::Mips64El
-            | Self::LoongArch64
-            | Self::S390x
-            | Self::Wasm32
-            | Self::Wasm64
-            | Self::Nvptx64
-            | Self::Amdgcn => 64,
-            Self::Arm32
-            | Self::Armv7
-            | Self::Thumbv6m
-            | Self::Thumbv7m
-            | Self::I686
-            | Self::Riscv32 => 32,
-            #[cfg(feature = "nightly")]
-            Self::Riscv128 => 128,
-            #[cfg(feature = "nightly")]
-            Self::Arx64 | Self::Lisa => 64,
-        }
-    }
-
-    /// Whether an integer register holds 64 bits. Decides whether an `i64` is one
-    /// register or a pair of 32-bit words.
-    pub const fn has_64bit_int_registers(self) -> bool {
-        self.max_int_register_bits() >= 64
-    }
-
-    /// Byte order of a multi-byte value in memory. Decides how a literal is laid out in
-    /// static data and which half of a split wide value is the low word. Exhaustive on
-    /// purpose: `ppc64` and `s390x` are big-endian, and nothing else would catch it.
-    pub const fn endianness(self) -> Endianness {
-        match self {
-            Self::X86_64
-            | Self::Aarch64
-            | Self::Arm32
-            | Self::Armv7
-            | Self::Thumbv6m
-            | Self::Thumbv7m
-            | Self::I686
-            | Self::Riscv32
-            | Self::Riscv64
-            | Self::Wasm32
-            | Self::Wasm64
-            | Self::PowerPC64
-            | Self::Mips64El
-            | Self::LoongArch64
-            | Self::Nvptx64
-            | Self::Amdgcn => Endianness::Little,
-            Self::S390x | Self::PowerPC64Be | Self::Mips64 => Endianness::Big,
-            #[cfg(feature = "nightly")]
-            Self::Arx64 | Self::Riscv128 | Self::Lisa => Endianness::Little,
-        }
-    }
-
-    /// Alignment the stack pointer holds at a call. `1` means the target has no machine
-    /// stack to align. Exhaustive on purpose.
-    pub const fn stack_alignment_at_call(self) -> usize {
-        match self {
-            Self::X86_64
-            | Self::I686
-            | Self::Aarch64
-            | Self::Armv7
-            | Self::Riscv32
-            | Self::Riscv64
-            | Self::PowerPC64
-            | Self::PowerPC64Be
-            | Self::Mips64
-            | Self::Mips64El
-            | Self::LoongArch64 => 16,
-            Self::Arm32 | Self::Thumbv6m | Self::Thumbv7m | Self::S390x => 8,
-            Self::Wasm32 | Self::Wasm64 | Self::Nvptx64 | Self::Amdgcn => 1,
-            #[cfg(feature = "nightly")]
-            Self::Riscv128 => 16,
-            #[cfg(feature = "nightly")]
-            Self::Arx64 | Self::Lisa => 16,
-        }
-    }
-
-    /// Whether an argument with 16-byte alignment starts at its own alignment rather than
-    /// at the next word. AAPCS64 rounds the integer register counter up to even before
-    /// such an argument, so an `i128` takes x2:x3 after one `i64`. riscv64 and ppc64
-    /// do not round for named arguments: the riscv psABI makes the even-register rule
-    /// variadic-only, and clang 18 places a named `i128` at a1:a2 and r4:r5. Keep them
-    /// false unless that is settled differently. Exhaustive on purpose, so a new
-    /// architecture states its answer.
-    pub const fn honors_argument_alignment(self) -> bool {
-        match self {
-            Self::X86_64 | Self::Aarch64 => true,
-            Self::Arm32
-            | Self::Armv7
-            | Self::Thumbv6m
-            | Self::Thumbv7m
-            | Self::I686
-            | Self::Riscv32
-            | Self::Riscv64
-            | Self::Wasm32
-            | Self::Wasm64
-            | Self::PowerPC64
-            | Self::PowerPC64Be
-            | Self::Mips64
-            | Self::Mips64El
-            | Self::LoongArch64
-            | Self::S390x
-            | Self::Nvptx64
-            | Self::Amdgcn => false,
-            #[cfg(feature = "nightly")]
-            Self::Arx64 | Self::Riscv128 | Self::Lisa => false,
-        }
-    }
-
-    /// What a finished compilation is. A GPU target stops at assembly text and a wasm
-    /// target at an assembled module; neither reaches a linker. Exhaustive on purpose.
-    pub const fn output_artifact(self) -> OutputArtifact {
-        match self {
-            Self::X86_64
-            | Self::Aarch64
-            | Self::Arm32
-            | Self::Armv7
-            | Self::Thumbv6m
-            | Self::Thumbv7m
-            | Self::I686
-            | Self::Riscv32
-            | Self::Riscv64
-            | Self::PowerPC64
-            | Self::PowerPC64Be
-            | Self::Mips64
-            | Self::Mips64El
-            | Self::LoongArch64
-            | Self::S390x => OutputArtifact::Executable,
-            Self::Wasm32 | Self::Wasm64 => OutputArtifact::Module,
-            Self::Nvptx64 | Self::Amdgcn => OutputArtifact::Text,
-            #[cfg(feature = "nightly")]
-            Self::Arx64 | Self::Riscv128 | Self::Lisa => OutputArtifact::Executable,
-        }
-    }
-
-    pub const fn data_layout(self) -> TargetDataLayout {
-        TargetDataLayout {
-            pointer_width: self.pointer_width(),
-            int_register_bits: self.max_int_register_bits(),
-            endianness: self.endianness(),
-        }
-    }
-
-    /// Sub-architecture a bare architecture name selects. Each value is what that name
-    /// has always meant to the backend, so adding the variant axis changes no output.
-    /// Exhaustive on purpose.
-    pub const fn default_variant(self) -> ArchVariant {
-        match self {
-            Self::Riscv32 => ArchVariant::Riscv(RiscvIsa::general(32)),
-            Self::Riscv64 => ArchVariant::Riscv(RiscvIsa::general(64)),
-            Self::Armv7 => ArchVariant::Armv7(Armv7Variant::cortex_a7()),
-            Self::Thumbv7m => ArchVariant::Armv7(Armv7Variant::cortex_m3()),
-            Self::Aarch64 => ArchVariant::Aarch64(Aarch64Level::V8_0),
-            Self::PowerPC64 | Self::PowerPC64Be => ArchVariant::PowerPC64(PowerLevel::Power8),
-            Self::X86_64
-            | Self::Arm32
-            | Self::Thumbv6m
-            | Self::I686
-            | Self::Wasm32
-            | Self::Wasm64
-            | Self::Mips64
-            | Self::Mips64El
-            | Self::LoongArch64
-            | Self::S390x
-            | Self::Nvptx64
-            | Self::Amdgcn => ArchVariant::None,
-            #[cfg(feature = "nightly")]
-            Self::Riscv128 => ArchVariant::Riscv(RiscvIsa::general(128)),
-            #[cfg(feature = "nightly")]
-            Self::Arx64 | Self::Lisa => ArchVariant::None,
-        }
-    }
-}
-
-/// Target strings that name a sub-architecture. Open-ended RISC-V ISA strings are parsed
+/// Target strings that name a sub-architecture, with the environment the spelling implies
+/// when it is not the architecture's default. Open-ended RISC-V ISA strings are parsed
 /// instead, in [`parse_arch_token`].
-const VARIANT_SPELLINGS: &[(&str, TargetArchitecture, ArchVariant)] = &[
+const VARIANT_SPELLINGS: &[(
+    &str,
+    TargetArchitecture,
+    ArchVariant,
+    Option<TargetEnvironment>,
+)] = &[
     (
         "armv7a-neon",
         TargetArchitecture::Armv7,
@@ -451,113 +267,102 @@ const VARIANT_SPELLINGS: &[(&str, TargetArchitecture, ArchVariant)] = &[
             fpu: Some("neon-vfpv4"),
             ..Armv7Variant::cortex_a7()
         }),
+        None,
     ),
     (
         "armv7a-sf",
         TargetArchitecture::Armv7,
         ArchVariant::Armv7(Armv7Variant {
-            hard_float: false,
             fpu: None,
             ..Armv7Variant::cortex_a7()
         }),
+        Some(TargetEnvironment::Eabi),
     ),
     (
         "armv7r",
         TargetArchitecture::Armv7,
         ArchVariant::Armv7(Armv7Variant {
             profile: Armv7Profile::R,
-            hard_float: false,
             fpu: None,
             ..Armv7Variant::cortex_a7()
         }),
+        Some(TargetEnvironment::Eabi),
     ),
     (
         "aarch64v8.1",
         TargetArchitecture::Aarch64,
         ArchVariant::Aarch64(Aarch64Level::V8_1),
+        None,
     ),
     (
         "aarch64v8.2",
         TargetArchitecture::Aarch64,
         ArchVariant::Aarch64(Aarch64Level::V8_2),
+        None,
     ),
     (
         "ppc64le-power9",
         TargetArchitecture::PowerPC64,
         ArchVariant::PowerPC64(PowerLevel::Power9),
+        None,
     ),
     (
         "ppc64le-power10",
         TargetArchitecture::PowerPC64,
         ArchVariant::PowerPC64(PowerLevel::Power10),
+        None,
     ),
 ];
 
-/// Architecture half of a target string, with the sub-architecture it names. A spelling
-/// that names only the architecture takes [`TargetArchitecture::default_variant`].
-pub fn parse_arch_token(token: &str) -> Result<(TargetArchitecture, ArchVariant), &'static str> {
-    if let Some((_, arch, variant)) = VARIANT_SPELLINGS.iter().find(|(name, _, _)| *name == token) {
-        return Ok((*arch, *variant));
+/// Architecture half of a target string, with the sub-architecture it names and the
+/// environment that spelling implies. A spelling that names only the architecture takes
+/// the architecture's variant-axis default and implies no environment.
+pub fn parse_arch_token(
+    token: &str,
+) -> Result<(TargetArchitecture, ArchVariant, Option<TargetEnvironment>), String> {
+    if let Some((_, arch, variant, environment)) = VARIANT_SPELLINGS
+        .iter()
+        .find(|(name, _, _, _)| *name == token)
+    {
+        return Ok((*arch, *variant, *environment));
     }
     if token.starts_with("rv") {
-        let isa = RiscvIsa::from_str(token)?;
+        let isa = RiscvIsa::from_str(token).map_err(str::to_string)?;
         let arch = match isa.xlen {
             32 => TargetArchitecture::Riscv32,
             64 => TargetArchitecture::Riscv64,
             #[cfg(feature = "nightly")]
             128 => TargetArchitecture::Riscv128,
-            _ => return Err("no backend for that RISC-V width"),
+            _ => return Err("no backend for that RISC-V width".to_string()),
         };
-        return Ok((arch, ArchVariant::Riscv(isa)));
+        return Ok((arch, ArchVariant::Riscv(isa), None));
     }
-    let arch = TargetArchitecture::from_str(token)?;
-    Ok((arch, arch.default_variant()))
+    let arch = parse_architecture(token).map_err(str::to_string)?;
+    Ok((arch, arch.spec().variants.default_variant(), None))
+}
+
+/// The architecture a bare spelling names.
+///
+/// Refusals are consulted first, so a machine lamina has decided not to implement is
+/// refused with its reason rather than resolving to a neighbour.
+pub fn parse_architecture(spelling: &str) -> Result<TargetArchitecture, &'static str> {
+    if let Some((_, reason)) = REFUSED_SPELLINGS.iter().find(|(name, _)| *name == spelling) {
+        return Err(reason);
+    }
+    TargetArchitecture::from_spelling(spelling).ok_or("Unknown architecture")
 }
 
 impl FromStr for TargetArchitecture {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "nvptx64" => Ok(Self::Nvptx64),
-            "amdgcn" => Ok(Self::Amdgcn),
-            "x86_64" => Ok(Self::X86_64),
-            "aarch64" => Ok(Self::Aarch64),
-            #[cfg(feature = "nightly")]
-            "arx64" => Ok(Self::Arx64),
-            "arm32" => Err(
-                "Architecture 'arm32' is not implemented\n  Hint: 'arm32' names no ARM revision, floating-point ABI or profile, so there is no machine to generate code for. The implemented 32-bit ARM target is armv7, AAPCS with VFP hard float: write 'armv7' (e.g. armv7_linux), or 'thumbv6m'/'thumbv7m' for Cortex-M",
-            ),
-            "armv7" | "armv7a" | "armv7hf" => Ok(Self::Armv7),
-            "thumbv6m" | "armv6m" | "cortex-m0" => Ok(Self::Thumbv6m),
-            "thumbv7m" | "armv7m" | "cortex-m3" => Ok(Self::Thumbv7m),
-            "i686" | "i386" | "x86" => Ok(Self::I686),
-            "riscv32" => Ok(Self::Riscv32),
-            "riscv64" | "riscv64gc" => Ok(Self::Riscv64),
-            #[cfg(feature = "nightly")]
-            "riscv128" => Ok(Self::Riscv128),
-            "wasm32" => Ok(Self::Wasm32),
-            "wasm64" => Ok(Self::Wasm64),
-            "wasm" => Ok(Self::Wasm32),
-            "ppc64le" => Ok(Self::PowerPC64),
-            "ppc64" | "powerpc64" => Ok(Self::PowerPC64Be),
-            "ppc64-elfv1" | "powerpc64-elfv1" => Err(
-                "Architecture 'ppc64-elfv1' is not supported\n  Hint: big-endian POWER here is ELFv2. ELFv1 calls through .opd function descriptors and is a different ABI. Write 'ppc64' (e.g. ppc64_linux)",
-            ),
-            "mips64" => Ok(Self::Mips64),
-            "mips64el" | "mips64le" => Ok(Self::Mips64El),
-            "mips" | "mipsel" | "mips32" | "mips32el" => Err(
-                "Architecture 'mips' is not supported\n  Hint: lamina implements the N64 ABI on 64-bit MIPS only, not O32. Write 'mips64' or 'mips64el' (e.g. mips64_linux)",
-            ),
-            "loongarch64" | "loong64" => Ok(Self::LoongArch64),
-            "s390x" | "systemz" => Ok(Self::S390x),
-            "s390" => Err(
-                "Architecture 's390' was not added\n  Hint: lamina supports 64-bit z/Architecture only. Write 's390x' (e.g. s390x_linux)",
-            ),
-            #[cfg(feature = "nightly")]
-            "lisa" => Ok(Self::Lisa),
-            _ => Err("Unknown architecture"),
-        }
+        parse_architecture(s)
+    }
+}
+
+impl fmt::Display for TargetArchitecture {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.spec().token)
     }
 }
 
@@ -588,6 +393,44 @@ pub enum TargetOperatingSystem {
     #[cfg(feature = "nightly")]
     Artery,
     Unknown,
+}
+
+impl TargetOperatingSystem {
+    /// Whether a target on this operating system links C runtime objects and a libc that
+    /// the environment axis chooses.
+    ///
+    /// False where the operating system supplies its own runtime — Darwin, Windows, WASI
+    /// — or where there is nothing to link at all, as on the GPU targets. Those declare
+    /// [`TargetEnvironment::Freestanding`] and the axis selects nothing for them.
+    pub const fn links_a_c_runtime(self) -> bool {
+        match self {
+            Self::Linux
+            | Self::Android
+            | Self::FreeBSD
+            | Self::OpenBSD
+            | Self::NetBSD
+            | Self::DragonFly
+            | Self::Redox
+            | Self::Horizon
+            | Self::Psp
+            | Self::Psx
+            | Self::Vita
+            | Self::Orbis
+            | Self::Prospero
+            | Self::Unknown => true,
+            Self::Cuda
+            | Self::AmdHsa
+            | Self::MacOS
+            | Self::Windows
+            | Self::IOS
+            | Self::TvOS
+            | Self::WatchOS
+            | Self::VisionOS
+            | Self::Wasi => false,
+            #[cfg(feature = "nightly")]
+            Self::Artery => false,
+        }
+    }
 }
 
 impl FromStr for TargetOperatingSystem {
@@ -632,39 +475,6 @@ impl FromStr for TargetOperatingSystem {
     }
 }
 
-impl fmt::Display for TargetArchitecture {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            Self::Nvptx64 => "nvptx64",
-            Self::Amdgcn => "amdgcn",
-            Self::X86_64 => "x86_64",
-            Self::Aarch64 => "aarch64",
-            #[cfg(feature = "nightly")]
-            Self::Arx64 => "arx64",
-            Self::Arm32 => "arm32",
-            Self::Armv7 => "armv7",
-            Self::Thumbv6m => "thumbv6m",
-            Self::Thumbv7m => "thumbv7m",
-            Self::I686 => "i686",
-            Self::Riscv32 => "riscv32",
-            Self::Riscv64 => "riscv64",
-            #[cfg(feature = "nightly")]
-            Self::Riscv128 => "riscv128",
-            Self::Wasm32 => "wasm32",
-            Self::Wasm64 => "wasm64",
-            Self::PowerPC64 => "ppc64le",
-            Self::PowerPC64Be => "ppc64",
-            Self::Mips64 => "mips64",
-            Self::Mips64El => "mips64el",
-            Self::LoongArch64 => "loongarch64",
-            Self::S390x => "s390x",
-            #[cfg(feature = "nightly")]
-            Self::Lisa => "lisa",
-        };
-        write!(f, "{s}")
-    }
-}
-
 impl fmt::Display for TargetOperatingSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -703,67 +513,36 @@ const TARGET_ALIASES: &[(&str, &str)] = &[
     ("riscv64gc_linux", "riscv64_linux"),
 ];
 
-pub const HOST_ARCH_LIST: &[&str] = &[
-    "nvptx64_cuda",
-    "amdgcn_amdhsa",
-    "x86_64_unknown",
-    "x86_64_linux",
-    "x86_64_windows",
-    "x86_64_macos",
-    "x86_64_android",
-    "x86_64_ios",
-    "x86_64_tvos",
-    "x86_64_watchos",
-    "x86_64_freebsd",
-    "aarch64_unknown",
-    "aarch64_macos",
-    "aarch64_linux",
-    "aarch64_windows",
-    "aarch64_android",
-    "aarch64_ios",
-    "aarch64_tvos",
-    "aarch64_watchos",
-    "aarch64_visionos",
-    "aarch64_horizon",
-    "x86_64_orbis",
-    "x86_64_prospero",
-    #[cfg(feature = "nightly")]
-    "arx64_unknown",
-    "wasm32_unknown",
-    "wasm64_unknown",
-    "wasm32_wasi",
-    "riscv32_unknown",
-    "riscv32_linux",
-    "riscv64_linux",
-    "riscv64_unknown",
-    "riscv64gc_linux",
-    "ppc64le_linux",
-    "ppc64le_unknown",
-    "ppc64_linux",
-    "mips64_linux",
-    "mips64el_linux",
-    "loongarch64_linux",
-    "s390x_linux",
-    "i686_linux",
-    "armv7_linux",
-    "thumbv6m_unknown",
-    "thumbv6m_linux",
-    "thumbv7m_unknown",
-    "thumbv7m_linux",
-    #[cfg(feature = "nightly")]
-    "riscv128_unknown",
-];
+/// Every target string the driver advertises, gathered from the arch table.
+///
+/// Derived from the same blocks the properties come from, so an architecture cannot be
+/// added without deciding which targets it offers, and the list cannot fall behind.
+pub fn host_arch_list() -> Vec<&'static str> {
+    TargetArchitecture::all()
+        .into_iter()
+        .flat_map(|arch| arch.spec().targets.iter().copied())
+        .collect()
+}
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
     use super::*;
+    use crate::arch_variant::VariantAxis;
+    use crate::cpu_level::X86CpuLevel;
+    use crate::environment::{CompilerRuntime, Libc};
+
+    fn listed(name: &str) -> bool {
+        host_arch_list().contains(&name)
+    }
 
     #[test]
     fn freebsd_is_a_target_the_driver_also_accepts() {
         let target: Target = "x86_64_freebsd".parse().expect("freebsd parses");
         assert_eq!(target.architecture, TargetArchitecture::X86_64);
         assert_eq!(target.operating_system, TargetOperatingSystem::FreeBSD);
-        assert!(HOST_ARCH_LIST.contains(&"x86_64_freebsd"));
+        assert!(listed("x86_64_freebsd"));
         assert_eq!(
             "bsd".parse::<TargetOperatingSystem>(),
             Ok(TargetOperatingSystem::FreeBSD)
@@ -779,10 +558,7 @@ mod tests {
             assert!(error.contains("is not implemented"), "{name}: {error}");
             assert!(error.contains("Hint:"), "{name}: {error}");
             assert!(error.contains("freebsd"), "{name}: {error}");
-            assert!(
-                !HOST_ARCH_LIST.contains(&format!("x86_64_{name}").as_str()),
-                "{name}"
-            );
+            assert!(!listed(&format!("x86_64_{name}")), "{name}");
         }
     }
 
@@ -795,7 +571,7 @@ mod tests {
             let target: Target = name.parse().unwrap();
             assert_eq!(target.to_string(), name);
             assert_eq!(target.gpu_triple(), Some(triple));
-            assert!(HOST_ARCH_LIST.contains(&name));
+            assert!(listed(name));
         }
     }
 
@@ -835,8 +611,8 @@ mod tests {
             Target::from_str("ppc64le_linux").unwrap(),
             Target::new(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)
         );
-        assert!(HOST_ARCH_LIST.contains(&"ppc64le_linux"));
-        assert!(HOST_ARCH_LIST.contains(&"ppc64_linux"));
+        assert!(listed("ppc64le_linux"));
+        assert!(listed("ppc64_linux"));
     }
 
     #[test]
@@ -846,7 +622,7 @@ mod tests {
             assert!(error.contains("is not implemented"), "{name}: {error}");
             assert!(error.contains("Hint:"), "{name}: {error}");
             assert!(error.contains("armv7"), "{name}: {error}");
-            assert!(!HOST_ARCH_LIST.contains(&name), "{name}");
+            assert!(!listed(name), "{name}");
         }
     }
 
@@ -868,7 +644,7 @@ mod tests {
         for name in ["wasm32_wasi", "wasm32_unknown", "wasm64_unknown"] {
             let target: Target = name.parse().unwrap();
             assert_eq!(target.to_string(), name);
-            assert!(HOST_ARCH_LIST.contains(&name));
+            assert!(listed(name));
         }
     }
 
@@ -885,7 +661,7 @@ mod tests {
         for name in ["riscv64_linux", "riscv64_unknown", "riscv64gc_linux"] {
             let target: Target = name.parse().unwrap();
             assert_eq!(target, linux);
-            assert!(HOST_ARCH_LIST.contains(&name));
+            assert!(listed(name));
         }
         assert_eq!(linux.to_string(), "riscv64_linux");
     }
@@ -907,7 +683,7 @@ mod tests {
 
     #[test]
     fn only_the_named_targets_are_big_endian() {
-        for name in HOST_ARCH_LIST {
+        for name in host_arch_list() {
             let target: Target = name.parse().expect(name);
             let expected = match target.architecture {
                 TargetArchitecture::S390x
@@ -987,7 +763,7 @@ mod tests {
             let target: Target = name.parse().expect(name);
             assert_eq!(
                 target.variant,
-                target.architecture.default_variant(),
+                target.architecture.spec().variants.default_variant(),
                 "{name}"
             );
             assert_eq!(target.to_string(), name.replace("gc", ""), "{name}");
@@ -1007,7 +783,7 @@ mod tests {
             let target: Target = name.parse().expect(name);
             assert_ne!(
                 target.variant,
-                target.architecture.default_variant(),
+                target.architecture.spec().variants.default_variant(),
                 "{name} should not be the default"
             );
             assert_eq!(target.to_string(), name, "{name} must round trip");
@@ -1029,5 +805,159 @@ mod tests {
         assert!(!regs("riscv32_linux"));
         assert!(!regs("i686_linux"));
         assert!(!regs("armv7_linux"));
+    }
+
+    #[test]
+    fn every_listed_target_prints_back_to_a_target_that_parses_the_same() {
+        for name in host_arch_list() {
+            let target: Target = name.parse().expect(name);
+            let printed = target.to_string();
+            assert_eq!(
+                printed.parse::<Target>().expect(&printed),
+                target,
+                "{name} printed as {printed}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_variant_axis_rejects_another_familys_variant() {
+        let aarch64 = Target::new(TargetArchitecture::Aarch64, TargetOperatingSystem::Linux)
+            .with_variant(ArchVariant::Riscv(RiscvIsa::general(64)));
+        assert_eq!(aarch64.variant, ArchVariant::Aarch64(Aarch64Level::V8_0));
+        let riscv = Target::new(TargetArchitecture::Riscv64, TargetOperatingSystem::Linux)
+            .with_variant(ArchVariant::X86(X86CpuLevel::V4));
+        assert_eq!(riscv.variant, ArchVariant::Riscv(RiscvIsa::general(64)));
+    }
+
+    #[test]
+    fn x86_cpu_level_is_a_variant_axis_like_the_others() {
+        let spec = TargetArchitecture::X86_64.spec();
+        assert_eq!(spec.variants, VariantAxis::X86(X86CpuLevel::V2));
+        let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+            .with_variant(ArchVariant::X86(X86CpuLevel::V3));
+        assert_eq!(target.variant.x86(), Some(X86CpuLevel::V3));
+    }
+
+    #[test]
+    fn a_bare_linux_target_declares_its_environment() {
+        for name in ["s390x_linux", "x86_64_linux", "riscv64_linux"] {
+            let target: Target = name.parse().expect(name);
+            assert_eq!(target.environment, TargetEnvironment::Gnu, "{name}");
+            assert_eq!(target.environment.libc(), Some(Libc::Glibc), "{name}");
+            assert_eq!(
+                target.environment.compiler_runtime(),
+                CompilerRuntime::LaminaBuiltins,
+                "{name}"
+            );
+            assert_eq!(target.to_string(), name, "{name}");
+        }
+    }
+
+    #[test]
+    fn musl_is_a_target_string_and_picks_the_musl_interpreter() {
+        let target: Target = "s390x_linux_musl".parse().expect("musl target");
+        assert_eq!(target.environment, TargetEnvironment::Musl);
+        assert_eq!(target.interpreter(), Some("/lib/ld-musl-s390x.so.1"));
+        assert_eq!(target.to_string(), "s390x_linux_musl");
+        let gnu: Target = "s390x_linux".parse().unwrap();
+        assert_eq!(gnu.interpreter(), Some("/lib/ld64.so.1"));
+        assert_eq!(
+            gnu.spec().toolchain_triple(TargetEnvironment::Musl),
+            Some("s390x-linux-musl")
+        );
+    }
+
+    #[test]
+    fn an_environment_the_architecture_refuses_is_named_in_the_error() {
+        let error = Target::from_str("x86_64_linux_eabihf").expect_err("x86_64 has no EABI");
+        assert!(error.contains("eabihf"), "{error}");
+        assert!(error.contains("Hint:"), "{error}");
+        assert!(error.contains("gnu, musl, none"), "{error}");
+    }
+
+    #[test]
+    fn armv7_spellings_keep_their_float_abi() {
+        let hard: Target = "armv7_linux".parse().unwrap();
+        assert_eq!(hard.environment, TargetEnvironment::Eabihf);
+        assert!(hard.environment.hardware_float());
+        assert_eq!(hard.interpreter(), Some("/lib/ld-linux-armhf.so.3"));
+        for name in ["armv7a-sf_linux", "armv7r_linux"] {
+            let soft: Target = name.parse().expect(name);
+            assert_eq!(soft.environment, TargetEnvironment::Eabi, "{name}");
+            assert!(!soft.environment.hardware_float(), "{name}");
+            assert_eq!(soft.interpreter(), Some("/lib/ld-linux.so.3"), "{name}");
+            assert_eq!(soft.to_string(), name, "{name}");
+        }
+        let neon: Target = "armv7a-neon_linux".parse().unwrap();
+        assert_eq!(neon.environment, TargetEnvironment::Eabihf);
+    }
+
+    #[test]
+    fn a_soft_float_riscv_isa_refines_the_interpreter() {
+        let soft: Target = "rv64imac_linux".parse().unwrap();
+        assert_eq!(soft.interpreter(), Some("/lib/ld-linux-riscv64-lp64.so.1"));
+        let hard: Target = "riscv64_linux".parse().unwrap();
+        assert_eq!(hard.interpreter(), Some("/lib/ld-linux-riscv64-lp64d.so.1"));
+    }
+
+    #[test]
+    fn targets_without_a_c_runtime_are_freestanding() {
+        for name in ["x86_64_macos", "x86_64_windows", "wasm32_wasi"] {
+            let target: Target = name.parse().expect(name);
+            assert_eq!(
+                target.environment,
+                TargetEnvironment::Freestanding,
+                "{name}"
+            );
+            assert!(!target.environment.is_hosted(), "{name}");
+            assert_eq!(target.to_string(), name, "{name}");
+        }
+    }
+
+    #[test]
+    fn msvc_library_arch_is_stated_or_absent_never_guessed() {
+        assert_eq!(
+            TargetArchitecture::X86_64.spec().msvc_library_arch,
+            Some("x64")
+        );
+        assert_eq!(
+            TargetArchitecture::Aarch64.spec().msvc_library_arch,
+            Some("arm64")
+        );
+        assert_eq!(
+            TargetArchitecture::I686.spec().msvc_library_arch,
+            Some("x86")
+        );
+        for arch in [
+            TargetArchitecture::S390x,
+            TargetArchitecture::Riscv64,
+            TargetArchitecture::PowerPC64,
+            TargetArchitecture::Mips64,
+            TargetArchitecture::LoongArch64,
+        ] {
+            assert_eq!(arch.spec().msvc_library_arch, None, "{arch}");
+        }
+    }
+
+    #[test]
+    fn every_architecture_is_in_the_derived_list() {
+        let all = TargetArchitecture::all();
+        assert!(all.contains(&TargetArchitecture::X86_64));
+        assert!(all.contains(&TargetArchitecture::S390x));
+        let listed_architectures: Vec<TargetArchitecture> = host_arch_list()
+            .into_iter()
+            .filter_map(|name| name.parse::<Target>().ok())
+            .map(|target| target.architecture)
+            .collect();
+        for arch in all {
+            assert!(!arch.spec().token.is_empty(), "{arch}");
+            let has_targets = !arch.spec().targets.is_empty();
+            assert_eq!(
+                has_targets,
+                listed_architectures.contains(&arch),
+                "{arch} target list disagrees with the advertised targets"
+            );
+        }
     }
 }

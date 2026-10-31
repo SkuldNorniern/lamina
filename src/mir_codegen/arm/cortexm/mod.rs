@@ -482,12 +482,13 @@ pub fn generate_mir_cortexm_with_units_and_settings<W: Write>(
             isa.target_name()
         )));
     }
-    if let Some(variant) = settings.arch_variant.armv7()
-        && variant.hard_float
+    if settings
+        .environment(target_arch, target_os)
+        .hardware_float()
     {
         return Err(unsupported(format!(
-            "{} code generation emits no VFP instructions; a hard-float variant is not \
-             supported",
+            "{} code generation emits no VFP instructions; a hard-float environment is \
+             not supported",
             isa.target_name()
         )));
     }

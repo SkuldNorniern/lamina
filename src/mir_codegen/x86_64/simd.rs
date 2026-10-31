@@ -504,7 +504,9 @@ mod tests {
         mir::{Immediate, Instruction, MirType, Module, Operand, VectorLane, VectorOp, VectorType},
         mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
     };
-    use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
+    use lamina_platform::{
+        ArchVariant, PointerWidth, TargetArchitecture, TargetOperatingSystem, X86CpuLevel,
+    };
     use std::{array, fmt::Write as _, fs, path::Path, process::Command};
 
     fn supported(op: VectorOp, lane: VectorLane) -> bool {
@@ -538,7 +540,7 @@ mod tests {
             1,
             &MirCodegenSettings {
                 regalloc: strategy,
-                x86_cpu_level: level,
+                arch_variant: ArchVariant::X86(level),
                 ..Default::default()
             },
         )

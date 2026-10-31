@@ -1,6 +1,9 @@
 //! Cross-backend MIR codegen settings (register allocation policy, basic debug emission).
 
-use lamina_platform::{ArchVariant, X86CpuLevel};
+use lamina_platform::{
+    ArchVariant, TargetArchitecture, TargetEnvironment, TargetOperatingSystem, X86CpuLevel,
+    default_environment,
+};
 #[cfg(feature = "nightly")]
 use lamina_platform::{SimdCapabilities, Target};
 
@@ -31,13 +34,14 @@ impl RegallocStrategy {
 pub struct MirCodegenSettings {
     pub amdgpu_target: super::amdgpu::AmdGpuTarget,
     pub regalloc: RegallocStrategy,
-    /// Highest x86-64 level the emitted code may use. Instructions above it are
-    /// replaced by a documented fallback or refused with [`CodegenError::CpuLevelRequired`].
-    pub x86_cpu_level: X86CpuLevel,
-    /// Sub-architecture the target selected, for the families that have one. The same
-    /// idea as [`MirCodegenSettings::x86_cpu_level`], for riscv, armv7, aarch64 and
-    /// ppc64. [`ArchVariant::None`] leaves each backend on its architecture's default.
+    /// Sub-architecture the target selected, for every family that has an axis: the
+    /// RISC-V ISA, the armv7 variant, the aarch64 level, the POWER level and the x86-64
+    /// CPU level all arrive here. [`ArchVariant::None`] leaves each backend on its
+    /// architecture's default.
     pub arch_variant: ArchVariant,
+    /// C runtime and ABI the target declared. `None` means the codegen entry point
+    /// should resolve it from the architecture and operating system.
+    pub environment: Option<TargetEnvironment>,
     /// When true, emit GNU assembler `.file` / `.loc` directives (requires
     /// [`crate::mir_codegen::CodegenCapability::DebugInfo`] on the target).
     pub emit_asm_debug_lines: bool,
@@ -54,8 +58,8 @@ impl Default for MirCodegenSettings {
         Self {
             amdgpu_target: Default::default(),
             regalloc: RegallocStrategy::Incremental,
-            x86_cpu_level: X86CpuLevel::default(),
             arch_variant: ArchVariant::None,
+            environment: None,
             emit_asm_debug_lines: false,
             debug_file_tag: "lamina".to_string(),
             #[cfg(feature = "nightly")]
@@ -69,6 +73,40 @@ impl MirCodegenSettings {
     pub fn with_arch_variant(mut self, variant: ArchVariant) -> Self {
         self.arch_variant = variant;
         self
+    }
+
+    /// Apply the sub-architecture a parsed target named, leaving an axis value the
+    /// command line already chose in place.
+    pub fn with_target_variant(self, variant: ArchVariant) -> Self {
+        if self.arch_variant == ArchVariant::None {
+            self.with_arch_variant(variant)
+        } else {
+            self
+        }
+    }
+
+    /// Select the environment a parsed target named.
+    pub fn with_environment(mut self, environment: TargetEnvironment) -> Self {
+        self.environment = Some(environment);
+        self
+    }
+
+    /// Highest x86-64 level the emitted code may use. Instructions above it are replaced
+    /// by a documented fallback or refused with
+    /// [`crate::mir_codegen::CodegenError::CpuLevelRequired`]. It is the x86 arm of the
+    /// variant axis, so it is read from [`MirCodegenSettings::arch_variant`].
+    pub fn x86_cpu_level(&self) -> X86CpuLevel {
+        self.arch_variant.x86().unwrap_or_default()
+    }
+
+    /// The environment, or the one the architecture and operating system declare.
+    pub fn environment(
+        &self,
+        architecture: TargetArchitecture,
+        operating_system: TargetOperatingSystem,
+    ) -> TargetEnvironment {
+        self.environment
+            .unwrap_or_else(|| default_environment(architecture, operating_system))
     }
 }
 

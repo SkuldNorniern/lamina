@@ -6,7 +6,7 @@ use crate::mir_codegen::{
     MirCodegenSettings, RegallocStrategy, amdgpu::AmdGpuTarget, assemble::AssemblerBackend,
     link::LinkerBackend,
 };
-use lamina_platform::{HOST_ARCH_LIST, Target, TargetOperatingSystem, X86CpuLevel};
+use lamina_platform::{ArchVariant, Target, TargetOperatingSystem, X86CpuLevel, host_arch_list};
 use ras::ObjectWriteOptions;
 
 pub struct CompileOptions {
@@ -97,10 +97,12 @@ pub fn print_usage() {
     eprintln!("  -Wa,<flag>              Pass flag(s) to assembler (GCC/Clang compatible)");
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
     eprintln!("  --mcpu <gpu>            AMDGPU processor: gfx900 | gfx1200 (default: gfx1200)");
-    eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
+    eprintln!("  --target <arch_os[_env]> Specify target (e.g., x86_64_linux, x86_64_linux_musl)");
     eprintln!(
         "                          A sub-architecture may replace the arch: rv32imac, rv64gc,\n\
-         \x20                         armv7r, armv7a-neon, aarch64v8.2, ppc64le-power9"
+         \x20                         armv7r, armv7a-neon, aarch64v8.2, ppc64le-power9\n\
+         \x20                         An environment may follow the OS: gnu | musl | eabi |\n\
+         \x20                         eabihf | none. Left out, each target declares its own."
     );
     eprintln!(
         "  --cpu-level <v>         x86-64 level the output may use: v1 | v2 | v3 | v4 (default: v2, x86_64 targets only)"
@@ -219,7 +221,7 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                 let parsed = requested_target.parse::<Target>();
                 let listed = parsed.as_ref().is_ok_and(|target| {
                     let bare = Target::new(target.architecture, target.operating_system);
-                    HOST_ARCH_LIST.contains(&bare.to_string().as_str())
+                    host_arch_list().contains(&bare.to_string().as_str())
                 });
                 if !requested_target.contains('_') || !listed {
                     let reason = parsed.as_ref().map_or_else(
@@ -233,9 +235,10 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                     return Err(format!(
                         "Unsupported target '{}'{reason}. Supported values:\n{}\n\
                          A sub-architecture may be named instead: rv32imac, rv64gc, armv7r, \
-                         armv7a-neon, aarch64v8.2, ppc64le-power9",
+                         armv7a-neon, aarch64v8.2, ppc64le-power9, and an environment may \
+                         follow the operating system: gnu, musl, eabi, eabihf, none",
                         requested_target,
-                        HOST_ARCH_LIST.join(", ")
+                        host_arch_list().join(", ")
                     ));
                 }
                 options.target_arch = Some(requested_target);
@@ -245,9 +248,11 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                 if i + 1 >= args.len() {
                     return Err("Missing argument for --cpu-level".to_string());
                 }
-                options.mir_codegen_settings.x86_cpu_level = args[i + 1]
-                    .parse::<X86CpuLevel>()
-                    .map_err(|e| format!("--cpu-level: {e}"))?;
+                options.mir_codegen_settings.arch_variant = ArchVariant::X86(
+                    args[i + 1]
+                        .parse::<X86CpuLevel>()
+                        .map_err(|e| format!("--cpu-level: {e}"))?,
+                );
                 cpu_level_explicit = true;
                 i += 2;
             }
@@ -405,14 +410,20 @@ mod tests {
     #[test]
     fn cpu_level_defaults_to_v2() {
         let options = parse(&[]).expect("default arguments parse");
-        assert_eq!(options.mir_codegen_settings.x86_cpu_level, X86CpuLevel::V2);
+        assert_eq!(
+            options.mir_codegen_settings.x86_cpu_level(),
+            X86CpuLevel::V2
+        );
     }
 
     #[test]
     fn cpu_level_flag_selects_the_level() {
         let options =
             parse(&["--cpu-level", "v1", "--target", "x86_64_linux"]).expect("v1 parses on x86_64");
-        assert_eq!(options.mir_codegen_settings.x86_cpu_level, X86CpuLevel::V1);
+        assert_eq!(
+            options.mir_codegen_settings.x86_cpu_level(),
+            X86CpuLevel::V1
+        );
     }
 
     #[test]

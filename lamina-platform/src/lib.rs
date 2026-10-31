@@ -6,29 +6,38 @@
 //!
 //! ## Modules
 //!
-//! - [`target`] - Target architecture and operating system definitions
+//! - [`arch_table`] - the architecture table: every property of every architecture
+//! - [`target`] - targets: architecture, environment, operating system and variant
+//! - [`environment`] - the C runtime and ABI axis
 //! - [`cpu_level`] - x86-64 microarchitecture levels (v1 to v4)
 //! - [`arch_variant`] - sub-architecture variants for the other families
 //! - [`detection`] - Host system detection functions
 //! - [`simd`] - SIMD capabilities detection (nightly feature)
 
+pub mod arch_table;
 pub mod arch_variant;
 pub mod cpu_level;
 pub mod detection;
+pub mod environment;
 pub mod target;
 
 #[cfg(feature = "nightly")]
 pub mod simd;
 
 // Re-export main types
+pub use arch_table::{
+    ArchSpec, Endianness, LinuxInterpreters, OutputArtifact, PointerWidth, TargetArchitecture,
+    TargetDataLayout, ToolchainTriples,
+};
 pub use arch_variant::{
-    Aarch64Level, ArchVariant, Armv7Profile, Armv7Variant, PowerLevel, RiscvIsa,
+    Aarch64Level, ArchVariant, Armv7Profile, Armv7Variant, PowerLevel, RiscvIsa, VariantAxis,
 };
 pub use cpu_level::X86CpuLevel;
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
+pub use environment::{CompilerRuntime, Libc, TargetEnvironment};
 pub use target::{
-    Endianness, HOST_ARCH_LIST, OutputArtifact, PointerWidth, Target, TargetArchitecture,
-    TargetDataLayout, TargetOperatingSystem, parse_arch_token,
+    Target, TargetOperatingSystem, default_environment, host_arch_list, parse_arch_token,
+    parse_architecture,
 };
 
 #[cfg(feature = "nightly")]

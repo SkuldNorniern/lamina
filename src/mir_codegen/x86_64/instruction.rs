@@ -937,7 +937,7 @@ pub(super) fn emit_instruction_x86_64(
                                     _ => unreachable!(),
                                 }
                             }
-                            Operand::Register(_) if settings.x86_cpu_level >= X86CpuLevel::V3 => {
+                            Operand::Register(_) if settings.x86_cpu_level() >= X86CpuLevel::V3 => {
                                 let count = if rhs_in_dp {
                                     "rax"
                                 } else if let (8, Some(r)) =
@@ -1114,7 +1114,7 @@ pub(super) fn emit_instruction_x86_64(
 
                 match op {
                     IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr
-                        if settings.x86_cpu_level >= X86CpuLevel::V3
+                        if settings.x86_cpu_level() >= X86CpuLevel::V3
                             && matches!(rhs, Operand::Register(_)) =>
                     {
                         let rhs_phys = match rhs {
@@ -1756,7 +1756,7 @@ pub(super) fn emit_instruction_x86_64(
                 writer,
                 reg_alloc,
                 stack_slots,
-                settings.x86_cpu_level,
+                settings.x86_cpu_level(),
             )?;
         }
         MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
@@ -2637,7 +2637,7 @@ pub(super) fn emit_instruction_x86_64(
                 writer,
                 reg_alloc,
                 stack_slots,
-                settings.x86_cpu_level,
+                settings.x86_cpu_level(),
                 pointer_width,
             )?;
         }

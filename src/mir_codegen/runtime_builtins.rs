@@ -285,7 +285,7 @@ fn lower(
     if opt_level > 0 {
         TransformPipeline::default_for_opt_level_on(
             opt_level,
-            vector_unit_for(target.architecture, settings.x86_cpu_level),
+            vector_unit_for(target.architecture, settings.x86_cpu_level()),
         )
         .apply_to_module(&mut module)
         .map_err(|e| {

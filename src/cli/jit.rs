@@ -125,7 +125,7 @@ pub fn handle_jit_compilation(
     };
 
     if target.architecture == TargetArchitecture::X86_64 {
-        check_host_runs_level(options.mir_codegen_settings.x86_cpu_level)?;
+        check_host_runs_level(options.mir_codegen_settings.x86_cpu_level())?;
     }
 
     if options.verbose {
@@ -153,7 +153,7 @@ pub fn handle_jit_compilation(
             options.opt_level,
             vector_unit_for(
                 target.architecture,
-                options.mir_codegen_settings.x86_cpu_level,
+                options.mir_codegen_settings.x86_cpu_level(),
             ),
         );
         let transform_stats = pipeline
@@ -316,7 +316,8 @@ pub fn handle_jit_compilation(
             let codegen_settings = options
                 .mir_codegen_settings
                 .clone()
-                .with_arch_variant(target.variant);
+                .with_target_variant(target.variant)
+                .with_environment(target.environment);
             generate_mir_to_target_with_settings(
                 &mir_mod,
                 &mut intermediate,
@@ -356,8 +357,7 @@ pub fn handle_jit_compilation(
                 link_with_runtime(
                     &assemble_result.output_path,
                     &exe_path,
-                    target.architecture,
-                    target.operating_system,
+                    &target,
                     linker_backend,
                     runtime
                         .as_ref()

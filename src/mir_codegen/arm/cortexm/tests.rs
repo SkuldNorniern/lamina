@@ -259,8 +259,5 @@ fn both_targets_are_thirty_two_bit_with_no_sixty_four_bit_registers() {
         Some(true),
         "the M profile has sdiv and udiv"
     );
-    assert!(
-        m.variant.armv7().is_some_and(|v| !v.hard_float),
-        "the backend emits no VFP"
-    );
+    assert!(!m.environment.hardware_float(), "the backend emits no VFP");
 }
