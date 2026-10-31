@@ -4,7 +4,7 @@ use crate::cli::options::{CompileOptions, toolchain_backends};
 use crate::mir::transform::vector_unit_for;
 
 use crate::{
-    mir::{TransformPipeline, codegen::from_ir_for_target},
+    mir::{Module, TransformPipeline, codegen::from_ir_for_target},
     mir_codegen::{
         assemble::{
             assemble_with_ras_object_options, get_assembly_output_extension,
@@ -110,6 +110,28 @@ fn level_refusal(host: &[&str], level: X86CpuLevel) -> Option<String> {
     ))
 }
 
+/// The function `--jit` runs: `@main`, or the module's only function.
+///
+/// A module with neither is refused by name rather than run by map order.
+fn jit_entry_point(module: &Module) -> Result<&str, LaminaError> {
+    if module.functions.contains_key("main") {
+        return Ok("main");
+    }
+    let mut names: Vec<&str> = module.functions.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    match names.as_slice() {
+        [] => Err(LaminaError::ValidationError(
+            "No functions found in module".to_owned(),
+        )),
+        [only] => Ok(only),
+        _ => Err(LaminaError::ValidationError(format!(
+            "--jit has no entry point to run: the module declares no @main, and its {} functions ({}) give no way to choose one",
+            names.len(),
+            names.join(", ")
+        ))),
+    }
+}
+
 /// Handle JIT compilation and execution
 pub fn handle_jit_compilation(
     ir_source: &str,
@@ -123,6 +145,14 @@ pub fn handle_jit_compilation(
     } else {
         Target::detect_host().map_err(LaminaError::ValidationError)?
     };
+
+    let host = Target::detect_host().map_err(LaminaError::ValidationError)?;
+    if target.architecture != host.architecture || target.operating_system != host.operating_system
+    {
+        return Err(LaminaError::ValidationError(format!(
+            "--jit cannot run code for {target}: JIT executes on the host, which is {host}. Drop --jit to cross-compile for {target}"
+        )));
+    }
 
     if target.architecture == TargetArchitecture::X86_64 {
         check_host_runs_level(options.mir_codegen_settings.x86_cpu_level())?;
@@ -147,6 +177,18 @@ pub fn handle_jit_compilation(
         target.data_layout(),
     )
     .map_err(|e| LaminaError::MirError(format!("MIR lowering failed: {e}")))?;
+
+    if let Some(name) = mir_mod
+        .functions
+        .iter()
+        .filter(|(_, function)| function.sig.kernel.is_some())
+        .map(|(name, _)| name)
+        .min()
+    {
+        return Err(LaminaError::ValidationError(format!(
+            "@kernel function '{name}' requires a GPU target, which --jit cannot be: JIT executes on the host"
+        )));
+    }
 
     if options.opt_level > 0 {
         let pipeline = TransformPipeline::default_for_opt_level_on(
@@ -177,18 +219,7 @@ pub fn handle_jit_compilation(
 
         let mut sandbox = Sandbox::new(target.architecture, target.operating_system, config);
 
-        let function_name = if mir_mod.functions.contains_key("main") {
-            "main"
-        } else {
-            mir_mod
-                .functions
-                .keys()
-                .next()
-                .ok_or_else(|| {
-                    LaminaError::ValidationError("No functions found in module".to_owned())
-                })?
-                .as_str()
-        };
+        let function_name = jit_entry_point(&mir_mod)?;
 
         if options.verbose {
             println!("[JIT] Executing function '{function_name}' in sandbox");
@@ -209,39 +240,33 @@ pub fn handle_jit_compilation(
             if max_threads > 2 { max_threads - 2 } else { 1 }
         });
 
-        let jit_function_name = if mir_mod.functions.contains_key("main") {
-            "main"
-        } else {
-            mir_mod
-                .functions
-                .keys()
-                .find(|name| name.contains("main") || name.contains("matmul"))
-                .map(String::as_str)
-                .or_else(|| mir_mod.functions.keys().next().map(String::as_str))
-                .ok_or_else(|| {
-                    LaminaError::ValidationError("No functions found in module".to_owned())
-                })?
-        };
+        let jit_function_name = jit_entry_point(&mir_mod)?;
 
         let func = mir_mod.functions.get(jit_function_name).ok_or_else(|| {
             LaminaError::ValidationError("Function not found in module".to_owned())
         })?;
 
-        let runtime_result = match compile_to_runtime(
+        let (runtime_result, in_memory_failure) = match compile_to_runtime(
             &mir_mod,
             target.architecture,
             target.operating_system,
             Some(jit_function_name),
         ) {
-            Ok(result) => Some(result),
+            Ok(result) => (Some(result), None),
             Err(err) => {
                 if options.verbose {
                     eprintln!(
                         "[JIT] In-memory compilation failed; falling back to AOT execution.\n  Reason: {err}"
                     );
                 }
-                None
+                (None, Some(err.to_string()))
             }
+        };
+        let aot_fallback = |error: LaminaError| match &in_memory_failure {
+            Some(reason) => LaminaError::ValidationError(format!(
+                "--jit fell back to AOT execution because in-memory compilation failed ({reason}), and the fallback failed too: {error}"
+            )),
+            None => error,
         };
 
         if let Some(runtime_result) = runtime_result {
@@ -280,123 +305,125 @@ pub fn handle_jit_compilation(
                 }
             }
         } else {
-            // AOT fallback: compile to a temp executable and run it.
-            if matches!(
-                target.architecture,
-                TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
-            ) {
-                return Err(LaminaError::ValidationError(
-                    "JIT fallback: cannot execute WASM targets directly".to_owned(),
-                ));
-            }
+            let fallback = (|| -> Result<(), LaminaError> {
+                if matches!(
+                    target.architecture,
+                    TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
+                ) {
+                    return Err(LaminaError::ValidationError(
+                        "JIT fallback: cannot execute WASM targets directly".to_owned(),
+                    ));
+                }
 
-            let pid = process::id();
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos();
-            let tmp_dir = lamina_cache_dir()?.join(format!("jit_{pid}_{nanos}"));
-            create_dir_all(&tmp_dir)?;
+                let pid = process::id();
+                let nanos = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos();
+                let tmp_dir = lamina_cache_dir()?.join(format!("jit_{pid}_{nanos}"));
+                create_dir_all(&tmp_dir)?;
 
-            let intermediate_ext =
-                get_intermediate_extension(target.architecture, target.operating_system);
-            let assembly_output_ext = get_assembly_output_extension(target.architecture);
-            let final_ext = get_output_extension(target.architecture, target.operating_system);
+                let intermediate_ext =
+                    get_intermediate_extension(target.architecture, target.operating_system);
+                let assembly_output_ext = get_assembly_output_extension(target.architecture);
+                let final_ext = get_output_extension(target.architecture, target.operating_system);
 
-            let mut intermediate_path = tmp_dir.join("module");
-            intermediate_path.set_extension(intermediate_ext);
-            let mut object_path = tmp_dir.join("module");
-            object_path.set_extension(assembly_output_ext);
-            let mut exe_path = tmp_dir.join("module");
-            if !final_ext.is_empty() {
-                exe_path.set_extension(final_ext);
-            }
+                let mut intermediate_path = tmp_dir.join("module");
+                intermediate_path.set_extension(intermediate_ext);
+                let mut object_path = tmp_dir.join("module");
+                object_path.set_extension(assembly_output_ext);
+                let mut exe_path = tmp_dir.join("module");
+                if !final_ext.is_empty() {
+                    exe_path.set_extension(final_ext);
+                }
 
-            let mut intermediate = Vec::<u8>::new();
-            let codegen_settings = options
-                .mir_codegen_settings
-                .clone()
-                .with_target_variant(target.variant)
-                .with_environment(target.environment);
-            generate_mir_to_target_with_settings(
-                &mir_mod,
-                &mut intermediate,
-                target.architecture,
-                target.operating_system,
-                codegen_units,
-                &codegen_settings,
-            )?;
-
-            write(&intermediate_path, &intermediate)?;
-
-            let (assembler_backend, linker_backend) =
-                toolchain_backends(&options.forced_compiler, &options.assembler);
-            let assemble_result = assemble_with_ras_object_options(
-                &intermediate_path,
-                &object_path,
-                target,
-                assembler_backend,
-                &options.assembler_flags,
-                options.verbose,
-                options.ras_object_write_options(target.operating_system),
-            )?;
-
-            if assemble_result.needs_linking {
-                let runtime = runtime_builtins::build(
+                let mut intermediate = Vec::<u8>::new();
+                let codegen_settings = options
+                    .mir_codegen_settings
+                    .clone()
+                    .with_target_variant(target.variant)
+                    .with_environment(target.environment);
+                generate_mir_to_target_with_settings(
                     &mir_mod,
-                    &assemble_result.output_path,
-                    target,
-                    &codegen_settings,
-                    options.opt_level,
+                    &mut intermediate,
+                    &target,
                     codegen_units,
+                    &codegen_settings,
+                )?;
+
+                write(&intermediate_path, &intermediate)?;
+
+                let (assembler_backend, linker_backend) =
+                    toolchain_backends(&options.forced_compiler, &options.assembler);
+                let assemble_result = assemble_with_ras_object_options(
+                    &intermediate_path,
+                    &object_path,
+                    target,
                     assembler_backend,
                     &options.assembler_flags,
                     options.verbose,
-                    &options.ras_object_write_options(target.operating_system),
+                    options.ras_object_write_options(target.operating_system),
                 )?;
-                link_with_runtime(
-                    &assemble_result.output_path,
-                    &exe_path,
-                    &target,
-                    linker_backend,
-                    runtime
-                        .as_ref()
-                        .map_or(&[][..], runtime_builtins::RuntimeObjects::objects),
-                    &options.linker_flags,
-                    options.verbose,
-                )?;
-                if let Some(runtime) = runtime {
-                    runtime.discard();
-                }
-            } else {
-                exe_path = assemble_result.output_path;
-            }
 
-            if options.verbose {
-                println!("[JIT] Running {}", exe_path.display());
-            }
-            let status = Command::new(&exe_path).status()?;
-            if !status.success() {
-                if let Some(code) = status.code() {
-                    if options.verbose {
-                        eprintln!("[JIT] Program exited with status {code}");
+                if assemble_result.needs_linking {
+                    let runtime = runtime_builtins::build(
+                        &mir_mod,
+                        &assemble_result.output_path,
+                        target,
+                        &codegen_settings,
+                        options.opt_level,
+                        codegen_units,
+                        assembler_backend,
+                        &options.assembler_flags,
+                        options.verbose,
+                        &options.ras_object_write_options(target.operating_system),
+                    )?;
+                    link_with_runtime(
+                        &assemble_result.output_path,
+                        &exe_path,
+                        &target,
+                        linker_backend,
+                        runtime
+                            .as_ref()
+                            .map_or(&[][..], runtime_builtins::RuntimeObjects::objects),
+                        &options.linker_flags,
+                        options.verbose,
+                    )?;
+                    if let Some(runtime) = runtime {
+                        runtime.discard();
                     }
-                    process::exit(code);
+                } else {
+                    exe_path = assemble_result.output_path;
                 }
-                #[cfg(unix)]
-                {
-                    use std::os::unix::process::ExitStatusExt;
-                    if let Some(signal) = status.signal() {
-                        eprintln!("JIT fallback: program terminated: {status}");
-                        process::exit(128 + signal);
-                    }
-                }
-                return Err(LaminaError::RuntimeError(format!(
-                    "JIT fallback: program terminated: {status}"
-                )));
-            }
 
-            let _ = remove_dir_all(&tmp_dir);
+                if options.verbose {
+                    println!("[JIT] Running {}", exe_path.display());
+                }
+                let status = Command::new(&exe_path).status()?;
+                if !status.success() {
+                    if let Some(code) = status.code() {
+                        if options.verbose {
+                            eprintln!("[JIT] Program exited with status {code}");
+                        }
+                        process::exit(code);
+                    }
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        if let Some(signal) = status.signal() {
+                            eprintln!("JIT fallback: program terminated: {status}");
+                            process::exit(128 + signal);
+                        }
+                    }
+                    return Err(LaminaError::RuntimeError(format!(
+                        "JIT fallback: program terminated: {status}"
+                    )));
+                }
+
+                let _ = remove_dir_all(&tmp_dir);
+                Ok(())
+            })();
+            fallback.map_err(aot_fallback)?;
         }
     }
 
@@ -437,6 +464,46 @@ entry:
     ret.i64 %r
 }
 "#;
+
+    #[test]
+    fn jit_refuses_a_target_that_is_not_the_host() {
+        let host = Target::detect_host().expect("host");
+        let foreign = if host.architecture == TargetArchitecture::Aarch64 {
+            "x86_64_linux"
+        } else {
+            "aarch64_linux"
+        };
+        let mut opts = minimal_options();
+        opts.target_arch = Some(foreign.to_owned());
+        let error = handle_jit_compilation(SIMPLE_ADD_IR, Path::new("test.lir"), &opts)
+            .expect_err("a foreign target must be refused");
+        let message = error.to_string();
+        assert!(message.contains(foreign), "{message}");
+        assert!(message.contains("host"), "{message}");
+    }
+
+    #[test]
+    fn jit_refuses_a_module_with_no_entry_point_to_choose() {
+        let ir =
+            "fn @a() -> i64 {\nentry:\n ret.i64 1\n}\nfn @b() -> i64 {\nentry:\n ret.i64 2\n}\n";
+        let error = handle_jit_compilation(ir, Path::new("test.lir"), &minimal_options())
+            .expect_err("two functions and no @main give no entry point");
+        let message = error.to_string();
+        assert!(message.contains("no entry point"), "{message}");
+        assert!(message.contains('a') && message.contains('b'), "{message}");
+    }
+
+    #[test]
+    fn jit_refuses_a_kernel_function() {
+        let error = handle_jit_compilation(
+            "@kernel fn @main() -> void {\nentry:\nret.void\n}\n",
+            Path::new("test.lir"),
+            &minimal_options(),
+        )
+        .expect_err("a GPU kernel cannot run on the host");
+        let message = error.to_string();
+        assert!(message.contains("@kernel function 'main'"), "{message}");
+    }
 
     #[test]
     fn invalid_target_returns_error() {
