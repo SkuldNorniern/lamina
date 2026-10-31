@@ -631,8 +631,10 @@ mod tests {
         assert_eq!(actual.stdout.len(), want.len());
         for (i, (got, want)) in actual
             .stdout
-            .chunks_exact(18)
-            .zip(want.chunks_exact(18))
+            .as_chunks::<18>()
+            .0
+            .iter()
+            .zip(want.as_chunks::<18>().0.iter())
             .enumerate()
         {
             let c = &cases[i];

@@ -289,12 +289,11 @@ fn emit_int_divide<W: Write>(
     rhs: &Operand,
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    if ty.size_bytes(pointer_width) == 8 {
-        if let Some(divisor) = rhs.integer_constant() {
-            if emit_const_divide(writer, op, divisor)? {
-                return Ok(());
-            }
-        }
+    if ty.size_bytes(pointer_width) == 8
+        && let Some(divisor) = rhs.integer_constant()
+        && emit_const_divide(writer, op, divisor)?
+    {
+        return Ok(());
     }
     if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
         extend_integer(writer, "rax", ty.size_bytes(pointer_width), false)?;
@@ -2837,11 +2836,11 @@ pub(super) fn emit_int_compare(
             Operand::Register(Register::Virtual(vreg)) => reg_alloc.get_mapping_for(vreg),
             _ => None,
         };
-        if let Some(left) = physical(lhs) {
-            if let Some(v) = cmp_immediate(rhs, ty, unsigned, pointer_width) {
-                writeln!(writer, "    cmpq ${v}, %{left}")?;
-                return Ok("");
-            }
+        if let Some(left) = physical(lhs)
+            && let Some(v) = cmp_immediate(rhs, ty, unsigned, pointer_width)
+        {
+            writeln!(writer, "    cmpq ${v}, %{left}")?;
+            return Ok("");
         }
         if let (Some(left), Some(right)) = (physical(lhs), physical(rhs)) {
             writeln!(writer, "    cmpq %{right}, %{left}")?;

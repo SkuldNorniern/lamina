@@ -2,7 +2,7 @@
 name = "lamina-c"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Eira <eira@nornity.com>"]
 description = "Stable C API for the Lamina compiler"
 license = "Apache-2.0"

@@ -195,20 +195,18 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     if !matches!(
         target_arch,
         TargetArchitecture::X86_64 | TargetArchitecture::I686
-    ) {
-        if let Some(name) = module
-            .functions
-            .iter()
-            .filter(|(_, function)| function.sig.naked)
-            .map(|(name, _)| name)
-            .min()
-        {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                format!(
-                    "@naked function '{name}' is not supported on target {target_arch:?}-{target_os:?}; only x86_64 Linux honours @naked"
-                ),
-            )));
-        }
+    ) && let Some(name) = module
+        .functions
+        .iter()
+        .filter(|(_, function)| function.sig.naked)
+        .map(|(name, _)| name)
+        .min()
+    {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "@naked function '{name}' is not supported on target {target_arch:?}-{target_os:?}; only x86_64 Linux honours @naked"
+            ),
+        )));
     }
     let effective_caps = {
         #[cfg(feature = "nightly")]

@@ -5,6 +5,6 @@ allow-panic-in-tests = true
 allow-unwrap-in-tests = true
 cognitive-complexity-threshold = 10
 enum-variant-size-threshold = 200
-msrv = "1.85.0"
+msrv = "1.88.0"
 too-many-arguments-threshold = 7
 type-complexity-threshold = 250

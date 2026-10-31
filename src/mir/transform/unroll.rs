@@ -887,13 +887,12 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Located> {
                 Instruction::Copy { src, .. } => (IntBinOp::Add, resolve(src), imm(0)),
                 _ => continue,
             };
-            if op == IntBinOp::Add {
-                if let Some((base, offset)) = lhs.as_register().and_then(|r| affine.get(r)) {
-                    if let Some(n) = rhs.integer_constant() {
-                        rhs = imm(n.wrapping_add(*offset));
-                        lhs = base.clone();
-                    }
-                }
+            if op == IntBinOp::Add
+                && let Some((base, offset)) = lhs.as_register().and_then(|r| affine.get(r))
+                && let Some(n) = rhs.integer_constant()
+            {
+                rhs = imm(n.wrapping_add(*offset));
+                lhs = base.clone();
             }
             if matches!(
                 op,
@@ -903,10 +902,10 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Located> {
                 values.insert(dst.clone(), lhs);
             } else {
                 let result = fresh(next);
-                if op == IntBinOp::Add {
-                    if let Some(n) = rhs.integer_constant() {
-                        affine.insert(result.clone(), (lhs.clone(), n));
-                    }
+                if op == IntBinOp::Add
+                    && let Some(n) = rhs.integer_constant()
+                {
+                    affine.insert(result.clone(), (lhs.clone(), n));
                 }
                 code.push(binary(op, &result, lhs, rhs).with_loc(i.loc));
                 values.insert(dst.clone(), result.into());
@@ -929,16 +928,16 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Located> {
             continue;
         }
         if let Some(mut src) = values.remove(&dst) {
-            if let Operand::Register(r) = &src {
-                if !matches!(r, Register::Virtual(v) if v.id >= first_fresh) {
-                    let saved = fresh(next);
-                    code.push(Located::new(Instruction::Copy {
-                        ty: MirType::Scalar(ScalarType::I64),
-                        dst: saved.clone(),
-                        src,
-                    }));
-                    src = saved.into();
-                }
+            if let Operand::Register(r) = &src
+                && !matches!(r, Register::Virtual(v) if v.id >= first_fresh)
+            {
+                let saved = fresh(next);
+                code.push(Located::new(Instruction::Copy {
+                    ty: MirType::Scalar(ScalarType::I64),
+                    dst: saved.clone(),
+                    src,
+                }));
+                src = saved.into();
             }
             copies.push(Located::new(Instruction::Copy {
                 ty: MirType::Scalar(ScalarType::I64),
