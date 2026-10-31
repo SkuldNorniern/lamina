@@ -1,14 +1,25 @@
 //! Variadic functions: the register save area a variadic callee spills on entry and
 //! the `va_list` operations that walk it.
 //!
-//! The `va_list` is the twenty-four bytes the IR reserves: a byte cursor into the
-//! general-register half of the save area, a byte cursor into its floating-point
-//! half, the overflow pointer and the save area pointer. Both cursors index the one
-//! save area, so the floating-point cursor starts where the general half ends.
+//! The shapes are the ones the zSeries ELF ABI supplement states, so a `va_list` built
+//! here is the one a C function compiled for this target expects:
+//!
+//! ```c
+//! typedef struct {
+//!     long __gpr;
+//!     long __fpr;
+//!     void *__overflow_arg_area;
+//!     void *__reg_save_area;
+//! } va_list[1];
+//! ```
+//!
+//! `__gpr` and `__fpr` count the registers already consumed, not bytes. The save area
+//! is indexed by register number times eight, which puts `%r2`-`%r6` at offsets 16
+//! through 56 and `%f0`, `%f2`, `%f4`, `%f6` at 128 through 160.
 //!
 //! An unnamed argument always occupies a whole doubleword, in a register or in the
-//! caller's outgoing area, so every `va_arg` advances by eight bytes whatever its
-//! type, and a narrow integer is read from the doubleword the caller extended it in.
+//! caller's outgoing area, so every `va_arg` advances by one slot whatever its type,
+//! and a narrow integer is read from the doubleword the caller extended it in.
 
 use super::abi::{
     A0, A1, ARG_FPRS, ARG_GPRS, ArgPlace, FA0, FP, T0, T1, WORD, address, entry_base, fp_store,
@@ -20,12 +31,29 @@ use crate::{
     error::LaminaError,
     mir::{Instruction as MirInst, MirType, Register, ScalarType},
 };
+use lamina_platform::{TargetArchitecture, VaListAbi};
 use std::io::Write;
 
-/// Doublewords the save area holds: `%r2`-`%r6`, then `%f0`, `%f2`, `%f4` and `%f6`.
-const GPR_SAVE_BYTES: i32 = ARG_GPRS.len() as i32 * WORD;
-const FPR_SAVE_BYTES: i32 = ARG_FPRS.len() as i32 * WORD;
-pub(super) const SAVE_BYTES: i32 = GPR_SAVE_BYTES + FPR_SAVE_BYTES;
+/// Byte offsets of the four `va_list` fields.
+const GPR_FIELD: i32 = 0;
+const FPR_FIELD: i32 = 8;
+const OVERFLOW_FIELD: i32 = 16;
+const SAVE_FIELD: i32 = 24;
+
+/// The size the target table states for this ABI's `va_list`. The four fields fill it
+/// exactly, so widening one without the other is a build error rather than an overrun.
+const VA_LIST_BYTES: i32 = match TargetArchitecture::S390x.va_list() {
+    VaListAbi::Defined { size, .. } => size as i32,
+    VaListAbi::Undefined => panic!("s390x lowers va_list but the target table defines none"),
+};
+const _: () = assert!(SAVE_FIELD + WORD == VA_LIST_BYTES);
+
+/// Where register `n` lands in a save area indexed by register number.
+const GPR_SAVE_AT: i32 = 2 * WORD;
+const FPR_SAVE_AT: i32 = 16 * WORD;
+
+/// A save area addressed by register number spans twenty doublewords.
+pub(super) const SAVE_BYTES: i32 = 20 * WORD;
 
 /// Where a variadic callee's `va_list` starts reading.
 #[derive(Clone, Copy, Debug)]
@@ -34,6 +62,7 @@ pub(super) struct VaArea {
     pub(super) save: i32,
     /// Offset from the entry stack pointer of the first unnamed stack argument.
     pub(super) overflow: i32,
+    /// Argument registers the named parameters consumed.
     pub(super) gpr: i32,
     pub(super) fpr: i32,
 }
@@ -41,14 +70,12 @@ pub(super) struct VaArea {
 impl VaArea {
     pub(super) fn new(save: i32, places: &[ArgPlace], first_gpr: usize) -> Self {
         let count = |want: fn(&ArgPlace) -> bool| places.iter().filter(|p| want(p)).count() as i32;
-        let gprs = first_gpr as i32 + count(|p| matches!(p, ArgPlace::Gpr(_)));
-        let fprs = count(|p| matches!(p, ArgPlace::Fpr(_)));
         let stack = count(|p| matches!(p, ArgPlace::Stack(_))) as usize;
         Self {
             save,
             overflow: incoming_stack_offset(stack),
-            gpr: gprs * WORD,
-            fpr: GPR_SAVE_BYTES + fprs * WORD,
+            gpr: first_gpr as i32 + count(|p| matches!(p, ArgPlace::Gpr(_))),
+            fpr: count(|p| matches!(p, ArgPlace::Fpr(_))),
         }
     }
 }
@@ -56,14 +83,20 @@ impl VaArea {
 /// Spills every argument register into the save area on entry.
 pub(super) fn spill_save_area<W: Write>(writer: &mut W, area: &VaArea) -> Result<(), LaminaError> {
     for (index, reg) in ARG_GPRS.iter().enumerate() {
-        fp_store(writer, "stg", reg, area.save + index as i32 * WORD, T0)?;
+        fp_store(
+            writer,
+            "stg",
+            reg,
+            area.save + GPR_SAVE_AT + index as i32 * WORD,
+            T0,
+        )?;
     }
     for (index, reg) in ARG_FPRS.iter().enumerate() {
         fp_store(
             writer,
             "stdy",
             reg,
-            area.save + GPR_SAVE_BYTES + index as i32 * WORD,
+            area.save + FPR_SAVE_AT + index as i32 * WORD,
             T0,
         )?;
     }
@@ -85,18 +118,18 @@ pub(super) fn emit<W: Write>(
         MirInst::VaStart { ap } => {
             load_operand(ap, writer, slots, T1)?;
             writeln!(writer, "    lghi {A0}, {}", area.gpr)?;
-            writeln!(writer, "    st {A0}, 0({T1})")?;
+            writeln!(writer, "    stg {A0}, {GPR_FIELD}({T1})")?;
             writeln!(writer, "    lghi {A0}, {}", area.fpr)?;
-            writeln!(writer, "    st {A0}, 4({T1})")?;
+            writeln!(writer, "    stg {A0}, {FPR_FIELD}({T1})")?;
             address(
                 writer,
                 A0,
                 entry_base(ctx.aligned),
                 i64::from(area.overflow),
             )?;
-            writeln!(writer, "    stg {A0}, 8({T1})")?;
+            writeln!(writer, "    stg {A0}, {OVERFLOW_FIELD}({T1})")?;
             address(writer, A0, FP, i64::from(area.save))?;
-            writeln!(writer, "    stg {A0}, 16({T1})")?;
+            writeln!(writer, "    stg {A0}, {SAVE_FIELD}({T1})")?;
             Ok(())
         }
         MirInst::VaArg { ty, dst, ap } => {
@@ -117,26 +150,27 @@ pub(super) fn emit<W: Write>(
                     )));
                 }
             };
-            let (cursor, limit) = if float {
-                (4, SAVE_BYTES)
+            let (field, available, base) = if float {
+                (FPR_FIELD, ARG_FPRS.len(), FPR_SAVE_AT)
             } else {
-                (0, GPR_SAVE_BYTES)
+                (GPR_FIELD, ARG_GPRS.len(), GPR_SAVE_AT)
             };
             let stack = ctx.fresh_label("va_stack");
             let done = ctx.fresh_label("va_done");
             load_operand(ap, writer, slots, T1)?;
-            writeln!(writer, "    llgf {A1}, {cursor}({T1})")?;
-            writeln!(writer, "    clgfi {A1}, {limit}")?;
+            writeln!(writer, "    lg {A1}, {field}({T1})")?;
+            writeln!(writer, "    clgfi {A1}, {available}")?;
             writeln!(writer, "    brcl 10, {stack}")?;
-            writeln!(writer, "    lg {A0}, 16({T1})")?;
-            writeln!(writer, "    agr {A0}, {A1}")?;
-            writeln!(writer, "    aghi {A1}, {WORD}")?;
-            writeln!(writer, "    st {A1}, {cursor}({T1})")?;
+            writeln!(writer, "    lg {A0}, {SAVE_FIELD}({T1})")?;
+            writeln!(writer, "    sllg {T0}, {A1}, 3")?;
+            writeln!(writer, "    lay {A0}, {base}({T0},{A0})")?;
+            writeln!(writer, "    aghi {A1}, 1")?;
+            writeln!(writer, "    stg {A1}, {field}({T1})")?;
             writeln!(writer, "    jg {done}")?;
             writeln!(writer, "{stack}:")?;
-            writeln!(writer, "    lg {A0}, 8({T1})")?;
+            writeln!(writer, "    lg {A0}, {OVERFLOW_FIELD}({T1})")?;
             writeln!(writer, "    lay {T0}, {WORD}({A0})")?;
-            writeln!(writer, "    stg {T0}, 8({T1})")?;
+            writeln!(writer, "    stg {T0}, {OVERFLOW_FIELD}({T1})")?;
             writeln!(writer, "{done}:")?;
             match (float, dst) {
                 (true, Register::Virtual(vreg)) => {
@@ -158,7 +192,7 @@ pub(super) fn emit<W: Write>(
         MirInst::VaCopy { dst, src } => {
             load_operand(src, writer, slots, T1)?;
             load_operand(dst, writer, slots, A1)?;
-            for offset in [0, 8, 16] {
+            for offset in (0..VA_LIST_BYTES).step_by(WORD as usize) {
                 writeln!(writer, "    lg {A0}, {offset}({T1})")?;
                 writeln!(writer, "    stg {A0}, {offset}({A1})")?;
             }

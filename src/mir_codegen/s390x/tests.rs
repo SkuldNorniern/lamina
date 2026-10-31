@@ -3,11 +3,32 @@ use super::abi::{
 };
 use super::bit::{emit_int_rotate, emit_int_unary};
 use super::variadic::{SAVE_BYTES, VaArea};
+use crate::mir::codegen::from_ir_for_target;
 use crate::mir::{
     Aggregate, AggregateClass, AggregateShape, IntRotOp, IntUnOp, MirType, Operand, Register,
     ScalarType, VirtualReg,
 };
+use crate::mir_codegen::settings::MirCodegenSettings;
+use crate::parser::parse_module;
+use lamina_ir::types::{Type as IRType, sizeof_type};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem, VaListAbi};
 use std::collections::HashMap;
+
+fn variadic_asm(source: &str) -> String {
+    let ir = parse_module(source).expect("parse");
+    let mir = from_ir_for_target(&ir, "module", TargetArchitecture::S390x.data_layout())
+        .expect("lower to MIR");
+    let mut out = Vec::new();
+    super::generate_mir_s390x_with_units_and_settings(
+        &mir,
+        &mut out,
+        TargetOperatingSystem::Linux,
+        1,
+        &MirCodegenSettings::default(),
+    )
+    .expect("emit");
+    String::from_utf8(out).expect("utf8")
+}
 
 fn scalars(types: &[MirType]) -> Vec<ArgKind> {
     types.iter().copied().map(ArgKind::scalar).collect()
@@ -201,7 +222,7 @@ fn a_rotate_masks_its_count_to_the_operand_width() {
 }
 
 #[test]
-fn the_va_list_cursors_start_past_the_named_parameters() {
+fn the_va_list_counters_start_past_the_named_parameters() {
     let places = [
         ArgPlace::Gpr(0),
         ArgPlace::Fpr(0),
@@ -209,14 +230,51 @@ fn the_va_list_cursors_start_past_the_named_parameters() {
         ArgPlace::Stack(0),
     ];
     let area = VaArea::new(-SAVE_BYTES, &places, 0);
-    assert_eq!(area.gpr, 16);
-    assert_eq!(area.fpr, 40 + 8);
+    assert_eq!(area.gpr, 2);
+    assert_eq!(area.fpr, 1);
     assert_eq!(area.overflow, incoming_stack_offset(1));
-    assert_eq!(area.save, -72);
+    assert_eq!(area.save, -160);
 }
 
 #[test]
 fn a_hidden_result_pointer_counts_against_the_va_list_registers() {
     let area = VaArea::new(-SAVE_BYTES, &[ArgPlace::Gpr(1)], 1);
-    assert_eq!(area.gpr, 16);
+    assert_eq!(area.gpr, 2);
+}
+
+#[test]
+fn the_va_list_is_the_thirty_two_bytes_the_elf_abi_states() {
+    assert_eq!(
+        TargetArchitecture::S390x.va_list(),
+        VaListAbi::Defined {
+            size: 32,
+            alignment: 8
+        }
+    );
+    assert_eq!(
+        sizeof_type(&IRType::VaList, TargetArchitecture::S390x.data_layout()),
+        Some(32)
+    );
+}
+
+#[test]
+fn va_start_fills_the_four_elf_abi_va_list_fields() {
+    let asm = variadic_asm(
+        "fn @v(i64 %n, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  va_end %ap\n  ret.i64 %x\n}\n",
+    );
+    assert!(asm.contains("stg %r2, 0(%r12)"), "{asm}");
+    assert!(asm.contains("stg %r2, 8(%r12)"), "{asm}");
+    assert!(asm.contains("stg %r2, 16(%r12)"), "{asm}");
+    assert!(asm.contains("stg %r2, 24(%r12)"), "{asm}");
+}
+
+#[test]
+fn the_save_area_is_indexed_by_register_number() {
+    let asm = variadic_asm(
+        "fn @v(i64 %n, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  %y = va_arg.f64 %ap\n  va_end %ap\n  ret.i64 %x\n}\n",
+    );
+    assert!(asm.contains("lay %r2, 16(%r1,%r2)"), "{asm}");
+    assert!(asm.contains("lay %r2, 128(%r1,%r2)"), "{asm}");
+    assert!(asm.contains("clgfi %r3, 5"), "{asm}");
+    assert!(asm.contains("clgfi %r3, 4"), "{asm}");
 }
