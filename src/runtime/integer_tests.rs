@@ -11,7 +11,7 @@ use crate::{
     },
 };
 use lamina_mir::ScalarType;
-use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
 use std::{
     error::Error,
     fs,
@@ -140,8 +140,7 @@ fn emit(
     generate_mir_to_target_with_settings(
         module,
         &mut bytes,
-        target.arch,
-        TargetOperatingSystem::Linux,
+        &Target::new(target.arch, TargetOperatingSystem::Linux),
         1,
         &MirCodegenSettings {
             regalloc: allocator,

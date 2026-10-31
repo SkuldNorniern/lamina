@@ -215,8 +215,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     generate_mir_to_target_with_settings(
         &mir_mod,
         &mut intermediate_buffer,
-        target.architecture,
-        target.operating_system,
+        &target,
         codegen_units,
         &codegen_settings,
     )

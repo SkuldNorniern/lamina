@@ -8,7 +8,7 @@ use crate::{
     },
     mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
 };
-use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
 use std::{fs, process::Command, process::Stdio};
 
 pub const LANES: [VectorLane; 6] = [
@@ -426,12 +426,14 @@ pub fn emit(
         generate_mir_to_target_with_settings(
             module,
             &mut asm,
-            if matches!(backend, Backend::Neon) {
-                TargetArchitecture::Aarch64
-            } else {
-                TargetArchitecture::Wasm32
-            },
-            TargetOperatingSystem::Linux,
+            &Target::new(
+                if matches!(backend, Backend::Neon) {
+                    TargetArchitecture::Aarch64
+                } else {
+                    TargetArchitecture::Wasm32
+                },
+                TargetOperatingSystem::Linux,
+            ),
             1,
             &settings,
         )

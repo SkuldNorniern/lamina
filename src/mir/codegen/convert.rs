@@ -2310,11 +2310,21 @@ fn convert_instruction<'a>(
         IRInst::IntToPtr {
             result,
             int_value,
-            target_type: _,
+            target_type,
         } => {
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
-            let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg, globals)?;
-            let from = operand_type(&val_op, register_types)?;
+            let mut val_op = resolve_operand(int_value, vreg_alloc, var_to_reg, globals)?;
+            let from = map_ir_prim(*target_type)?;
+            if matches!(val_op, Operand::Register(_)) {
+                let actual = operand_type(&val_op, register_types)?;
+                if actual != from {
+                    return Err(FromIRError::InvalidConversion(format!(
+                        "inttoptr.{target_type} applied to {int_value}, which is {actual}"
+                    )));
+                }
+            } else {
+                normalize_lowered_literal(&mut val_op, from);
+            }
             Ok(vec![Instruction::IntConvert {
                 from,
                 to: MirType::Scalar(ScalarType::Ptr),

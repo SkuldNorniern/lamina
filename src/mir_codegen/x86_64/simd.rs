@@ -505,7 +505,7 @@ mod tests {
         mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
     };
     use lamina_platform::{
-        ArchVariant, PointerWidth, TargetArchitecture, TargetOperatingSystem, X86CpuLevel,
+        ArchVariant, PointerWidth, Target, TargetArchitecture, TargetOperatingSystem, X86CpuLevel,
     };
     use std::{array, fmt::Write as _, fs, path::Path, process::Command};
 
@@ -535,8 +535,7 @@ mod tests {
         generate_mir_to_target_with_settings(
             module,
             &mut asm,
-            TargetArchitecture::X86_64,
-            TargetOperatingSystem::Linux,
+            &Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
             1,
             &MirCodegenSettings {
                 regalloc: strategy,

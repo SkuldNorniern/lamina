@@ -371,14 +371,7 @@ fn emit(
     written: &mut Vec<PathBuf>,
 ) -> Result<PathBuf, LaminaError> {
     let mut assembly = Vec::<u8>::new();
-    generate_mir_to_target_with_settings(
-        module,
-        &mut assembly,
-        target.architecture,
-        target.operating_system,
-        codegen_units,
-        settings,
-    )?;
+    generate_mir_to_target_with_settings(module, &mut assembly, &target, codegen_units, settings)?;
 
     let assembly_path = directory
         .join(stem)

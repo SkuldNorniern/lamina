@@ -6,7 +6,7 @@ use crate::mir::{
 use crate::mir_codegen::simd_support::tool_available;
 use crate::test_support::TempDir;
 use lamina_mir::ScalarType;
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
 use std::{error::Error, fs, process::Command};
 
 fn unary_module(register_inputs: bool) -> Module {
@@ -94,8 +94,7 @@ fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
         generate_mir_to_target(
             &module,
             &mut assembly,
-            arch,
-            TargetOperatingSystem::Linux,
+            &Target::new(arch, TargetOperatingSystem::Linux),
             1,
         )?;
         let source = dir.join(format!("{triple}.s"));
@@ -147,8 +146,7 @@ fn float_unary_wasm_output_validates() -> Result<(), Box<dyn Error>> {
         generate_mir_to_target(
             &module,
             &mut assembly,
-            arch,
-            TargetOperatingSystem::Unknown,
+            &Target::new(arch, TargetOperatingSystem::Unknown),
             1,
         )?;
         let source = dir.join("unary.wat");

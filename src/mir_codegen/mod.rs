@@ -38,21 +38,21 @@ use lamina_codegen::{
     abi::{BuiltinLibrary, RuntimeSymbol},
     riscv::{RiscVTarget, Xlen},
 };
-use lamina_platform::{ArchVariant, TargetArchitecture, TargetOperatingSystem, X86CpuLevel};
+use lamina_platform::{
+    ArchVariant, Target, TargetArchitecture, TargetOperatingSystem, X86CpuLevel,
+};
 
-/// Generates assembly from MIR for the requested target architecture and OS.
+/// Generates assembly from MIR for the requested target.
 pub fn generate_mir_to_target<W: Write>(
     module: &Module,
     writer: &mut W,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
     generate_mir_to_target_with_settings(
         module,
         writer,
-        target_arch,
-        target_os,
+        target,
         codegen_units,
         &MirCodegenSettings::default(),
     )
@@ -159,16 +159,22 @@ fn not_implemented(arch: TargetArchitecture, os: TargetOperatingSystem) -> Lamin
 pub fn generate_mir_to_target_with_settings<W: Write>(
     input: &Module,
     writer: &mut W,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
+    target: &Target,
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
+    let target_arch = target.architecture;
+    let target_os = target.operating_system;
     let pointer_width = target_arch.pointer_width();
+    let chosen_variant = if settings.arch_variant == ArchVariant::None {
+        target.variant
+    } else {
+        settings.arch_variant
+    };
     let resolved_settings = settings
         .clone()
-        .with_arch_variant(target_arch.spec().variants.accept(settings.arch_variant))
-        .with_environment(settings.environment(target_arch, target_os));
+        .with_arch_variant(target_arch.spec().variants.accept(chosen_variant))
+        .with_environment(settings.environment.unwrap_or(target.environment));
     let settings = &resolved_settings;
     let builtins = BuiltinLibrary::from_env(target_os);
     let retargeted = retarget_runtime_calls(input, &builtins);
@@ -526,8 +532,7 @@ mod tests {
         generate_mir_to_target(
             &module,
             &mut output,
-            TargetArchitecture::X86_64,
-            TargetOperatingSystem::Linux,
+            &Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
             1,
         )
         .expect("Failed to generate x86_64 assembly");
@@ -553,8 +558,7 @@ mod tests {
         generate_mir_to_target_with_settings(
             &module,
             &mut output,
-            TargetArchitecture::X86_64,
-            TargetOperatingSystem::Linux,
+            &Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
             1,
             &settings,
         )
@@ -589,8 +593,7 @@ mod tests {
         generate_mir_to_target(
             &module,
             &mut output,
-            TargetArchitecture::Aarch64,
-            TargetOperatingSystem::Linux,
+            &Target::new(TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
             1,
         )
         .expect("Failed to generate AArch64 assembly");
@@ -611,8 +614,7 @@ mod tests {
         generate_mir_to_target(
             &module,
             &mut output,
-            TargetArchitecture::Riscv64,
-            TargetOperatingSystem::Linux,
+            &Target::new(TargetArchitecture::Riscv64, TargetOperatingSystem::Linux),
             1,
         )
         .expect("Failed to generate RISC-V assembly");
@@ -633,8 +635,7 @@ mod tests {
         generate_mir_to_target(
             &module,
             &mut output,
-            TargetArchitecture::Wasm32,
-            TargetOperatingSystem::Linux,
+            &Target::new(TargetArchitecture::Wasm32, TargetOperatingSystem::Linux),
             1,
         )
         .expect("Failed to generate WASM");
@@ -660,8 +661,12 @@ mod tests {
 
         for (arch, name) in targets {
             let mut output = Vec::new();
-            let result =
-                generate_mir_to_target(&module, &mut output, arch, TargetOperatingSystem::Linux, 1);
+            let result = generate_mir_to_target(
+                &module,
+                &mut output,
+                &Target::new(arch, TargetOperatingSystem::Linux),
+                1,
+            );
 
             assert!(
                 result.is_ok(),
@@ -708,8 +713,7 @@ mod tests {
             let result = generate_mir_to_target(
                 &mir_module,
                 &mut output,
-                arch,
-                TargetOperatingSystem::Linux,
+                &Target::new(arch, TargetOperatingSystem::Linux),
                 1,
             );
 
@@ -745,7 +749,7 @@ mod atomic_target_tests {
 
     use super::generate_mir_to_target;
     use crate::{mir::codegen, parser::parse_module};
-    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+    use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
 
     #[test]
     fn wasm_reports_atomics_as_a_clean_error() {
@@ -758,8 +762,7 @@ mod atomic_target_tests {
         let err = generate_mir_to_target(
             &mir,
             &mut output,
-            TargetArchitecture::Wasm32,
-            TargetOperatingSystem::Wasi,
+            &Target::new(TargetArchitecture::Wasm32, TargetOperatingSystem::Wasi),
             1,
         )
         .expect_err("atomics must not reach the wasm encoder");
@@ -781,7 +784,7 @@ mod atomic_target_tests {
             (TargetArchitecture::Wasm32, TargetOperatingSystem::Wasi),
         ] {
             let mut output = Vec::new();
-            let err = generate_mir_to_target(&mir, &mut output, arch, os, 1)
+            let err = generate_mir_to_target(&mir, &mut output, &Target::new(arch, os), 1)
                 .expect_err("naked must be refused");
             let message = err.to_string();
             assert!(message.contains("@naked function 'isr'"), "{message}");
@@ -829,8 +832,13 @@ mod runtime_symbol_tests {
 
     fn emit_x86(module: &Module, target_os: TargetOperatingSystem) -> String {
         let mut out = Vec::new();
-        generate_mir_to_target(module, &mut out, TargetArchitecture::X86_64, target_os, 1)
-            .expect("emit");
+        generate_mir_to_target(
+            module,
+            &mut out,
+            &Target::new(TargetArchitecture::X86_64, target_os),
+            1,
+        )
+        .expect("emit");
         String::from_utf8(out).expect("utf8")
     }
 

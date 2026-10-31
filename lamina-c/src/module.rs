@@ -142,13 +142,7 @@ unsafe fn compile_to_buf(
         };
 
         let mut asm: Vec<u8> = Vec::new();
-        generate_mir_to_target(
-            &mir_mod,
-            &mut asm,
-            target.architecture,
-            target.operating_system,
-            units,
-        )?;
+        generate_mir_to_target(&mir_mod, &mut asm, &target, units)?;
         Ok(asm)
     })();
 

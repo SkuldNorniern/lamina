@@ -482,7 +482,6 @@ use lamina_mir::ssa::round_trip_module;
 use lamina_platform::{Target, TargetArchitecture};
 use mir::TransformPipeline;
 use mir::transform::vector_unit_for;
-use mir_codegen::CodegenError;
 use mir_codegen::settings::{MirCodegenSettings, RegallocStrategy};
 pub use mir_codegen::{generate_mir_to_target, generate_mir_to_target_with_settings};
 use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
@@ -535,42 +534,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 
     let mir_module = mir::codegen::from_ir_for_target(&module, "module", target_obj.data_layout())?;
 
-    match target_obj.architecture {
-        TargetArchitecture::X86_64
-        | TargetArchitecture::Aarch64
-        | TargetArchitecture::Wasm32
-        | TargetArchitecture::Wasm64
-        | TargetArchitecture::Riscv32
-        | TargetArchitecture::Riscv64
-        | TargetArchitecture::LoongArch64
-        | TargetArchitecture::S390x
-        | TargetArchitecture::Mips64
-        | TargetArchitecture::Mips64El
-        | TargetArchitecture::PowerPC64Be => {
-            generate_mir_to_target(
-                &mir_module,
-                output_asm,
-                target_obj.architecture,
-                target_obj.operating_system,
-                codegen_units,
-            )?;
-        }
-        #[cfg(feature = "nightly")]
-        TargetArchitecture::Riscv128 | TargetArchitecture::Arx64 => {
-            mir_codegen::generate_mir_to_target(
-                &mir_module,
-                output_asm,
-                target_obj.architecture,
-                target_obj.operating_system,
-                codegen_units,
-            )?;
-        }
-        _ => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                format!("Unsupported target architecture: {target}"),
-            )));
-        }
-    }
+    generate_mir_to_target(&mir_module, output_asm, &target_obj, codegen_units)?;
 
     Ok(())
 }
@@ -658,18 +622,12 @@ pub fn compile_module_to_object_with_options(
         .map_err(|e| LaminaError::ValidationError(format!("SSA round trip failed: {e}")))?;
 
     let mut text = Vec::new();
-    let settings = options
-        .settings
-        .clone()
-        .with_target_variant(target.variant)
-        .with_environment(target.environment);
     generate_mir_to_target_with_settings(
         &mir_module,
         &mut text,
-        target.architecture,
-        target.operating_system,
+        &target,
         options.codegen_units,
-        &settings,
+        &options.settings,
     )?;
     let text = String::from_utf8(text).map_err(|e| {
         LaminaError::ValidationError(format!("generated assembly is not UTF-8: {e}"))
@@ -738,6 +696,71 @@ entry:
         let expected = ras.assemble_to_bytes(&assembly).expect("bytes");
 
         assert_eq!(object, expected);
+    }
+
+    const FLOAT_IR: &str = r#"
+fn @main() -> i64 {
+entry:
+    %sum = add.f64 1.5, 2.5
+    %out = fptoint.f64.i64 %sum
+    ret.i64 %out
+}
+"#;
+
+    #[test]
+    fn target_assembly_honors_the_variant_the_target_named() {
+        let mut gc = Vec::new();
+        compile_lamina_ir_to_target_assembly(FLOAT_IR, &mut gc, "rv64gc_linux", 1)
+            .expect("rv64gc has the D extension");
+
+        let mut imac = Vec::new();
+        let error = compile_lamina_ir_to_target_assembly(FLOAT_IR, &mut imac, "rv64imac_linux", 1)
+            .expect_err("rv64imac has no hardware float");
+        assert!(
+            error.to_string().contains("rv64imac"),
+            "{error} should name the ISA that cannot do this"
+        );
+    }
+
+    #[test]
+    fn target_assembly_honors_the_environment_the_target_named() {
+        let mut hard = Vec::new();
+        compile_lamina_ir_to_target_assembly(FLOAT_IR, &mut hard, "armv7_linux_eabihf", 1)
+            .expect("armv7 eabihf has a VFP unit");
+
+        let mut soft = Vec::new();
+        let error =
+            compile_lamina_ir_to_target_assembly(FLOAT_IR, &mut soft, "armv7_linux_eabi", 1)
+                .expect_err("armv7 eabi passes floats in integer registers");
+        assert!(
+            error.to_string().contains("eabi"),
+            "{error} should name the environment that cannot do this"
+        );
+    }
+
+    const I32_IR: &str = r#"
+fn @main() -> i32 {
+entry:
+    %result = add.i32 42, 8
+    ret.i32 %result
+}
+"#;
+
+    #[test]
+    fn target_assembly_covers_every_target_codegen_implements() {
+        for target in [
+            "ppc64le_linux",
+            "ppc64_linux",
+            "i686_linux",
+            "armv7_linux",
+            "thumbv6m_unknown",
+            "thumbv7m_unknown",
+        ] {
+            let mut assembly = Vec::new();
+            compile_lamina_ir_to_target_assembly(I32_IR, &mut assembly, target, 1)
+                .unwrap_or_else(|e| panic!("{target}: {e}"));
+            assert!(!assembly.is_empty(), "{target}");
+        }
     }
 
     #[test]

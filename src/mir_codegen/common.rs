@@ -1989,7 +1989,7 @@ mod backend_plan_tests {
     use crate::mir_codegen::{
         MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings,
     };
-    use lamina_platform::TargetArchitecture;
+    use lamina_platform::{Target, TargetArchitecture};
     use std::error::Error;
 
     #[test]
@@ -2065,8 +2065,7 @@ mod backend_plan_tests {
                 generate_mir_to_target_with_settings(
                     &module,
                     &mut output,
-                    arch,
-                    TargetOperatingSystem::Linux,
+                    &Target::new(arch, TargetOperatingSystem::Linux),
                     1,
                     &settings,
                 )?;
