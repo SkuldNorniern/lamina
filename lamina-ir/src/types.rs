@@ -298,7 +298,35 @@ impl<'a> Literal<'a> {
     }
 }
 
+/// What a value of a primitive type occupies, with signedness dropped.
+///
+/// Signedness belongs to the operation rather than to the value, so `u64` and `i64`
+/// are one class: either may stand where the other is stated. A width is not a class
+/// of its own, so `i32` and `i64` are not interchangeable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueClass {
+    Integer(u32),
+    Float(u32),
+    Bool,
+    Pointer,
+}
+
 impl PrimitiveType {
+    /// The class of register a value of this type occupies.
+    pub const fn value_class(self) -> ValueClass {
+        match self {
+            PrimitiveType::I8 | PrimitiveType::U8 => ValueClass::Integer(8),
+            PrimitiveType::I16 | PrimitiveType::U16 => ValueClass::Integer(16),
+            PrimitiveType::I32 | PrimitiveType::U32 => ValueClass::Integer(32),
+            PrimitiveType::I64 | PrimitiveType::U64 => ValueClass::Integer(64),
+            PrimitiveType::I128 | PrimitiveType::U128 => ValueClass::Integer(128),
+            PrimitiveType::F32 => ValueClass::Float(32),
+            PrimitiveType::F64 => ValueClass::Float(64),
+            PrimitiveType::Bool => ValueClass::Bool,
+            PrimitiveType::Ptr => ValueClass::Pointer,
+        }
+    }
+
     /// The inclusive range this integer type holds, or `None` when it is not an integer.
     pub fn integer_bounds(self) -> Option<(i128, i128)> {
         Some(match self {

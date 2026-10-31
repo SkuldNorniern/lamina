@@ -403,3 +403,46 @@ fn a_duplicate_thread_local_annotation_is_rejected() {
     );
     assert!(err.contains("Duplicate annotation: @thread_local"), "{err}");
 }
+
+#[test]
+fn an_operand_of_another_width_is_named_with_both_types() {
+    for (line, found, stated) in [
+        (
+            "%c32 = add.i32 1, 2\n    %r = shl.i64 1, %c32",
+            "i32",
+            "i64",
+        ),
+        (
+            "%c32 = add.i32 1, 2\n    %r = add.i64 %c32, 1",
+            "i32",
+            "i64",
+        ),
+        ("%c32 = add.i32 1, 2\n    %r = lt.i64 1, %c32", "i32", "i64"),
+        (
+            "%f = add.f32 1.0, 2.0\n    %r = add.f64 %f, 1.0",
+            "f32",
+            "f64",
+        ),
+    ] {
+        let err = rejected(&body(line));
+        assert!(err.contains("Validation Error"), "{line}: {err}");
+        assert!(
+            err.contains(&format!("which has type {found}")),
+            "{line}: {err}"
+        );
+        assert!(
+            err.contains(&format!("the instruction states {stated}")),
+            "{line}: {err}"
+        );
+    }
+}
+
+#[test]
+fn signedness_alone_leaves_an_operand_usable() {
+    for line in [
+        "%u = bitcast.i64.u64 %x\n    %r = add.i64 %u, 1",
+        "%u = bitcast.i64.u64 %x\n    %r = lt.u64 %u, 1",
+    ] {
+        accepted(&body(line));
+    }
+}

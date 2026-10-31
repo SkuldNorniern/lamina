@@ -359,6 +359,7 @@ impl<'a> Module<'a> {
             }));
         }
         self.validate_named_types(&mut all_errors);
+        self.validate_operand_types(&mut all_errors);
         self.validate_vectors(&mut all_errors);
         self.validate_field_pointers(&mut all_errors);
         validate_calls(self, &mut all_errors);
@@ -366,6 +367,51 @@ impl<'a> Module<'a> {
             Ok(())
         } else {
             Err(all_errors)
+        }
+    }
+
+    /// Checks that each operand of a binary or comparison instruction is a value of the
+    /// type the instruction states.
+    ///
+    /// A register of a different width is not an implicit conversion, and a shift count
+    /// is no exception: `shl.i64` takes an `i64` count. Signedness is not a width, so
+    /// `u64` stands where `i64` is stated.
+    fn validate_operand_types(&self, errors: &mut Vec<String>) {
+        let mut functions: Vec<&Function<'a>> = self.functions.values().collect();
+        functions.sort_by_key(|func| func.name);
+        for func in functions {
+            let env = value_types(self, func);
+            let mut blocks: Vec<_> = func.basic_blocks.iter().collect();
+            blocks.sort_by_key(|(label, _)| **label);
+            for (label, block) in blocks {
+                for instr in &block.instructions {
+                    let (Instruction::Binary { ty, lhs, rhs, .. }
+                    | Instruction::Cmp { ty, lhs, rhs, .. }) = instr
+                    else {
+                        continue;
+                    };
+                    for (side, value) in [("left operand", lhs), ("right operand", rhs)] {
+                        let Value::Variable(name) = value else {
+                            continue;
+                        };
+                        let Some(found) = env.get(name) else {
+                            continue;
+                        };
+                        let Some(Type::Primitive(resolved)) =
+                            resolve_type_names(found, &self.type_declarations)
+                        else {
+                            continue;
+                        };
+                        if resolved.value_class() == ty.value_class() {
+                            continue;
+                        }
+                        errors.push(format!(
+                            "the {side} of '{instr}' in block '{label}' of '@{}' is '%{name}', which has type {found}, but the instruction states {ty}\n  Hint: both operands take the instruction's type, a shift count included; convert '%{name}' to {ty} first",
+                            func.name
+                        ));
+                    }
+                }
+            }
         }
     }
 
