@@ -19,23 +19,19 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-# Testcases that cannot run on s390x, with the reason. The s390x backend does support
-# inline assembly; the templates in these testcases are x86_64 assembly text, which only
-# an x86_64 assembler accepts. Any other testcase must compile, run and match its
-# expected output.
+# Testcases that cannot run on s390x, with the reason. Any other testcase must compile,
+# run and match its expected output, or have a s390x variant (see CROSS_TARGETS).
 S390X_UNSUPPORTED = {
-    'inline_asm_clobber': 'x86_64 registers and mnemonics in the asm template',
-    'inline_asm_loop': 'x86_64 mnemonics in the asm template',
-    'inline_asm_pressure': 'x86_64 registers and mnemonics in the asm template',
     'inline_asm_rdtsc': 'rdtsc reads the x86 timestamp counter; no s390x equivalent',
-    'inline_asm_unused': 'x86_64 mnemonics in the asm template',
     'vector_operations': 'the z vector facility (z13 and later) is not implemented',
 }
 
 
 # Cross targets run through `--target <name>`: each program is compiled for the
 # target, then executed under its user-mode emulator. Expected files are chosen
-# by the target's byte order, not the host's.
+# by the target's byte order, not the host's. A testcase `<name>.<target>.lamina`
+# is compiled in place of `<name>.lamina` for that target and shares its expected
+# output; variant files are never run as testcases of their own.
 CROSS_TARGETS = {
     's390x_linux': {
         'byteorder': 'big',
@@ -45,6 +41,25 @@ CROSS_TARGETS = {
         'unsupported': S390X_UNSUPPORTED,
     },
 }
+
+def variant_target(test_path):
+    """The target that `<name>.<target>.lamina` is a variant for, or None for a base testcase."""
+    stem = Path(test_path).stem
+    _, dot, suffix = stem.rpartition('.')
+    return suffix if dot and suffix in CROSS_TARGETS else None
+
+def testcase_source(test_path, target=None):
+    """The file to compile for `target`: its variant when one exists, else the testcase."""
+    test_path = Path(test_path)
+    if target:
+        variant = test_path.with_name(f"{test_path.stem}.{target}.lamina")
+        if variant.exists():
+            return str(variant)
+    return str(test_path)
+
+def discover(pattern):
+    """Base testcases matching `pattern`; variant files are not testcases of their own."""
+    return [p for p in sorted(glob.glob(pattern)) if variant_target(p) is None]
 
 def cross_toolchain_problem(target):
     """Return why `target` cannot be built and run here, or None when it can."""
@@ -241,8 +256,9 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
     # Compile the test
     cmd_flags = "--emit-asm" if use_mir else ""
     target_flag = f"--target {target}" if target else ""
+    source_path = testcase_source(test_path, target)
     compile_cmd = (
-        f'cargo run --release --quiet -- {test_path} {cmd_flags} {target_flag} -o "{executable_path}"'
+        f'cargo run --release --quiet -- {source_path} {cmd_flags} {target_flag} -o "{executable_path}"'
     )
     success, stdout, stderr, _ = run_command(compile_cmd, cwd=project_root)
 
@@ -286,8 +302,8 @@ def run_tests(use_mir=False, target=None):
     failures = []
 
     # Discover tests
-    test_files = sorted(glob.glob("testcases/*.lamina"))
-    benchmark_files = sorted(glob.glob("benchmarks/*/*.lamina"))
+    test_files = discover("testcases/*.lamina")
+    benchmark_files = discover("benchmarks/*/*.lamina")
     all_tests = test_files + benchmark_files
 
     for test_path in all_tests:
@@ -349,8 +365,8 @@ def list_tests():
     """List available test cases"""
     print_colored("📋 Available Test Cases:", Colors.BOLD + Colors.BLUE)
     
-    test_files = sorted(glob.glob("testcases/*.lamina"))
-    benchmark_files = sorted(glob.glob("benchmarks/*/*.lamina"))
+    test_files = discover("testcases/*.lamina")
+    benchmark_files = discover("benchmarks/*/*.lamina")
     
     print_colored("\nStandard Tests:", Colors.BLUE)
     for test_path in test_files:
