@@ -545,9 +545,7 @@ arch_table! {
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
         interpreters: {
-            // No glibc interpreter has been settled on for ppc64le, so a glibc link gets
-            // none. The value a toolchain would use is /lib64/ld64.so.2.
-            gnu: None,
+            gnu: Some("/lib64/ld64.so.2"),
             gnu_soft_float: None,
             musl: Some("/lib/ld-musl-powerpc64le.so.1")
         },
@@ -570,7 +568,7 @@ arch_table! {
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
         interpreters: {
-            gnu: Some("/lib64/ld64.so.1"),
+            gnu: Some("/lib64/ld64.so.2"),
             gnu_soft_float: None,
             musl: Some("/lib/ld-musl-powerpc64.so.1")
         },
