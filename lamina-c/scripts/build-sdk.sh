@@ -74,7 +74,25 @@ LIB_DIR="${CARGO_TARGET_DIR}/${PROFILE}"
 # Assemble archive
 # ---------------------------------------------------------------------------
 
-rm -rf "$ARCHIVE_DIR"
+# Replace any previous tree without a recursive delete: the path must be a plain
+# directory named exactly ${ARCHIVE_NAME} inside ${OUT_DIR}, and only its own entries go.
+clear_archive_dir() {
+    dir="$1"
+    [ -e "$dir" ] || [ -L "$dir" ] || return 0
+    if [ -L "$dir" ] || [ ! -d "$dir" ]; then
+        echo "refusing to replace ${dir}: not a plain directory" >&2
+        exit 1
+    fi
+    if [ "$(cd "$(dirname "$dir")" && pwd -P)" != "$(cd "$OUT_DIR" && pwd -P)" ] \
+        || [ "$(basename "$dir")" != "$ARCHIVE_NAME" ]; then
+        echo "refusing to replace ${dir}: not ${OUT_DIR}/${ARCHIVE_NAME}" >&2
+        exit 1
+    fi
+    find "$dir" -xdev -mindepth 1 -maxdepth 2 ! -type d -delete
+    find "$dir" -xdev -mindepth 1 -maxdepth 1 -type d -empty -delete
+    rmdir "$dir"
+}
+clear_archive_dir "$ARCHIVE_DIR"
 mkdir -p \
     "${ARCHIVE_DIR}/include" \
     "${ARCHIVE_DIR}/lib" \
