@@ -375,14 +375,14 @@ fn literal_shift(rhs: &IRVal<'_>, ty: IRPrim) -> Option<u32> {
 }
 
 /// The alignment of the storage a global names.
-fn global_align(module: &IRModule<'_>, name: &str, pointer: PointerWidth) -> u8 {
+fn global_align(module: &IRModule<'_>, name: &str, layout: TargetDataLayout) -> u8 {
     let Some(decl) = module.global_declarations.get(name) else {
         return UNCONSTRAINED_ALIGN;
     };
     let Some(resolved) = resolve_type_names(&decl.ty, &module.type_declarations) else {
         return UNCONSTRAINED_ALIGN;
     };
-    let align = (align_of_type(&resolved, pointer) as usize).max(declared_align(decl.align));
+    let align = (align_of_type(&resolved, layout) as usize).max(declared_align(decl.align));
     u8::try_from(align).unwrap_or(UNCONSTRAINED_ALIGN)
 }
 
@@ -390,11 +390,11 @@ fn pointer_align<'a>(
     value: &IRVal<'a>,
     known: &PointerAligns<'a>,
     module: &IRModule<'a>,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
 ) -> u8 {
     match value {
         IRVal::Variable(id) => known.get(id).copied().unwrap_or(UNCONSTRAINED_ALIGN),
-        IRVal::Global(name) => global_align(module, name, pointer),
+        IRVal::Global(name) => global_align(module, name, layout),
         _ => UNCONSTRAINED_ALIGN,
     }
 }
@@ -407,7 +407,7 @@ fn pointer_align<'a>(
 fn pointer_alignments<'a>(
     f: &IRFunction<'a>,
     module: &IRModule<'a>,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
 ) -> PointerAligns<'a> {
     let mut known: PointerAligns<'a> = HashMap::new();
     let mut steps: IndexSteps<'a> = HashMap::new();
@@ -437,11 +437,11 @@ fn pointer_alignments<'a>(
                         continue;
                     };
                     let Some(offset) =
-                        struct_field_byte_offset(fields, *packed, *field_index, pointer)
+                        struct_field_byte_offset(fields, *packed, *field_index, layout)
                     else {
                         continue;
                     };
-                    let base = pointer_align(struct_ptr, &known, module, pointer);
+                    let base = pointer_align(struct_ptr, &known, module, layout);
                     known.insert(result, displaced_align(base, offset));
                 }
                 IRInst::GetElemPtr {
@@ -455,15 +455,15 @@ fn pointer_alignments<'a>(
                     else {
                         continue;
                     };
-                    let Some(size) = sizeof_type(&resolved, pointer) else {
+                    let Some(size) = sizeof_type(&resolved, layout) else {
                         continue;
                     };
-                    let base = pointer_align(array_ptr, &known, module, pointer);
+                    let base = pointer_align(array_ptr, &known, module, layout);
                     let step = step_of(u128::from(index_step(index, &steps)) * u128::from(size));
                     known.insert(result, displaced_align(base, step));
                 }
                 IRInst::Copy { result, value, .. } => {
-                    let align = pointer_align(value, &known, module, pointer);
+                    let align = pointer_align(value, &known, module, layout);
                     if align != UNCONSTRAINED_ALIGN {
                         known.insert(result, align);
                     }
@@ -508,10 +508,10 @@ fn access_alignment(
     stated: Option<u32>,
     ty: MirType,
     address: u8,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     what: &str,
 ) -> Result<u8, FromIRError> {
-    let natural = ty.alignment(pointer) as u8;
+    let natural = ty.alignment(layout.pointer_width) as u8;
     let Some(stated) = stated else {
         return Ok(natural.min(address));
     };
@@ -553,7 +553,6 @@ pub fn from_ir_for_target(
     name: &str,
     layout: TargetDataLayout,
 ) -> Result<Module, FromIRError> {
-    let pointer = layout.pointer_width;
     let int64_regs = layout.has_64bit_int_registers();
     let endianness = layout.endianness;
     let mut mir_module = Module::new(name);
@@ -568,20 +567,22 @@ pub fn from_ir_for_target(
         let resolved = resolve_type_names(&decl.ty, &ir.type_declarations)
             .ok_or(FromIRError::UnsupportedType)?;
         let mut global = if is_aggregate(&resolved) {
-            let size =
-                sizeof_type(&resolved, pointer).ok_or(FromIRError::UnsupportedType)? as usize;
-            let align =
-                (align_of_type(&resolved, pointer) as usize).max(declared_align(decl.align));
+            let size = sizeof_type(&resolved, layout).ok_or(FromIRError::UnsupportedType)? as usize;
+            let align = (align_of_type(&resolved, layout) as usize).max(declared_align(decl.align));
             let bytes = aggregate_global_bytes(
                 global_name,
                 &resolved,
                 size,
                 decl.initializer.as_ref(),
-                pointer,
+                layout,
                 endianness,
             )?;
-            let mut global = Global::new(*global_name, MirType::Scalar(ScalarType::I8), pointer)
-                .with_layout(size, align);
+            let mut global = Global::new(
+                *global_name,
+                MirType::Scalar(ScalarType::I8),
+                layout.pointer_width,
+            )
+            .with_layout(size, align);
             if let Some(bytes) = bytes {
                 global = global.with_initializer(bytes);
             }
@@ -599,9 +600,12 @@ pub fn from_ir_for_target(
                 let align = size.max(declared_align(decl.align));
                 let bytes =
                     wide_global_bytes(global_name, decl.initializer.as_ref(), size, endianness)?;
-                let mut global =
-                    Global::new(*global_name, MirType::Scalar(ScalarType::I8), pointer)
-                        .with_layout(size, align);
+                let mut global = Global::new(
+                    *global_name,
+                    MirType::Scalar(ScalarType::I8),
+                    layout.pointer_width,
+                )
+                .with_layout(size, align);
                 if let Some(bytes) = bytes {
                     global = global.with_initializer(bytes);
                 }
@@ -619,10 +623,10 @@ pub fn from_ir_for_target(
                 global_name,
                 ty,
                 decl.initializer.as_ref(),
-                pointer,
+                layout,
                 endianness,
             )?;
-            let mut global = Global::new(*global_name, ty, pointer);
+            let mut global = Global::new(*global_name, ty, layout.pointer_width);
             global.align = global.align.max(declared_align(decl.align));
             if let Some(bytes) = initializer {
                 global = global.with_initializer(bytes);
@@ -655,11 +659,11 @@ pub fn from_ir_for_target(
             ir_func,
             ir,
             &mut libcalls,
-            pointer,
+            layout,
             int64_regs,
             endianness,
         )?
-        .with_pointer_width(pointer)
+        .with_pointer_width(layout.pointer_width)
         .with_int64_regs(int64_regs);
         mir_module.add_function(mir_func);
     }
@@ -669,7 +673,7 @@ pub fn from_ir_for_target(
             mir_module.add_function(
                 libcall
                     .declaration(int64_regs)
-                    .with_pointer_width(pointer)
+                    .with_pointer_width(layout.pointer_width)
                     .with_int64_regs(int64_regs),
             );
         }
@@ -739,15 +743,14 @@ fn element_list_bytes(
     ty: &IRType<'_>,
     size: usize,
     elements: &[IRLit<'_>],
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     endianness: Endianness,
 ) -> Result<Vec<u8>, FromIRError> {
     // (offset, width) of every slot the list can fill, in order. An array keeps its
     // stride instead of one entry per element, so a long array costs nothing here.
     let slots: Slots = match ty {
         IRType::Array { element_type, size } => Slots::Strided {
-            stride: sizeof_type(element_type, pointer).ok_or(FromIRError::UnsupportedType)?
-                as usize,
+            stride: sizeof_type(element_type, layout).ok_or(FromIRError::UnsupportedType)? as usize,
             count: usize::try_from(*size).map_err(|_| FromIRError::UnsupportedType)?,
         },
         IRType::Struct { fields, packed } => Slots::Fixed(
@@ -755,9 +758,9 @@ fn element_list_bytes(
                 .iter()
                 .enumerate()
                 .map(|(index, field)| {
-                    let at = struct_field_byte_offset(fields, *packed, index, pointer)
+                    let at = struct_field_byte_offset(fields, *packed, index, layout)
                         .ok_or(FromIRError::UnsupportedType)? as usize;
-                    let width = sizeof_type(&field.ty, pointer)
+                    let width = sizeof_type(&field.ty, layout)
                         .ok_or(FromIRError::UnsupportedType)?
                         as usize;
                     Ok((at, width))
@@ -807,14 +810,14 @@ fn aggregate_global_bytes(
     ty: &IRType<'_>,
     size: usize,
     value: Option<&GlobalInit<'_>>,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     endianness: Endianness,
 ) -> Result<Option<Vec<u8>>, FromIRError> {
     let Some(value) = value else {
         return Ok(None);
     };
     if let GlobalInit::List(elements) = value {
-        return element_list_bytes(name, ty, size, elements, pointer, endianness).map(Some);
+        return element_list_bytes(name, ty, size, elements, layout, endianness).map(Some);
     }
     let GlobalInit::Value(IRVal::Constant(IRLit::String(text))) = value else {
         return Err(FromIRError::UnsupportedGlobal(format!(
@@ -939,7 +942,7 @@ fn global_initializer(
     name: &str,
     ty: MirType,
     value: Option<&GlobalInit<'_>>,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     endianness: Endianness,
 ) -> Result<Option<Vec<u8>>, FromIRError> {
     let Some(value) = value else {
@@ -951,7 +954,7 @@ fn global_initializer(
         )));
     };
     let bytes = literal_bytes(name, literal, endianness)?;
-    if bytes.len() != ty.size_bytes(pointer) {
+    if bytes.len() != ty.size_bytes(layout.pointer_width) {
         return Err(FromIRError::UnsupportedGlobal(format!(
             "@{name} initializer width does not match its type {ty}"
         )));
@@ -1057,7 +1060,7 @@ fn convert_function<'a>(
     f: &IRFunction<'a>,
     module: &IRModule<'a>,
     libcalls: &mut BTreeMap<String, wide::LibCall>,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     int64_regs: bool,
     endianness: Endianness,
 ) -> Result<Function, FromIRError> {
@@ -1124,12 +1127,9 @@ fn convert_function<'a>(
         other => {
             let resolved = resolve_type_names(other, &module.type_declarations)
                 .ok_or(FromIRError::UnsupportedType)?;
-            if let Some(aggregate) = classify_aggregate(
-                &resolved,
-                &format!("return of @{name}"),
-                pointer,
-                int64_regs,
-            )? {
+            if let Some(aggregate) =
+                classify_aggregate(&resolved, &format!("return of @{name}"), layout, int64_regs)?
+            {
                 mir_sig = mir_sig
                     .with_return(MirType::Scalar(ScalarType::Ptr))
                     .with_return_aggregate(aggregate);
@@ -1151,7 +1151,7 @@ fn convert_function<'a>(
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut alignments: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
-    let pointer_aligns = pointer_alignments(f, module, pointer);
+    let pointer_aligns = pointer_alignments(f, module, layout);
 
     let mut aggregate_prelude = Vec::new();
     for param in &f.signature.params {
@@ -1160,7 +1160,7 @@ fn convert_function<'a>(
         if let Some(aggregate) = classify_aggregate(
             &resolved,
             &format!("%{} of @{name}", param.name),
-            pointer,
+            layout,
             int64_regs,
         )? {
             let slot = vreg_alloc.allocate_gpr();
@@ -1220,7 +1220,7 @@ fn convert_function<'a>(
 
     let mut mir_func = Function::new(mir_sig)
         .with_entry(f.entry_block)
-        .with_pointer_width(pointer)
+        .with_pointer_width(layout.pointer_width)
         .with_int64_regs(int64_regs);
 
     // BFS traversal starting from entry block, guard with visited to avoid cycles
@@ -1277,7 +1277,7 @@ fn convert_function<'a>(
                     pointer_aligns: &pointer_aligns,
                 },
                 &mut globals,
-                pointer,
+                layout,
                 int64_regs,
                 endianness,
             )
@@ -1322,7 +1322,7 @@ fn convert_function<'a>(
                     && let Some(aggregate) = classify_aggregate(
                         &resolved,
                         &format!("return of @{name}"),
-                        pointer,
+                        layout,
                         int64_regs,
                     )?
                 {
@@ -1492,7 +1492,7 @@ fn convert_instruction<'a>(
     alignments: &mut HashMap<VirtualReg, usize>,
     facts: &ValueFacts<'_, 'a>,
     globals: &mut GlobalAddresses<'a>,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     int64_regs: bool,
     endianness: Endianness,
 ) -> Result<Vec<Instruction>, FromIRError> {
@@ -1502,7 +1502,7 @@ fn convert_instruction<'a>(
         reservations: &mut *reservations,
         globals: &mut *globals,
         module: facts.module,
-        pointer,
+        layout,
         int64_regs,
         endianness,
         pointer_aligns: facts.pointer_aligns,
@@ -1672,7 +1672,7 @@ fn convert_instruction<'a>(
                     op: IntBinOp::Sub,
                     ty: mir_ty,
                     dst,
-                    lhs: Operand::Immediate(zero_immediate(mir_ty, pointer)?),
+                    lhs: Operand::Immediate(zero_immediate(mir_ty, layout.pointer_width)?),
                     rhs: src,
                 },
                 (IRUnary::Not, false) => Instruction::IntBinary {
@@ -1680,7 +1680,7 @@ fn convert_instruction<'a>(
                     ty: mir_ty,
                     dst,
                     lhs: src,
-                    rhs: Operand::Immediate(all_ones_immediate(mir_ty, pointer)?),
+                    rhs: Operand::Immediate(all_ones_immediate(mir_ty, layout.pointer_width)?),
                 },
                 (IRUnary::Popcount | IRUnary::Ctlz | IRUnary::Cttz | IRUnary::Bswap, true) => {
                     return Err(FromIRError::UnsupportedInstruction);
@@ -1970,8 +1970,8 @@ fn convert_instruction<'a>(
                     align: access_alignment(
                         *align,
                         mir_ty,
-                        pointer_align(ptr, facts.pointer_aligns, facts.module, pointer),
-                        pointer,
+                        pointer_align(ptr, facts.pointer_aligns, facts.module, layout),
+                        layout,
                         "load",
                     )?,
                     volatile: *volatile,
@@ -2010,8 +2010,8 @@ fn convert_instruction<'a>(
                     align: access_alignment(
                         *align,
                         mir_ty,
-                        pointer_align(ptr, facts.pointer_aligns, facts.module, pointer),
-                        pointer,
+                        pointer_align(ptr, facts.pointer_aligns, facts.module, layout),
+                        layout,
                         "store",
                     )?,
                     volatile: *volatile,
@@ -2150,7 +2150,7 @@ fn convert_instruction<'a>(
                 if ty == MirType::Scalar(ScalarType::I1) {
                     1
                 } else {
-                    ty.size_bytes(pointer) * 8
+                    ty.size_bytes(layout.pointer_width) * 8
                 }
             };
             if widening && bits(to) < bits(from) {
@@ -2334,7 +2334,7 @@ fn convert_instruction<'a>(
             };
             let base = pointer_base(struct_ptr, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
-            let offset = struct_field_byte_offset(fields, *packed, *field_index, pointer)
+            let offset = struct_field_byte_offset(fields, *packed, *field_index, layout)
                 .and_then(|bytes| i64::try_from(bytes).ok())
                 .ok_or(FromIRError::UnsupportedType)?;
             Ok(displace_pointer(dst, base, offset, vreg_alloc))
@@ -2347,7 +2347,7 @@ fn convert_instruction<'a>(
         } => {
             // Constant-index GEP -> single LEA; variable index currently unsupported in MIR single-op model
             let base = pointer_base(array_ptr, vreg_alloc, var_to_reg, globals)?;
-            let elem_size = sizeof_type(element_type, pointer)
+            let elem_size = sizeof_type(element_type, layout)
                 .and_then(|size| i64::try_from(size).ok())
                 .ok_or(FromIRError::UnsupportedInstruction)?;
             let idx_const = match index {
@@ -2372,7 +2372,7 @@ fn convert_instruction<'a>(
                 let from = operand_type(&index_op, register_types)?;
                 // Address arithmetic is done in the target's own word, so a 32-bit
                 // target neither widens the index nor asks for a 64-bit add.
-                let word = address_word(pointer)?;
+                let word = address_word(layout.pointer_width)?;
                 let wide_index = Register::Virtual(vreg_alloc.allocate_gpr());
                 let scaled = Register::Virtual(vreg_alloc.allocate_gpr());
                 let address = Register::Virtual(vreg_alloc.allocate_gpr());
@@ -2381,7 +2381,8 @@ fn convert_instruction<'a>(
                     Instruction::IntConvert {
                         from,
                         to: word,
-                        signed: from.size_bytes(pointer) < word.size_bytes(pointer),
+                        signed: from.size_bytes(layout.pointer_width)
+                            < word.size_bytes(layout.pointer_width),
                         dst: wide_index.clone(),
                         src: index_op,
                     },
@@ -2490,7 +2491,13 @@ fn convert_instruction<'a>(
         } => {
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
 
-            let size = sizeof_type(allocated_ty, pointer).ok_or(FromIRError::UnsupportedType)?;
+            let size = sizeof_type(allocated_ty, layout).ok_or(
+                if matches!(allocated_ty, IRType::VaList) {
+                    FromIRError::NoVaListAbi
+                } else {
+                    FromIRError::UnsupportedType
+                },
+            )?;
             let size = i64::try_from(size).map_err(|_| FromIRError::UnsupportedType)?;
             match alloc_type {
                 AllocType::Stack => {

@@ -16,7 +16,7 @@ use crate::ir::instruction::{AsmOperand as IRAsmOperand, UnaryOp};
 use crate::ir::types::Literal;
 use crate::mir::codegen::mapping::wide_aggregate;
 use lamina_codegen::abi::BuiltinLibrary;
-use lamina_platform::{Endianness, PointerWidth, TargetOperatingSystem};
+use lamina_platform::{Endianness, TargetDataLayout, TargetOperatingSystem};
 
 /// The integer that takes two registers on a target with this register width: `i128`
 /// where a register holds 64 bits, `i64` where it holds 32.
@@ -152,7 +152,7 @@ pub(super) struct Cx<'c, 'a> {
     pub(super) reservations: &'c mut HashMap<VirtualReg, usize>,
     pub(super) globals: &'c mut GlobalAddresses<'a>,
     pub(super) module: &'c IRModule<'a>,
-    pub(super) pointer: PointerWidth,
+    pub(super) layout: TargetDataLayout,
     pub(super) int64_regs: bool,
     pub(super) endianness: Endianness,
     pub(super) pointer_aligns: &'c PointerAligns<'a>,
@@ -469,7 +469,7 @@ impl<'c, 'a> Cx<'c, 'a> {
     }
 
     fn address_align(&self, ptr: &IRVal<'a>) -> u8 {
-        pointer_align(ptr, self.pointer_aligns, self.module, self.pointer)
+        pointer_align(ptr, self.pointer_aligns, self.module, self.layout)
     }
 
     fn store_words_at(&mut self, base: Register, words: Words, align: u8) {
@@ -1568,7 +1568,7 @@ pub(super) fn lower_instruction<'a>(
             element_type,
         } => {
             let base = address_base(array_ptr, cx)?;
-            let size = sizeof_type(element_type, cx.pointer)
+            let size = sizeof_type(element_type, cx.layout)
                 .and_then(|size| i64::try_from(size).ok())
                 .ok_or(FromIRError::UnsupportedInstruction)?;
             let index = cx.narrow(index)?;

@@ -52,12 +52,41 @@ pub enum OutputArtifact {
     Text,
 }
 
+/// Size and alignment, in bytes, of the `va_list` an architecture's C ABI defines.
+///
+/// A `va_list` is a struct the ABI names field by field, so its size is a property of
+/// the architecture and not of the pointer width. The shapes stated in the table are:
+///
+/// - x86_64: System V AMD64 ABI §3.5.7, `struct { unsigned int gp_offset, fp_offset;
+///   void *overflow_arg_area, *reg_save_area; }` — 24 bytes.
+/// - aarch64: AAPCS64 (IHI 0055) appendix "Variable Argument Lists", `struct { void
+///   *__stack, *__gr_top, *__vr_top; int __gr_offs, __vr_offs; }` — 32 bytes.
+/// - s390x: zSeries ELF ABI supplement, `struct { long __gpr, __fpr; void
+///   *__overflow_arg_area, *__reg_save_area; }` — 32 bytes.
+/// - riscv, powerpc64 ELFv2, loongarch, mips n64, wasm: a plain `void *`, one pointer.
+/// - i686: Intel386 psABI §3.17, `char *` — 4 bytes.
+/// - 32-bit ARM: AAPCS (IHI 0042) §7.1, `struct __va_list { void *__ap; }` — 4 bytes.
+///
+/// [`VaListAbi::Undefined`] is a statement that no ABI defines one, not an omission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VaListAbi {
+    Defined { size: u64, alignment: u64 },
+    Undefined,
+}
+
+impl VaListAbi {
+    pub const fn of(size: u64, alignment: u64) -> Self {
+        Self::Defined { size, alignment }
+    }
+}
+
 /// The facts a target-independent lowering needs to turn IR into MIR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TargetDataLayout {
     pub pointer_width: PointerWidth,
     pub int_register_bits: u32,
     pub endianness: Endianness,
+    pub va_list: VaListAbi,
 }
 
 impl TargetDataLayout {
@@ -103,6 +132,8 @@ pub struct ArchSpec {
     /// pointers and 64-bit integer registers.
     pub max_int_register_bits: u32,
     pub endianness: Endianness,
+    /// Size and alignment of this architecture's C `va_list`.
+    pub va_list: VaListAbi,
     /// Alignment the stack pointer holds at a call. `1` means there is no machine stack.
     pub stack_alignment_at_call: usize,
     /// Whether an argument with 16-byte alignment starts at its own alignment rather than
@@ -133,6 +164,7 @@ impl ArchSpec {
             pointer_width: self.pointer_width,
             int_register_bits: self.max_int_register_bits,
             endianness: self.endianness,
+            va_list: self.va_list,
         }
     }
 
@@ -178,6 +210,7 @@ macro_rules! arch_table {
             pointer_width: $pointer_width:ident,
             max_int_register_bits: $int_bits:literal,
             endianness: $endianness:ident,
+            va_list: $va_list:expr,
             stack_alignment_at_call: $stack_align:literal,
             honors_argument_alignment: $honors:literal,
             output_artifact: $artifact:ident,
@@ -215,6 +248,7 @@ macro_rules! arch_table {
                             pointer_width: PointerWidth::$pointer_width,
                             max_int_register_bits: $int_bits,
                             endianness: Endianness::$endianness,
+                            va_list: $va_list,
                             stack_alignment_at_call: $stack_align,
                             honors_argument_alignment: $honors,
                             output_artifact: OutputArtifact::$artifact,
@@ -269,6 +303,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(24, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: true,
         output_artifact: Executable,
@@ -295,6 +330,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(32, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: true,
         output_artifact: Executable,
@@ -319,6 +355,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -339,6 +376,7 @@ arch_table! {
         pointer_width: Bits32,
         max_int_register_bits: 32,
         endianness: Little,
+        va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -357,6 +395,7 @@ arch_table! {
         pointer_width: Bits32,
         max_int_register_bits: 32,
         endianness: Little,
+        va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -380,6 +419,7 @@ arch_table! {
         pointer_width: Bits32,
         max_int_register_bits: 32,
         endianness: Little,
+        va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -399,6 +439,7 @@ arch_table! {
         pointer_width: Bits32,
         max_int_register_bits: 32,
         endianness: Little,
+        va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -417,6 +458,7 @@ arch_table! {
         pointer_width: Bits32,
         max_int_register_bits: 32,
         endianness: Little,
+        va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -439,6 +481,7 @@ arch_table! {
         pointer_width: Bits32,
         max_int_register_bits: 32,
         endianness: Little,
+        va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -461,6 +504,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -484,6 +528,7 @@ arch_table! {
         pointer_width: Bits128,
         max_int_register_bits: 128,
         endianness: Little,
+        va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -502,6 +547,7 @@ arch_table! {
         pointer_width: Bits32,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
         output_artifact: Module,
@@ -520,6 +566,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
         output_artifact: Module,
@@ -539,6 +586,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -562,6 +610,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Big,
+        va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -584,6 +633,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Big,
+        va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -606,6 +656,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -628,6 +679,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -650,6 +702,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Big,
+        va_list: VaListAbi::of(32, 8),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -672,6 +725,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
         output_artifact: Text,
@@ -690,6 +744,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
         output_artifact: Text,
@@ -709,6 +764,7 @@ arch_table! {
         pointer_width: Bits64,
         max_int_register_bits: 64,
         endianness: Little,
+        va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
         output_artifact: Executable,
@@ -779,6 +835,10 @@ impl TargetArchitecture {
 
     pub const fn endianness(self) -> Endianness {
         self.spec().endianness
+    }
+
+    pub const fn va_list(self) -> VaListAbi {
+        self.spec().va_list
     }
 
     pub const fn stack_alignment_at_call(self) -> usize {

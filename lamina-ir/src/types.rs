@@ -115,7 +115,7 @@
 //!     .ret_void();
 //! ```
 
-use lamina_platform::PointerWidth;
+use lamina_platform::{PointerWidth, TargetDataLayout, VaListAbi};
 
 use crate::module::TypeDeclaration;
 use std::{
@@ -544,12 +544,12 @@ fn round_up(value: u64, align: u64) -> Option<u64> {
 fn aggregate_layout<'a>(
     fields: impl Iterator<Item = &'a Type<'a>>,
     packed: bool,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
 ) -> Option<(u64, u64)> {
     let mut size = 0u64;
     let mut alignment = 1;
     for field in fields {
-        let (field_size, field_alignment) = type_layout(field, pointer)?;
+        let (field_size, field_alignment) = type_layout(field, layout)?;
         if !packed {
             alignment = alignment.max(field_alignment);
             size = round_up(size, field_alignment)?;
@@ -559,36 +559,36 @@ fn aggregate_layout<'a>(
     Some((round_up(size, alignment)?, alignment))
 }
 
-fn type_layout(ty: &Type<'_>, pointer: PointerWidth) -> Option<(u64, u64)> {
+fn type_layout(ty: &Type<'_>, layout: TargetDataLayout) -> Option<(u64, u64)> {
+    let pointer = layout.pointer_width;
     match ty {
         Type::Primitive(p) => Some((
             sizeof_primitive(*p, pointer),
             align_of_primitive(*p, pointer),
         )),
         Type::Array { element_type, size } => {
-            let (element_size, alignment) = type_layout(element_type, pointer)?;
+            let (element_size, alignment) = type_layout(element_type, layout)?;
             Some((element_size.checked_mul(*size)?, alignment))
         }
         Type::Struct { fields, packed } => {
-            aggregate_layout(fields.iter().map(|field| &field.ty), *packed, pointer)
+            aggregate_layout(fields.iter().map(|field| &field.ty), *packed, layout)
         }
-        Type::VaList => match pointer {
-            PointerWidth::Bits64 => Some((24, 8)),
-            PointerWidth::Bits32 => Some((4, 4)),
-            PointerWidth::Bits128 => None,
+        Type::VaList => match layout.va_list {
+            VaListAbi::Defined { size, alignment } => Some((size, alignment)),
+            VaListAbi::Undefined => None,
         },
         _ => None,
     }
 }
 
 /// Returns the size in bytes, or `None` for unsized types or overflowing layouts.
-pub fn sizeof_type(ty: &Type<'_>, pointer: PointerWidth) -> Option<u64> {
-    type_layout(ty, pointer).map(|(size, _)| size)
+pub fn sizeof_type(ty: &Type<'_>, layout: TargetDataLayout) -> Option<u64> {
+    type_layout(ty, layout).map(|(size, _)| size)
 }
 
 /// Returns the ABI alignment in bytes of an IR type.
-pub fn align_of_type(ty: &Type<'_>, pointer: PointerWidth) -> u64 {
-    type_layout(ty, pointer).map_or(8, |(_, alignment)| alignment)
+pub fn align_of_type(ty: &Type<'_>, layout: TargetDataLayout) -> u64 {
+    type_layout(ty, layout).map_or(8, |(_, alignment)| alignment)
 }
 
 /// Computes the byte offset of `field_index` within a struct.
@@ -612,7 +612,7 @@ pub fn struct_field_byte_offset(
     fields: &[StructField<'_>],
     packed: bool,
     field_index: usize,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
 ) -> Option<u64> {
     if field_index >= fields.len() {
         return None;
@@ -620,12 +620,12 @@ pub fn struct_field_byte_offset(
     let mut offset = 0u64;
     for (index, field) in fields.iter().enumerate() {
         if !packed {
-            offset = round_up(offset, align_of_type(&field.ty, pointer))?;
+            offset = round_up(offset, align_of_type(&field.ty, layout))?;
         }
         if index == field_index {
             return Some(offset);
         }
-        offset = offset.checked_add(sizeof_type(&field.ty, pointer)?)?;
+        offset = offset.checked_add(sizeof_type(&field.ty, layout)?)?;
     }
     None
 }
@@ -633,6 +633,79 @@ pub fn struct_field_byte_offset(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lamina_platform::TargetArchitecture;
+
+    fn l64() -> TargetDataLayout {
+        TargetArchitecture::X86_64.data_layout()
+    }
+
+    fn l32() -> TargetDataLayout {
+        TargetArchitecture::I686.data_layout()
+    }
+
+    #[test]
+    fn valist_layout_is_a_property_of_the_target() {
+        let expected = [
+            (TargetArchitecture::X86_64, Some((24, 8))),
+            (TargetArchitecture::Aarch64, Some((32, 8))),
+            (TargetArchitecture::S390x, Some((32, 8))),
+            (TargetArchitecture::Riscv64, Some((8, 8))),
+            (TargetArchitecture::PowerPC64, Some((8, 8))),
+            (TargetArchitecture::PowerPC64Be, Some((8, 8))),
+            (TargetArchitecture::Mips64, Some((8, 8))),
+            (TargetArchitecture::LoongArch64, Some((8, 8))),
+            (TargetArchitecture::Wasm64, Some((8, 8))),
+            (TargetArchitecture::I686, Some((4, 4))),
+            (TargetArchitecture::Armv7, Some((4, 4))),
+            (TargetArchitecture::Thumbv7m, Some((4, 4))),
+            (TargetArchitecture::Riscv32, Some((4, 4))),
+            (TargetArchitecture::Wasm32, Some((4, 4))),
+            (TargetArchitecture::Nvptx64, None),
+            (TargetArchitecture::Amdgcn, None),
+        ];
+        for (arch, want) in expected {
+            let layout = arch.data_layout();
+            assert_eq!(
+                sizeof_type(&Type::VaList, layout)
+                    .map(|size| (size, align_of_type(&Type::VaList, layout))),
+                want,
+                "{arch}"
+            );
+        }
+    }
+
+    #[test]
+    fn valist_inside_a_struct_follows_the_target_too() {
+        let holder = Type::Struct {
+            fields: vec![
+                StructField {
+                    name: "flag",
+                    ty: Type::Primitive(PrimitiveType::I8),
+                },
+                StructField {
+                    name: "ap",
+                    ty: Type::VaList,
+                },
+            ],
+            packed: false,
+        };
+        assert_eq!(
+            sizeof_type(&holder, TargetArchitecture::X86_64.data_layout()),
+            Some(32)
+        );
+        assert_eq!(
+            sizeof_type(&holder, TargetArchitecture::S390x.data_layout()),
+            Some(40)
+        );
+        assert_eq!(
+            sizeof_type(&holder, TargetArchitecture::Riscv64.data_layout()),
+            Some(16)
+        );
+        assert_eq!(
+            sizeof_type(&holder, TargetArchitecture::Nvptx64.data_layout()),
+            None
+        );
+    }
 
     #[test]
     fn test_display_primitive_type() {
@@ -724,15 +797,9 @@ mod tests {
             ],
             packed: false,
         };
-        assert_eq!(
-            sizeof_type(&pointer_and_byte, PointerWidth::Bits32),
-            Some(8)
-        );
-        assert_eq!(align_of_type(&pointer_and_byte, PointerWidth::Bits32), 4);
-        assert_eq!(
-            sizeof_type(&pointer_and_byte, PointerWidth::Bits64),
-            Some(16)
-        );
+        assert_eq!(sizeof_type(&pointer_and_byte, l32()), Some(8));
+        assert_eq!(align_of_type(&pointer_and_byte, l32()), 4);
+        assert_eq!(sizeof_type(&pointer_and_byte, l64()), Some(16));
         assert_eq!(
             struct_field_byte_offset(
                 match &pointer_and_byte {
@@ -741,7 +808,7 @@ mod tests {
                 },
                 false,
                 1,
-                PointerWidth::Bits32,
+                l32(),
             ),
             Some(4)
         );
@@ -760,25 +827,25 @@ mod tests {
             },
         ];
         assert_eq!(
-            struct_field_byte_offset(&byte_word, false, 1, PointerWidth::Bits64),
+            struct_field_byte_offset(&byte_word, false, 1, l64()),
             Some(4)
         );
         assert_eq!(
-            struct_field_byte_offset(&byte_word, true, 1, PointerWidth::Bits64),
+            struct_field_byte_offset(&byte_word, true, 1, l64()),
             Some(1)
         );
         let packed = Type::Struct {
             fields: byte_word.to_vec(),
             packed: true,
         };
-        assert_eq!(sizeof_type(&packed, PointerWidth::Bits64), Some(5));
-        assert_eq!(align_of_type(&packed, PointerWidth::Bits64), 1);
+        assert_eq!(sizeof_type(&packed, l64()), Some(5));
+        assert_eq!(align_of_type(&packed, l64()), 1);
         let padded = Type::Struct {
             fields: byte_word.to_vec(),
             packed: false,
         };
-        assert_eq!(sizeof_type(&padded, PointerWidth::Bits64), Some(8));
-        assert_eq!(align_of_type(&padded, PointerWidth::Bits64), 4);
+        assert_eq!(sizeof_type(&padded, l64()), Some(8));
+        assert_eq!(align_of_type(&padded, l64()), 4);
     }
 
     #[test]
@@ -797,7 +864,7 @@ mod tests {
             fields: tail.to_vec(),
             packed: true,
         };
-        assert_eq!(sizeof_type(&packed_tail, PointerWidth::Bits64), Some(9));
+        assert_eq!(sizeof_type(&packed_tail, l64()), Some(9));
         let outer = [
             StructField {
                 name: "c",
@@ -808,24 +875,18 @@ mod tests {
                 ty: packed_tail,
             },
         ];
-        assert_eq!(
-            struct_field_byte_offset(&outer, false, 1, PointerWidth::Bits64),
-            Some(1)
-        );
+        assert_eq!(struct_field_byte_offset(&outer, false, 1, l64()), Some(1));
         assert_eq!(
             sizeof_type(
                 &Type::Struct {
                     fields: outer.to_vec(),
                     packed: false,
                 },
-                PointerWidth::Bits64
+                l64()
             ),
             Some(10)
         );
-        assert_eq!(
-            struct_field_byte_offset(&outer, false, 2, PointerWidth::Bits64),
-            None
-        );
+        assert_eq!(struct_field_byte_offset(&outer, false, 2, l64()), None);
     }
 
     #[test]

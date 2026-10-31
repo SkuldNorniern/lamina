@@ -14,7 +14,7 @@ use crate::{
         },
     },
 };
-use lamina_platform::PointerWidth;
+use lamina_platform::TargetDataLayout;
 
 /// Largest aggregate passed in registers. Beyond this every target in the table puts
 /// the value in memory, except ppc64le, which is why ppc64le rejects aggregates for now.
@@ -114,10 +114,10 @@ fn integer_fields_only(ty: &IRType<'_>) -> bool {
 pub fn classify_aggregate(
     ty: &IRType<'_>,
     what: &str,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     int64_regs: bool,
 ) -> Result<Option<Aggregate>, FromIRError> {
-    classify_aggregate_within(ty, what, None, pointer, int64_regs)
+    classify_aggregate_within(ty, what, None, layout, int64_regs)
 }
 
 /// The ABI of the integer that takes two registers, crossing a boundary: two words,
@@ -136,7 +136,7 @@ fn classify_aggregate_within(
     ty: &IRType<'_>,
     what: &str,
     max: Option<u64>,
-    pointer: PointerWidth,
+    layout: TargetDataLayout,
     int64_regs: bool,
 ) -> Result<Option<Aggregate>, FromIRError> {
     if matches!(ty, IRType::Primitive(IRPrim::I128 | IRPrim::U128)) {
@@ -156,7 +156,7 @@ fn classify_aggregate_within(
             "{what} has a float field; only integer aggregates cross a boundary so far"
         )));
     }
-    let size = sizeof_type(ty, pointer).ok_or(FromIRError::UnsupportedType)?;
+    let size = sizeof_type(ty, layout).ok_or(FromIRError::UnsupportedType)?;
     if size == 0 {
         return Err(FromIRError::UnsupportedAggregate(format!(
             "{what} is empty; an aggregate crossing a boundary holds at least one byte"
@@ -171,7 +171,7 @@ fn classify_aggregate_within(
     }
     Ok(Some(Aggregate {
         size: size as usize,
-        align: align_of_type(ty, pointer) as usize,
+        align: align_of_type(ty, layout) as usize,
         class: AggregateClass::Integer,
         shape: AggregateShape::Composite,
     }))

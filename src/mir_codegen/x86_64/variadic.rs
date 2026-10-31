@@ -2,6 +2,20 @@
 //! and the `va_list` operations that read it.
 
 use super::*;
+use lamina_platform::{TargetArchitecture, VaListAbi};
+
+/// Byte offsets of the four System V `va_list` fields, and the size the target table
+/// states. The fields fill it exactly, so widening one without the other is a build
+/// error rather than an overrun.
+const GP_OFFSET_FIELD: u32 = 0;
+const FP_OFFSET_FIELD: u32 = 4;
+const OVERFLOW_FIELD: u32 = 8;
+const SAVE_FIELD: u32 = 16;
+const VA_LIST_BYTES: u32 = match TargetArchitecture::X86_64.va_list() {
+    VaListAbi::Defined { size, .. } => size as u32,
+    VaListAbi::Undefined => panic!("x86_64 lowers va_list but the target table defines none"),
+};
+const _: () = assert!(SAVE_FIELD + GP_SLOT_BYTES == VA_LIST_BYTES);
 
 const GP_ARG_REGS: [&str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 const GP_SAVE_BYTES: u32 = 48;
@@ -103,11 +117,15 @@ pub(super) fn emit<W: Write>(
         MirInst::VaStart { ap } => {
             load_operand_to_register(ap, writer, reg_alloc, stack_slots, "rcx")?;
             writeln!(writer, "    movl ${}, (%rcx)", area.gp_offset)?;
-            writeln!(writer, "    movl ${}, 4(%rcx)", area.fp_offset)?;
+            writeln!(
+                writer,
+                "    movl ${}, {FP_OFFSET_FIELD}(%rcx)",
+                area.fp_offset
+            )?;
             writeln!(writer, "    leaq {}(%rbp), %rax", area.overflow)?;
-            writeln!(writer, "    movq %rax, 8(%rcx)")?;
+            writeln!(writer, "    movq %rax, {OVERFLOW_FIELD}(%rcx)")?;
             writeln!(writer, "    leaq {}(%rbp), %rax", area.save)?;
-            writeln!(writer, "    movq %rax, 16(%rcx)")?;
+            writeln!(writer, "    movq %rax, {SAVE_FIELD}(%rcx)")?;
         }
         MirInst::VaArg { ty, dst, ap } => {
             let is_float = match ty {
@@ -131,22 +149,26 @@ pub(super) fn emit<W: Write>(
             let stack = format!(".L_{func_name}.va_arg{}.stack", vreg.id);
             let done = format!(".L_{func_name}.va_arg{}.done", vreg.id);
             let (cursor, limit, step) = if is_float {
-                (4, GP_SAVE_BYTES + VECTOR_SAVE_BYTES, VECTOR_SLOT_BYTES)
+                (
+                    FP_OFFSET_FIELD,
+                    GP_SAVE_BYTES + VECTOR_SAVE_BYTES,
+                    VECTOR_SLOT_BYTES,
+                )
             } else {
-                (0, GP_SAVE_BYTES, GP_SLOT_BYTES)
+                (GP_OFFSET_FIELD, GP_SAVE_BYTES, GP_SLOT_BYTES)
             };
             load_operand_to_register(ap, writer, reg_alloc, stack_slots, "rcx")?;
             writeln!(writer, "    movl {cursor}(%rcx), %eax")?;
             writeln!(writer, "    cmpl ${limit}, %eax")?;
             writeln!(writer, "    jae {stack}")?;
-            writeln!(writer, "    movq 16(%rcx), %rdx")?;
+            writeln!(writer, "    movq {SAVE_FIELD}(%rcx), %rdx")?;
             writeln!(writer, "    addq %rax, %rdx")?;
             writeln!(writer, "    addl ${step}, {cursor}(%rcx)")?;
             writeln!(writer, "    jmp {done}")?;
             writeln!(writer, "{stack}:")?;
-            writeln!(writer, "    movq 8(%rcx), %rdx")?;
+            writeln!(writer, "    movq {OVERFLOW_FIELD}(%rcx), %rdx")?;
             writeln!(writer, "    leaq {GP_SLOT_BYTES}(%rdx), %rax")?;
-            writeln!(writer, "    movq %rax, 8(%rcx)")?;
+            writeln!(writer, "    movq %rax, {OVERFLOW_FIELD}(%rcx)")?;
             writeln!(writer, "{done}:")?;
             writeln!(writer, "    movq (%rdx), %rax")?;
             canonicalize_integer(writer, "rax", ty)?;
@@ -156,7 +178,7 @@ pub(super) fn emit<W: Write>(
         MirInst::VaCopy { dst, src } => {
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "rcx")?;
             load_operand_to_register(dst, writer, reg_alloc, stack_slots, "rdx")?;
-            for offset in [0, 8, 16] {
+            for offset in (0..VA_LIST_BYTES).step_by(GP_SLOT_BYTES as usize) {
                 writeln!(writer, "    movq {offset}(%rcx), %rax")?;
                 writeln!(writer, "    movq %rax, {offset}(%rdx)")?;
             }

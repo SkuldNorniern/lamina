@@ -12,6 +12,8 @@ pub enum FromIRError {
     InvalidIR,
     /// The IR type cannot be converted to MIR (e.g., unsupported composite types).
     UnsupportedType,
+    /// The target architecture's ABI defines no `va_list`, so `valist` has no layout.
+    NoVaListAbi,
     /// The IR instruction is not supported in MIR.
     UnsupportedInstruction,
     /// An unsupported IR instruction, named with the block and function holding it.
@@ -55,6 +57,10 @@ impl fmt::Display for FromIRError {
                     "IR type cannot be converted to MIR (composite types not yet supported)"
                 )
             }
+            FromIRError::NoVaListAbi => write!(
+                f,
+                "the target architecture's ABI defines no va_list, so `valist` has no layout here"
+            ),
             FromIRError::UnsupportedInstruction => {
                 write!(f, "IR instruction is not supported in MIR")
             }
