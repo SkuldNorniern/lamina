@@ -1627,13 +1627,14 @@ pub(super) fn lower_instruction<'a>(
                 "va_arg of a 64-bit integer on a 32-bit target: a variadic slot holds one word, and reading the pair is not implemented".to_string(),
             ));
         }
-        IRInst::AtomicLoad { .. }
-        | IRInst::AtomicStore { .. }
-        | IRInst::AtomicBinary { .. }
-        | IRInst::AtomicCompareExchange { .. } => {
-            return Err(FromIRError::NotLegalizable(
-                "an atomic operation on a 64-bit integer on a 32-bit target: two words cannot be read or written atomically without a double-word atomic".to_string(),
-            ));
+        IRInst::AtomicLoad { ty, .. }
+        | IRInst::AtomicStore { ty, .. }
+        | IRInst::AtomicBinary { ty, .. }
+        | IRInst::AtomicCompareExchange { ty, .. } => {
+            return Err(FromIRError::NotLegalizable(format!(
+                "`{instr}` is an atomic operation on {ty}, which takes two registers on a {}-bit target: two words cannot be read or written atomically without a double-word atomic",
+                cx.bits()
+            )));
         }
         IRInst::VectorBinary { .. }
         | IRInst::VectorSplat { .. }

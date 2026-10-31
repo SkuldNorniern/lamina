@@ -1103,6 +1103,26 @@ fn convert_function<'a>(
         mir_sig.kernel = Some(Default::default());
     }
 
+    // A 128-bit integer is refused by name wherever it is written; a signature is the
+    // one place no instruction covers.
+    let quad_at_boundary = |ty: &IRType<'a>| {
+        resolve_type_names(ty, &module.type_declarations)
+            .is_some_and(|resolved| wide::is_quad_type(&resolved, int64_regs))
+    };
+    if quad_at_boundary(&f.signature.return_type) {
+        return Err(FromIRError::NotLegalizable(format!(
+            "the return type of '@{name}' names a 128-bit integer on a 32-bit target: that takes four registers, and only pairs are split"
+        )));
+    }
+    for param in &f.signature.params {
+        if quad_at_boundary(&param.ty) {
+            return Err(FromIRError::NotLegalizable(format!(
+                "parameter '%{}' of '@{name}' names a 128-bit integer on a 32-bit target: that takes four registers, and only pairs are split",
+                param.name
+            )));
+        }
+    }
+
     match &f.signature.return_type {
         IRType::Void => {}
         other => {

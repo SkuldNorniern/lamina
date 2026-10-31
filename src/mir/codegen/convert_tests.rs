@@ -948,6 +948,26 @@ mod pairs_on_a_32_bit_target {
     }
 
     #[test]
+    fn a_128_bit_integer_in_a_signature_is_refused_by_name_too() {
+        let error = lower32(
+            "fn @f(i64 %a, i128 %b) -> i64 {\nentry:\n ret.i64 0\n}\n\
+             fn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        )
+        .expect_err("a parameter needs four registers on a 32-bit target");
+        let message = error.to_string();
+        assert!(message.contains("parameter '%b' of '@f'"), "{message}");
+        assert!(message.contains("128-bit integer"), "{message}");
+        assert!(!message.contains("composite"), "{message}");
+
+        let error = lower32("fn @f() -> i128 {\nentry:\n ret.i128 0\n}")
+            .expect_err("a result needs four registers on a 32-bit target");
+        let message = error.to_string();
+        assert!(message.contains("the return type of '@f'"), "{message}");
+        assert!(message.contains("128-bit integer"), "{message}");
+        assert!(!message.contains("composite"), "{message}");
+    }
+
+    #[test]
     fn a_64_bit_atomic_is_refused_by_name_rather_than_split_unsafely() {
         let error = lower32(
             "fn @main() -> i64 {\nentry:\n %p = stackalloc.i64\n\
@@ -956,7 +976,23 @@ mod pairs_on_a_32_bit_target {
         .expect_err("two words cannot be updated atomically");
         let message = error.to_string();
         assert!(message.contains("atomic"), "{message}");
-        assert!(message.contains("64-bit"), "{message}");
+        assert!(message.contains("atomic_add.i64"), "{message}");
+        assert!(message.contains("on a 32-bit target"), "{message}");
+    }
+
+    #[test]
+    fn a_128_bit_atomic_names_its_own_width_and_target() {
+        let ir = parse_module(
+            "fn @main() -> i64 {\nentry:\n %p = stackalloc.i128\n\
+             %a = atomic_add.i128 %p, 5, seqcst\n ret.i64 0\n}",
+        )
+        .expect("parse");
+        let error = from_ir_for_target(&ir, "wide", TargetArchitecture::X86_64.data_layout())
+            .expect_err("two words cannot be updated atomically");
+        let message = error.to_string();
+        assert!(message.contains("atomic_add.i128"), "{message}");
+        assert!(message.contains("on a 64-bit target"), "{message}");
+        assert!(!message.contains("32-bit"), "{message}");
     }
 
     #[test]
