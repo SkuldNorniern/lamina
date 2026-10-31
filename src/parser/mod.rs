@@ -625,6 +625,41 @@ mod tests {
     }
 
     #[test]
+    fn f32_literal_rounds_once_from_the_decimal_text() {
+        // 1 + 2^-24 + 2^-60 sits above the f32 midpoint, but rounds onto it in f64.
+        let witness = "1.000000059604644776257986737988403547205962240695953369140625";
+        let global_source = format!("global $w: f32 = {witness}");
+        let module = parse_module(&global_source).expect("Parsing failed");
+        let GlobalInit::Value(Value::Constant(Literal::F32(value))) =
+            module.global_declarations["w"]
+                .initializer
+                .clone()
+                .expect("initializer")
+        else {
+            panic!("expected an f32 literal");
+        };
+        assert_eq!(value.to_bits(), 0x3f80_0001);
+        assert_eq!(
+            (witness.parse::<f64>().expect("f64") as f32).to_bits(),
+            0x3f80_0000
+        );
+
+        let function_source = format!(
+            "fn @main() -> f32 {{\nentry:\n  %x = add.f32 {witness}, 0.0\n  ret.f32 %x\n}}"
+        );
+        let module = parse_module(&function_source).expect("Parsing failed");
+        let instruction = &module.functions["main"].basic_blocks["entry"].instructions[0];
+        let Instruction::Binary {
+            lhs: Value::Constant(Literal::F32(lhs)),
+            ..
+        } = instruction
+        else {
+            panic!("expected an f32 binary with a literal lhs");
+        };
+        assert_eq!(lhs.to_bits(), 0x3f80_0001);
+    }
+
+    #[test]
     fn test_parse_global_align_annotation() {
         let module =
             parse_module("@align(64)\nglobal $arena: [1048576 x i8]").expect("Parsing failed");
@@ -1631,11 +1666,11 @@ fn @test_instructions() -> bool {
     %d = div.i64 %c, 2
     %e = rem.i64 %d, 3
     %f = eq.i64 %e, 0
-    %g = ne.i64 %f, 0
-    %h = lt.i64 %g, 1
-    %i = le.i64 %h, 1
-    %j = gt.i64 %i, 0
-    %k = ge.i64 %j, 0
+    %g = ne.i64 %e, 0
+    %h = lt.i64 %e, 1
+    %i = le.i64 %e, 1
+    %j = gt.i64 %e, 0
+    %k = ge.i64 %e, 0
     %out = writebyte %k
     ret.bool %k
 }
@@ -3188,6 +3223,16 @@ mod bit_builder_tests {
                     ty: i64_ty.clone(),
                     annotations: vec![],
                 },
+                FunctionParameter {
+                    name: "w",
+                    ty: Type::Primitive(PrimitiveType::U32),
+                    annotations: vec![],
+                },
+                FunctionParameter {
+                    name: "k",
+                    ty: Type::Primitive(PrimitiveType::U32),
+                    annotations: vec![],
+                },
             ],
             i64_ty.clone(),
         )
@@ -3196,7 +3241,7 @@ mod bit_builder_tests {
         .cttz("t", PrimitiveType::I32, var("x"))
         .bswap("s", PrimitiveType::U16, var("x"))
         .rotl("a", PrimitiveType::I64, var("x"), var("n"))
-        .rotr("b", PrimitiveType::U32, var("x"), var("n"))
+        .rotr("b", PrimitiveType::U32, var("w"), var("k"))
         .unreachable();
         let built = b.build();
         let built = built.functions["f"].basic_blocks["entry"]
@@ -3206,6 +3251,8 @@ mod bit_builder_tests {
         let mut o = OwnedIRBuilder::new();
         let x = OwnedValue::Variable("x".to_string());
         let n = OwnedValue::Variable("n".to_string());
+        let w = OwnedValue::Variable("w".to_string());
+        let k = OwnedValue::Variable("k".to_string());
         let i64_owned = OwnedType::Primitive(PrimitiveType::I64);
         o.function_with_params(
             "f",
@@ -3218,6 +3265,14 @@ mod bit_builder_tests {
                     name: "n".to_string(),
                     ty: i64_owned.clone(),
                 },
+                OwnedParam {
+                    name: "w".to_string(),
+                    ty: OwnedType::Primitive(PrimitiveType::U32),
+                },
+                OwnedParam {
+                    name: "k".to_string(),
+                    ty: OwnedType::Primitive(PrimitiveType::U32),
+                },
             ],
             i64_owned,
         )
@@ -3226,7 +3281,7 @@ mod bit_builder_tests {
         .cttz("t", PrimitiveType::I32, &x)
         .bswap("s", PrimitiveType::U16, &x)
         .rotl("a", PrimitiveType::I64, &x, &n)
-        .rotr("b", PrimitiveType::U32, &x, &n)
+        .rotr("b", PrimitiveType::U32, &w, &k)
         .unreachable();
         let text = o.build_ir_text();
         let parsed = parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));

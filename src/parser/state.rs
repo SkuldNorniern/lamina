@@ -414,8 +414,25 @@ impl<'a> ParserState<'a> {
             })
     }
 
-    /// Parses a float literal.
+    /// Parses a float literal as `f64`.
     pub fn parse_float(&mut self) -> Result<f64, LaminaError> {
+        let text = self.scan_float_text()?;
+        text.parse::<f64>().map_err(|e| self.error(format!(
+            "Failed to parse float: {e}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format"
+        )))
+    }
+
+    /// Parses a float literal as `f32`, with the one rounding clause F12 asks for:
+    /// from the decimal text straight to `f32`.
+    pub fn parse_float_f32(&mut self) -> Result<f32, LaminaError> {
+        let text = self.scan_float_text()?;
+        text.parse::<f32>().map_err(|e| self.error(format!(
+            "Failed to parse float: {e}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format"
+        )))
+    }
+
+    /// Consumes a float literal and returns the text it spans.
+    fn scan_float_text(&mut self) -> Result<&'a str, LaminaError> {
         self.skip_whitespace_and_comments();
         let start = self.position;
 
@@ -458,12 +475,7 @@ impl<'a> ParserState<'a> {
             }
         }
 
-        let value_str = &self.input[start..self.position];
-        value_str
-            .parse::<f64>()
-            .map_err(|e| self.error(format!(
-                "Failed to parse float: {e}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format"
-            )))
+        Ok(&self.input[start..self.position])
     }
 
     /// Parses a string literal.

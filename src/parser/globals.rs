@@ -275,8 +275,8 @@ pub fn parse_value_with_type_hint<'a>(
         }
         Some(c) if c.is_ascii_digit() || c == '-' => {
             if matches!(type_hint, Type::Primitive(PrimitiveType::F32)) {
-                if let Ok(f_val) = state.parse_float() {
-                    return Ok(Value::Constant(Literal::F32(f_val as f32)));
+                if let Ok(f_val) = state.parse_float_f32() {
+                    return Ok(Value::Constant(Literal::F32(f_val)));
                 }
 
                 state.set_position(start_pos);
