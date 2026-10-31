@@ -39,7 +39,7 @@ use crate::{
     mir::{
         AddressMode, Aggregate, FloatBinOp, FloatUnOp, Function, Global, Instruction as MirInst,
         IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
-        VirtualReg, register::RegisterClass,
+        VirtualReg, index_scale_shift, register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -2261,12 +2261,9 @@ fn materialize_address<W: Write>(
                 }
             }
             load_reg_to(w, index, idx, frame, ra)?; // idx = index
-            let sh = match *scale {
-                2 => 1,
-                4 => 2,
-                8 => 3,
-                _ => 0,
-            };
+            let sh = index_scale_shift(*scale).ok_or_else(|| {
+                LaminaError::ValidationError(format!("address scale {scale} is not 1, 2, 4 or 8"))
+            })?;
             if sh > 0 {
                 writeln!(w, "    lsl {idx}, {idx}, #{sh}")?;
             }

@@ -10,7 +10,9 @@ use std::io::Write;
 
 use crate::{
     error::LaminaError,
-    mir::{AddressMode, Function, Immediate, MirType, Operand, Register, ScalarType},
+    mir::{
+        AddressMode, Function, Immediate, MirType, Operand, Register, ScalarType, index_scale_shift,
+    },
     mir_codegen::CodegenError,
 };
 use lamina_codegen::aarch64::FrameMap;
@@ -301,12 +303,11 @@ impl Access<'_> {
                 self.load_reg(w, base, dest)?;
                 let idx = scratch.alloc()?;
                 self.load_reg(w, index, idx)?;
-                let shift = match *scale {
-                    2 => 1,
-                    4 => 2,
-                    8 => 3,
-                    _ => 0,
-                };
+                let shift = index_scale_shift(*scale).ok_or_else(|| {
+                    LaminaError::ValidationError(format!(
+                        "address scale {scale} is not 1, 2, 4 or 8"
+                    ))
+                })?;
                 if shift > 0 {
                     writeln!(w, "    lsls {idx}, {idx}, #{shift}")?;
                 }

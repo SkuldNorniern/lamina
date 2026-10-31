@@ -40,7 +40,9 @@ pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
     IntOverflowOp, IntRotOp, IntUnOp, MemoryAttrs, Operand, VectorOp,
 };
-pub use instruction::{AsmOperand, AtomicBinOp, MemoryOrdering, io_intrinsic_result_type};
+pub use instruction::{
+    AsmOperand, AtomicBinOp, MemoryOrdering, index_scale_shift, io_intrinsic_result_type,
+};
 pub use loc::{Located, SourceLoc};
 pub use module::{Global, Module, ModuleBuilder, RelocationModel, TlsModel};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};

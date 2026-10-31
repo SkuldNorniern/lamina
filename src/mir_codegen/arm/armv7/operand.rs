@@ -4,7 +4,7 @@ use std::io::Write;
 
 use crate::{
     error::LaminaError,
-    mir::{AddressMode, Immediate, MirType, Operand, Register, ScalarType},
+    mir::{AddressMode, Immediate, MirType, Operand, Register, ScalarType, index_scale_shift},
     mir_codegen::CodegenError,
 };
 use lamina_codegen::aarch64::FrameMap;
@@ -340,12 +340,9 @@ pub(crate) fn materialize_address<W: Write>(
             load_reg(w, base, dest, frame)?;
             let idx = scratch.alloc()?;
             load_reg(w, index, idx, frame)?;
-            let shift = match *scale {
-                2 => 1,
-                4 => 2,
-                8 => 3,
-                _ => 0,
-            };
+            let shift = index_scale_shift(*scale).ok_or_else(|| {
+                LaminaError::ValidationError(format!("address scale {scale} is not 1, 2, 4 or 8"))
+            })?;
             if shift > 0 {
                 writeln!(w, "    add {dest}, {dest}, {idx}, lsl #{shift}")?;
             } else {
