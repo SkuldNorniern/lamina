@@ -19,15 +19,17 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-# Testcases the s390x backend refuses to compile, with the refusal it gives.
-# Any other testcase must compile, run and match its expected output.
+# Testcases that cannot run on s390x, with the reason. The s390x backend does support
+# inline assembly; the templates in these testcases are x86_64 assembly text, which only
+# an x86_64 assembler accepts. Any other testcase must compile, run and match its
+# expected output.
 S390X_UNSUPPORTED = {
-    'inline_asm_clobber': 'inline assembly',
-    'inline_asm_loop': 'inline assembly',
-    'inline_asm_pressure': 'inline assembly',
-    'inline_asm_rdtsc': 'inline assembly',
-    'inline_asm_unused': 'inline assembly',
-    'vector_operations': 'vector operations',
+    'inline_asm_clobber': 'x86_64 registers and mnemonics in the asm template',
+    'inline_asm_loop': 'x86_64 mnemonics in the asm template',
+    'inline_asm_pressure': 'x86_64 registers and mnemonics in the asm template',
+    'inline_asm_rdtsc': 'rdtsc reads the x86 timestamp counter; no s390x equivalent',
+    'inline_asm_unused': 'x86_64 mnemonics in the asm template',
+    'vector_operations': 'the z vector facility (z13 and later) is not implemented',
 }
 
 
