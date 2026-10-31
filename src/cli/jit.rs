@@ -11,7 +11,8 @@ use crate::{
             get_intermediate_extension,
         },
         generate_mir_to_target_with_settings,
-        link::{get_output_extension, link},
+        link::{get_output_extension, link_with_runtime},
+        runtime_builtins,
     },
     parser::parse_module,
     runtime::{Sandbox, SandboxConfig, compile_to_runtime, execute_jit_function},
@@ -340,15 +341,33 @@ pub fn handle_jit_compilation(
             )?;
 
             if assemble_result.needs_linking {
-                link(
+                let runtime = runtime_builtins::build(
+                    &mir_mod,
+                    &assemble_result.output_path,
+                    target,
+                    &codegen_settings,
+                    options.opt_level,
+                    codegen_units,
+                    assembler_backend,
+                    &options.assembler_flags,
+                    options.verbose,
+                    &options.ras_object_write_options(target.operating_system),
+                )?;
+                link_with_runtime(
                     &assemble_result.output_path,
                     &exe_path,
                     target.architecture,
                     target.operating_system,
                     linker_backend,
+                    runtime
+                        .as_ref()
+                        .map_or(&[][..], runtime_builtins::RuntimeObjects::objects),
                     &options.linker_flags,
                     options.verbose,
                 )?;
+                if let Some(runtime) = runtime {
+                    runtime.discard();
+                }
             } else {
                 exe_path = assemble_result.output_path;
             }
