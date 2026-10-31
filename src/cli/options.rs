@@ -121,8 +121,8 @@ pub fn print_usage() {
     eprintln!(
         "                          A sub-architecture may replace the arch: rv32imac, rv64gc,\n\
          \x20                         armv7r, armv7a-neon, aarch64v8.2, ppc64le-power9\n\
-         \x20                         An environment may follow the OS: gnu | musl | eabi |\n\
-         \x20                         eabihf | none. Left out, each target declares its own."
+         \x20                         An environment may follow the OS: gnu | musl | lamina |\n\
+         \x20                         eabi | eabihf | none. Left out, each target declares its own."
     );
     eprintln!(
         "  --cpu-level <v>         x86-64 level the output may use: v1 | v2 | v3 | v4 (default: v2, x86_64 targets only)"
@@ -140,7 +140,7 @@ pub fn print_usage() {
         "  -g                      Emit assembler .file/.loc and minimal ELF DWARF when using ras"
     );
     eprintln!(
-        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O1+, incremental at O0)"
+        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O1+ where the backend implements it, incremental otherwise)"
     );
     eprintln!("  -h, --help              Display this help message");
 }
@@ -256,7 +256,7 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
                         "Unsupported target '{}'{reason}. Supported values:\n{}\n\
                          A sub-architecture may be named instead: rv32imac, rv64gc, armv7r, \
                          armv7a-neon, aarch64v8.2, ppc64le-power9, and an environment may \
-                         follow the operating system: gnu, musl, eabi, eabihf, none",
+                         follow the operating system: gnu, musl, lamina, eabi, eabihf, none",
                         requested_target,
                         host_arch_list().join(", ")
                     ));
