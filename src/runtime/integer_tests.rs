@@ -67,12 +67,15 @@ fn operation(
     dst
 }
 
-pub(super) fn module(mut block: Block) -> Module {
+pub(super) fn module(block: Block) -> Module {
+    module_returning(block, MirType::Scalar(ScalarType::I64))
+}
+
+pub(super) fn module_returning(mut block: Block, ret: MirType) -> Module {
     for instruction in &mut block.instructions {
-        instruction.normalize_integer_immediates(Some(MirType::Scalar(ScalarType::I64)));
+        instruction.normalize_integer_immediates(Some(ret));
     }
-    let mut function =
-        Function::new(Signature::new("main").with_return(MirType::Scalar(ScalarType::I64)));
+    let mut function = Function::new(Signature::new("main").with_return(ret));
     function.blocks.push(block);
     let mut module = Module::new("integer_semantics");
     module.add_function(function);
@@ -90,7 +93,58 @@ pub(super) struct Native {
     pub(super) arch: TargetArchitecture,
     pub(super) triple: &'static str,
     pub(super) emulator: Option<&'static str>,
+    pub(super) cc_flags: &'static [&'static str],
+    pub(super) widest_integer_bytes: usize,
+    pub(super) atomics: bool,
+    pub(super) global_regalloc: bool,
     pub(super) start: &'static str,
+}
+
+impl Native {
+    pub(super) fn lowers(&self, ty: MirType) -> bool {
+        ty.size_bytes(PointerWidth::Bits64) <= self.widest_integer_bytes
+    }
+
+    pub(super) fn allocators(&self) -> &'static [RegallocStrategy] {
+        if self.global_regalloc {
+            &[
+                RegallocStrategy::Incremental,
+                RegallocStrategy::LinearScanGlobal,
+                RegallocStrategy::GraphColorGlobal,
+            ]
+        } else {
+            &[RegallocStrategy::Incremental]
+        }
+    }
+
+    pub(super) fn accumulator(&self) -> MirType {
+        match self.widest_integer_bytes {
+            4 => MirType::Scalar(ScalarType::I32),
+            _ => MirType::Scalar(ScalarType::I64),
+        }
+    }
+}
+
+/// The widths a value check accumulates its result in: one per distinct widest
+/// integer among the native targets, skipping any narrower than the type tested.
+fn accumulator_types(ty: MirType) -> Vec<MirType> {
+    let mut widths: Vec<MirType> = Vec::new();
+    for target in targets(false) {
+        let accumulator = target.accumulator();
+        if accumulator.size_bytes(PointerWidth::Bits64) >= ty.size_bytes(PointerWidth::Bits64)
+            && !widths.contains(&accumulator)
+        {
+            widths.push(accumulator);
+        }
+    }
+    widths
+}
+
+fn multilib_32_bit() -> bool {
+    Command::new("cc")
+        .args(["-m32", "-xc", "-c", "/dev/null", "-o", "/dev/null"])
+        .output()
+        .is_ok_and(|out| out.status.success())
 }
 
 pub(super) fn targets(include_unavailable: bool) -> Vec<Native> {
@@ -98,25 +152,53 @@ pub(super) fn targets(include_unavailable: bool) -> Vec<Native> {
         arch: TargetArchitecture::X86_64,
         triple: "x86_64-linux-gnu",
         emulator: None,
+        cc_flags: &[],
+        widest_integer_bytes: 8,
+        atomics: true,
+        global_regalloc: true,
         start: ".text\n.globl _start\n_start:\n call main\n mov %rax, %rdi\n mov $60, %rax\n syscall\n",
     }];
+    if include_unavailable || (available("cc") && multilib_32_bit()) {
+        targets.push(Native {
+            arch: TargetArchitecture::I686,
+            triple: "i686-linux-gnu",
+            emulator: None,
+            cc_flags: &["-m32"],
+            widest_integer_bytes: 4,
+            atomics: false,
+            global_regalloc: false,
+            start: ".text\n.globl _start\n_start:\n call main\n movl %eax, %ebx\n movl $1, %eax\n int $0x80\n",
+        });
+    }
     for target in [
         Native {
             arch: TargetArchitecture::Aarch64,
             triple: "aarch64-linux-gnu",
             emulator: Some("qemu-aarch64-static"),
+            cc_flags: &[],
+            widest_integer_bytes: 8,
+            atomics: true,
+            global_regalloc: true,
             start: ".text\n.globl _start\n_start:\n bl main\n mov x8, #93\n svc #0\n",
         },
         Native {
             arch: TargetArchitecture::Riscv64,
             triple: "riscv64-linux-gnu",
             emulator: Some("qemu-riscv64-static"),
+            cc_flags: &[],
+            widest_integer_bytes: 8,
+            atomics: true,
+            global_regalloc: true,
             start: ".text\n.globl _start\n_start:\n call main\n li a7, 93\n ecall\n",
         },
         Native {
             arch: TargetArchitecture::PowerPC64,
             triple: "powerpc64le-linux-gnu",
             emulator: Some("qemu-ppc64le-static"),
+            cc_flags: &[],
+            widest_integer_bytes: 8,
+            atomics: true,
+            global_regalloc: true,
             start: ".text\n.globl _start\n_start:\n bl main\n li 0, 1\n sc\n",
         },
     ] {
@@ -166,6 +248,7 @@ pub(super) fn run(
     if target.emulator.is_none() {
         let output = Command::new("cc")
             .args(["-nostdlib", "-no-pie"])
+            .args(target.cc_flags)
             .arg(&source)
             .arg("-o")
             .arg(&binary)
@@ -321,83 +404,86 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
             ]);
         }
         for constants in [false, true] {
-            let mut block = Block::new("entry");
-            let mut id = 0;
-            let mut failures = imm(0);
-            for &(op, lhs, rhs, expected) in &cases {
-                let dst = operation(&mut block, &mut id, op, ty, lhs, rhs, constants);
-                let wide = reg(id);
-                let failed = reg(id + 1);
-                let accumulated = reg(id + 2);
-                id += 3;
-                if ty == MirType::Scalar(ScalarType::I64) {
-                    block.push(Instruction::Copy {
-                        ty,
-                        dst: wide.clone(),
-                        src: Operand::Register(dst),
-                    });
-                } else {
-                    block.push(Instruction::IntConvert {
-                        from: ty,
-                        to: MirType::Scalar(ScalarType::I64),
-                        signed: true,
-                        dst: wide.clone(),
-                        src: Operand::Register(dst),
-                    });
-                }
+            for accumulator in accumulator_types(ty) {
+                let mut block = Block::new("entry");
+                let mut id = 0;
+                let mut failures = imm(0);
+                for &(op, lhs, rhs, expected) in &cases {
+                    let dst = operation(&mut block, &mut id, op, ty, lhs, rhs, constants);
+                    let wide = reg(id);
+                    let failed = reg(id + 1);
+                    let accumulated = reg(id + 2);
+                    id += 3;
+                    if ty == accumulator {
+                        block.push(Instruction::Copy {
+                            ty,
+                            dst: wide.clone(),
+                            src: Operand::Register(dst),
+                        });
+                    } else {
+                        block.push(Instruction::IntConvert {
+                            from: ty,
+                            to: accumulator,
+                            signed: true,
+                            dst: wide.clone(),
+                            src: Operand::Register(dst),
+                        });
+                    }
 
-                block.push(Instruction::IntCmp {
-                    op: IntCmpOp::Ne,
-                    ty: MirType::Scalar(ScalarType::I64),
-                    dst: failed.clone(),
-                    lhs: Operand::Register(wide),
-                    rhs: imm(expected),
+                    block.push(Instruction::IntCmp {
+                        op: IntCmpOp::Ne,
+                        ty: accumulator,
+                        dst: failed.clone(),
+                        lhs: Operand::Register(wide),
+                        rhs: imm(expected),
+                    });
+                    let flag = reg(id);
+                    id += 1;
+                    block.push(Instruction::IntConvert {
+                        from: MirType::Scalar(ScalarType::I1),
+                        to: accumulator,
+                        signed: false,
+                        dst: flag.clone(),
+                        src: Operand::Register(failed),
+                    });
+                    block.push(Instruction::IntBinary {
+                        op: IntBinOp::Or,
+                        ty: accumulator,
+                        dst: accumulated.clone(),
+                        lhs: failures,
+                        rhs: Operand::Register(flag),
+                    });
+                    failures = Operand::Register(accumulated);
+                }
+                block.push(Instruction::Ret {
+                    value: Some(failures),
                 });
-                let flag = reg(id);
-                id += 1;
-                block.push(Instruction::IntConvert {
-                    from: MirType::Scalar(ScalarType::I1),
-                    to: MirType::Scalar(ScalarType::I64),
-                    signed: false,
-                    dst: flag.clone(),
-                    src: Operand::Register(failed),
-                });
-                block.push(Instruction::IntBinary {
-                    op: IntBinOp::Or,
-                    ty: MirType::Scalar(ScalarType::I64),
-                    dst: accumulated.clone(),
-                    lhs: failures,
-                    rhs: Operand::Register(flag),
-                });
-                failures = Operand::Register(accumulated);
-            }
-            block.push(Instruction::Ret {
-                value: Some(failures),
-            });
-            let module = module(block);
-            assert_eq!(
-                interpret_mir_function(&module.functions["main"], &[])?,
-                Some(0)
-            );
-            if available("cc") {
-                let guard = directory("values");
-                let directory = guard.path();
-                for target in targets(false) {
-                    for allocator in [
-                        RegallocStrategy::Incremental,
-                        RegallocStrategy::LinearScanGlobal,
-                        RegallocStrategy::GraphColorGlobal,
-                    ] {
-                        let output = run(&module, &target, allocator, directory)?;
-                        assert_eq!(
-                            output.status.code(),
-                            Some(0),
-                            "{} {allocator:?}: {output:?}",
-                            target.triple
-                        );
+                let module = module_returning(block, accumulator);
+                assert_eq!(
+                    interpret_mir_function(&module.functions["main"], &[])?,
+                    Some(0)
+                );
+                if available("cc") {
+                    let guard = directory("values");
+                    let directory = guard.path();
+                    for target in targets(false)
+                        .iter()
+                        .filter(|target| target.accumulator() == accumulator && target.lowers(ty))
+                    {
+                        for &allocator in target.allocators() {
+                            let output = run(&module, target, allocator, directory)?;
+                            assert_eq!(
+                                output.status.code(),
+                                Some(0),
+                                "{} {allocator:?}: {output:?}",
+                                target.triple
+                            );
+                        }
+                    }
+                    if accumulator == MirType::Scalar(ScalarType::I64) {
+                        check_wasm(&module, directory, false)?;
                     }
                 }
-                check_wasm(&module, directory, false)?;
             }
         }
     }
@@ -429,50 +515,57 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
             (IntBinOp::SRem, minimum, -1),
         ] {
             for constants in [false, true] {
-                let mut block = Block::new("entry");
-                operation(&mut block, &mut 0, op, ty, lhs, rhs, constants);
-                block.push(Instruction::Ret {
-                    value: Some(imm(0)),
-                });
-                let original = module(block);
-                for optimize in [false, true] {
-                    let mut module = original.clone();
-                    if optimize {
-                        use crate::mir::transform::{
-                            ConstantFolding, DeadCodeElimination, Peephole, StrengthReduction,
-                            Transform,
-                        };
-                        let function = module.functions.get_mut("main").ok_or("missing main")?;
-                        ConstantFolding
-                            .apply(function)
-                            .map_err(|error| format!("{error:?}"))?;
-                        Peephole
-                            .apply(function)
-                            .map_err(|error| format!("{error:?}"))?;
-                        StrengthReduction
-                            .apply(function)
-                            .map_err(|error| format!("{error:?}"))?;
-                        DeadCodeElimination
-                            .apply(function)
-                            .map_err(|error| format!("{error:?}"))?;
-                    }
-                    let result = interpret_mir_function(&module.functions["main"], &[]);
-                    assert!(result.is_err(), "{ty} {op} {lhs} {rhs}");
-                    check_wasm(&module, directory, true)?;
-                    if native {
-                        for target in &targets {
-                            let output =
-                                run(&module, target, RegallocStrategy::Incremental, directory)?;
-                            let signal = output.status.signal();
-                            assert!(
-                                matches!(signal, Some(4 | 5 | 8)),
-                                "{} {ty} {op} {lhs} {rhs} constants={constants} optimize={optimize}: {output:?}",
-                                target.triple
-                            );
-                            if target.arch == TargetArchitecture::X86_64
-                                && ty == MirType::Scalar(ScalarType::I64)
-                            {
-                                assert_eq!(signal, Some(8));
+                for accumulator in accumulator_types(ty) {
+                    let mut block = Block::new("entry");
+                    operation(&mut block, &mut 0, op, ty, lhs, rhs, constants);
+                    block.push(Instruction::Ret {
+                        value: Some(imm(0)),
+                    });
+                    let original = module_returning(block, accumulator);
+                    for optimize in [false, true] {
+                        let mut module = original.clone();
+                        if optimize {
+                            use crate::mir::transform::{
+                                ConstantFolding, DeadCodeElimination, Peephole, StrengthReduction,
+                                Transform,
+                            };
+                            let function =
+                                module.functions.get_mut("main").ok_or("missing main")?;
+                            ConstantFolding
+                                .apply(function)
+                                .map_err(|error| format!("{error:?}"))?;
+                            Peephole
+                                .apply(function)
+                                .map_err(|error| format!("{error:?}"))?;
+                            StrengthReduction
+                                .apply(function)
+                                .map_err(|error| format!("{error:?}"))?;
+                            DeadCodeElimination
+                                .apply(function)
+                                .map_err(|error| format!("{error:?}"))?;
+                        }
+                        let result = interpret_mir_function(&module.functions["main"], &[]);
+                        assert!(result.is_err(), "{ty} {op} {lhs} {rhs}");
+                        if accumulator == MirType::Scalar(ScalarType::I64) {
+                            check_wasm(&module, directory, true)?;
+                        }
+                        if native {
+                            for target in targets.iter().filter(|target| {
+                                target.accumulator() == accumulator && target.lowers(ty)
+                            }) {
+                                let output =
+                                    run(&module, target, RegallocStrategy::Incremental, directory)?;
+                                let signal = output.status.signal();
+                                assert!(
+                                    matches!(signal, Some(4 | 5 | 8)),
+                                    "{} {ty} {op} {lhs} {rhs} constants={constants} optimize={optimize}: {output:?}",
+                                    target.triple
+                                );
+                                if target.arch == TargetArchitecture::X86_64
+                                    && ty == MirType::Scalar(ScalarType::I64)
+                                {
+                                    assert_eq!(signal, Some(8));
+                                }
                             }
                         }
                     }
@@ -486,7 +579,10 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
 #[test]
 fn division_guards_skip_proven_safe_operands() -> TestResult {
     for target in targets(true) {
-        if target.arch == TargetArchitecture::X86_64 {
+        if matches!(
+            target.arch,
+            TargetArchitecture::X86_64 | TargetArchitecture::I686
+        ) {
             continue;
         }
         for (left, right, expected) in [

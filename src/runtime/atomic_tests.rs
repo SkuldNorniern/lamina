@@ -5,9 +5,12 @@ use crate::{
         AddressMode, AddressSpace, AtomicBinOp, Block, Instruction, MemoryAttrs, MemoryOrdering,
         MirType, Module, Operand, Register, ScalarType, VirtualReg,
     },
-    mir_codegen::RegallocStrategy,
+    mir_codegen::{
+        MirCodegenSettings, RegallocStrategy, common::reject_underaligned_atomics,
+        generate_mir_to_target_with_settings,
+    },
 };
-use lamina_platform::PointerWidth;
+use lamina_platform::{PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
 use std::{error::Error, path::Path};
 
 const INIT: i64 = 100;
@@ -122,9 +125,12 @@ fn interpreted(module: &Module) -> Result<Option<i64>, Box<dyn Error>> {
     Ok(interpret_mir_function(&module.functions["main"], &[])?)
 }
 
-fn native_matches(module: &Module, directory: &Path, expected: i64) -> TestResult {
-    for target in targets(false) {
-        let output = run(module, &target, RegallocStrategy::Incremental, directory)?;
+fn native_matches(module: &Module, ty: MirType, directory: &Path, expected: i64) -> TestResult {
+    for target in targets(false)
+        .iter()
+        .filter(|target| target.atomics && target.lowers(ty))
+    {
+        let output = run(module, target, RegallocStrategy::Incremental, directory)?;
         assert_eq!(
             output.status.code(),
             Some((expected & 0xff) as i32),
@@ -157,8 +163,8 @@ fn atomic_rmw_returns_old_value_and_stores_new_value() -> TestResult {
                 assert_eq!(interpreted(&want_old)?, Some(old_before), "{ty:?} {op} old");
                 assert_eq!(interpreted(&want_new)?, Some(new_after), "{ty:?} {op} new");
                 if native {
-                    native_matches(&want_old, directory, old_before)?;
-                    native_matches(&want_new, directory, new_after)?;
+                    native_matches(&want_old, ty, directory, old_before)?;
+                    native_matches(&want_new, ty, directory, new_after)?;
                 }
             }
         }
@@ -202,8 +208,8 @@ fn atomic_cmpxchg_returns_old_value_and_swaps_only_on_match() -> TestResult {
             assert_eq!(interpreted(&want_old)?, Some(old_before), "{ty:?} old");
             assert_eq!(interpreted(&want_new)?, Some(new_after), "{ty:?} new");
             if native {
-                native_matches(&want_old, directory, old_before)?;
-                native_matches(&want_new, directory, new_after)?;
+                native_matches(&want_old, ty, directory, old_before)?;
+                native_matches(&want_new, ty, directory, new_after)?;
             }
         }
     }
@@ -286,5 +292,109 @@ fn atomic_access_through_null_traps() -> TestResult {
     });
     returning(&mut block, value);
     assert!(interpreted(&module(block)).is_err());
+    Ok(())
+}
+
+fn cmpxchg_at(
+    ty: MirType,
+    success_ordering: MemoryOrdering,
+    failure_ordering: MemoryOrdering,
+    offset: i16,
+) -> Module {
+    let ptr = reg(1);
+    let old = reg(2);
+    let mut block = Block::new("entry");
+    cell(&mut block, ty, &ptr, INIT);
+    block.push(Instruction::AtomicCompareExchange {
+        ty,
+        dst: old.clone(),
+        addr: AddressMode::BaseOffset {
+            address_space: AddressSpace::default(),
+            base: ptr,
+            offset,
+        },
+        expected: imm(INIT),
+        desired: imm(OPERAND),
+        success_ordering,
+        failure_ordering,
+    });
+    returning(&mut block, old);
+    module(block)
+}
+
+fn emitted(module: &Module, arch: TargetArchitecture) -> Result<(), Box<dyn Error>> {
+    let mut bytes = Vec::new();
+    generate_mir_to_target_with_settings(
+        module,
+        &mut bytes,
+        &Target::new(arch, TargetOperatingSystem::Linux),
+        1,
+        &MirCodegenSettings::default(),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn an_illegal_cmpxchg_failure_ordering_is_refused_on_every_path() -> TestResult {
+    let ty = MirType::Scalar(ScalarType::I64);
+    for (success, failure) in [
+        (MemoryOrdering::SeqCst, MemoryOrdering::Release),
+        (MemoryOrdering::SeqCst, MemoryOrdering::AcqRel),
+        (MemoryOrdering::Relaxed, MemoryOrdering::Acquire),
+        (MemoryOrdering::AcqRel, MemoryOrdering::SeqCst),
+    ] {
+        let module = cmpxchg_at(ty, success, failure, 0);
+        let error = interpreted(&module).expect_err("the interpreter refuses it");
+        assert!(
+            format!("{error:?}").contains("atomic_cmpxchg"),
+            "{success} {failure}: {error:?}"
+        );
+        for arch in [
+            TargetArchitecture::X86_64,
+            TargetArchitecture::S390x,
+            TargetArchitecture::Aarch64,
+            TargetArchitecture::Riscv64,
+        ] {
+            let error = emitted(&module, arch).expect_err("codegen refuses it");
+            assert!(
+                error.to_string().contains("failure ordering"),
+                "{arch:?} {success} {failure}: {error}"
+            );
+        }
+    }
+    for (success, failure) in [
+        (MemoryOrdering::SeqCst, MemoryOrdering::SeqCst),
+        (MemoryOrdering::AcqRel, MemoryOrdering::Acquire),
+        (MemoryOrdering::Release, MemoryOrdering::Relaxed),
+    ] {
+        let module = cmpxchg_at(ty, success, failure, 0);
+        interpreted(&module)?;
+        for arch in [TargetArchitecture::X86_64, TargetArchitecture::S390x] {
+            emitted(&module, arch).map_err(|error| format!("{success} {failure}: {error}"))?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn an_atomic_access_off_its_natural_boundary_is_refused() -> TestResult {
+    let ty = MirType::Scalar(ScalarType::I64);
+    let module = cmpxchg_at(ty, MemoryOrdering::SeqCst, MemoryOrdering::SeqCst, 4);
+    for arch in [
+        TargetArchitecture::X86_64,
+        TargetArchitecture::S390x,
+        TargetArchitecture::Aarch64,
+        TargetArchitecture::Riscv64,
+    ] {
+        let error = emitted(&module, arch).expect_err("codegen refuses it");
+        assert!(
+            error.to_string().contains("must be naturally aligned"),
+            "{arch:?}: {error}"
+        );
+    }
+    reject_underaligned_atomics(
+        &cmpxchg_at(ty, MemoryOrdering::SeqCst, MemoryOrdering::SeqCst, 8),
+        PointerWidth::Bits64,
+    )?;
     Ok(())
 }

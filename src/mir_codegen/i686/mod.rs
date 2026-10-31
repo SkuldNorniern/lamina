@@ -27,7 +27,8 @@ use crate::mir_codegen::common::{
     parallel_codegen_error,
 };
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
+    reject_thread_local_globals, unsupported_inline_asm, unsupported_overflow_flag,
+    unsupported_thread_local,
 };
 use crate::{
     error::LaminaError,
@@ -984,7 +985,7 @@ fn emit_instruction<W: Write>(
             ));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(unsupported("i686 does not support inline assembly"));
+            return Err(unsupported_inline_asm("i686"));
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }
@@ -1084,6 +1085,17 @@ fn emit_int_binary<W: Write>(
             extend_in_place(writer, EAX, ty, signed)?;
             load_operand(rhs, writer, slots, ECX)?;
             extend_in_place(writer, ECX, ty, signed)?;
+            if signed && bits < 32 {
+                let (_, overflow) =
+                    op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant(), PTR);
+                if overflow {
+                    let minimum = ty.signed_integer(1i64 << (bits - 1), PTR);
+                    writeln!(
+                        writer,
+                        "    cmpl $-1, {ECX}\n    jne 2f\n    cmpl ${minimum}, {EAX}\n    jne 2f\n    ud2\n2:"
+                    )?;
+                }
+            }
             if signed {
                 writeln!(writer, "    cltd")?;
                 writeln!(writer, "    idivl {ECX}")?;
