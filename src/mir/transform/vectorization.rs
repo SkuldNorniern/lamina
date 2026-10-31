@@ -337,7 +337,9 @@ fn lane_bytes(lane: VectorLane) -> u8 {
     }
 }
 
-/// `dst = iv + 1`, the only such self-increment in the block.
+/// `dst = iv + 1`, the only such self-increment in the block, and the only place the
+/// block writes `iv` at all. A second write would advance the induction variable by
+/// something other than one element per iteration while this still read as a unit stride.
 fn single_increment(body: &[Located], defined: &HashSet<Register>) -> Option<(usize, Register)> {
     let mut found = None;
     for (index, inst) in body.iter().enumerate() {
@@ -360,6 +362,9 @@ fn single_increment(body: &[Located], defined: &HashSet<Register>) -> Option<(us
         found = Some((index, dst.clone()));
     }
     let (index, iv) = found?;
+    if body.iter().filter(|i| i.def_reg() == Some(&iv)).count() != 1 {
+        return None;
+    }
     defined.contains(&iv).then_some((index, iv))
 }
 
@@ -980,6 +985,30 @@ body:
 done:
   %ti = fptoint.f64.i64 %t
   ret.i64 %ti
+}";
+        assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
+    }
+
+    #[test]
+    fn refuses_a_second_write_to_the_induction_variable() {
+        let source = "fn @f() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, 60
+  br %more, body, done
+body:
+  %j = add.i64 %j, 2
+  %q = getelem.i64 %a, %j
+  %x = load.i64 %q
+  %z = add.i64 %x, 5
+  store.i64 %q, %z
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
 }";
         assert_eq!(vector_ops(source, X86CpuLevel::V2), 0);
     }
