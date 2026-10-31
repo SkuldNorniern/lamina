@@ -470,28 +470,12 @@ fn build_library_args(target: &Target) -> Result<Vec<String>, LaminaError> {
         args.push("-lSystem".to_string());
     } else if !cross_os(target_os) && target.environment.libc().is_some() {
         args.push("-lc".to_string());
-        let runtime = target.environment.compiler_runtime();
-        match libgcc_file(target) {
-            Some(libgcc) => args.push(libgcc),
-            None if runtime.requires_host_runtime(&target.spec()) => {
-                return Err(missing_libgcc_error(target));
-            }
-            None => {}
+        if let Some(libgcc) = libgcc_file(target) {
+            args.push(libgcc);
         }
     }
 
     Ok(args)
-}
-
-fn missing_libgcc_error(target: &Target) -> LaminaError {
-    let (target_os, target_arch) = (target.operating_system, target.architecture);
-    let reason = target_compiler(target_arch, target.environment).map_or_else(
-        |reason| reason,
-        |compiler| format!("{compiler} cannot find libgcc.a"),
-    );
-    LaminaError::ValidationError(format!(
-        "cannot link {target_os:?} {target_arch:?}: {reason}; a target with 32-bit integer registers splits every i64, and libgcc supplies the __divdi3 family that costs"
-    ))
 }
 
 fn libgcc_file(target: &Target) -> Option<String> {
@@ -1299,30 +1283,10 @@ mod tests {
     }
 
     #[test]
-    fn the_host_runtime_is_required_only_where_our_builtins_fall_short() {
-        let wide = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
-        assert!(
-            !wide
-                .environment
-                .compiler_runtime()
-                .requires_host_runtime(&wide.spec())
-        );
+    fn a_target_with_32bit_registers_links_without_demanding_libgcc() {
         let narrow = Target::new(TargetArchitecture::I686, TargetOperatingSystem::Linux);
-        assert!(
-            narrow
-                .environment
-                .compiler_runtime()
-                .requires_host_runtime(&narrow.spec())
-        );
-        let freestanding = narrow
-            .with_environment(TargetEnvironment::Freestanding)
-            .expect("every architecture accepts a freestanding environment");
-        assert!(
-            !freestanding
-                .environment
-                .compiler_runtime()
-                .requires_host_runtime(&freestanding.spec())
-        );
+        let libs = build_library_args(&narrow).expect("library arguments");
+        assert!(libs.iter().any(|a| a == "-lc"), "{libs:?}");
     }
 
     #[test]

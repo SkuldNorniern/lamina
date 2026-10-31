@@ -7,8 +7,6 @@
 
 use std::{fmt, str::FromStr};
 
-use crate::arch_table::ArchSpec;
-
 /// The C library an environment links.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Libc {
@@ -42,28 +40,12 @@ impl fmt::Display for Libc {
 /// too. Another runtime arrives as one more value here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompilerRuntime {
-    /// Lamina's own `builtins/`, compiled per program for the target. It has the 128-bit
-    /// helpers and no 64-bit ones, so on some architectures the host runtime is still
-    /// needed beside it — see [`CompilerRuntime::requires_host_runtime`].
+    /// Lamina's own `builtins/`, compiled per program for the target. It has both the
+    /// 128-bit helpers and the 64-bit ones a target with 32-bit integer registers needs,
+    /// so no host compiler runtime is required beside it.
     LaminaBuiltins,
     /// No compiler runtime is linked; a call to a helper is a link error.
     None,
-}
-
-impl CompilerRuntime {
-    /// Whether the host toolchain's `libgcc.a` is still required beside this runtime for
-    /// an architecture.
-    ///
-    /// `builtins/` has no 64-bit routines, so an architecture whose integer registers
-    /// hold fewer than 64 bits splits every `i64` and needs the `__divdi3` family, which
-    /// is not ours. The runtime says what is selected and the architecture says what it
-    /// has to cover; neither answers alone.
-    pub const fn requires_host_runtime(self, spec: &ArchSpec) -> bool {
-        match self {
-            Self::LaminaBuiltins => !spec.has_64bit_int_registers(),
-            Self::None => false,
-        }
-    }
 }
 
 /// The C runtime and ABI a target means.
@@ -195,28 +177,15 @@ mod tests {
     }
 
     #[test]
-    fn the_host_runtime_is_needed_only_where_our_builtins_fall_short() {
-        use crate::TargetArchitecture;
-        let runtime = TargetEnvironment::Gnu.compiler_runtime();
-        for arch in [
-            TargetArchitecture::I686,
-            TargetArchitecture::Armv7,
-            TargetArchitecture::Riscv32,
-            TargetArchitecture::Thumbv6m,
-            TargetArchitecture::Thumbv7m,
-        ] {
-            assert!(runtime.requires_host_runtime(&arch.spec()), "{arch}");
+    fn every_hosted_environment_selects_our_own_compiler_runtime() {
+        for env in TargetEnvironment::ALL {
+            let expected = if env.is_hosted() {
+                CompilerRuntime::LaminaBuiltins
+            } else {
+                CompilerRuntime::None
+            };
+            assert_eq!(env.compiler_runtime(), expected, "{env}");
         }
-        for arch in [
-            TargetArchitecture::X86_64,
-            TargetArchitecture::Aarch64,
-            TargetArchitecture::Riscv64,
-            TargetArchitecture::S390x,
-            TargetArchitecture::PowerPC64,
-        ] {
-            assert!(!runtime.requires_host_runtime(&arch.spec()), "{arch}");
-        }
-        assert!(!CompilerRuntime::None.requires_host_runtime(&TargetArchitecture::I686.spec()));
     }
 
     #[test]
