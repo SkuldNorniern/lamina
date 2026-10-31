@@ -11,7 +11,8 @@ use crate::{
             get_intermediate_extension,
         },
         generate_mir_to_target_with_settings,
-        link::{get_output_extension, link},
+        link::{get_output_extension, link_with_runtime},
+        runtime_builtins,
     },
     parser::parse_module,
 };
@@ -309,16 +310,35 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         }
 
         let linker_flags = pie_link_flags(&options.linker_flags, mir_mod.relocation)?;
-        link(
+        let runtime = runtime_builtins::build(
+            &mir_mod,
+            &assemble_result.output_path,
+            target,
+            &codegen_settings,
+            options.opt_level,
+            codegen_units,
+            assembler_backend,
+            &options.assembler_flags,
+            options.verbose,
+            &options.ras_object_write_options(target.operating_system),
+        )
+        .map_err(|e| format!("Compiler runtime build failed: {e}"))?;
+        link_with_runtime(
             &assemble_result.output_path,
             &final_output_path,
             target.architecture,
             target.operating_system,
             linker_backend,
+            runtime
+                .as_ref()
+                .map_or(&[][..], runtime_builtins::RuntimeObjects::objects),
             &linker_flags,
             options.verbose,
         )
         .map_err(|e| format!("Linking failed: {e}"))?;
+        if let Some(runtime) = runtime {
+            runtime.discard();
+        }
 
         println!(
             "[INFO] Executable '{}' created successfully.",

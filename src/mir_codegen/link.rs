@@ -470,39 +470,45 @@ fn build_library_args(
         args.push("-lSystem".to_string());
     } else if !cross_os(target_os) {
         args.push("-lc".to_string());
-        args.push(required_libgcc_file(target_arch, target_os)?);
+        match libgcc_file(target_arch) {
+            Some(libgcc) => args.push(libgcc),
+            None if needs_libgcc(target_arch) => {
+                return Err(missing_libgcc_error(target_arch, target_os));
+            }
+            None => {}
+        }
     }
 
     Ok(args)
 }
 
+/// Whether libgcc is required rather than merely welcome. `builtins/` covers the
+/// 128-bit helpers for every target, but a target whose integer registers hold 32
+/// bits also splits `i64`, and the `__divdi3` family that costs is not ours.
+fn needs_libgcc(target_arch: TargetArchitecture) -> bool {
+    target_arch.max_int_register_bits() < 64
+}
+
 fn missing_libgcc_error(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
-    reason: &str,
 ) -> LaminaError {
+    let reason = target_compiler(target_arch).map_or_else(
+        |reason| reason,
+        |compiler| format!("{compiler} cannot find libgcc.a"),
+    );
     LaminaError::ValidationError(format!(
-        "cannot link {target_os:?} {target_arch:?}: {reason}; libgcc supplies the compiler runtime helpers (__divti3 and friends) that -lc does not and is required to link"
+        "cannot link {target_os:?} {target_arch:?}: {reason}; a target with 32-bit integer registers splits every i64, and libgcc supplies the __divdi3 family that costs"
     ))
 }
 
-fn required_libgcc_file(
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-) -> Result<String, LaminaError> {
-    let compiler = target_compiler(target_arch)
-        .map_err(|reason| missing_libgcc_error(target_arch, target_os, &reason))?;
-    get_libgcc_file(&compiler, multilib_flag(target_arch)).ok_or_else(|| {
-        missing_libgcc_error(
-            target_arch,
-            target_os,
-            &format!("{compiler} cannot find libgcc.a"),
-        )
-    })
+fn libgcc_file(target_arch: TargetArchitecture) -> Option<String> {
+    let compiler = target_compiler(target_arch).ok()?;
+    get_libgcc_file(&compiler, multilib_flag(target_arch))
 }
 
-/// The compiler runtime archive. It supplies the 128-bit integer helpers (`__divti3`
-/// and friends) that i128 lowering calls, which `-lc` does not provide.
+/// The host compiler runtime archive, linked after our own objects so it supplies
+/// only what `builtins/` does not.
 fn get_libgcc_file(compiler: &str, multilib: Option<&str>) -> Option<String> {
     Command::new(compiler)
         .args(multilib)
@@ -519,6 +525,7 @@ fn build_unix_linker_args(
     output_path: &Path,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
+    runtime_objects: &[PathBuf],
     additional_flags: &[String],
 ) -> Result<Vec<String>, LaminaError> {
     let mut args = Vec::new();
@@ -527,6 +534,7 @@ fn build_unix_linker_args(
     args.extend(build_dynamic_linker_arg(target_arch, target_os));
     args.extend(build_crt_args(target_arch, target_os, true)?);
     args.push(input_path.to_string_lossy().to_string());
+    args.extend(object_args(runtime_objects));
     args.extend(build_crt_args(target_arch, target_os, false)?);
     args.extend(build_entry_point_arg(target_os));
     args.extend(build_library_args(target_arch, target_os)?);
@@ -545,10 +553,12 @@ fn build_weld_linker_args(
     input_path: &Path,
     output_path: &Path,
     target_os: TargetOperatingSystem,
+    runtime_objects: &[PathBuf],
     additional_flags: &[String],
 ) -> Vec<String> {
     let mut args = Vec::new();
     args.push(input_path.to_string_lossy().to_string());
+    args.extend(object_args(runtime_objects));
     match target_os {
         TargetOperatingSystem::Windows => {
             // weld detects PE from .exe output suffix; no entry-point arg needed.
@@ -580,6 +590,7 @@ fn build_clang_windows_linker_args(
     input_path: &Path,
     output_path: &Path,
     target_arch: TargetArchitecture,
+    runtime_objects: &[PathBuf],
     additional_flags: &[String],
 ) -> Result<Vec<String>, LaminaError> {
     let Some(target_triple) = clang_windows_target_triple(target_arch) else {
@@ -592,10 +603,20 @@ fn build_clang_windows_linker_args(
     args.push("-target".to_string());
     args.push(target_triple.to_string());
     args.push(input_path.to_string_lossy().to_string());
+    args.extend(object_args(runtime_objects));
     args.extend(additional_flags.iter().cloned());
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
     Ok(args)
+}
+
+/// Extra objects named on the link line, ahead of any library. Our own compiler
+/// runtime must define a symbol before an archive gets the chance to.
+fn object_args(objects: &[PathBuf]) -> Vec<String> {
+    objects
+        .iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect()
 }
 
 /// Linker backend type
@@ -631,12 +652,37 @@ pub fn link(
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<(), LaminaError> {
+    link_with_runtime(
+        input_path,
+        output_path,
+        target_arch,
+        target_os,
+        backend,
+        &[],
+        additional_flags,
+        verbose,
+    )
+}
+
+/// Like [`link`], but names the compiler runtime objects built for this program.
+#[allow(clippy::too_many_arguments)]
+pub fn link_with_runtime(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    backend: Option<LinkerBackend>,
+    runtime_objects: &[PathBuf],
+    additional_flags: &[String],
+    verbose: bool,
+) -> Result<(), LaminaError> {
     link_object(
         input_path,
         output_path,
         target_arch,
         target_os,
         backend,
+        runtime_objects,
         additional_flags,
         verbose,
     )?;
@@ -684,12 +730,14 @@ fn brand_freebsd(output_path: &Path) -> Result<(), LaminaError> {
         })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn link_object(
     input_path: &Path,
     output_path: &Path,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     backend: Option<LinkerBackend>,
+    runtime_objects: &[PathBuf],
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<(), LaminaError> {
@@ -725,6 +773,7 @@ fn link_object(
             output_path,
             target_arch,
             target_os,
+            runtime_objects,
             additional_flags,
             verbose,
             &gap,
@@ -747,6 +796,7 @@ fn link_object(
                 output_path,
                 target_arch,
                 target_os,
+                runtime_objects,
                 additional_flags,
             )?;
             (cmd, args)
@@ -757,6 +807,7 @@ fn link_object(
                     input_path,
                     output_path,
                     target_arch,
+                    runtime_objects,
                     additional_flags,
                 )?;
                 return run_linker("clang", args, verbose);
@@ -767,6 +818,7 @@ fn link_object(
                 output_path,
                 target_arch,
                 target_os,
+                runtime_objects,
                 additional_flags,
             )?;
             if target_os == TargetOperatingSystem::MacOS
@@ -800,12 +852,19 @@ fn link_object(
                 output_path,
                 target_arch,
                 target_os,
+                runtime_objects,
                 additional_flags,
             )?;
             ("mold".to_string(), args)
         }
         LinkerBackend::Weld => {
-            let args = build_weld_linker_args(input_path, output_path, target_os, additional_flags);
+            let args = build_weld_linker_args(
+                input_path,
+                output_path,
+                target_os,
+                runtime_objects,
+                additional_flags,
+            );
             return match run_weld(&args, verbose) {
                 WeldRun::Linked => Ok(()),
                 WeldRun::Failed(reason) if defaulted => link_with_gnu(
@@ -813,6 +872,7 @@ fn link_object(
                     output_path,
                     target_arch,
                     target_os,
+                    runtime_objects,
                     additional_flags,
                     verbose,
                     &reason,
@@ -841,6 +901,7 @@ fn link_object(
             args.extend(build_msvc_toolchain_library_paths(target_arch));
             args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
+            args.extend(object_args(runtime_objects));
             args.push(format!("/OUT:{}", output_path.display()));
             args.push("ucrt.lib".to_string());
             args.push("legacy_stdio_definitions.lib".to_string());
@@ -858,6 +919,7 @@ fn link_object(
                 output_path,
                 target_arch,
                 target_os,
+                runtime_objects,
                 additional_flags,
             )?;
             (name.to_string(), args)
@@ -867,11 +929,13 @@ fn link_object(
     run_linker(&cmd, args, verbose)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn link_with_gnu(
     input_path: &Path,
     output_path: &Path,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
+    runtime_objects: &[PathBuf],
     additional_flags: &[String],
     verbose: bool,
     reason: &str,
@@ -890,6 +954,7 @@ fn link_with_gnu(
         output_path,
         target_arch,
         target_os,
+        runtime_objects,
         additional_flags,
     )?;
     run_linker(&tool, args, verbose)
@@ -1098,8 +1163,9 @@ mod tests {
     fn build_clang_windows_linker_args_includes_target_and_output() {
         let input = Path::new("module.o");
         let output = Path::new("module.exe");
-        let args = build_clang_windows_linker_args(input, output, TargetArchitecture::X86_64, &[])
-            .expect("x86_64 Windows should be supported");
+        let args =
+            build_clang_windows_linker_args(input, output, TargetArchitecture::X86_64, &[], &[])
+                .expect("x86_64 Windows should be supported");
 
         assert_eq!(args[0], "-target");
         assert_eq!(args[1], "x86_64-pc-windows-msvc");
@@ -1163,7 +1229,7 @@ mod tests {
     fn weld_args_include_libc_on_linux() {
         let input = Path::new("module.o");
         let output = Path::new("module");
-        let args = build_weld_linker_args(input, output, TargetOperatingSystem::Linux, &[]);
+        let args = build_weld_linker_args(input, output, TargetOperatingSystem::Linux, &[], &[]);
         // weld links against libc for printf/fflush access.
         assert!(
             args.iter().any(|a| a == "-lc"),

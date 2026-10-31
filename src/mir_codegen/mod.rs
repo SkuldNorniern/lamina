@@ -20,6 +20,7 @@ mod simd;
 pub mod arm;
 pub mod powerpc;
 pub mod riscv;
+pub mod runtime_builtins;
 pub mod wasm;
 pub mod x86_64;
 

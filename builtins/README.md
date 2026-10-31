@@ -27,6 +27,17 @@ library function. Layer 2 (libc) is a separate, optional project. See
 | `fixsfti.lamina` | `__fixsfti` | done, calls `__fixunssfti` |
 
 
+## Linking
+
+The compiler embeds these sources and links them itself. When a module calls
+one of the twelve symbols, leaves it undefined, and has not redirected it with
+`LAMINA_BUILTINS`, the driver compiles that routine and everything it calls for
+the requested target and names the objects on the link line ahead of `-lc` and
+any host archive. A program that never reaches one of these symbols builds
+exactly as it did before and gains nothing. A routine the target's backend
+cannot compile yet is left out and resolved from the host compiler runtime
+instead.
+
 ## Conventions
 
 - Each routine is `@export`, so it has global linkage and can be linked
