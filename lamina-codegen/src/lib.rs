@@ -27,14 +27,14 @@ pub mod wasm;
 pub mod x86_64;
 
 // Re-exports for convenience
-pub use abi::{Abi, BuiltinLibrary};
+pub use abi::{Abi, BuiltinLibrary, BuiltinOverrideError};
 pub use regalloc::{
     Allocation, GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
     LocalRegisterAllocatorDyn, PhysRegConvertible, PhysRegHandle, RegisterAllocator,
     RegisterAllocatorDyn, intervals_interfere,
 };
 pub use target_support::{
-    is_assembly_supported, os_uses_coff, os_uses_elf, os_uses_macho,
+    is_assembly_emission_supported, os_uses_coff, os_uses_elf, os_uses_macho,
     supported_assembly_targets_hint,
 };
 

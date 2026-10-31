@@ -33,6 +33,7 @@ pub enum AssemblerBackend {
 }
 
 /// Result of assembly operation
+#[non_exhaustive]
 pub struct AssembleResult {
     /// Path to the output file (object file or WASM binary)
     pub output_path: PathBuf,
@@ -179,7 +180,7 @@ fn assemble_native(
     let target_arch = target.architecture;
     let target_os = target.operating_system;
     let defaulted = backend.is_none();
-    let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
+    let backend = backend.unwrap_or_else(default_assembler_backend);
 
     if backend == AssemblerBackend::Ras {
         let reason = match ras_gap(target_arch, target_os) {
@@ -481,16 +482,15 @@ fn ras_gap(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) ->
     None
 }
 
-/// The assembler used when none is named: ras, linked in-process, so no host tool is needed.
-pub fn detect_assembler_backend(
-    _target_arch: TargetArchitecture,
-    _target_os: TargetOperatingSystem,
-) -> AssemblerBackend {
+/// The assembler used when none is named: ras, linked in-process, so no host tool is
+/// needed. The same answer for every target, which is why it takes none.
+pub fn default_assembler_backend() -> AssemblerBackend {
     AssemblerBackend::Ras
 }
 
-/// Get the appropriate file extension for assembly output
-pub fn get_assembly_output_extension(target_arch: TargetArchitecture) -> &'static str {
+/// Extension of the file the assembler produces: an object file on most targets, and
+/// the finished artifact where there is no assembly step (`ptx`, `wasm`).
+pub fn assembler_output_extension(target_arch: TargetArchitecture) -> &'static str {
     match target_arch {
         TargetArchitecture::Nvptx64 => "ptx",
         TargetArchitecture::Amdgcn => "s",
@@ -515,7 +515,6 @@ pub fn get_assembly_output_extension(target_arch: TargetArchitecture) -> &'stati
     }
 }
 
-/// Intermediate assembly/WAT file extension for the given target.
 fn gas_arch_flags(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
@@ -567,7 +566,9 @@ fn gas_arch_flags(
     args
 }
 
-pub fn get_intermediate_extension(
+/// Extension of the text file codegen writes and the assembler reads: `s` or `asm` for
+/// native assembly, `wat` for WebAssembly, `ptx` for NVPTX.
+pub fn assembler_input_extension(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> &'static str {
@@ -651,7 +652,7 @@ mod tests {
     #[test]
     fn intermediate_extension_windows_uses_asm() {
         assert_eq!(
-            get_intermediate_extension(TargetArchitecture::X86_64, TargetOperatingSystem::Windows),
+            assembler_input_extension(TargetArchitecture::X86_64, TargetOperatingSystem::Windows),
             "asm"
         );
     }
@@ -659,7 +660,7 @@ mod tests {
     #[test]
     fn intermediate_extension_linux_uses_s() {
         assert_eq!(
-            get_intermediate_extension(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
+            assembler_input_extension(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
             "s"
         );
     }
@@ -667,7 +668,7 @@ mod tests {
     #[test]
     fn intermediate_extension_macos_uses_s() {
         assert_eq!(
-            get_intermediate_extension(TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS),
+            assembler_input_extension(TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS),
             "s"
         );
     }
@@ -675,7 +676,7 @@ mod tests {
     #[test]
     fn intermediate_extension_wasm_uses_wat() {
         assert_eq!(
-            get_intermediate_extension(TargetArchitecture::Wasm32, TargetOperatingSystem::Linux),
+            assembler_input_extension(TargetArchitecture::Wasm32, TargetOperatingSystem::Linux),
             "wat"
         );
     }

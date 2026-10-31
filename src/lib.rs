@@ -476,10 +476,10 @@ pub use ir::{
     module::{GlobalDeclaration, Module, TlsModel, TypeDeclaration},
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
-use lamina_codegen::{is_assembly_supported, supported_assembly_targets_hint};
+use lamina_codegen::{is_assembly_emission_supported, supported_assembly_targets_hint};
 #[cfg(feature = "ssa-round-trip")]
 use lamina_mir::ssa::round_trip_module;
-use lamina_platform::{Target, TargetArchitecture};
+use lamina_platform::Target;
 use mir::TransformPipeline;
 use mir::transform::vector_unit_for;
 use mir_codegen::settings::{MirCodegenSettings, RegallocStrategy};
@@ -524,7 +524,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     let target_obj = Target::from_str(target)
         .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{target}': {e}")))?;
 
-    if !is_assembly_supported(target_obj.architecture, target_obj.operating_system) {
+    if !is_assembly_emission_supported(target_obj.architecture, target_obj.operating_system) {
         return Err(LaminaError::ValidationError(format!(
             "Target {} is not supported for assembly generation. {}",
             target,
@@ -540,7 +540,11 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 }
 
 /// Code generation options for [`compile_module_to_object_with_options`].
+///
+/// Non-exhaustive: start from [`ObjectOptions::for_target`] and set the fields that
+/// matter, so a field added later does not break the call.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ObjectOptions {
     /// MIR optimization level. `0` skips the transform pipeline.
     pub opt_level: u8,
@@ -552,15 +556,17 @@ pub struct ObjectOptions {
 
 impl ObjectOptions {
     /// Options that match the `lamina` CLI defaults for `target` at `opt_level`.
+    ///
+    /// Every target whose backend runs a global allocation pass gets
+    /// [`RegallocStrategy::for_opt_level`], not x86-64 alone.
     pub fn for_target(target: &Target, opt_level: u8) -> Self {
-        let mut settings = MirCodegenSettings::default();
-        if target.architecture == TargetArchitecture::X86_64 {
-            settings.regalloc = RegallocStrategy::for_opt_level(opt_level);
-        }
         Self {
             opt_level,
             codegen_units: 1,
-            settings,
+            settings: MirCodegenSettings {
+                regalloc: RegallocStrategy::default_for(target.architecture, opt_level),
+                ..MirCodegenSettings::default()
+            },
         }
     }
 }

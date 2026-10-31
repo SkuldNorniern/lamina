@@ -7,7 +7,7 @@ use crate::mir_codegen::validate_module_call_parameters;
 use crate::{error::LaminaError, mir::Module as MirModule};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::{ExecutableMemory, RasRuntime};
-use std::{collections::HashMap, mem};
+use std::mem;
 
 /// Runtime compiler for JIT compilation
 pub struct RuntimeCompiler {
@@ -15,7 +15,6 @@ pub struct RuntimeCompiler {
     target_arch: TargetArchitecture,
     #[allow(dead_code)] // Used when encoder feature is enabled
     runtime: RasRuntime,
-    code_cache: HashMap<String, ExecutableMemory>,
 }
 
 impl RuntimeCompiler {
@@ -24,23 +23,18 @@ impl RuntimeCompiler {
         Self {
             target_arch,
             runtime: RasRuntime::new(target_arch, target_os),
-            code_cache: HashMap::new(),
         }
     }
 
-    /// Compile a MIR module to executable memory
+    /// Compile a MIR module to executable memory.
     ///
-    /// Note: Caching is not yet implemented as ExecutableMemory may not be Clone.
-    /// Future implementation will use reference counting or other strategies.
+    /// Every call compiles afresh: `ExecutableMemory` is not shareable, so there is
+    /// nothing to hand a second caller.
     pub fn compile(
         &mut self,
         _module: &MirModule,
         _function_name: Option<&str>,
     ) -> Result<ExecutableMemory, LaminaError> {
-        // TODO: Implement caching when ExecutableMemory supports it
-        // For now, always compile fresh
-
-        // Compile using ras runtime
         #[cfg(feature = "encoder")]
         {
             validate_module_call_parameters(_module, self.target_arch)?;
@@ -96,16 +90,6 @@ impl RuntimeCompiler {
             _memory: memory,
             entry,
         })
-    }
-
-    /// Invalidate cached code
-    pub fn invalidate(&mut self, function_name: &str) {
-        self.code_cache.remove(function_name);
-    }
-
-    /// Clear all cached code
-    pub fn clear_cache(&mut self) {
-        self.code_cache.clear();
     }
 }
 
@@ -171,18 +155,6 @@ mod tests {
 
         // SAFETY: same contract as above, and the handle still owns the mapping.
         assert_eq!(unsafe { handle.call() }, 42);
-    }
-
-    #[test]
-    fn invalidate_on_empty_cache_does_not_panic() {
-        let mut compiler = make_compiler();
-        compiler.invalidate("nonexistent");
-    }
-
-    #[test]
-    fn clear_cache_on_empty_does_not_panic() {
-        let mut compiler = make_compiler();
-        compiler.clear_cache();
     }
 
     #[cfg(not(feature = "encoder"))]

@@ -30,6 +30,7 @@ use ras::assembler::RasAssembler;
 pub use ras::{ExecutableMemory, RasRuntime};
 
 /// Runtime compilation result
+#[non_exhaustive]
 pub struct RuntimeResult {
     /// Executable memory containing compiled code
     pub memory: ExecutableMemory,

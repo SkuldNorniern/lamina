@@ -115,7 +115,7 @@
 //!     .ret_void();
 //! ```
 
-use lamina_platform::{PointerWidth, TargetDataLayout, VaListAbi};
+use lamina_platform::{PointerWidth, TargetDataLayout, VaListAbi, any_vector_register_bits};
 
 use crate::module::TypeDeclaration;
 use std::{
@@ -453,10 +453,6 @@ pub const fn sizeof_primitive(ty: PrimitiveType, pointer: PointerWidth) -> u64 {
     }
 }
 
-/// Bit widths a machine vector register comes in. A `<N x T>` whose lanes do not add
-/// up to one of these has no register to live in and is refused rather than split.
-pub const VECTOR_REGISTER_BITS: [u32; 2] = [128, 256];
-
 /// The lane width in bits of a type that may be a vector lane, or `None` for one that
 /// may not. `bool`, `ptr` and the 128-bit integers have no lane form.
 pub const fn vector_lane_bits(element_type: PrimitiveType) -> Option<u32> {
@@ -484,13 +480,18 @@ pub fn check_vector_shape(
             "{what} has element type {element_type}, which has no vector lane form\n  Hint: vector lanes are i8, i16, i32, i64, their unsigned forms, f32 and f64"
         ));
     };
+    let widths = any_vector_register_bits();
     let total = lanes.checked_mul(bits).unwrap_or(0);
-    if !VECTOR_REGISTER_BITS.contains(&total) {
+    if !widths.contains(&total) {
+        let named = widths
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let smallest = widths.first().copied().unwrap_or(bits);
         return Err(format!(
-            "<{lanes} x {element_type}> in {what} is {total} bits, which is no vector register width\n  Hint: a vector fills one register; widths are {} and {} bits, so write <{} x {element_type}> instead of splitting the value yourself",
-            VECTOR_REGISTER_BITS[0],
-            VECTOR_REGISTER_BITS[1],
-            VECTOR_REGISTER_BITS[0] / bits
+            "<{lanes} x {element_type}> in {what} is {total} bits, which is no vector register width\n  Hint: a vector fills one register; widths are {named} bits, so write <{} x {element_type}> instead of splitting the value yourself",
+            smallest / bits
         ));
     }
     Ok(())

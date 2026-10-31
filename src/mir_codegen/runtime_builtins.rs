@@ -22,8 +22,8 @@ use crate::{
     mir_codegen::{
         MirCodegenSettings,
         assemble::{
-            AssemblerBackend, assemble_with_ras_object_options, get_assembly_output_extension,
-            get_intermediate_extension,
+            AssemblerBackend, assemble_with_ras_object_options, assembler_input_extension,
+            assembler_output_extension,
         },
         generate_mir_to_target_with_settings,
     },
@@ -255,7 +255,8 @@ pub fn build(
     verbose: bool,
     ras_object_write_options: &ObjectWriteOptions,
 ) -> Result<Option<RuntimeObjects>, LaminaError> {
-    let builtins = BuiltinLibrary::from_env(target.operating_system);
+    let builtins = BuiltinLibrary::from_env(target.operating_system)
+        .map_err(|e| LaminaError::ValidationError(e.to_string()))?;
     let mut pending = wanted(module, &builtins);
     if pending.is_empty() {
         return Ok(None);
@@ -375,7 +376,7 @@ fn emit(
 
     let assembly_path = directory
         .join(stem)
-        .with_extension(get_intermediate_extension(
+        .with_extension(assembler_input_extension(
             target.architecture,
             target.operating_system,
         ));
@@ -388,7 +389,7 @@ fn emit(
 
     let object_path = directory
         .join(stem)
-        .with_extension(get_assembly_output_extension(target.architecture));
+        .with_extension(assembler_output_extension(target.architecture));
     written.push(object_path.clone());
     assemble_with_ras_object_options(
         &assembly_path,
@@ -436,7 +437,8 @@ mod tests {
         let (stem, source) = routine(RuntimeSymbol::Divti3).unwrap();
         let ir = parse_module(source).unwrap();
         let module = from_ir_for_target(&ir, stem, target().data_layout()).unwrap();
-        let builtins = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        let builtins =
+            BuiltinLibrary::from_env(TargetOperatingSystem::Linux).expect("no overrides set");
         assert!(wanted(&module, &builtins).contains(&RuntimeSymbol::Udivti3));
     }
 
@@ -445,7 +447,8 @@ mod tests {
         let (stem, source) = routine(RuntimeSymbol::Divdi3).unwrap();
         let ir = parse_module(source).unwrap();
         let module = from_ir_for_target(&ir, stem, target().data_layout()).unwrap();
-        let builtins = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        let builtins =
+            BuiltinLibrary::from_env(TargetOperatingSystem::Linux).expect("no overrides set");
         assert!(wanted(&module, &builtins).contains(&RuntimeSymbol::Udivdi3));
     }
 
@@ -468,7 +471,8 @@ mod tests {
         let source = "fn @main() -> i32 {\nentry:\n  ret.i32 0\n}\n";
         let ir = parse_module(source).unwrap();
         let module = from_ir_for_target(&ir, "main", target().data_layout()).unwrap();
-        let builtins = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        let builtins =
+            BuiltinLibrary::from_env(TargetOperatingSystem::Linux).expect("no overrides set");
         assert!(wanted(&module, &builtins).is_empty());
     }
 

@@ -6,10 +6,14 @@
 
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
-/// Returns true if assembly text generation is supported for this (arch, os).
+/// Whether a backend can *write* assembly text for this (arch, os).
+///
+/// Distinct from `ras::is_assembly_target_supported`, which answers whether ras can
+/// *read* assembly for a target and turn it into an object file. A target can be one
+/// and not the other.
 ///
 /// Cross-compilation: pass the desired target, not the host.
-pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem) -> bool {
+pub fn is_assembly_emission_supported(arch: TargetArchitecture, os: TargetOperatingSystem) -> bool {
     match arch {
         TargetArchitecture::Nvptx64 => os == TargetOperatingSystem::Cuda,
         TargetArchitecture::Amdgcn => os == TargetOperatingSystem::AmdHsa,
@@ -165,19 +169,19 @@ mod tests {
 
     #[test]
     fn test_x86_64_cross_platform() {
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::X86_64,
             TargetOperatingSystem::Linux
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::X86_64,
             TargetOperatingSystem::Windows
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::X86_64,
             TargetOperatingSystem::MacOS
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::X86_64,
             TargetOperatingSystem::FreeBSD
         ));
@@ -185,11 +189,11 @@ mod tests {
 
     #[test]
     fn test_aarch64_cross_platform() {
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::Aarch64,
             TargetOperatingSystem::Linux
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::Aarch64,
             TargetOperatingSystem::MacOS
         ));
@@ -197,11 +201,11 @@ mod tests {
 
     #[test]
     fn test_riscv_elf_like_only() {
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::Riscv64,
             TargetOperatingSystem::Linux
         ));
-        assert!(!is_assembly_supported(
+        assert!(!is_assembly_emission_supported(
             TargetArchitecture::Riscv64,
             TargetOperatingSystem::Windows
         ));
@@ -209,19 +213,19 @@ mod tests {
 
     #[test]
     fn test_wasm_limited_os() {
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::Wasm32,
             TargetOperatingSystem::Unknown
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::Wasm32,
             TargetOperatingSystem::Wasi
         ));
-        assert!(!is_assembly_supported(
+        assert!(!is_assembly_emission_supported(
             TargetArchitecture::Wasm64,
             TargetOperatingSystem::Wasi
         ));
-        assert!(!is_assembly_supported(
+        assert!(!is_assembly_emission_supported(
             TargetArchitecture::X86_64,
             TargetOperatingSystem::Wasi
         ));
@@ -229,11 +233,11 @@ mod tests {
 
     #[test]
     fn test_unknown_os_fallback() {
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::X86_64,
             TargetOperatingSystem::Unknown
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::Aarch64,
             TargetOperatingSystem::Unknown
         ));
@@ -248,11 +252,11 @@ mod tests {
             TargetOperatingSystem::VisionOS,
         ] {
             assert!(
-                is_assembly_supported(TargetArchitecture::X86_64, os),
+                is_assembly_emission_supported(TargetArchitecture::X86_64, os),
                 "{os}"
             );
             assert!(
-                is_assembly_supported(TargetArchitecture::Aarch64, os),
+                is_assembly_emission_supported(TargetArchitecture::Aarch64, os),
                 "{os}"
             );
         }
@@ -260,11 +264,11 @@ mod tests {
 
     #[test]
     fn test_android_is_elf_and_assembly_supported() {
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::X86_64,
             TargetOperatingSystem::Android
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::Aarch64,
             TargetOperatingSystem::Android
         ));
@@ -286,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_arch() {
-        assert!(!is_assembly_supported(
+        assert!(!is_assembly_emission_supported(
             TargetArchitecture::Arm32,
             TargetOperatingSystem::Linux
         ));
@@ -294,19 +298,19 @@ mod tests {
 
     #[test]
     fn test_powerpc64_assembly_supported() {
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::PowerPC64,
             TargetOperatingSystem::Linux
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::PowerPC64,
             TargetOperatingSystem::Unknown
         ));
-        assert!(is_assembly_supported(
+        assert!(is_assembly_emission_supported(
             TargetArchitecture::PowerPC64Be,
             TargetOperatingSystem::Linux
         ));
-        assert!(!is_assembly_supported(
+        assert!(!is_assembly_emission_supported(
             TargetArchitecture::PowerPC64Be,
             TargetOperatingSystem::Windows
         ));

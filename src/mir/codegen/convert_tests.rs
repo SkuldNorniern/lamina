@@ -1,7 +1,8 @@
 #![allow(clippy::expect_used)]
 
 use super::*;
-use crate::mir::{VectorLane, VectorType};
+use crate::mir::{MemoryOrdering, VectorLane, VectorType};
+use lamina_ir::MemoryOrdering as IRMemOrd;
 
 fn lowered_global_module(source: &str) -> Result<Module, FromIRError> {
     let ir = parse_module(source).expect("parse globals");

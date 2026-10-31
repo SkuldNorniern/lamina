@@ -9,7 +9,7 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use lamina_mir::{Located, SourceLoc};
+use lamina_mir::Located;
 use lamina_platform::{Endianness, PointerWidth, TargetArchitecture, TargetDataLayout};
 
 use std::{
@@ -26,7 +26,7 @@ use crate::{
             AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst,
             OverflowOp as IROverflow, UnaryOp as IRUnary,
         },
-        module::{GlobalInit, TlsModel as IRTlsModel},
+        module::GlobalInit,
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
             VectorShiftForm, align_of_type, classify_vector_shift, resolve_type_names, sizeof_type,
@@ -53,25 +53,13 @@ use crate::{
 
 #[cfg(feature = "nightly")]
 use crate::ir::ModuleAnnotation;
-use crate::ir::instruction::{
-    AsmOperand as IRAsmOperand, AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRMemOrd,
-};
+use crate::ir::instruction::{AsmOperand as IRAsmOperand, AtomicBinOp as IRAtomicBinOp};
+use crate::mir::AtomicBinOp;
 #[cfg(feature = "nightly")]
 use crate::mir::RelocationModel;
-use crate::mir::{AtomicBinOp, MemoryOrdering};
 use lamina_codegen::abi::RuntimeSymbol;
 
 mod wide;
-
-fn ir_ordering_to_mir(ordering: &IRMemOrd) -> MemoryOrdering {
-    match ordering {
-        IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
-        IRMemOrd::Acquire => MemoryOrdering::Acquire,
-        IRMemOrd::Release => MemoryOrdering::Release,
-        IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
-        IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
-    }
-}
 
 fn float_binary(
     op: FloatBinOp,
@@ -613,7 +601,7 @@ pub fn from_ir_for_target(
                     global = global.exported();
                 }
                 if let Some(model) = decl.thread_local {
-                    global = global.thread_local(map_tls_model(model));
+                    global = global.thread_local(model);
                 }
                 mir_module.globals.insert(global_name.to_string(), global);
                 continue;
@@ -637,7 +625,7 @@ pub fn from_ir_for_target(
             global = global.exported();
         }
         if let Some(model) = decl.thread_local {
-            global = global.thread_local(map_tls_model(model));
+            global = global.thread_local(model);
         }
         mir_module.globals.insert(global_name.to_string(), global);
     }
@@ -994,13 +982,6 @@ fn literal_bytes(
     Ok(bytes)
 }
 
-fn map_tls_model(model: IRTlsModel) -> MirTlsModel {
-    match model {
-        IRTlsModel::LocalExec => MirTlsModel::LocalExec,
-        IRTlsModel::InitialExec => MirTlsModel::InitialExec,
-    }
-}
-
 /// Address registers for referenced globals. Each global gets one register,
 /// defined by a `SymbolAddress` at the top of the entry block.
 struct GlobalAddresses<'a> {
@@ -1016,7 +997,7 @@ impl<'a> GlobalAddresses<'a> {
             thread_local: module
                 .global_declarations
                 .iter()
-                .filter_map(|(name, global)| Some((*name, map_tls_model(global.thread_local?))))
+                .filter_map(|(name, global)| Some((*name, global.thread_local?)))
                 .collect(),
             regs: BTreeMap::new(),
         }
@@ -1090,7 +1071,7 @@ fn convert_function<'a>(
     mir_sig.pure = f
         .annotations
         .iter()
-        .any(|a| matches!(a, FunctionAnnotation::Pure | FunctionAnnotation::Const));
+        .any(|a| matches!(a, FunctionAnnotation::Pure));
     mir_sig.visibility = f.annotations.iter().find_map(|a| match a {
         FunctionAnnotation::Internal => Some(SymbolVisibility::Internal),
         FunctionAnnotation::Private => Some(SymbolVisibility::Private),
@@ -1242,9 +1223,7 @@ fn convert_function<'a>(
         // instruction made conversion quadratic in the size of a single-block function.
         let mut defined_in_block: HashSet<Register> = HashSet::new();
         for (ir_index, instr) in ir_block.instructions.iter().enumerate() {
-            let loc = ir_block
-                .loc_at(ir_index)
-                .and_then(|l| SourceLoc::new(l.line.get(), l.column));
+            let loc = ir_block.loc_at(ir_index);
             let mut resolved;
             let instr = if matches!(
                 instr,
@@ -2731,7 +2710,7 @@ fn convert_instruction<'a>(
                 ty: mir_ty,
                 dst,
                 addr,
-                ordering: ir_ordering_to_mir(ordering),
+                ordering: *ordering,
             }])
         }
         IRInst::AtomicStore {
@@ -2747,7 +2726,7 @@ fn convert_instruction<'a>(
                 ty: mir_ty,
                 src: val_op,
                 addr,
-                ordering: ir_ordering_to_mir(ordering),
+                ordering: *ordering,
             }])
         }
         IRInst::AtomicBinary {
@@ -2776,11 +2755,11 @@ fn convert_instruction<'a>(
                 dst,
                 addr,
                 value: val_op,
-                ordering: ir_ordering_to_mir(ordering),
+                ordering: *ordering,
             }])
         }
         IRInst::Fence { ordering } => Ok(vec![Instruction::Fence {
-            ordering: ir_ordering_to_mir(ordering),
+            ordering: *ordering,
         }]),
         IRInst::InlineAsm {
             result,
@@ -2839,8 +2818,8 @@ fn convert_instruction<'a>(
                 addr,
                 expected,
                 desired,
-                success_ordering: ir_ordering_to_mir(success_ordering),
-                failure_ordering: ir_ordering_to_mir(failure_ordering),
+                success_ordering: *success_ordering,
+                failure_ordering: *failure_ordering,
             }])
         }
     }

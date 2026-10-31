@@ -220,7 +220,9 @@
 //! let module = builder.build();
 //! ```
 
-use std::{collections::HashMap, fmt, iter, num::NonZeroU32};
+use std::{collections::HashMap, fmt, iter};
+
+pub use lamina_platform::SourceLoc;
 
 use crate::{
     instruction::Instruction,
@@ -293,12 +295,6 @@ pub enum FunctionAnnotation {
     /// Pure functions can be optimized more aggressively and may be subject to
     /// common subexpression elimination, memoization, or other optimizations.
     Pure,
-
-    /// Mark this function as const (can be evaluated at compile time).
-    ///
-    /// Const functions have no side effects and can be evaluated during compilation.
-    /// This enables compile-time function evaluation and constant folding.
-    Const,
 
     /// Mark this function as having internal linkage (private to this module).
     ///
@@ -559,19 +555,6 @@ pub struct BasicBlock<'a> {
     /// Source position of each instruction, parallel to `instructions`. A shorter
     /// vector, or a `None` entry, means the position is unknown.
     pub instruction_locs: Vec<Option<SourceLoc>>,
-}
-
-/// A position in the `.lamina` source an instruction was parsed from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SourceLoc {
-    pub line: NonZeroU32,
-    pub column: u32,
-}
-
-impl SourceLoc {
-    pub fn new(line: u32, column: u32) -> Option<Self> {
-        NonZeroU32::new(line).map(|line| Self { line, column })
-    }
 }
 
 /// Debug positions are metadata, so two blocks holding the same instructions are equal
@@ -1002,7 +985,6 @@ impl fmt::Display for FunctionAnnotation {
             FunctionAnnotation::Cold => write!(f, "@cold"),
             FunctionAnnotation::Hot => write!(f, "@hot"),
             FunctionAnnotation::Pure => write!(f, "@pure"),
-            FunctionAnnotation::Const => write!(f, "@const"),
             FunctionAnnotation::Internal => write!(f, "@internal"),
             FunctionAnnotation::Private => write!(f, "@private"),
             FunctionAnnotation::Hidden => write!(f, "@hidden"),

@@ -53,11 +53,6 @@ pub fn verify_function(function: &Function) -> Result<(), Vec<String>> {
     }
 }
 
-/// Verify a complete MIR module and return every problem found.
-pub fn verify_module(module: &Module) -> Result<(), Vec<String>> {
-    module.validate()
-}
-
 /// Verify MIR at optimizer and backend input boundaries, where a register may be defined once per edge.
 #[doc(hidden)]
 pub fn verify_function_in_pipeline(function: &Function) -> Result<(), Vec<String>> {

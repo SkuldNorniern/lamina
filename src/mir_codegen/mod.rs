@@ -176,7 +176,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         .with_arch_variant(target_arch.spec().variants.accept(chosen_variant))
         .with_environment(settings.environment.unwrap_or(target.environment));
     let settings = &resolved_settings;
-    let builtins = BuiltinLibrary::from_env(target_os);
+    let builtins = BuiltinLibrary::from_env(target_os)
+        .map_err(|e| LaminaError::ValidationError(e.to_string()))?;
     let retargeted = retarget_runtime_calls(input, &builtins);
     let module: &Module = &retargeted;
     check_compiler_runtime_symbols(module, target_os, &builtins)?;
@@ -399,7 +400,12 @@ pub enum CodegenOptions {
 }
 
 /// Trait for code generation backends.
-pub trait Codegen {
+///
+/// Internal: the backends in this crate are its only implementors. Nothing calls
+/// through it today — the driver reaches each backend's free functions directly — so
+/// it stands as the shape a backend is expected to have.
+#[allow(dead_code)]
+pub(crate) trait Codegen {
     /// The binary extension of the target architecture
     const BIN_EXT: &'static str;
     /// Whether this codegen can output assembly.
@@ -446,19 +452,19 @@ pub trait Codegen {
 }
 
 /// Code generation errors.
+///
+/// Non-exhaustive: a backend that learns to refuse something new adds a variant, and
+/// that must not break a downstream `match`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CodegenError {
+    /// The target cannot express what the module asks for.
     UnsupportedFeature(String),
+    /// The options handed to a backend do not describe a build it can run.
     InvalidCodegenOptions(String),
-    InvalidTargetOs(String),
-    InvalidMaxBitWidth(u8),
-    InvalidInputName(String),
-    InvalidVerbose(bool),
-    InvalidOptions(Vec<CodegenOptions>),
-    InvalidTypes(Vec<String>),
-    InvalidGlobals(Vec<String>),
-    InvalidFuncs(Vec<String>),
+    /// The MIR reaching a backend did not verify.
     InvalidMir(Vec<String>),
+    /// An x86-64 instruction the module needs is above the selected CPU level.
     CpuLevelRequired {
         instruction: String,
         required: X86CpuLevel,
@@ -483,20 +489,6 @@ impl fmt::Display for CodegenError {
             CodegenError::InvalidCodegenOptions(message) => {
                 write!(f, "Invalid codegen options: {message}")
             }
-            CodegenError::InvalidTargetOs(message) => write!(f, "Invalid target OS: {message}"),
-            CodegenError::InvalidMaxBitWidth(width) => {
-                write!(f, "Invalid max bit width: {width}")
-            }
-            CodegenError::InvalidInputName(message) => {
-                write!(f, "Invalid input name: {message}")
-            }
-            CodegenError::InvalidVerbose(value) => write!(f, "Invalid verbose flag: {value}"),
-            CodegenError::InvalidOptions(options) => {
-                write!(f, "Invalid options: {options:?}")
-            }
-            CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {types:?}"),
-            CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {globals:?}"),
-            CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {funcs:?}"),
             CodegenError::InvalidMir(errors) => {
                 write!(f, "Invalid MIR: {}", errors.join("; "))
             }

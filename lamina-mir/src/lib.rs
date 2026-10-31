@@ -55,6 +55,4 @@ pub use types::{
     AddressSpace, Aggregate, AggregateClass, AggregateShape, MirType, ScalarType, Signedness,
     VectorLane, VectorType,
 };
-pub use verify::{
-    verify_function, verify_function_in_pipeline, verify_module, verify_module_in_pipeline,
-};
+pub use verify::{verify_function, verify_function_in_pipeline, verify_module_in_pipeline};
