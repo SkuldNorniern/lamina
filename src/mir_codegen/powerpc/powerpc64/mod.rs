@@ -20,6 +20,7 @@ mod atomic;
 mod bit;
 mod util;
 
+use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::external_names;
@@ -627,8 +628,6 @@ impl ArgKind {
         }
     }
 }
-
-const MAX_REGISTER_AGGREGATE: u64 = 16;
 
 struct AggregateSignatures {
     params: HashMap<String, Vec<Option<Aggregate>>>,

@@ -16,8 +16,8 @@ use crate::{
 };
 use lamina_platform::TargetDataLayout;
 
-/// Largest aggregate passed in registers. Beyond this every target in the table puts
-/// the value in memory, except ppc64le, which is why ppc64le rejects aggregates for now.
+/// Largest aggregate passed in registers. Beyond this size every target in the table,
+/// ppc64le included, passes and returns the value in memory through a hidden pointer.
 pub const MAX_REGISTER_AGGREGATE: u64 = 16;
 
 /// Maps an IR primitive to the MIR type that holds it. Signedness is dropped, because
