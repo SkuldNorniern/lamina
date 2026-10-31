@@ -463,17 +463,29 @@ impl FromStr for TargetOperatingSystem {
             "psp" => Ok(Self::Psp),
             "psx" => Ok(Self::Psx),
             "vita" => Ok(Self::Vita),
-            "orbis" | "ps4" => Ok(Self::Orbis),
-            "prospero" | "ps5" => Ok(Self::Prospero),
+            "orbis" => Ok(Self::Orbis),
+            "prospero" => Ok(Self::Prospero),
             "wasi" => Ok(Self::Wasi),
             "unknown" => Ok(Self::Unknown),
             #[cfg(feature = "nightly")]
             "artery" => Ok(Self::Artery),
-            "bsd" => Ok(Self::FreeBSD),
-            _ => Err("Unknown operating system"),
+            other => OS_ALIASES
+                .iter()
+                .find(|(alias, _)| *alias == other)
+                .map_or(Err("Unknown operating system"), |(_, os)| Ok(*os)),
         }
     }
 }
+
+/// Second spellings of an operating system the driver accepts.
+///
+/// The parser and the list the driver prints both read this table, so an alias cannot
+/// be accepted and go unmentioned.
+pub const OS_ALIASES: &[(&str, TargetOperatingSystem)] = &[
+    ("bsd", TargetOperatingSystem::FreeBSD),
+    ("ps4", TargetOperatingSystem::Orbis),
+    ("ps5", TargetOperatingSystem::Prospero),
+];
 
 impl fmt::Display for TargetOperatingSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -513,6 +525,48 @@ const TARGET_ALIASES: &[(&str, &str)] = &[
     ("riscv64gc_linux", "riscv64_linux"),
 ];
 
+/// Every target spelling the driver accepts that [`host_arch_list`] does not name.
+///
+/// Gathered from the tables the parser itself reads: the architecture spellings in the
+/// arch table, the sub-architecture spellings in [`VARIANT_SPELLINGS`] and the
+/// operating-system aliases in [`OS_ALIASES`]. A spelling cannot be accepted and left
+/// out of the list the driver prints.
+///
+/// Open-ended RISC-V ISA strings such as `rv32imac` are parsed rather than tabulated,
+/// so they are not here; the driver names them separately.
+pub fn target_alias_list() -> Vec<String> {
+    let listed = host_arch_list();
+    let mut aliases: Vec<String> = Vec::new();
+    for arch in TargetArchitecture::all() {
+        let spec = arch.spec();
+        for target in spec.targets {
+            let Some((_, os)) = target.rsplit_once('_') else {
+                continue;
+            };
+            for spelling in spec.spellings {
+                aliases.push(format!("{spelling}_{os}"));
+            }
+            for (spelling, variant_arch, _, _) in VARIANT_SPELLINGS {
+                if *variant_arch == arch {
+                    aliases.push(format!("{spelling}_{os}"));
+                }
+            }
+            for (alias, aliased) in OS_ALIASES {
+                if os.parse::<TargetOperatingSystem>() == Ok(*aliased) {
+                    aliases.push(format!("{}_{alias}", spec.token));
+                }
+            }
+        }
+    }
+    for (alias, _) in TARGET_ALIASES {
+        aliases.push((*alias).to_string());
+    }
+    aliases.retain(|alias| !listed.contains(&alias.as_str()));
+    aliases.sort();
+    aliases.dedup();
+    aliases
+}
+
 /// Every target string the driver advertises, gathered from the arch table.
 ///
 /// Derived from the same blocks the properties come from, so an architecture cannot be
@@ -547,6 +601,46 @@ mod tests {
             "bsd".parse::<TargetOperatingSystem>(),
             Ok(TargetOperatingSystem::FreeBSD)
         );
+    }
+
+    #[test]
+    fn every_advertised_alias_parses_to_a_listed_target() {
+        let aliases = target_alias_list();
+        assert!(!aliases.is_empty(), "the alias list is empty");
+        for alias in &aliases {
+            let target: Target = alias
+                .parse()
+                .unwrap_or_else(|e| panic!("{alias} does not parse: {e}"));
+            let bare = Target::new(target.architecture, target.operating_system);
+            assert!(listed(&bare.to_string()), "{alias} resolves to {bare}");
+            assert!(!listed(alias), "{alias} is already a listed target");
+        }
+    }
+
+    #[test]
+    fn the_alias_list_names_the_spellings_from_every_table_it_draws_on() {
+        let aliases = target_alias_list();
+        for witness in [
+            "x86_64_bsd",
+            "x86_64_ps4",
+            "x86_64_ps5",
+            "i386_linux",
+            "x86_linux",
+            "systemz_linux",
+            "loong64_linux",
+            "mips64le_linux",
+            "powerpc64_linux",
+            "armv7m_unknown",
+            "cortex-m3_unknown",
+            "ppc64le-power10_linux",
+            "aarch64v8.2_linux",
+            "armv7a-neon_linux",
+        ] {
+            assert!(
+                aliases.iter().any(|alias| alias == witness),
+                "{witness} is missing from {aliases:?}"
+            );
+        }
     }
 
     #[test]

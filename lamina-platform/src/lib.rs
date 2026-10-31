@@ -40,7 +40,7 @@ pub use environment::{CompilerRuntime, Libc, TargetEnvironment};
 pub use shared::{MemoryOrdering, SourceLoc, TlsModel};
 pub use target::{
     Target, TargetOperatingSystem, default_environment, host_arch_list, parse_arch_token,
-    parse_architecture,
+    parse_architecture, target_alias_list,
 };
 pub use vector::any_vector_register_bits;
 
