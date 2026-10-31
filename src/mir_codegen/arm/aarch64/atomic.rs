@@ -118,12 +118,6 @@ pub(super) fn emit<W: Write>(
             failure_ordering,
         } => {
             let size = access_size(ty, pointer_width)?;
-            if matches!(
-                failure_ordering,
-                MemoryOrdering::Release | MemoryOrdering::AcqRel
-            ) {
-                return Err(ordering_error("cmpxchg failure", failure_ordering));
-            }
             let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
             materialize_address(w, addr, a, frame, ra)?;
             let e = ra.alloc_scratch().ok_or_else(scratch_error)?;

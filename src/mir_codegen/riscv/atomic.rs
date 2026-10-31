@@ -126,12 +126,6 @@ pub(super) fn emit<W: Write>(
         } => {
             let size = access_size(ty, target, pointer_width)?;
             require_a(target)?;
-            if matches!(
-                failure_ordering,
-                MemoryOrdering::Release | MemoryOrdering::AcqRel
-            ) {
-                return Err(ordering_error("cmpxchg failure", failure_ordering));
-            }
             load_operand_to_register(expected, writer, reg_alloc, stack_slots, "a1")?;
             load_operand_to_register(desired, writer, reg_alloc, stack_slots, "a3")?;
             address_into_t0(addr, writer, reg_alloc, stack_slots)?;

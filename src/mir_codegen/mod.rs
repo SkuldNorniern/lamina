@@ -181,6 +181,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     let retargeted = retarget_runtime_calls(input, &builtins);
     let module: &Module = &retargeted;
     check_compiler_runtime_symbols(module, target_os, &builtins)?;
+    common::reject_invalid_cmpxchg_orderings(module)?;
+    common::reject_underaligned_atomics(module, pointer_width)?;
     if module.relocation != RelocationModel::Static
         && !(target_arch == TargetArchitecture::X86_64 && target_os == TargetOperatingSystem::Linux)
     {

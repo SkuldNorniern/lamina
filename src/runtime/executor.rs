@@ -542,8 +542,18 @@ pub(crate) fn interpret_mir_function(
                     addr,
                     expected,
                     desired,
-                    ..
+                    success_ordering,
+                    failure_ordering,
                 } => {
+                    if let Some(reason) = MemoryOrdering::cmpxchg_failure_rejection(
+                        *success_ordering,
+                        *failure_ordering,
+                    ) {
+                        return Err(LaminaError::ValidationError(format!(
+                            "atomic_cmpxchg cannot use {failure_ordering} failure ordering with \
+                             {success_ordering} success ordering: {reason}"
+                        )));
+                    }
                     let size = access_size(ty, function.pointer_width)?;
                     let address = atomic_address(addr, &register_values)?;
                     let expected = operand_bits(expected, &register_values)? as u64;

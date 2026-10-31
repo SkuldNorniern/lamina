@@ -134,6 +134,9 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 "{opcode_str} produces no result\n  Hint: Drop the '%name =' prefix"
             ))),
             _ => {
+                if let Some(replacement) = statement_opcode_replacement(opcode_str) {
+                    return Err(removed_opcode_error(state, opcode_str, replacement));
+                }
                 let valid_ops = super::get_assignment_opcode_names();
                 let suggestions = super::suggest_alternatives(opcode_str, valid_ops);
 
@@ -170,24 +173,9 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "jmp" => parse_jmp(state),
             "ret" => parse_ret(state),
             "unreachable" => Ok(Instruction::Unreachable),
-            "heapfree" => Err(removed_opcode_error(
-                state,
-                opcode_str,
-                "'call @free(<ptr>)' after declaring '@extern fn @free(ptr %p) -> void'",
-            )),
-            "dealloc" => Err(removed_opcode_error(
-                state,
-                opcode_str,
-                "'call @free(<ptr>)' after declaring '@extern fn @free(ptr %p) -> void'",
-            )),
             "call" => parse_call(state, None),
             "asm" => parse_asm(state, None),
             "callptr" => parse_call_indirect(state, None),
-            "print" => Err(removed_opcode_error(
-                state,
-                opcode_str,
-                "'writebyte <value>' for one byte, 'write <ptr>, <size>' for raw bytes, or a call to a printf-style @extern for formatted output",
-            )),
             "va_start" => parse_va_start(state),
             "va_end" => parse_va_end(state),
             "va_copy" => parse_va_copy(state),
@@ -200,21 +188,6 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 opcode_str,
                 "'%v = load.<type> <ptr>' then '%r = writebyte %v' for one byte, or '%r = write <ptr>, <size>' for raw bytes",
             )),
-            "memcpy" => Err(removed_opcode_error(
-                state,
-                opcode_str,
-                "'call @memcpy(<dst>, <src>, <size>)' after declaring '@extern fn @memcpy(ptr %d, ptr %s, i64 %n) -> ptr'",
-            )),
-            "memmove" => Err(removed_opcode_error(
-                state,
-                opcode_str,
-                "'call @memmove(<dst>, <src>, <size>)' after declaring '@extern fn @memmove(ptr %d, ptr %s, i64 %n) -> ptr'",
-            )),
-            "memset" => Err(removed_opcode_error(
-                state,
-                opcode_str,
-                "'call @memset(<dst>, <value>, <size>)' after declaring '@extern fn @memset(ptr %d, i32 %v, i64 %n) -> ptr'",
-            )),
             "atomic_store" => parse_atomic_store(state),
             "fence" => parse_fence(state),
             "atomic_load" | "atomic_add" | "atomic_sub" | "atomic_and" | "atomic_or"
@@ -222,6 +195,9 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 "{opcode_str} produces a value\n  Hint: Write '%name = {opcode_str}.<type> ...'"
             ))),
             _ => {
+                if let Some(replacement) = statement_opcode_replacement(opcode_str) {
+                    return Err(removed_opcode_error(state, opcode_str, replacement));
+                }
                 let valid_ops = super::get_non_assignment_opcode_names();
                 let suggestions = super::suggest_alternatives(opcode_str, valid_ops);
 
@@ -363,12 +339,11 @@ fn parse_atomic_cmpxchg<'a>(
     let desired = parse_typed_operand(state, &Type::Primitive(ty))?;
     let success_ordering = parse_memory_ordering_operand(state)?;
     let failure_ordering = parse_memory_ordering_operand(state)?;
-    if matches!(
-        failure_ordering,
-        MemoryOrdering::Release | MemoryOrdering::AcqRel
-    ) {
+    if let Some(reason) =
+        MemoryOrdering::cmpxchg_failure_rejection(success_ordering, failure_ordering)
+    {
         return Err(state.error(format!(
-            "atomic_cmpxchg cannot use {failure_ordering} failure ordering\n  Hint: The failure ordering is a load: use relaxed, acquire or seqcst"
+            "atomic_cmpxchg cannot use {failure_ordering} failure ordering with {success_ordering} success ordering\n  Hint: {reason}"
         )));
     }
     Ok(Instruction::AtomicCompareExchange {
@@ -667,6 +642,29 @@ fn require_type_suffix(state: &ParserState<'_>, message: &str) -> Result<(), Lam
         Ok(())
     } else {
         Err(state.error(message))
+    }
+}
+
+/// What replaced an opcode that was removed and never took a result, so that writing
+/// it in assignment form is told the same thing writing it as a statement is.
+fn statement_opcode_replacement(opcode: &str) -> Option<&'static str> {
+    match opcode {
+        "heapfree" | "dealloc" => {
+            Some("'call @free(<ptr>)' after declaring '@extern fn @free(ptr %p) -> void'")
+        }
+        "print" => Some(
+            "'writebyte <value>' for one byte, 'write <ptr>, <size>' for raw bytes, or a call to a printf-style @extern for formatted output",
+        ),
+        "memcpy" => Some(
+            "'call @memcpy(<dst>, <src>, <size>)' after declaring '@extern fn @memcpy(ptr %d, ptr %s, i64 %n) -> ptr'",
+        ),
+        "memmove" => Some(
+            "'call @memmove(<dst>, <src>, <size>)' after declaring '@extern fn @memmove(ptr %d, ptr %s, i64 %n) -> ptr'",
+        ),
+        "memset" => Some(
+            "'call @memset(<dst>, <value>, <size>)' after declaring '@extern fn @memset(ptr %d, i32 %v, i64 %n) -> ptr'",
+        ),
+        _ => None,
     }
 }
 

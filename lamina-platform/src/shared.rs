@@ -52,6 +52,41 @@ pub enum MemoryOrdering {
     SeqCst,
 }
 
+impl MemoryOrdering {
+    /// Where this ordering sits in the total order the C and LLVM memory models put
+    /// their orderings in, so that one can be compared against another.
+    pub fn strength(self) -> u8 {
+        match self {
+            Self::Relaxed => 0,
+            Self::Acquire => 1,
+            Self::Release => 2,
+            Self::AcqRel => 3,
+            Self::SeqCst => 4,
+        }
+    }
+
+    /// Why `failure` cannot be the failure ordering of a compare-exchange whose
+    /// success ordering is `success`, or `None` when it can.
+    ///
+    /// A compare-exchange that fails still performs the load and nothing else, so its
+    /// ordering carries no release, and it may not order more than the success
+    /// ordering does. C and LLVM both impose these two rules.
+    pub fn cmpxchg_failure_rejection(success: Self, failure: Self) -> Option<&'static str> {
+        match failure {
+            Self::Release | Self::AcqRel => {
+                Some("the failure ordering is a load: use relaxed, acquire or seqcst")
+            }
+            Self::Relaxed | Self::Acquire | Self::SeqCst => {
+                if failure.strength() > success.strength() {
+                    Some("the failure ordering may not be stronger than the success ordering")
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 impl fmt::Display for MemoryOrdering {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -99,6 +134,40 @@ mod tests {
         let loc = SourceLoc::new(7, 4).expect("line 7 is a line");
         assert_eq!(loc.line(), 7);
         assert_eq!(loc.to_string(), "7:4");
+    }
+
+    #[test]
+    fn a_compare_exchange_failure_ordering_is_a_load_no_stronger_than_the_success() {
+        use MemoryOrdering::{AcqRel, Acquire, Relaxed, Release, SeqCst};
+        for (success, failure) in [
+            (SeqCst, SeqCst),
+            (SeqCst, Acquire),
+            (SeqCst, Relaxed),
+            (AcqRel, Acquire),
+            (Release, Acquire),
+            (Acquire, Acquire),
+            (Acquire, Relaxed),
+            (Relaxed, Relaxed),
+        ] {
+            assert_eq!(
+                MemoryOrdering::cmpxchg_failure_rejection(success, failure),
+                None,
+                "{success} / {failure}"
+            );
+        }
+        for (success, failure) in [
+            (SeqCst, Release),
+            (SeqCst, AcqRel),
+            (Relaxed, Release),
+            (Acquire, SeqCst),
+            (AcqRel, SeqCst),
+            (Relaxed, Acquire),
+        ] {
+            assert!(
+                MemoryOrdering::cmpxchg_failure_rejection(success, failure).is_some(),
+                "{success} / {failure}"
+            );
+        }
     }
 
     #[test]

@@ -54,7 +54,7 @@ entry:
 
     %f8 = stackalloc.u8
     store.u8 %f8, 200
-    %f_old = atomic_cmpxchg.u8 %f8, 200, 50, relaxed, seqcst
+    %f_old = atomic_cmpxchg.u8 %f8, 200, 50, acquire, acquire
     %f_now = atomic_load.u8 %f8, seqcst
     %pf1 = extend.u8.u64 %f_old
     %pf2 = extend.u8.u64 %f_now
