@@ -108,12 +108,6 @@ pub(super) fn emit<W: Write>(
                     writeln!(writer, "    jne 1b")?;
                     reg_alloc.free_scratch(new);
                 }
-                AtomicBinOp::CompareExchange => {
-                    reg_alloc.free_scratch(ptr);
-                    return Err(LaminaError::ValidationError(
-                        "x86_64 backend does not support atomic_cmpxchg yet".to_string(),
-                    ));
-                }
             }
             reg_alloc.free_scratch(ptr);
             extend_rax(size, writer)?;

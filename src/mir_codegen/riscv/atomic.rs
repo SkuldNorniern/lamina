@@ -65,11 +65,6 @@ pub(super) fn emit<W: Write>(
             value,
             ordering,
         } => {
-            if *op == AtomicBinOp::CompareExchange {
-                return Err(LaminaError::ValidationError(
-                    "RISC-V backend: atomic_cmpxchg is not a read-modify-write operation; use cmpxchg".into(),
-                ));
-            }
             let size = access_size(ty, target, pointer_width)?;
             require_a(target)?;
             load_operand_to_register(value, writer, reg_alloc, stack_slots, "a1")?;
@@ -84,7 +79,6 @@ pub(super) fn emit<W: Write>(
                     AtomicBinOp::And => "amoand",
                     AtomicBinOp::Or => "amoor",
                     AtomicBinOp::Xor => "amoxor",
-                    AtomicBinOp::CompareExchange => unreachable!("rejected above"),
                 };
                 writeln!(
                     writer,
@@ -108,7 +102,6 @@ pub(super) fn emit<W: Write>(
                     AtomicBinOp::And => writeln!(writer, "    and a5, a4, a1")?,
                     AtomicBinOp::Or => writeln!(writer, "    or a5, a4, a1")?,
                     AtomicBinOp::Xor => writeln!(writer, "    xor a5, a4, a1")?,
-                    AtomicBinOp::CompareExchange => unreachable!("rejected above"),
                 }
                 writeln!(writer, "    and a5, a5, a3")?;
                 writeln!(writer, "    sll a5, a5, a2")?;

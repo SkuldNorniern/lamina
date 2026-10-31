@@ -60,11 +60,6 @@ pub(super) fn emit<W: Write>(
             value,
             ordering,
         } => {
-            if *op == AtomicBinOp::CompareExchange {
-                return Err(LaminaError::ValidationError(
-                    "PowerPC64 backend: atomic_cmpxchg is not a read-modify-write operation; use cmpxchg".into(),
-                ));
-            }
             let size = access_size(ty, pointer_width)?;
             address_into_r5(addr, writer, reg_alloc, stack_slots)?;
             load_operand_to_register(value, writer, reg_alloc, stack_slots, "4")?;
@@ -94,7 +89,6 @@ pub(super) fn emit<W: Write>(
                     writeln!(writer, "    xor 0, 3, 4")?;
                     "0"
                 }
-                AtomicBinOp::CompareExchange => unreachable!("rejected above"),
             };
             writeln!(writer, "    {stwcx} {new}, 0, 5")?;
             writeln!(writer, "    bne 1b")?;

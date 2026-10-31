@@ -531,11 +531,6 @@ pub(crate) fn interpret_mir_function(
                         AtomicBinOp::Or => old | operand,
                         AtomicBinOp::Xor => old ^ operand,
                         AtomicBinOp::Exchange => operand,
-                        AtomicBinOp::CompareExchange => {
-                            return Err(LaminaError::RuntimeError(
-                                "Interpreter: atomic_cmpxchg is not a binary operation".to_owned(),
-                            ));
-                        }
                     };
                     memory.store(address, size, new)?;
                     register_values

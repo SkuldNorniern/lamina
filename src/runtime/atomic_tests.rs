@@ -114,7 +114,6 @@ fn expected_rmw(ty: MirType, op: AtomicBinOp, old: i64, operand: i64) -> i64 {
         AtomicBinOp::Or => old | operand,
         AtomicBinOp::Xor => old ^ operand,
         AtomicBinOp::Exchange => operand,
-        AtomicBinOp::CompareExchange => unreachable!("not a binary operation"),
     };
     narrow(ty, raw)
 }

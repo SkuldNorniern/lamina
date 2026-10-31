@@ -75,11 +75,6 @@ pub(super) fn emit<W: Write>(
             value,
             ordering,
         } => {
-            if *op == AtomicBinOp::CompareExchange {
-                return Err(LaminaError::ValidationError(
-                    "AArch64 backend: atomic_cmpxchg is not a read-modify-write operation; use cmpxchg".into(),
-                ));
-            }
             let size = access_size(ty, pointer_width)?;
             let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
             materialize_address(w, addr, a, frame, ra)?;
@@ -101,7 +96,6 @@ pub(super) fn emit<W: Write>(
                 AtomicBinOp::And => writeln!(w, "    and {new}, {old}, {v}")?,
                 AtomicBinOp::Or => writeln!(w, "    orr {new}, {old}, {v}")?,
                 AtomicBinOp::Xor => writeln!(w, "    eor {new}, {old}, {v}")?,
-                AtomicBinOp::CompareExchange => {}
             }
             writeln!(w, "    {stx} {STATUS}, {}, [{a}]", reg_of(size, new))?;
             writeln!(w, "    cbnz {STATUS}, 1b")?;

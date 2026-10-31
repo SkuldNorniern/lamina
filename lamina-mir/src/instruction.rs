@@ -433,8 +433,6 @@ pub enum AtomicBinOp {
     Xor,
     /// Atomic exchange: `old = *ptr; *ptr = value; return old`
     Exchange,
-    /// Atomic compare-exchange (returns success flag)
-    CompareExchange,
 }
 
 impl fmt::Display for AtomicBinOp {
@@ -446,7 +444,6 @@ impl fmt::Display for AtomicBinOp {
             AtomicBinOp::Or => "atomic_or",
             AtomicBinOp::Xor => "atomic_xor",
             AtomicBinOp::Exchange => "atomic_exchange",
-            AtomicBinOp::CompareExchange => "atomic_cmpxchg",
         };
         write!(f, "{s}")
     }
@@ -618,6 +615,18 @@ impl AddressMode {
                 *address_space
             }
         }
+    }
+}
+
+/// The `log2` of an indexed address's scale. Only 1, 2, 4 and 8 are encodable, so every
+/// other scale has no shift and must be refused, not approximated.
+pub const fn index_scale_shift(scale: u8) -> Option<u8> {
+    match scale {
+        1 => Some(0),
+        2 => Some(1),
+        4 => Some(2),
+        8 => Some(3),
+        _ => None,
     }
 }
 
@@ -1844,17 +1853,5 @@ mod tests {
                 }
             }
         }
-    }
-}
-
-/// The `log2` of an indexed address's scale. Only 1, 2, 4 and 8 are encodable, so every
-/// other scale has no shift and must be refused, not approximated.
-pub const fn index_scale_shift(scale: u8) -> Option<u8> {
-    match scale {
-        1 => Some(0),
-        2 => Some(1),
-        4 => Some(2),
-        8 => Some(3),
-        _ => None,
     }
 }
