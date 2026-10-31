@@ -1,0 +1,48 @@
+@extern
+fn @__udivdi3(i64 %n, i64 %d) -> i64
+
+@export
+fn @__divdi3(i64 %n, i64 %d) -> i64 {
+entry:
+  %minv = shl.i64 1, 63
+  %a_min = eq.i64 %n, %minv
+  br %a_min, chk, go
+
+chk:
+  %b_m1 = eq.i64 %d, -1
+  br %b_m1, trap, go
+
+trap:
+  %dl = trunc.i64.i32 %d
+  %zero = add.i32 %dl, 1
+  %t = div.i32 1, %zero
+  ret.i64 %d
+
+go:
+  %nneg = lt.i64 %n, 0
+  %dneg = lt.i64 %d, 0
+  %na0 = sub.i64 0, %n
+  %na = select.i64 %nneg, %na0, %n
+  %nb0 = sub.i64 0, %d
+  %nb = select.i64 %dneg, %nb0, %d
+  %q = call @__udivdi3(%na, %nb)
+  %qn = sub.i64 0, %q
+  br %nneg, nn, np
+
+nn:
+  br %dneg, pos, neg
+
+np:
+  br %dneg, neg, pos
+
+pos:
+  %res = copy.i64 %q
+  jmp done
+
+neg:
+  %res = copy.i64 %qn
+  jmp done
+
+done:
+  ret.i64 %res
+}

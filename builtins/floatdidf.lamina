@@ -1,0 +1,18 @@
+@extern
+fn @__floatundidf(i64 %x) -> f64
+
+@export
+fn @__floatdidf(i64 %x) -> f64 {
+entry:
+  %neg = lt.i64 %x, 0
+  %nx = sub.i64 0, %x
+  %m = select.i64 %neg, %nx, %x
+  %r = call @__floatundidf(%m)
+  %b = bitcast.f64.u64 %r
+  %sb = shl.u64 1, 63
+  %zb = copy.u64 0
+  %mask = select.u64 %neg, %sb, %zb
+  %bits = or.u64 %b, %mask
+  %res = bitcast.u64.f64 %bits
+  ret.f64 %res
+}

@@ -1,0 +1,34 @@
+@extern
+fn @__fixunsdfdi(f64 %x) -> i64
+
+@export
+fn @__fixdfdi(f64 %x) -> i64 {
+entry:
+  %b = bitcast.f64.u64 %x
+  %sb = shr.u64 %b, 63
+  %neg = ne.u64 %sb, 0
+  %ab = and.u64 %b, 9223372036854775807
+  %nan = gt.u64 %ab, 9218868437227405312
+  br %nan, zero, conv
+
+zero:
+  ret.i64 0
+
+conv:
+  %ax = bitcast.u64.f64 %ab
+  %mag = call @__fixunsdfdi(%ax)
+  %top = shr.i64 %mag, 63
+  %sat = ne.i64 %top, 0
+  br %sat, satur, body
+
+satur:
+  %minv = shl.i64 1, 63
+  %maxv = add.i64 %minv, -1
+  %sr = select.i64 %neg, %minv, %maxv
+  ret.i64 %sr
+
+body:
+  %nm = sub.i64 0, %mag
+  %res = select.i64 %neg, %nm, %mag
+  ret.i64 %res
+}

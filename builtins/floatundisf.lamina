@@ -1,0 +1,55 @@
+@export
+fn @__floatundisf(u64 %x) -> f32 {
+entry:
+  %z = eq.u64 %x, 0
+  br %z, zero, nz
+
+zero:
+  ret.f32 0.0
+
+nz:
+  %half = shl.u64 1, 63
+  %c0 = lt.u64 %x, 4294967296
+  %s0 = shl.u64 %x, 32
+  %x0 = select.u64 %c0, %s0, %x
+  %n0 = select.u32 %c0, 32, 0
+  %c1 = lt.u64 %x0, 281474976710656
+  %s1 = shl.u64 %x0, 16
+  %x1 = select.u64 %c1, %s1, %x0
+  %a1 = select.u32 %c1, 16, 0
+  %n1 = add.u32 %n0, %a1
+  %c2 = lt.u64 %x1, 72057594037927936
+  %s2 = shl.u64 %x1, 8
+  %x2 = select.u64 %c2, %s2, %x1
+  %a2 = select.u32 %c2, 8, 0
+  %n2 = add.u32 %n1, %a2
+  %c3 = lt.u64 %x2, 1152921504606846976
+  %s3 = shl.u64 %x2, 4
+  %x3 = select.u64 %c3, %s3, %x2
+  %a3 = select.u32 %c3, 4, 0
+  %n3 = add.u32 %n2, %a3
+  %c4 = lt.u64 %x3, 4611686018427387904
+  %s4 = shl.u64 %x3, 2
+  %x4 = select.u64 %c4, %s4, %x3
+  %a4 = select.u32 %c4, 2, 0
+  %n4 = add.u32 %n3, %a4
+  %c5 = lt.u64 %x4, %half
+  %s5 = shl.u64 %x4, 1
+  %y = select.u64 %c5, %s5, %x4
+  %a5 = select.u32 %c5, 1, 0
+  %sh = add.u32 %n4, %a5
+  %m = shr.u64 %y, 40
+  %r = and.u64 %y, 1099511627775
+  %odd = and.u64 %m, 1
+  %t0 = add.u64 %r, 549755813887
+  %t1 = add.u64 %t0, %odd
+  %inc = shr.u64 %t1, 40
+  %mr = add.u64 %m, %inc
+  %fw = sub.u64 %mr, 8388608
+  %frac = trunc.u64.u32 %fw
+  %e = sub.u32 190, %sh
+  %eb = shl.u32 %e, 23
+  %bits = add.u32 %eb, %frac
+  %res = bitcast.u32.f32 %bits
+  ret.f32 %res
+}

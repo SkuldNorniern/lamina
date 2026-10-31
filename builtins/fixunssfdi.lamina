@@ -1,0 +1,53 @@
+@export
+fn @__fixunssfdi(f32 %x) -> u64 {
+entry:
+  %b = bitcast.f32.u32 %x
+  %sb = shr.u32 %b, 31
+  %neg = ne.u32 %sb, 0
+  br %neg, zero, pos
+
+zero:
+  ret.u64 0
+
+pos:
+  %ab = and.u32 %b, 2147483647
+  %nan = gt.u32 %ab, 2139095040
+  br %nan, zero, chk
+
+chk:
+  %inf = eq.u32 %ab, 2139095040
+  br %inf, max, fin
+
+fin:
+  %e = shr.u32 %ab, 23
+  %small = lt.u32 %e, 127
+  br %small, zero, big
+
+big:
+  %k = sub.u32 %e, 127
+  %over = ge.u32 %k, 64
+  br %over, max, conv
+
+conv:
+  %m = and.u32 %b, 8388607
+  %mi = or.u32 %m, 8388608
+  %mm = extend.u32.u64 %mi
+  %le = le.u32 %k, 23
+  br %le, rsh, lsh
+
+rsh:
+  %rc = sub.u32 23, %k
+  %rw = extend.u32.u64 %rc
+  %rv = shr.u64 %mm, %rw
+  ret.u64 %rv
+
+lsh:
+  %lc = sub.u32 %k, 23
+  %lw = extend.u32.u64 %lc
+  %lv = shl.u64 %mm, %lw
+  ret.u64 %lv
+
+max:
+  %mx = sub.u64 0, 1
+  ret.u64 %mx
+}

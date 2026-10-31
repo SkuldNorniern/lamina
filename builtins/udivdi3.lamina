@@ -1,0 +1,69 @@
+@export
+fn @__udivdi3(u64 %n, u64 %d) -> u64 {
+entry:
+  %dlo = trunc.u64.u32 %d
+  %dhs = shr.u64 %d, 32
+  %dhi = trunc.u64.u32 %dhs
+  %dor = or.u32 %dlo, %dhi
+  %trap = div.u32 1, %dor
+  %nhs = shr.u64 %n, 32
+  %nhi = trunc.u64.u32 %nhs
+  %nlo = trunc.u64.u32 %n
+  %wide = or.u32 %nhi, %dhi
+  %small = eq.u32 %wide, 0
+  br %small, fast, init
+
+init:
+  %nn = copy.u64 %n
+  %qv = copy.u64 0
+  %rv = copy.u64 0
+  %kv = copy.u32 64
+  jmp loop
+
+fast:
+  %q32 = div.u32 %nlo, %dlo
+  %q = extend.u32.u64 %q32
+  ret.u64 %q
+
+loop:
+  %done = eq.u32 %kv, 0
+  br %done, exit, body
+
+body:
+  %top = shr.u64 %nn, 63
+  %nn2 = shl.u64 %nn, 1
+  %rtop = shr.u64 %rv, 63
+  %r1 = shl.u64 %rv, 1
+  %r2 = or.u64 %r1, %top
+  %ov = ne.u64 %rtop, 0
+  br %ov, take, cmp
+
+cmp:
+  %ge = ge.u64 %r2, %d
+  br %ge, take, keep
+
+take:
+  %rt = sub.u64 %r2, %d
+  %qs = shl.u64 %qv, 1
+  %qt = or.u64 %qs, 1
+  %r3 = copy.u64 %rt
+  %q2 = copy.u64 %qt
+  jmp next
+
+keep:
+  %qk = shl.u64 %qv, 1
+  %r3 = copy.u64 %r2
+  %q2 = copy.u64 %qk
+  jmp next
+
+next:
+  %k2 = sub.u32 %kv, 1
+  %nn = copy.u64 %nn2
+  %qv = copy.u64 %q2
+  %rv = copy.u64 %r3
+  %kv = copy.u32 %k2
+  jmp loop
+
+exit:
+  ret.u64 %qv
+}

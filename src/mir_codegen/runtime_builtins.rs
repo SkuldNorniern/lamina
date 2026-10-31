@@ -1,7 +1,8 @@
 //! Layer 1 of the runtime: the compiler runtime routines lamina ships itself.
 //!
-//! `builtins/` holds twelve `@export`ed routines written in Lamina IR for the
-//! 128-bit helpers that i128 lowering emits. They are embedded in the compiler
+//! `builtins/` holds twenty-four `@export`ed routines written in Lamina IR for the
+//! 128-bit helpers that i128 lowering emits and the 64-bit helpers a target with
+//! 32-bit integer registers needs for every `i64`. They are embedded in the compiler
 //! here, compiled for the requested target when a program calls one, and handed
 //! to the linker ahead of any host archive. A program that never reaches one of
 //! these symbols builds and links exactly as before.
@@ -97,6 +98,66 @@ const ROUTINES: &[(RuntimeSymbol, &str, &str)] = &[
         RuntimeSymbol::Fixsfti,
         "fixsfti",
         include_str!("../../builtins/fixsfti.lamina"),
+    ),
+    (
+        RuntimeSymbol::Udivdi3,
+        "udivdi3",
+        include_str!("../../builtins/udivdi3.lamina"),
+    ),
+    (
+        RuntimeSymbol::Umoddi3,
+        "umoddi3",
+        include_str!("../../builtins/umoddi3.lamina"),
+    ),
+    (
+        RuntimeSymbol::Divdi3,
+        "divdi3",
+        include_str!("../../builtins/divdi3.lamina"),
+    ),
+    (
+        RuntimeSymbol::Moddi3,
+        "moddi3",
+        include_str!("../../builtins/moddi3.lamina"),
+    ),
+    (
+        RuntimeSymbol::Floatundidf,
+        "floatundidf",
+        include_str!("../../builtins/floatundidf.lamina"),
+    ),
+    (
+        RuntimeSymbol::Floatdidf,
+        "floatdidf",
+        include_str!("../../builtins/floatdidf.lamina"),
+    ),
+    (
+        RuntimeSymbol::Floatundisf,
+        "floatundisf",
+        include_str!("../../builtins/floatundisf.lamina"),
+    ),
+    (
+        RuntimeSymbol::Floatdisf,
+        "floatdisf",
+        include_str!("../../builtins/floatdisf.lamina"),
+    ),
+    (
+        RuntimeSymbol::Fixunsdfdi,
+        "fixunsdfdi",
+        include_str!("../../builtins/fixunsdfdi.lamina"),
+    ),
+    (
+        RuntimeSymbol::Fixdfdi,
+        "fixdfdi",
+        include_str!("../../builtins/fixdfdi.lamina"),
+    ),
+    (
+        RuntimeSymbol::Fixunssfdi,
+        "fixunssfdi",
+        include_str!("../../builtins/fixunssfdi.lamina"),
+    ),
+    (
+        RuntimeSymbol::Fixsfdi,
+        "fixsfdi",
+        include_str!("../../builtins/fixsfdi.lamina"),
     ),
 ];
 
@@ -384,6 +445,29 @@ mod tests {
         let module = from_ir_for_target(&ir, stem, target().data_layout()).unwrap();
         let builtins = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
         assert!(wanted(&module, &builtins).contains(&RuntimeSymbol::Udivti3));
+    }
+
+    #[test]
+    fn signed_64bit_division_pulls_in_the_unsigned_routine() {
+        let (stem, source) = routine(RuntimeSymbol::Divdi3).unwrap();
+        let ir = parse_module(source).unwrap();
+        let module = from_ir_for_target(&ir, stem, target().data_layout()).unwrap();
+        let builtins = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        assert!(wanted(&module, &builtins).contains(&RuntimeSymbol::Udivdi3));
+    }
+
+    #[test]
+    fn every_runtime_symbol_the_compiler_emits_has_a_routine() {
+        for symbol in RuntimeSymbol::ALL {
+            if !symbol.c_name().starts_with("__") {
+                continue;
+            }
+            assert!(
+                routine(symbol).is_some(),
+                "{} has no routine",
+                symbol.c_name()
+            );
+        }
     }
 
     #[test]
