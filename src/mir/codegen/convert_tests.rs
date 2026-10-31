@@ -1202,35 +1202,94 @@ fn an_element_of_a_packed_array_is_aligned_like_its_stride() {
     );
 }
 
+/// Every integer `IntConvert` source and its signedness in `@gep`, in program order.
+fn index_widening(source: &str, arch: TargetArchitecture) -> Vec<(MirType, bool)> {
+    let ir = parse_module(source).expect("parse index probe");
+    let module = from_ir_for_target(&ir, "gep", arch.data_layout()).expect("lower index probe");
+    module.functions["gep"]
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .filter_map(|inst| match &inst.instr {
+            Instruction::IntConvert { from, signed, .. }
+                if *from != MirType::Scalar(ScalarType::Ptr) =>
+            {
+                Some((*from, *signed))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
-fn variable_gep_index_of_unknown_width_is_refused() {
+fn inline_asm_result_index_keeps_its_width_and_sign() {
     let source = "fn @gep(ptr %p) -> ptr {\nentry:\n%n = asm.i16 \"nop\", out(ax)\n%q = getelem.i16 %p, %n\nret.ptr %q\n}";
-    let ir = parse_module(source).expect("parse untyped index");
     for arch in [
         TargetArchitecture::Riscv32,
         TargetArchitecture::I686,
         TargetArchitecture::Armv7,
         TargetArchitecture::X86_64,
     ] {
-        let error = from_ir_for_target(&ir, "gep", arch.data_layout())
-            .expect_err("an index of unknown width must not be guessed");
+        let widening = index_widening(source, arch);
         assert!(
-            matches!(error, FromIRError::UnknownVariable),
-            "{arch:?}: {error}"
+            widening.contains(&(MirType::Scalar(ScalarType::I16), true)),
+            "{arch:?}: {widening:?}"
         );
     }
 }
 
 #[test]
-fn inttoptr_source_of_unknown_width_is_refused() {
-    let source = "fn @cast() -> ptr {\nentry:\n%n = asm.i16 \"nop\", out(ax)\n%p = inttoptr.i16 %n\nret.ptr %p\n}";
-    let ir = parse_module(source).expect("parse untyped inttoptr");
+fn atomic_cmpxchg_result_index_keeps_its_width_and_sign() {
+    let source = "fn @gep(ptr %p) -> ptr {\nentry:\n%cell = stackalloc.i16\nstore.i16 %cell, 3\n%n = atomic_cmpxchg.i16 %cell, 3, 4, seqcst, seqcst\n%q = getelem.i16 %p, %n\nret.ptr %q\n}";
     for arch in [TargetArchitecture::Riscv32, TargetArchitecture::X86_64] {
-        let error = from_ir_for_target(&ir, "cast", arch.data_layout())
-            .expect_err("a source of unknown width must not be guessed");
+        let widening = index_widening(source, arch);
         assert!(
-            matches!(error, FromIRError::UnknownVariable),
-            "{arch:?}: {error}"
+            widening.contains(&(MirType::Scalar(ScalarType::I16), true)),
+            "{arch:?}: {widening:?}"
+        );
+    }
+}
+
+#[test]
+fn vector_lane_index_keeps_the_lane_width_and_sign() {
+    let source = "fn @gep(ptr %p) -> ptr {\nentry:\n%v = splat.<8 x i16> 1\n%n = extractlane.<8 x i16> %v, 0\n%q = getelem.i16 %p, %n\nret.ptr %q\n}";
+    for arch in [TargetArchitecture::Riscv32, TargetArchitecture::X86_64] {
+        let widening = index_widening(source, arch);
+        assert!(
+            widening.contains(&(MirType::Scalar(ScalarType::I16), true)),
+            "{arch:?}: {widening:?}"
+        );
+    }
+}
+
+#[test]
+fn a_register_of_unrecorded_type_is_refused() {
+    let register = Register::Virtual(VirtualReg {
+        id: 7,
+        class: RegisterClass::Gpr,
+    });
+    let error = operand_type(&Operand::Register(register), &HashMap::new())
+        .expect_err("a register without a recorded type must not be guessed");
+    assert!(matches!(error, FromIRError::UnknownVariable), "{error}");
+}
+
+#[test]
+fn inttoptr_of_inline_asm_keeps_its_source_width() {
+    let source = "fn @cast() -> ptr {\nentry:\n%n = asm.i16 \"nop\", out(ax)\n%p = inttoptr.i16 %n\nret.ptr %p\n}";
+    for arch in [TargetArchitecture::Riscv32, TargetArchitecture::X86_64] {
+        let ir = parse_module(source).expect("parse inttoptr");
+        let module = from_ir_for_target(&ir, "cast", arch.data_layout()).expect("lower inttoptr");
+        let widening: Vec<_> = module.functions["cast"].blocks[0]
+            .instructions
+            .iter()
+            .filter_map(|inst| match &inst.instr {
+                Instruction::IntConvert { from, signed, .. } => Some((*from, *signed)),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            widening.contains(&(MirType::Scalar(ScalarType::I16), false)),
+            "{arch:?}: {widening:?}"
         );
     }
 }

@@ -38,8 +38,8 @@ use crate::{
         AddressMode, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
         Global, Immediate, Instruction, IntBinOp, IntCmpOp, IntOverflowOp, IntRotOp, IntUnOp,
         MemoryAttrs, MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType,
-        Signature, SymbolVisibility, TlsModel as MirTlsModel, VectorOp, VirtualReg,
-        VirtualRegAllocator,
+        Signature, SymbolVisibility, TlsModel as MirTlsModel, VectorLane, VectorOp, VectorType,
+        VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{
@@ -1385,9 +1385,24 @@ fn convert_function<'a>(
                             .get(name.as_str())
                             .and_then(|callee| map_ir_type(&callee.signature.return_type).ok())
                             .or_else(|| io_intrinsic_result_type(name, int64_regs)),
-                        Instruction::Lea { .. } | Instruction::StackAddr { .. } => {
+                        Instruction::Lea { .. }
+                        | Instruction::StackAddr { .. }
+                        | Instruction::SymbolAddress { .. }
+                        | Instruction::ThreadLocalAddr { .. } => {
                             Some(MirType::Scalar(ScalarType::Ptr))
                         }
+                        Instruction::IntOverflow { .. } => Some(MirType::Scalar(ScalarType::I1)),
+                        Instruction::AtomicCompareExchange { ty, .. }
+                        | Instruction::InlineAsm {
+                            result: Some((_, ty)),
+                            ..
+                        } => Some(*ty),
+                        Instruction::VectorOp {
+                            op: VectorOp::VExtractLane,
+                            ty,
+                            ..
+                        } => Some(vector_lane_scalar(*ty)),
+                        Instruction::VectorOp { ty, .. } => Some(*ty),
                         _ => None,
                     };
                     if let Some(ty) = ty {
@@ -2917,6 +2932,20 @@ fn all_ones_immediate(ty: MirType, pointer: PointerWidth) -> Result<Immediate, F
         8 => Ok(Immediate::I64(-1)),
         _ => Err(FromIRError::UnsupportedInstruction),
     }
+}
+
+fn vector_lane_scalar(ty: MirType) -> MirType {
+    let MirType::Vector(VectorType::V128(lane) | VectorType::V256(lane)) = ty else {
+        return ty;
+    };
+    MirType::Scalar(match lane {
+        VectorLane::I8 => ScalarType::I8,
+        VectorLane::I16 => ScalarType::I16,
+        VectorLane::I32 => ScalarType::I32,
+        VectorLane::I64 => ScalarType::I64,
+        VectorLane::F32 => ScalarType::F32,
+        VectorLane::F64 => ScalarType::F64,
+    })
 }
 
 fn operand_type(
