@@ -76,17 +76,16 @@ fn reject_wide(ty: &MirType, what: &str) -> Result<(), LaminaError> {
     Ok(())
 }
 
-fn reject_wide_integer_return(aggregate: Aggregate, func_name: &str) -> Result<(), LaminaError> {
-    // cdecl returns a legalized 64-bit integer in `%edx:%eax`, not through the hidden
-    // pointer a struct uses, so honouring the hidden pointer would miscompile every
-    // caller the module does not also compile — `main`, reached from the C runtime,
-    // first of all.
-    if aggregate.is_wide_scalar() {
+/// cdecl returns a struct through a hidden pointer and a legalized 64-bit integer in
+/// `%edx:%eax`, so only the former takes the sret slot.
+fn returns_through_memory(aggregate: Aggregate, func_name: &str) -> Result<bool, LaminaError> {
+    if aggregate.is_wide_scalar() && aggregate.size > 2 * WORD {
         return Err(unsupported(format!(
-            "i686 return of @{func_name}: a 64-bit integer comes back in %edx:%eax, and 64-bit integers are not yet legalized into 32-bit register pairs"
+            "i686 return of @{func_name}: a legalized integer of {} bytes does not fit in %edx:%eax",
+            aggregate.size
         )));
     }
-    Ok(())
+    Ok(aggregate.is_composite())
 }
 
 /// Type a variadic or unprototyped argument reaches the callee as: a float as a
@@ -207,6 +206,9 @@ struct EmitCtx<'a> {
     /// Frame offset of the hidden pointer a struct return is written through, with
     /// the size of that aggregate.
     sret: Option<(i32, usize)>,
+    /// Whether the return value is a legalized 64-bit integer, which leaves in
+    /// `%edx:%eax`.
+    wide_return: bool,
 }
 
 impl EmitCtx<'_> {
@@ -293,14 +295,19 @@ fn compile_function(
 
     let (slots, _, mut total) =
         assign_stack_slots_framed(func, abi::slot_offset, |_| true, abi::FRAME_RESIDUE);
+    let wide_return = func
+        .sig
+        .ret_aggregate
+        .is_some_and(|aggregate| aggregate.is_wide_scalar());
     let sret = match func.sig.ret_aggregate {
-        Some(aggregate) => {
-            reject_wide_integer_return(aggregate, func_name).map_err(lamina_to_codegen_error)?;
+        Some(aggregate)
+            if returns_through_memory(aggregate, func_name).map_err(lamina_to_codegen_error)? =>
+        {
             let offset = abi::slot_offset(total);
             total += 1;
             Some((offset, aggregate.size))
         }
-        None => None,
+        _ => None,
     };
     let frame = abi::frame_bytes(total * abi::SLOT as usize);
     abi::prologue(&mut output, frame).map_err(io)?;
@@ -314,6 +321,7 @@ fn compile_function(
         signatures,
         ret_float: func.sig.ret_ty.filter(MirType::is_float),
         sret,
+        wide_return,
     };
     let plan = FunctionEmissionPlan::new(func);
     if plan
@@ -831,6 +839,11 @@ fn emit_instruction<W: Write>(
         MirInst::Ret { value } => {
             if let Some(value) = value {
                 match (ctx.sret, ctx.ret_float) {
+                    _ if ctx.wide_return => {
+                        load_operand(value, writer, slots, ECX)?;
+                        writeln!(writer, "    movl 4({ECX}), {EDX}")?;
+                        writeln!(writer, "    movl ({ECX}), {EAX}")?;
+                    }
                     (Some((offset, size)), _) => {
                         load_operand(value, writer, slots, EAX)?;
                         writeln!(writer, "    movl {offset}(%ebp), {ECX}")?;
@@ -1208,10 +1221,12 @@ fn emit_call<W: Write>(
     writer: &mut W,
     slots: &Slots,
 ) -> Result<(), LaminaError> {
-    if let Some(aggregate) = call.ret_aggregate {
-        reject_wide_integer_return(aggregate, callee)?;
-    }
+    let wide_result = match call.ret_aggregate {
+        Some(aggregate) => !returns_through_memory(aggregate, callee)?,
+        None => false,
+    };
     let sret_buffer = match (call.ret_aggregate, ret) {
+        (Some(_), _) if wide_result => None,
         (Some(_), Some(Register::Virtual(vreg))) => Some(slot(slots, vreg)?),
         (Some(_), _) => {
             return Err(unsupported(
@@ -1269,6 +1284,17 @@ fn emit_call<W: Write>(
     let Some(ret) = ret else {
         return Ok(());
     };
+    if wide_result {
+        let Register::Virtual(vreg) = ret else {
+            return Err(unsupported(
+                "i686 call returning a legalized 64-bit integer has no frame slot to write it into",
+            ));
+        };
+        let buffer = slot(slots, vreg)?;
+        writeln!(writer, "    movl {EAX}, {buffer}(%ebp)")?;
+        writeln!(writer, "    movl {EDX}, {}(%ebp)", buffer + WORD as i32)?;
+        return Ok(());
+    }
     if call.ret_aggregate.is_some() {
         return Ok(());
     }

@@ -199,10 +199,23 @@ mod aggregate_return_tests {
     }
 
     #[test]
-    fn a_legalized_sixty_four_bit_integer_return_is_still_refused_by_name() {
-        let error = emit("fn @make(i64 %x) -> i64 {\nentry:\n  ret.i64 %x\n}\n")
-            .expect_err("a 64-bit integer comes back in %edx:%eax, which is not implemented");
-        assert!(error.contains("%edx:%eax"), "{error}");
-        assert!(error.contains("@make"), "{error}");
+    fn a_legalized_sixty_four_bit_integer_comes_back_in_edx_eax() {
+        let assembly = emit("fn @make(i64 %x) -> i64 {\nentry:\n  ret.i64 %x\n}\n")
+            .expect("a 64-bit integer returns in %edx:%eax");
+        assert!(assembly.contains("movl 4(%ecx), %edx"), "{assembly}");
+        assert!(assembly.contains("movl (%ecx), %eax"), "{assembly}");
+        assert!(!assembly.contains("ret $4"), "{assembly}");
+    }
+
+    #[test]
+    fn a_call_reads_a_legalized_sixty_four_bit_result_out_of_edx_eax() {
+        let assembly = emit(
+            "@extern\nfn @make(i64 %x) -> i64\n\nfn @use(i64 %x) -> i32 {\nentry:\n  \
+             %v = call @make(%x)\n  %n = trunc.i64.i32 %v\n  ret.i32 %n\n}\n",
+        )
+        .expect("a 64-bit result arrives in %edx:%eax");
+        assert!(assembly.contains("call make"), "{assembly}");
+        assert!(assembly.contains("movl %eax, -"), "{assembly}");
+        assert!(assembly.contains("movl %edx, -"), "{assembly}");
     }
 }
