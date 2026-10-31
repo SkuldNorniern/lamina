@@ -39,7 +39,8 @@ use lamina_codegen::{
     riscv::{RiscVTarget, Xlen},
 };
 use lamina_platform::{
-    ArchVariant, Target, TargetArchitecture, TargetOperatingSystem, X86CpuLevel,
+    ArchVariant, CompilerRuntime, Target, TargetArchitecture, TargetEnvironment,
+    TargetOperatingSystem, X86CpuLevel,
 };
 
 /// Generates assembly from MIR for the requested target.
@@ -108,15 +109,28 @@ pub fn retarget_runtime_calls<'a>(
     Cow::Owned(retargeted)
 }
 
-/// A target with no C library has no compiler runtime to link against, so a 128-bit
-/// helper the module calls must be defined in the module or redirected through
-/// `LAMINA_BUILTINS`. Reported here, naming the symbol, rather than at link time.
+/// Refuses a compiler-runtime helper the module calls but nothing will define.
+///
+/// Which runtime a target gets is the environment's answer, not the operating system's:
+/// [`CompilerRuntime::LaminaBuiltins`] means a definition arrives, and
+/// [`CompilerRuntime::None`] means none does. An operating system that supplies its own
+/// runtime leaves the environment axis nothing to choose and so reads as
+/// [`TargetEnvironment::Freestanding`] without meaning it, which
+/// [`TargetOperatingSystem::links_a_c_runtime`] distinguishes.
+///
+/// Reported at codegen time, naming the symbol, rather than at link time, because a
+/// freestanding user often takes the object and links it themselves.
 fn check_compiler_runtime_symbols(
     module: &Module,
     target_os: TargetOperatingSystem,
+    environment: TargetEnvironment,
     builtins: &BuiltinLibrary,
 ) -> Result<(), LaminaError> {
-    if target_os != TargetOperatingSystem::Unknown {
+    match environment.compiler_runtime() {
+        CompilerRuntime::LaminaBuiltins => return Ok(()),
+        CompilerRuntime::None => {}
+    }
+    if !target_os.links_a_c_runtime() {
         return Ok(());
     }
     for symbol in RuntimeSymbol::ALL {
@@ -131,8 +145,9 @@ fn check_compiler_runtime_symbols(
         {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!(
-                    "`{name}` is a compiler runtime helper that a target without a C library does not provide; \
+                    "`{name}` is a compiler runtime helper that the `{}` environment does not provide; \
                  define it in the module, or name an implementation with LAMINA_BUILTINS={}=<symbol>",
+                    environment.token(),
                     symbol.c_name()
                 ),
             )));
@@ -180,7 +195,12 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         .map_err(|e| LaminaError::ValidationError(e.to_string()))?;
     let retargeted = retarget_runtime_calls(input, &builtins);
     let module: &Module = &retargeted;
-    check_compiler_runtime_symbols(module, target_os, &builtins)?;
+    check_compiler_runtime_symbols(
+        module,
+        target_os,
+        settings.environment.unwrap_or(target.environment),
+        &builtins,
+    )?;
     common::reject_invalid_cmpxchg_orderings(module)?;
     common::reject_underaligned_atomics(module, pointer_width)?;
     if module.relocation != RelocationModel::Static
@@ -192,15 +212,13 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             ),
         )));
     }
-    if !matches!(
-        target_arch,
-        TargetArchitecture::X86_64 | TargetArchitecture::I686
-    ) && let Some(name) = module
-        .functions
-        .iter()
-        .filter(|(_, function)| function.sig.naked)
-        .map(|(name, _)| name)
-        .min()
+    if target_arch != TargetArchitecture::X86_64
+        && let Some(name) = module
+            .functions
+            .iter()
+            .filter(|(_, function)| function.sig.naked)
+            .map(|(name, _)| name)
+            .min()
     {
         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
             format!(
@@ -776,6 +794,7 @@ mod atomic_target_tests {
             (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
             (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux),
             (TargetArchitecture::Wasm32, TargetOperatingSystem::Wasi),
+            (TargetArchitecture::I686, TargetOperatingSystem::Linux),
         ] {
             let mut output = Vec::new();
             let err = generate_mir_to_target(&mir, &mut output, &Target::new(arch, os), 1)
@@ -895,6 +914,72 @@ mod runtime_symbol_tests {
                 "{asm}"
             );
         }
+    }
+
+    const HELPER_PROGRAM: &str = r#"
+    fn @divide(i128 %a, i128 %b) -> i128 {
+      entry:
+        %q = div.i128 %a, %b
+        ret.i128 %q
+    }
+    "#;
+
+    #[test]
+    fn the_compiler_runtime_check_follows_the_environment_not_the_operating_system() {
+        let module = lower(HELPER_PROGRAM);
+        let lib = BuiltinLibrary::new(TargetOperatingSystem::Linux, HashMap::new());
+        for environment in TargetEnvironment::ALL {
+            let result = check_compiler_runtime_symbols(
+                &module,
+                TargetOperatingSystem::Linux,
+                environment,
+                &lib,
+            );
+            match environment.compiler_runtime() {
+                CompilerRuntime::LaminaBuiltins => {
+                    assert!(result.is_ok(), "{environment}: {result:?}");
+                }
+                CompilerRuntime::None => {
+                    let message = result
+                        .expect_err("a runtime with no helpers must refuse")
+                        .to_string();
+                    assert!(message.contains("__divti3"), "{message}");
+                    assert!(message.contains(environment.token()), "{message}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_operating_system_with_its_own_runtime_is_not_a_freestanding_environment() {
+        let module = lower(HELPER_PROGRAM);
+        let lib = BuiltinLibrary::new(TargetOperatingSystem::MacOS, HashMap::new());
+        for target_os in [
+            TargetOperatingSystem::MacOS,
+            TargetOperatingSystem::Windows,
+            TargetOperatingSystem::Wasi,
+        ] {
+            let result = check_compiler_runtime_symbols(
+                &module,
+                target_os,
+                TargetEnvironment::Freestanding,
+                &lib,
+            );
+            assert!(result.is_ok(), "{target_os:?}: {result:?}");
+        }
+    }
+
+    #[test]
+    fn a_freestanding_environment_on_a_hosted_operating_system_is_checked() {
+        let module = lower(HELPER_PROGRAM);
+        let hosted: Target = "x86_64_linux_gnu".parse().expect("parse hosted target");
+        let freestanding: Target = "x86_64_linux_none".parse().expect("parse none target");
+        let mut out = Vec::new();
+        generate_mir_to_target(&module, &mut out, &hosted, 1).expect("gnu supplies the helper");
+        let message = generate_mir_to_target(&module, &mut Vec::new(), &freestanding, 1)
+            .expect_err("none supplies no helper")
+            .to_string();
+        assert!(message.contains("__divti3"), "{message}");
     }
 
     #[test]
