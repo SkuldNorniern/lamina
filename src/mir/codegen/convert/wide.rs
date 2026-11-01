@@ -1010,8 +1010,13 @@ pub(super) fn lower_instruction<'a>(
     cx: &mut Cx<'_, 'a>,
 ) -> Result<bool, FromIRError> {
     if quad_mention(instr, cx.module, cx.int64_regs) {
+        let reason = if matches!(instr, IRInst::Alloc { .. }) {
+            "the slot itself is sixteen bytes, but no load or store of it can be legalized, because only register pairs are split"
+        } else {
+            "that takes four registers, and only pairs are split"
+        };
         return Err(FromIRError::NotLegalizable(format!(
-            "`{instr}` names a 128-bit integer on a 32-bit target: that takes four registers, and only pairs are split"
+            "`{instr}` names a 128-bit integer on a 32-bit target: {reason}"
         )));
     }
     if !touches_wide(instr, cx.vars, cx.module, cx.int64_regs) {
