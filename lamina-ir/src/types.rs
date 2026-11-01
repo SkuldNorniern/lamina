@@ -439,11 +439,22 @@ impl fmt::Display for Literal<'_> {
             Literal::U64(v) => write!(f, "{v}"),
             Literal::I128(v) => write!(f, "{v}"),
             Literal::U128(v) => write!(f, "{v}"),
-            Literal::F32(v) => write!(f, "{v}"),
-            Literal::F64(v) => write!(f, "{v}"),
+            Literal::F32(v) => write_float(f, v, v.is_finite()),
+            Literal::F64(v) => write_float(f, v, v.is_finite()),
             Literal::Bool(v) => write!(f, "{v}"),
             Literal::String(s) => write!(f, "\"{s}\""), // Note: needs escaping for proper output
         }
+    }
+}
+
+/// Writes a float so that reading the text back yields a float literal again: Rust
+/// prints `1.0` as `1`, which reads as an integer.
+fn write_float(f: &mut fmt::Formatter<'_>, value: &dyn fmt::Display, finite: bool) -> fmt::Result {
+    let text = format!("{value}");
+    if finite && !text.contains(['.', 'e', 'E']) {
+        write!(f, "{text}.0")
+    } else {
+        write!(f, "{text}")
     }
 }
 

@@ -1731,7 +1731,7 @@ mod tests {
             lhs: Value::Variable("x"),
             rhs: Value::Constant(Literal::F32(0.0)),
         };
-        assert_eq!(format!("{}", instr2), "%cond = lt.f32 %x, 0"); // Note: f32 display might vary
+        assert_eq!(format!("{}", instr2), "%cond = lt.f32 %x, 0.0");
 
         // Br
         let instr3 = Instruction::Br {
