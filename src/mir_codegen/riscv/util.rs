@@ -301,6 +301,27 @@ pub fn clamp_below<W: Write>(writer: &mut W, limit: i64) -> Result<(), Error> {
 
 /// Rewrites a0 as the sign-extended form of its low `bits`, the shape a 64-bit
 /// register holds a narrower value in.
+/// Widens the `bits`-wide value in `a0` to the full register, signed or not.
+pub fn extend_to_xlen<W: Write>(
+    writer: &mut W,
+    bits: usize,
+    xlen_bits: usize,
+    signed: bool,
+) -> Result<(), Error> {
+    if bits >= xlen_bits {
+        return Ok(());
+    }
+    if signed && bits == 32 && xlen_bits == 64 {
+        writeln!(writer, "    sext.w a0, a0")?;
+        return Ok(());
+    }
+    let shift = xlen_bits - bits;
+    let right = if signed { "srai" } else { "srli" };
+    writeln!(writer, "    slli a0, a0, {shift}")?;
+    writeln!(writer, "    {right} a0, a0, {shift}")?;
+    Ok(())
+}
+
 pub fn sign_extend_to_xlen<W: Write>(writer: &mut W, bits: usize) -> Result<(), Error> {
     if bits >= 64 {
         return Ok(());

@@ -22,7 +22,7 @@ use crate::mir_codegen::common::{
 };
 
 use util::{
-    clamp_above, clamp_below, emit_int_cmp_op, load_fp_operand_to_register,
+    clamp_above, clamp_below, emit_int_cmp_op, extend_to_xlen, load_fp_operand_to_register,
     load_operand_to_register, load_register_to_register, sign_extend_to_xlen,
     store_fp_register_to_register, store_register_to_register,
 };
@@ -2020,23 +2020,24 @@ fn emit_instruction_riscv<W: Write>(
             ctx.target
                 .require_float(is_f32)
                 .map_err(|e| LaminaError::ValidationError(format!("inttofloat: {e}")))?;
-            if ctx.target.xlen == Xlen::Rv32 {
+            let bits = from.size_bytes(pointer_width) * 8;
+            let xlen_bits = ctx.target.xlen.bits() as usize;
+            if bits > xlen_bits {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "RV32 integer to float conversion is not supported".to_string(),
+                    format!(
+                        "RV{xlen_bits} integer to float conversion from a {bits}-bit source is not supported: the source does not fit in one register"
+                    ),
                 )));
             }
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
-            let bits = from.size_bytes(pointer_width) * 8;
-            if bits < 64 {
-                if *signed {
-                    sign_extend_to_xlen(writer, bits)?;
-                } else {
-                    writeln!(writer, "    slli a0, a0, {}", 64 - bits)?;
-                    writeln!(writer, "    srli a0, a0, {}", 64 - bits)?;
-                }
-            }
+            extend_to_xlen(writer, bits, xlen_bits, *signed)?;
             let suffix = if is_f32 { "s" } else { "d" };
-            let form = if *signed { "l" } else { "lu" };
+            let form = match (ctx.target.xlen, *signed) {
+                (Xlen::Rv32, true) => "w",
+                (Xlen::Rv32, false) => "wu",
+                (Xlen::Rv64, true) => "l",
+                (Xlen::Rv64, false) => "lu",
+            };
             writeln!(writer, "    fcvt.{suffix}.{form} fa0, a0")?;
             if let Register::Virtual(vreg) = dst {
                 store_fp_register_to_register("fa0", vreg, writer, reg_alloc, stack_slots, is_f32)?;

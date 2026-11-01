@@ -1182,3 +1182,58 @@ fn aggregate_result_of_two_words_comes_back_in_a0_and_a1() -> Result<(), Box<dyn
     assert_eq!(high, low + 8, "{assembly}");
     Ok(())
 }
+
+#[test]
+fn rv32_converts_a_narrow_integer_to_a_float_with_the_word_form() -> Result<(), Box<dyn Error>> {
+    for (from, to, signed, expect) in [
+        ("u8", "f32", false, "fcvt.s.wu"),
+        ("u16", "f64", false, "fcvt.d.wu"),
+        ("u32", "f32", false, "fcvt.s.wu"),
+        ("i8", "f64", true, "fcvt.d.w"),
+        ("i16", "f32", true, "fcvt.s.w"),
+        ("i32", "f64", true, "fcvt.d.w"),
+    ] {
+        let source = format!(
+            "fn @conv({from} %x, ptr %o) -> void {{\nentry:\n  %r = inttofp.{from}.{to} %x\n  store.{to} %o, %r\n  ret.void\n}}\n"
+        );
+        let module = parse_module(&source).map_err(|e| e.to_string())?;
+        let mir = from_ir_for_target(
+            &module,
+            "rv32_inttofp",
+            TargetArchitecture::Riscv32.data_layout(),
+        )
+        .map_err(|e| e.to_string())?;
+        let mut output = Vec::new();
+        generate_mir_riscv_with_units_and_settings(
+            &mir,
+            &mut output,
+            RiscVTarget::general(Xlen::Rv32),
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        )?;
+        let assembly = String::from_utf8(output)?;
+        assert!(
+            assembly.contains(expect),
+            "{from} -> {to} missed {expect}:\n{assembly}"
+        );
+        assert!(
+            !assembly.contains("fcvt.s.l") && !assembly.contains("fcvt.d.l"),
+            "{from} -> {to} used a doubleword form on rv32:\n{assembly}"
+        );
+        let widened = assembly.contains("    slli a0, a0, ");
+        assert_eq!(
+            widened,
+            from != "u32" && from != "i32",
+            "{from} -> {to} extended the wrong way:\n{assembly}"
+        );
+        if widened {
+            let right = if signed { "srai" } else { "srli" };
+            assert!(
+                assembly.contains(&format!("    {right} a0, a0, ")),
+                "{from} -> {to} missed {right}:\n{assembly}"
+            );
+        }
+    }
+    Ok(())
+}
