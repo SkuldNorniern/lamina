@@ -955,16 +955,18 @@ fn emit_instruction<W: Write>(
             src,
         } => {
             reject_wide(from, "integer to float conversion")?;
-            if !signed {
-                return Err(unsupported(
-                    "i686 unsigned integer to float conversion is not implemented",
-                ));
-            }
             load_operand(src, writer, slots, EAX)?;
-            extend_in_place(writer, EAX, from, true)?;
-            writeln!(writer, "    pushl {EAX}")?;
-            writeln!(writer, "    fildl (%esp)")?;
-            writeln!(writer, "    addl $4, %esp")?;
+            extend_in_place(writer, EAX, from, *signed)?;
+            if *signed {
+                writeln!(writer, "    pushl {EAX}")?;
+                writeln!(writer, "    fildl (%esp)")?;
+                writeln!(writer, "    addl $4, %esp")?;
+            } else {
+                writeln!(writer, "    pushl $0")?;
+                writeln!(writer, "    pushl {EAX}")?;
+                writeln!(writer, "    fildll (%esp)")?;
+                writeln!(writer, "    addl $8, %esp")?;
+            }
             pop_float(dst, writer, slots, is_single(to))?;
         }
         MirInst::FloatToInt { .. } => {

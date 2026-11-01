@@ -219,3 +219,54 @@ mod aggregate_return_tests {
         assert!(assembly.contains("movl %edx, -"), "{assembly}");
     }
 }
+
+#[test]
+fn a_narrow_unsigned_integer_reaches_a_float_through_the_doubleword_fild() {
+    use super::generate_mir_i686_with_units_and_settings;
+    use crate::mir::codegen::from_ir_for_target;
+    use crate::mir_codegen::MirCodegenSettings;
+    use crate::parser::parse_module;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    for (from, to, unsigned) in [
+        ("u8", "f32", true),
+        ("u16", "f64", true),
+        ("u32", "f32", true),
+        ("u32", "f64", true),
+        ("i8", "f32", false),
+        ("i16", "f64", false),
+        ("i32", "f32", false),
+    ] {
+        let source = format!(
+            "fn @conv({from} %x, ptr %o) -> void {{\nentry:\n  %r = inttofp.{from}.{to} %x\n  store.{to} %o, %r\n  ret.void\n}}\n"
+        );
+        let module = parse_module(&source).expect("parse");
+        let mir = from_ir_for_target(
+            &module,
+            "i686_inttofp",
+            TargetArchitecture::I686.data_layout(),
+        )
+        .expect("lower");
+        let mut output = Vec::new();
+        generate_mir_i686_with_units_and_settings(
+            &mir,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        )
+        .expect("i686 should lower a narrow integer to float");
+        let assembly = String::from_utf8(output).expect("utf8");
+        if unsigned {
+            assert!(
+                assembly.contains("    pushl $0") && assembly.contains("    fildll (%esp)"),
+                "{from} -> {to} did not zero-extend into a doubleword fild:\n{assembly}"
+            );
+        } else {
+            assert!(
+                assembly.contains("    fildl (%esp)") && !assembly.contains("    fildll (%esp)"),
+                "{from} -> {to} did not use the word fild:\n{assembly}"
+            );
+        }
+    }
+}
