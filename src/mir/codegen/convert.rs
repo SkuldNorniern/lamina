@@ -1103,8 +1103,6 @@ fn convert_function<'a>(
         mir_sig.kernel = Some(Default::default());
     }
 
-    // A 128-bit integer is refused by name wherever it is written; a signature is the
-    // one place no instruction covers.
     let quad_at_boundary = |ty: &IRType<'a>| {
         resolve_type_names(ty, &module.type_declarations)
             .is_some_and(|resolved| wide::is_quad_type(&resolved, int64_regs))
