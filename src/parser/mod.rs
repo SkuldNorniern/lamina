@@ -2672,10 +2672,10 @@ entry:
             .fptoint("d", PrimitiveType::F32, PrimitiveType::U64, var("x"))
             .fpcast("e", PrimitiveType::F64, PrimitiveType::F32, var("x"))
             .fpcast("g", PrimitiveType::F32, PrimitiveType::F64, var("x"))
-            .neg("h", PrimitiveType::I32, var("x"))
-            .neg("h2", PrimitiveType::F32, var("x"))
-            .not("i", PrimitiveType::U8, var("x"))
-            .sqrt("j", PrimitiveType::F64, var("x"))
+            .neg("h", PrimitiveType::I32, var("xi32"))
+            .neg("h2", PrimitiveType::F32, var("fx"))
+            .not("i", PrimitiveType::U8, var("xu8"))
+            .sqrt("j", PrimitiveType::F64, var("a"))
             .funcaddr("k", "helper")
             .callptr(
                 Some("l"),
@@ -2706,7 +2706,7 @@ entry:
             .clone();
         let body: Vec<String> = built.iter().map(|inst| format!("  {inst}")).collect();
         let text = format!(
-            "fn @f(i64 %x, ptr %fmt, f32 %fx) -> i64 {{\nentry:\n{}\n}}",
+            "fn @f(i64 %x, ptr %fmt, f32 %fx, i32 %xi32, u8 %xu8) -> i64 {{\nentry:\n{}\n}}",
             body.join("\n")
         );
         let parsed = parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));
@@ -3233,13 +3233,28 @@ mod bit_builder_tests {
                     ty: Type::Primitive(PrimitiveType::U32),
                     annotations: vec![],
                 },
+                FunctionParameter {
+                    name: "c8",
+                    ty: Type::Primitive(PrimitiveType::U8),
+                    annotations: vec![],
+                },
+                FunctionParameter {
+                    name: "c16",
+                    ty: Type::Primitive(PrimitiveType::U16),
+                    annotations: vec![],
+                },
+                FunctionParameter {
+                    name: "c32",
+                    ty: Type::Primitive(PrimitiveType::I32),
+                    annotations: vec![],
+                },
             ],
             i64_ty.clone(),
         )
         .popcount("p", PrimitiveType::I64, var("x"))
-        .ctlz("l", PrimitiveType::U8, var("x"))
-        .cttz("t", PrimitiveType::I32, var("x"))
-        .bswap("s", PrimitiveType::U16, var("x"))
+        .ctlz("l", PrimitiveType::U8, var("c8"))
+        .cttz("t", PrimitiveType::I32, var("c32"))
+        .bswap("s", PrimitiveType::U16, var("c16"))
         .rotl("a", PrimitiveType::I64, var("x"), var("n"))
         .rotr("b", PrimitiveType::U32, var("w"), var("k"))
         .unreachable();
@@ -3253,6 +3268,9 @@ mod bit_builder_tests {
         let n = OwnedValue::Variable("n".to_string());
         let w = OwnedValue::Variable("w".to_string());
         let k = OwnedValue::Variable("k".to_string());
+        let c8 = OwnedValue::Variable("c8".to_string());
+        let c16 = OwnedValue::Variable("c16".to_string());
+        let c32 = OwnedValue::Variable("c32".to_string());
         let i64_owned = OwnedType::Primitive(PrimitiveType::I64);
         o.function_with_params(
             "f",
@@ -3273,13 +3291,25 @@ mod bit_builder_tests {
                     name: "k".to_string(),
                     ty: OwnedType::Primitive(PrimitiveType::U32),
                 },
+                OwnedParam {
+                    name: "c8".to_string(),
+                    ty: OwnedType::Primitive(PrimitiveType::U8),
+                },
+                OwnedParam {
+                    name: "c16".to_string(),
+                    ty: OwnedType::Primitive(PrimitiveType::U16),
+                },
+                OwnedParam {
+                    name: "c32".to_string(),
+                    ty: OwnedType::Primitive(PrimitiveType::I32),
+                },
             ],
             i64_owned,
         )
         .popcount("p", PrimitiveType::I64, &x)
-        .ctlz("l", PrimitiveType::U8, &x)
-        .cttz("t", PrimitiveType::I32, &x)
-        .bswap("s", PrimitiveType::U16, &x)
+        .ctlz("l", PrimitiveType::U8, &c8)
+        .cttz("t", PrimitiveType::I32, &c32)
+        .bswap("s", PrimitiveType::U16, &c16)
         .rotl("a", PrimitiveType::I64, &x, &n)
         .rotr("b", PrimitiveType::U32, &w, &k)
         .unreachable();

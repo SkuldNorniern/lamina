@@ -155,7 +155,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                         )
                     }
                 } else {
-                    "Valid opcodes include: add, sub, mul, div, load, store, call, alloc, and many others".to_string()
+                    "Valid opcodes include: add, sub, mul, div, load, stackalloc, call, select, and many others".to_string()
                 };
 
                 Err(state.error(format!(
