@@ -370,12 +370,14 @@ impl<'a> Module<'a> {
         }
     }
 
-    /// Checks that each operand of a binary or comparison instruction is a value of the
-    /// type the instruction states.
+    /// Checks that each operand of an elementwise instruction is a value of the type
+    /// the instruction states.
     ///
     /// A register of a different width is not an implicit conversion, and a shift count
     /// is no exception: `shl.i64` takes an `i64` count. Signedness is not a width, so
-    /// `u64` stands where `i64` is stated.
+    /// `u64` stands where `i64` is stated. A vector operand is the same rule over the
+    /// lane type and the lane count: a `<4 x i32>` does not stand where `<2 x i64>` is
+    /// stated, and neither does a scalar.
     fn validate_operand_types(&self, errors: &mut Vec<String>) {
         let mut functions: Vec<&Function<'a>> = self.functions.values().collect();
         functions.sort_by_key(|func| func.name);
@@ -385,33 +387,195 @@ impl<'a> Module<'a> {
             blocks.sort_by_key(|(label, _)| **label);
             for (label, block) in blocks {
                 for instr in &block.instructions {
-                    let (Instruction::Binary { ty, lhs, rhs, .. }
-                    | Instruction::Cmp { ty, lhs, rhs, .. }) = instr
-                    else {
-                        continue;
-                    };
-                    for (side, value) in [("left operand", lhs), ("right operand", rhs)] {
-                        let Value::Variable(name) = value else {
-                            continue;
-                        };
-                        let Some(found) = env.get(name) else {
-                            continue;
-                        };
-                        let Some(Type::Primitive(resolved)) =
-                            resolve_type_names(found, &self.type_declarations)
-                        else {
-                            continue;
-                        };
-                        if resolved.value_class() == ty.value_class() {
-                            continue;
-                        }
-                        errors.push(format!(
-                            "the {side} of '{instr}' in block '{label}' of '@{}' is '%{name}', which has type {found}, but the instruction states {ty}\n  Hint: both operands take the instruction's type, a shift count included; convert '%{name}' to {ty} first",
-                            func.name
-                        ));
-                    }
+                    self.check_operand_types(func.name, label, instr, &env, errors);
                 }
             }
+        }
+    }
+
+    fn check_operand_types(
+        &self,
+        func: &str,
+        label: &str,
+        instr: &Instruction<'a>,
+        env: &HashMap<Identifier<'a>, Type<'a>>,
+        errors: &mut Vec<String>,
+    ) {
+        let scalar = |ty: PrimitiveType| Type::Primitive(ty);
+        let vector = |element_type: PrimitiveType, lanes: u32| Type::Vector {
+            element_type,
+            lanes,
+        };
+        let mut operands: Vec<(&str, &Value<'a>, Type<'a>)> = Vec::new();
+        match instr {
+            Instruction::Binary {
+                ty,
+                lhs,
+                rhs,
+                op,
+                result: _,
+            } => {
+                operands.push(("left operand", lhs, scalar(*ty)));
+                if !matches!(op, BinaryOp::Shl | BinaryOp::Shr) || !rhs_is_vector(rhs, env) {
+                    operands.push(("right operand", rhs, scalar(*ty)));
+                }
+            }
+            Instruction::Cmp { ty, lhs, rhs, .. } => {
+                operands.push(("left operand", lhs, scalar(*ty)));
+                operands.push(("right operand", rhs, scalar(*ty)));
+            }
+            Instruction::Unary {
+                ty,
+                value,
+                op: _,
+                result: _,
+            } => {
+                operands.push(("operand", value, scalar(*ty)));
+            }
+            Instruction::VectorBinary {
+                op,
+                element_type,
+                lanes,
+                lhs,
+                rhs,
+                ..
+            } => {
+                operands.push(("left operand", lhs, vector(*element_type, *lanes)));
+                match op {
+                    BinaryOp::Add
+                    | BinaryOp::Sub
+                    | BinaryOp::Mul
+                    | BinaryOp::And
+                    | BinaryOp::Or
+                    | BinaryOp::Xor => {
+                        operands.push(("right operand", rhs, vector(*element_type, *lanes)));
+                    }
+                    BinaryOp::Shl
+                    | BinaryOp::Shr
+                    | BinaryOp::Div
+                    | BinaryOp::Rem
+                    | BinaryOp::Rotl
+                    | BinaryOp::Rotr => {}
+                }
+            }
+            Instruction::VectorShuffle {
+                element_type,
+                lanes,
+                lhs,
+                rhs,
+                ..
+            } => {
+                operands.push(("left operand", lhs, vector(*element_type, *lanes)));
+                operands.push(("right operand", rhs, vector(*element_type, *lanes)));
+            }
+            Instruction::VectorSplat {
+                element_type,
+                value,
+                ..
+            } => {
+                operands.push(("operand", value, scalar(*element_type)));
+            }
+            Instruction::VectorExtractLane {
+                element_type,
+                lanes,
+                vector: source,
+                ..
+            } => {
+                operands.push(("operand", source, vector(*element_type, *lanes)));
+            }
+            Instruction::VectorInsertLane {
+                element_type,
+                lanes,
+                vector: source,
+                scalar: lane_value,
+                ..
+            } => {
+                operands.push(("operand", source, vector(*element_type, *lanes)));
+                operands.push(("lane value", lane_value, scalar(*element_type)));
+            }
+            Instruction::Select {
+                ty,
+                true_val,
+                false_val,
+                ..
+            } => {
+                operands.push(("true value", true_val, ty.clone()));
+                operands.push(("false value", false_val, ty.clone()));
+            }
+            Instruction::Store { ty, value, .. }
+            | Instruction::AtomicStore { ty, value, .. }
+            | Instruction::AtomicBinary { ty, value, .. } => {
+                operands.push(("stored value", value, ty.clone()));
+            }
+            Instruction::AtomicCompareExchange {
+                ty,
+                expected,
+                desired,
+                ..
+            } => {
+                operands.push(("expected value", expected, ty.clone()));
+                operands.push(("desired value", desired, ty.clone()));
+            }
+            Instruction::OverflowFlag { .. }
+            | Instruction::ZeroExtend { .. }
+            | Instruction::Trunc { .. }
+            | Instruction::SignExtend { .. }
+            | Instruction::Bitcast { .. }
+            | Instruction::IntToFloat { .. }
+            | Instruction::FloatToInt { .. }
+            | Instruction::FloatConvert { .. }
+            | Instruction::FuncAddr { .. }
+            | Instruction::CallIndirect { .. }
+            | Instruction::Switch { .. }
+            | Instruction::Br { .. }
+            | Instruction::Jmp { .. }
+            | Instruction::Ret { .. }
+            | Instruction::Alloc { .. }
+            | Instruction::Load { .. }
+            | Instruction::AtomicLoad { .. }
+            | Instruction::Fence { .. }
+            | Instruction::InlineAsm { .. }
+            | Instruction::GetFieldPtr { .. }
+            | Instruction::GetElemPtr { .. }
+            | Instruction::PtrToInt { .. }
+            | Instruction::IntToPtr { .. }
+            | Instruction::Call { .. }
+            | Instruction::Copy { .. }
+            | Instruction::Write { .. }
+            | Instruction::Read { .. }
+            | Instruction::WriteByte { .. }
+            | Instruction::ReadByte { .. }
+            | Instruction::VaStart { .. }
+            | Instruction::VaArg { .. }
+            | Instruction::VaEnd { .. }
+            | Instruction::VaCopy { .. }
+            | Instruction::Unreachable => {}
+        }
+        for (side, value, expected) in operands {
+            let Value::Variable(name) = value else {
+                continue;
+            };
+            let Some(found) = env.get(name) else {
+                continue;
+            };
+            let resolved = resolve_type_names(found, &self.type_declarations);
+            let actual = resolved.as_ref().unwrap_or(found);
+            if !operand_type_mismatch(actual, &expected) {
+                continue;
+            }
+            let rule = match (&expected, side) {
+                (Type::Vector { .. }, _) => {
+                    "an operand of a vector operation has the instruction's lane type and lane count"
+                }
+                (_, "left operand" | "right operand") => {
+                    "both operands take the instruction's type, a shift count included"
+                }
+                (_, _) => "the value an instruction names takes the instruction's type",
+            };
+            let hint = format!("\n  Hint: {rule}; convert '%{name}' to {expected} first");
+            errors.push(format!(
+                "the {side} of '{instr}' in block '{label}' of '@{func}' is '%{name}', which has type {found}, but the instruction states {expected}{hint}"
+            ));
         }
     }
 
@@ -851,6 +1015,45 @@ impl fmt::Display for Module<'_> {
 
         Ok(())
     }
+}
+
+/// Whether a value stated at `expected` may not stand where `actual` is found.
+///
+/// Signedness is not a width, so `u64` stands where `i64` is stated, and a `<4 x u32>`
+/// stands where `<4 x i32>` is. Anything whose shape this cannot judge — a struct, an
+/// array, a named type that did not resolve — is left to the checks that own it.
+fn operand_type_mismatch(actual: &Type<'_>, expected: &Type<'_>) -> bool {
+    match (actual, expected) {
+        (Type::Primitive(found), Type::Primitive(stated)) => {
+            found.value_class() != stated.value_class()
+        }
+        (
+            Type::Vector {
+                element_type: found,
+                lanes: found_lanes,
+            },
+            Type::Vector {
+                element_type: stated,
+                lanes: stated_lanes,
+            },
+        ) => found_lanes != stated_lanes || found.value_class() != stated.value_class(),
+        (Type::Vector { .. }, Type::Primitive(_)) | (Type::Primitive(_), Type::Vector { .. }) => {
+            true
+        }
+        (Type::Primitive(_) | Type::Vector { .. }, _)
+        | (
+            Type::Named(_) | Type::Array { .. } | Type::Struct { .. } | Type::Void | Type::VaList,
+            _,
+        ) => false,
+    }
+}
+
+/// Whether a shift count names a vector, which `classify_vector_shift` judges instead.
+fn rhs_is_vector<'a>(rhs: &Value<'a>, env: &HashMap<Identifier<'a>, Type<'a>>) -> bool {
+    let Value::Variable(name) = rhs else {
+        return false;
+    };
+    matches!(env.get(name), Some(Type::Vector { .. }))
 }
 
 #[cfg(test)]
