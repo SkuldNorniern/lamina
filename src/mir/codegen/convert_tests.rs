@@ -1419,3 +1419,48 @@ fn from_ir_x86_64_lowers_against_the_x86_64_layout_only() {
     assert_eq!(word(&named), word(&explicit));
     assert_eq!(word(&narrow), Some(MirType::Scalar(ScalarType::I32)));
 }
+
+#[test]
+fn a_stack_slot_is_not_refused_for_taking_registers() {
+    let ir = parse_module("fn @main() -> i64 {\nentry:\n %q = stackalloc.i128\n ret.i64 0\n}")
+        .expect("parse");
+    for arch in [
+        TargetArchitecture::I686,
+        TargetArchitecture::Riscv32,
+        TargetArchitecture::Armv7,
+    ] {
+        let error = from_ir_for_target(&ir, "slot", arch.data_layout())
+            .expect_err("a 32-bit target refuses an i128 slot")
+            .to_string();
+        assert!(error.contains("stackalloc.i128"), "{arch:?}: {error}");
+        assert!(
+            !error.contains("takes four registers"),
+            "{arch:?} blames registers for a stack slot: {error}"
+        );
+        assert!(
+            error.contains("the slot itself is sixteen bytes"),
+            "{arch:?}: {error}"
+        );
+    }
+}
+
+#[test]
+fn a_value_still_names_the_registers_it_would_take() {
+    let ir = parse_module("fn @main() -> i64 {\nentry:\n %a = add.i128 1, 2\n ret.i64 0\n}")
+        .expect("parse");
+    let error = from_ir_for_target(&ir, "value", TargetArchitecture::I686.data_layout())
+        .expect_err("a 32-bit target refuses an i128 value")
+        .to_string();
+    assert!(error.contains("takes four registers"), "{error}");
+}
+
+#[test]
+fn an_aggregate_crosses_a_boundary_whatever_its_size() {
+    let ir = parse_module(
+        "type !Big = struct { a: [64 x i64] }\n\
+         fn @take(!Big %b) -> !Big {\nentry:\n ret.!Big %b\n}\n\
+         fn @main() -> i64 {\nentry:\n %p = stackalloc.!Big\n %q = call @take(!Big %p)\n ret.i64 0\n}",
+    )
+    .expect("parse");
+    from_ir_x86_64(&ir, "big").expect("a 512-byte aggregate crosses a boundary");
+}

@@ -108,18 +108,6 @@ fn integer_fields_only(ty: &IRType<'_>) -> bool {
     }
 }
 
-/// Classifies an aggregate crossing a function boundary. `what` names the value for
-/// the error text. Scalars return `Ok(None)`; aggregates outside the supported subset
-/// are an error rather than a wrong ABI.
-pub fn classify_aggregate(
-    ty: &IRType<'_>,
-    what: &str,
-    layout: TargetDataLayout,
-    int64_regs: bool,
-) -> Result<Option<Aggregate>, FromIRError> {
-    classify_aggregate_within(ty, what, None, layout, int64_regs)
-}
-
 /// The ABI of the integer that takes two registers, crossing a boundary: two words,
 /// aligned to its own size, one INTEGER aggregate, as System V classifies `__int128`.
 pub fn wide_aggregate(int64_regs: bool) -> Aggregate {
@@ -132,10 +120,12 @@ pub fn wide_aggregate(int64_regs: bool) -> Aggregate {
     }
 }
 
-fn classify_aggregate_within(
+/// Classifies an aggregate crossing a function boundary. `what` names the value for
+/// the error text. Scalars return `Ok(None)`; aggregates outside the supported subset
+/// are an error rather than a wrong ABI.
+pub fn classify_aggregate(
     ty: &IRType<'_>,
     what: &str,
-    max: Option<u64>,
     layout: TargetDataLayout,
     int64_regs: bool,
 ) -> Result<Option<Aggregate>, FromIRError> {
@@ -160,13 +150,6 @@ fn classify_aggregate_within(
     if size == 0 {
         return Err(FromIRError::UnsupportedAggregate(format!(
             "{what} is empty; an aggregate crossing a boundary holds at least one byte"
-        )));
-    }
-    if let Some(max) = max
-        && size > max
-    {
-        return Err(FromIRError::UnsupportedAggregate(format!(
-            "{what} is {size} bytes; only 1 to {max} bytes come back in registers so far"
         )));
     }
     Ok(Some(Aggregate {
