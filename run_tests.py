@@ -281,7 +281,7 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
 
     return True, output_lines
 
-def run_tests(use_mir=False, target=None):
+def run_tests(use_mir=False, target=None, report_only=False):
     """Run all test cases and report results"""
     mode = "MIR assembly" if use_mir else "default"
     if target:
@@ -358,7 +358,7 @@ def run_tests(use_mir=False, target=None):
         print_colored("Failed tests:", Colors.RED + Colors.BOLD)
         for name, reason in failures:
             print_colored(f"  {name}: {reason}", Colors.RED)
-        if failed > 0:
+        if failed > 0 and not report_only:
             sys.exit(1)
 
 def list_tests():
@@ -436,6 +436,9 @@ if __name__ == "__main__":
     parser.add_argument('--target', choices=sorted(CROSS_TARGETS),
                         help='Compile for a cross target and run under its emulator; '
                              'skipped with a message when the toolchain is absent')
+    parser.add_argument('--report-only', action='store_true',
+                        help='Print the counts and exit 0 even when testcases fail, '
+                             'for platforms whose backend is still incomplete')
     
     args = parser.parse_args()
     
@@ -444,4 +447,4 @@ if __name__ == "__main__":
     elif args.test:
         run_single_test(args.test, args.mir, args.target)
     else:
-        run_tests(args.mir, args.target)
+        run_tests(args.mir, args.target, args.report_only)
