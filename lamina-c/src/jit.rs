@@ -225,7 +225,8 @@ pub unsafe extern "C" fn lia_jit_call_i64_4(
 fn compile_jit(ir_str: &str, func_name: &str) -> Result<LaminaJit, String> {
     let host = Target::detect_host()?;
     let module = parse_module(ir_str).map_err(|e| format!("parse error: {}", e))?;
-    let mir_module = from_ir_x86_64(&module, "jit_c").map_err(|e| format!("IR lowering error: {}", e))?;
+    let mir_module =
+        from_ir_x86_64(&module, "jit_c").map_err(|e| format!("IR lowering error: {}", e))?;
     let lookup = func_name.strip_prefix('@').unwrap_or(func_name);
     let result = compile_to_runtime(
         &mir_module,

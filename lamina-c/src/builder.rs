@@ -1075,7 +1075,7 @@ mod tests {
             let ret = lia_type_i64();
             let fname = cs("f");
             assert_eq!(
-                lia_builder_function(builder, fname.as_ptr(), std::ptr::null(), 0, ret),
+                lia_builder_function(builder, fname.as_ptr(), ptr::null(), 0, ret),
                 LaminaStatus::Ok
             );
             let result = cs("p");
