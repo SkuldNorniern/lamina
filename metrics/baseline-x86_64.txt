@@ -313,11 +313,11 @@ frame test_u64_array_operations 0
 frame test_u8_array_operations 0
 
 [array_operations_comprehensive O3]
-insns 1055
-spills 115
+insns 1057
+spills 121
 calls 16
 branches 33
-frame main 352
+frame main 368
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
@@ -764,8 +764,8 @@ frame print_number 32
 frame sum_array 16
 
 [capable_lamina O3]
-insns 1450
-spills 223
+insns 1444
+spills 221
 calls 48
 branches 88
 frame conversion_demo 0
@@ -777,7 +777,35 @@ frame main 544
 frame number_to_digits 0
 frame print_digits 32
 frame print_number 32
-frame sum_array 16
+frame sum_array 0
+
+[checked_arithmetic O0]
+insns 877
+spills 194
+calls 0
+branches 0
+frame main 1040
+
+[checked_arithmetic O1]
+insns 817
+spills 37
+calls 0
+branches 0
+frame main 16
+
+[checked_arithmetic O2]
+insns 817
+spills 37
+calls 0
+branches 0
+frame main 16
+
+[checked_arithmetic O3]
+insns 817
+spills 37
+calls 0
+branches 0
+frame main 16
 
 [complex_arithmetic O0]
 insns 185
@@ -886,6 +914,42 @@ branches 11
 frame main 32
 frame print_digits 32
 frame print_number 32
+
+[copy_scalar_types O0]
+insns 298
+spills 140
+calls 9
+branches 7
+frame main 432
+frame print_i64 64
+frame put_u64 48
+
+[copy_scalar_types O1]
+insns 227
+spills 23
+calls 9
+branches 7
+frame main 48
+frame print_i64 32
+frame put_u64 32
+
+[copy_scalar_types O2]
+insns 516
+spills 60
+calls 9
+branches 21
+frame main 160
+frame print_i64 32
+frame put_u64 32
+
+[copy_scalar_types O3]
+insns 526
+spills 72
+calls 9
+branches 21
+frame main 208
+frame print_i64 32
+frame put_u64 32
 
 [dealloc_stack_vs_heap_bug_test O0]
 insns 189
@@ -1548,7 +1612,7 @@ frame test_nested_flow 0
 frame test_wrapping 0
 
 [extern_declarations O0]
-insns 175
+insns 174
 spills 49
 calls 10
 branches 3
@@ -1561,7 +1625,7 @@ frame put_u64 48
 frame text 0
 
 [extern_declarations O1]
-insns 183
+insns 182
 spills 29
 calls 10
 branches 3
@@ -1574,7 +1638,7 @@ frame put_u64 32
 frame text 0
 
 [extern_declarations O2]
-insns 240
+insns 238
 spills 34
 calls 11
 branches 5
@@ -1587,7 +1651,7 @@ frame put_u64 32
 frame text 0
 
 [extern_declarations O3]
-insns 240
+insns 238
 spills 34
 calls 11
 branches 5
@@ -1700,7 +1764,7 @@ frame print_digits 32
 frame print_number 32
 
 [float_exponent_literals O0]
-insns 206
+insns 205
 spills 51
 calls 10
 branches 3
@@ -1713,7 +1777,7 @@ frame put_u64 48
 frame tiny 0
 
 [float_exponent_literals O1]
-insns 214
+insns 213
 spills 34
 calls 10
 branches 3
@@ -1726,7 +1790,7 @@ frame put_u64 32
 frame tiny 0
 
 [float_exponent_literals O2]
-insns 263
+insns 257
 spills 43
 calls 15
 branches 3
@@ -1739,7 +1803,7 @@ frame put_u64 32
 frame tiny 0
 
 [float_exponent_literals O3]
-insns 263
+insns 257
 spills 43
 calls 15
 branches 3
@@ -1832,7 +1896,7 @@ frame print_digits 32
 frame print_number 32
 
 [float_width_conversions O0]
-insns 205
+insns 204
 spills 51
 calls 9
 branches 3
@@ -1844,7 +1908,7 @@ frame print_u64 16
 frame put_u64 48
 
 [float_width_conversions O1]
-insns 212
+insns 211
 spills 34
 calls 9
 branches 3
@@ -1856,7 +1920,7 @@ frame print_u64 16
 frame put_u64 32
 
 [float_width_conversions O2]
-insns 253
+insns 248
 spills 42
 calls 13
 branches 3
@@ -1868,7 +1932,7 @@ frame print_u64 16
 frame put_u64 32
 
 [float_width_conversions O3]
-insns 256
+insns 251
 spills 45
 calls 13
 branches 3
@@ -2240,7 +2304,7 @@ frame put_u64 32
 frame weak_add 0
 
 [function_pointers O0]
-insns 236
+insns 235
 spills 69
 calls 12
 branches 3
@@ -2256,7 +2320,7 @@ frame thrice 16
 frame twice 16
 
 [function_pointers O1]
-insns 241
+insns 240
 spills 42
 calls 12
 branches 3
@@ -2272,7 +2336,7 @@ frame thrice 0
 frame twice 0
 
 [function_pointers O2]
-insns 350
+insns 348
 spills 51
 calls 13
 branches 7
@@ -2288,7 +2352,7 @@ frame thrice 0
 frame twice 0
 
 [function_pointers O3]
-insns 348
+insns 346
 spills 49
 calls 13
 branches 7
@@ -2562,7 +2626,7 @@ frame put_u64 32
 frame read_b 0
 
 [getfieldptr_param_layout O2]
-insns 249
+insns 247
 spills 32
 calls 5
 branches 7
@@ -2573,7 +2637,7 @@ frame put_u64 32
 frame read_b 0
 
 [getfieldptr_param_layout O3]
-insns 249
+insns 247
 spills 32
 calls 5
 branches 7
@@ -2584,7 +2648,7 @@ frame put_u64 32
 frame read_b 0
 
 [global_element_list O0]
-insns 200
+insns 199
 spills 67
 calls 9
 branches 3
@@ -2599,7 +2663,7 @@ frame ratios 0
 frame squares 0
 
 [global_element_list O1]
-insns 194
+insns 193
 spills 31
 calls 9
 branches 3
@@ -2614,7 +2678,7 @@ frame ratios 0
 frame squares 0
 
 [global_element_list O2]
-insns 341
+insns 339
 spills 46
 calls 10
 branches 9
@@ -2629,7 +2693,7 @@ frame ratios 0
 frame squares 0
 
 [global_element_list O3]
-insns 339
+insns 337
 spills 43
 calls 10
 branches 9
@@ -2692,7 +2756,7 @@ frame print_u64 16
 frame put_u64 32
 
 [global_struct_init O0]
-insns 187
+insns 186
 spills 60
 calls 9
 branches 3
@@ -2706,7 +2770,7 @@ frame print_u64 16
 frame put_u64 48
 
 [global_struct_init O1]
-insns 188
+insns 187
 spills 31
 calls 9
 branches 3
@@ -2720,7 +2784,7 @@ frame print_u64 16
 frame put_u64 32
 
 [global_struct_init O2]
-insns 335
+insns 333
 spills 52
 calls 10
 branches 9
@@ -2734,7 +2798,7 @@ frame print_u64 16
 frame put_u64 32
 
 [global_struct_init O3]
-insns 335
+insns 333
 spills 51
 calls 10
 branches 9
@@ -3027,8 +3091,8 @@ frame test_heap_struct 16
 frame test_multiple_allocations 32
 
 [heap_allocation_bug_test O3]
-insns 546
-spills 70
+insns 545
+spills 68
 calls 23
 branches 23
 frame main 80
@@ -3196,13 +3260,13 @@ branches 0
 frame main 16
 
 [i128_abi O0]
-insns 2401
-spills 1471
+insns 2405
+spills 1475
 calls 18
 branches 3
 frame main 1776
 frame many 496
-frame mixed 592
+frame mixed 608
 frame pad 608
 frame print_i64 64
 frame print_u64 16
@@ -3211,7 +3275,7 @@ frame split 1824
 frame tail 592
 
 [i128_abi O1]
-insns 1495
+insns 1497
 spills 227
 calls 18
 branches 3
@@ -8028,7 +8092,7 @@ frame print_u64 16
 frame put_u64 32
 
 [i128_array_heap O2]
-insns 343
+insns 341
 spills 41
 calls 9
 branches 11
@@ -8038,7 +8102,7 @@ frame print_u64 16
 frame put_u64 32
 
 [i128_array_heap O3]
-insns 341
+insns 339
 spills 37
 calls 9
 branches 11
@@ -9043,33 +9107,57 @@ branches 1
 frame clobber 16
 frame main 16
 
+[inline_asm_clobber.s390x_linux O0]
+status compile-failed
+
+[inline_asm_clobber.s390x_linux O1]
+status compile-failed
+
+[inline_asm_clobber.s390x_linux O2]
+status compile-failed
+
+[inline_asm_clobber.s390x_linux O3]
+status compile-failed
+
 [inline_asm_loop O0]
-insns 103
-spills 22
+insns 107
+spills 24
 calls 0
-branches 3
+branches 2
 frame main 112
 
 [inline_asm_loop O1]
-insns 101
+insns 104
 spills 14
 calls 0
-branches 3
+branches 2
 frame main 32
 
 [inline_asm_loop O2]
-insns 100
+insns 103
 spills 14
 calls 0
-branches 3
+branches 2
 frame main 32
 
 [inline_asm_loop O3]
-insns 100
+insns 103
 spills 14
 calls 0
-branches 3
+branches 2
 frame main 32
+
+[inline_asm_loop.s390x_linux O0]
+status compile-failed
+
+[inline_asm_loop.s390x_linux O1]
+status compile-failed
+
+[inline_asm_loop.s390x_linux O2]
+status compile-failed
+
+[inline_asm_loop.s390x_linux O3]
+status compile-failed
 
 [inline_asm_pressure O0]
 insns 123
@@ -9098,6 +9186,18 @@ spills 8
 calls 0
 branches 2
 frame main 16
+
+[inline_asm_pressure.s390x_linux O0]
+status compile-failed
+
+[inline_asm_pressure.s390x_linux O1]
+status compile-failed
+
+[inline_asm_pressure.s390x_linux O2]
+status compile-failed
+
+[inline_asm_pressure.s390x_linux O3]
+status compile-failed
 
 [inline_asm_rdtsc O0]
 insns 92
@@ -9154,6 +9254,18 @@ spills 8
 calls 0
 branches 1
 frame main 16
+
+[inline_asm_unused.s390x_linux O0]
+status compile-failed
+
+[inline_asm_unused.s390x_linux O1]
+status compile-failed
+
+[inline_asm_unused.s390x_linux O2]
+status compile-failed
+
+[inline_asm_unused.s390x_linux O3]
+status compile-failed
 
 [inttofp_signed O0]
 insns 841
@@ -9602,6 +9714,34 @@ branches 11
 frame main 32
 frame print_digits 32
 frame print_number 32
+
+[load_store_alignment O0]
+insns 103
+spills 34
+calls 0
+branches 0
+frame main 144
+
+[load_store_alignment O1]
+insns 86
+spills 10
+calls 0
+branches 0
+frame main 48
+
+[load_store_alignment O2]
+insns 80
+spills 10
+calls 0
+branches 0
+frame main 32
+
+[load_store_alignment O3]
+insns 77
+spills 10
+calls 0
+branches 0
+frame main 32
 
 [load_store_operations O0]
 insns 389
@@ -10419,6 +10559,54 @@ frame fmt 0
 frame main 32
 frame who 0
 
+[packed_struct_layout O0]
+insns 366
+spills 183
+calls 41
+branches 3
+frame delta 48
+frame main 544
+frame packed_init 0
+frame print_i64 64
+frame put_u64 48
+frame read_word 48
+
+[packed_struct_layout O1]
+insns 322
+spills 83
+calls 41
+branches 3
+frame delta 0
+frame main 352
+frame packed_init 0
+frame print_i64 32
+frame put_u64 32
+frame read_word 16
+
+[packed_struct_layout O2]
+insns 1344
+spills 168
+calls 26
+branches 49
+frame delta 0
+frame main 592
+frame packed_init 0
+frame print_i64 32
+frame put_u64 32
+frame read_word 16
+
+[packed_struct_layout O3]
+insns 1343
+spills 175
+calls 26
+branches 49
+frame delta 0
+frame main 624
+frame packed_init 0
+frame print_i64 32
+frame put_u64 32
+frame read_word 16
+
 [pointer_arithmetic_brainfuck O0]
 insns 159
 spills 43
@@ -10676,15 +10864,15 @@ frame tbl 0
 frame viaret 16
 
 [pointer_param_store O2]
-insns 811
-spills 111
+insns 807
+spills 107
 calls 16
 branches 28
 frame chain 0
 frame fieldset 0
 frame forward 16
 frame idxset 0
-frame main 336
+frame main 320
 frame pass 0
 frame print_i64 32
 frame print_u64 16
@@ -10696,8 +10884,8 @@ frame tbl 0
 frame viaret 0
 
 [pointer_param_store O3]
-insns 811
-spills 107
+insns 806
+spills 104
 calls 16
 branches 28
 frame chain 0
@@ -10884,7 +11072,7 @@ frame test_u64_operations 0
 frame test_u8_operations 0
 
 [print_float O0]
-insns 217
+insns 216
 spills 51
 calls 12
 branches 3
@@ -10897,7 +11085,7 @@ frame print_u64 16
 frame put_u64 48
 
 [print_float O1]
-insns 224
+insns 223
 spills 34
 calls 12
 branches 3
@@ -10910,7 +11098,7 @@ frame print_u64 16
 frame put_u64 32
 
 [print_float O2]
-insns 289
+insns 282
 spills 45
 calls 17
 branches 3
@@ -10923,7 +11111,7 @@ frame print_u64 16
 frame put_u64 32
 
 [print_float O3]
-insns 290
+insns 283
 spills 46
 calls 17
 branches 3
@@ -11484,8 +11672,8 @@ frame print_u64 16
 frame put_u64 32
 
 [sroa_refusals O0]
-insns 471
-spills 191
+insns 479
+spills 197
 calls 22
 branches 9
 frame bool_field 80
@@ -11493,7 +11681,7 @@ frame dynamic_index 192
 frame escape_call 80
 frame escape_store 80
 frame main 64
-frame overlap 80
+frame overlap 96
 frame print_i64 64
 frame print_u64 16
 frame put_u64 48
@@ -11502,7 +11690,7 @@ frame split_fields 112
 frame volatile_field 64
 
 [sroa_refusals O1]
-insns 367
+insns 370
 spills 58
 calls 22
 branches 9
@@ -11520,7 +11708,7 @@ frame split_fields 64
 frame volatile_field 32
 
 [sroa_refusals O2]
-insns 1223
+insns 1226
 spills 126
 calls 24
 branches 45
@@ -11538,16 +11726,16 @@ frame split_fields 32
 frame volatile_field 48
 
 [sroa_refusals O3]
-insns 1230
-spills 127
+insns 1247
+spills 142
 calls 24
 branches 47
 frame bool_field 48
 frame dynamic_index 96
 frame escape_call 48
 frame escape_store 32
-frame main 112
-frame overlap 64
+frame main 144
+frame overlap 96
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
@@ -11978,8 +12166,8 @@ frame test_struct_array_operations 16
 frame test_struct_copy_operations 0
 
 [struct_operations_comprehensive O3]
-insns 821
-spills 96
+insns 825
+spills 102
 calls 12
 branches 19
 frame main 304
@@ -11987,7 +12175,7 @@ frame print_i64 32
 frame print_u64 16
 frame put_u64 32
 frame test_complex_data_operations 32
-frame test_mixed_types_operations 32
+frame test_mixed_types_operations 48
 frame test_nested_struct_operations 0
 frame test_person_operations 0
 frame test_point2d_operations 0
@@ -11996,10 +12184,10 @@ frame test_struct_array_operations 16
 frame test_struct_copy_operations 0
 
 [switch_dispatch O0]
-insns 206
-spills 69
+insns 210
+spills 71
 calls 6
-branches 12
+branches 11
 frame main 80
 frame pick 48
 frame print_i64 64
@@ -12007,21 +12195,21 @@ frame print_u64 16
 frame put_u64 48
 
 [switch_dispatch O1]
-insns 186
-spills 26
+insns 193
+spills 28
 calls 6
-branches 12
-frame main 32
+branches 11
+frame main 48
 frame pick 0
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
 
 [switch_dispatch O2]
-insns 287
-spills 38
+insns 290
+spills 35
 calls 5
-branches 23
+branches 22
 frame main 64
 frame pick 0
 frame print_i64 32
@@ -12029,15 +12217,59 @@ frame print_u64 16
 frame put_u64 32
 
 [switch_dispatch O3]
-insns 287
-spills 46
+insns 290
+spills 43
 calls 5
-branches 23
+branches 22
 frame main 96
 frame pick 0
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
+
+[tail_call_float_args O0]
+insns 158
+spills 42
+calls 7
+branches 3
+frame forward 32
+frame main 16
+frame print_i64 64
+frame put_u64 48
+frame sink 32
+
+[tail_call_float_args O1]
+insns 168
+spills 25
+calls 7
+branches 3
+frame forward 32
+frame main 16
+frame print_i64 32
+frame put_u64 32
+frame sink 16
+
+[tail_call_float_args O2]
+insns 252
+spills 31
+calls 6
+branches 8
+frame forward 16
+frame main 32
+frame print_i64 32
+frame put_u64 32
+frame sink 16
+
+[tail_call_float_args O3]
+insns 252
+spills 31
+calls 6
+branches 8
+frame forward 16
+frame main 32
+frame print_i64 32
+frame put_u64 32
+frame sink 16
 
 [tail_stack_address O0]
 insns 203
@@ -12170,6 +12402,46 @@ frame print_i64 32
 frame print_u64 16
 frame put_u64 32
 frame test_u8 0
+
+[thread_local_storage O0]
+insns 107
+spills 34
+calls 2
+branches 0
+frame counter 0
+frame main 128
+frame seen 0
+frame worker 32
+
+[thread_local_storage O1]
+insns 90
+spills 13
+calls 2
+branches 0
+frame counter 0
+frame main 48
+frame seen 0
+frame worker 0
+
+[thread_local_storage O2]
+insns 90
+spills 13
+calls 2
+branches 0
+frame counter 0
+frame main 48
+frame seen 0
+frame worker 0
+
+[thread_local_storage O3]
+insns 88
+spills 11
+calls 2
+branches 0
+frame counter 0
+frame main 48
+frame seen 0
+frame worker 0
 
 [tiny O0]
 insns 239
@@ -12408,7 +12680,7 @@ frame test_i32_to_i64 0
 frame test_i8_to_i64 0
 
 [unary_ops O0]
-insns 233
+insns 232
 spills 63
 calls 12
 branches 3
@@ -12420,7 +12692,7 @@ frame print_u64 16
 frame put_u64 48
 
 [unary_ops O1]
-insns 231
+insns 230
 spills 34
 calls 12
 branches 3
@@ -12432,7 +12704,7 @@ frame print_u64 16
 frame put_u64 32
 
 [unary_ops O2]
-insns 399
+insns 395
 spills 51
 calls 15
 branches 9
@@ -12444,7 +12716,7 @@ frame print_u64 16
 frame put_u64 32
 
 [unary_ops O3]
-insns 401
+insns 397
 spills 53
 calls 15
 branches 9
@@ -12802,6 +13074,42 @@ branches 27
 frame main 112
 frame print_digits 32
 frame print_number 32
+
+[vector_operations O0]
+insns 404
+spills 167
+calls 8
+branches 2
+frame main 736
+frame print_digits 64
+frame print_number 32
+
+[vector_operations O1]
+insns 354
+spills 48
+calls 8
+branches 2
+frame main 128
+frame print_digits 32
+frame print_number 16
+
+[vector_operations O2]
+insns 453
+spills 62
+calls 8
+branches 14
+frame main 192
+frame print_digits 32
+frame print_number 16
+
+[vector_operations O3]
+insns 453
+spills 59
+calls 8
+branches 14
+frame main 176
+frame print_digits 32
+frame print_number 16
 
 [void_tail_print O0]
 insns 132
