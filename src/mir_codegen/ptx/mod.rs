@@ -286,7 +286,7 @@ impl Kernel {
             }
             Instruction::InlineAsm { .. } => {
                 return Err(error(
-                    "inline assembly is not supported by the PTX backend; it is implemented for x86_64 Linux and s390x",
+                    "inline assembly is not supported by the PTX backend; it is implemented for x86_64, aarch64 and s390x",
                 ));
             }
             Instruction::VaStart { .. }

@@ -46,10 +46,10 @@ pub fn unsupported_thread_local(backend: &str) -> LaminaError {
 }
 
 /// The refusal a backend gives for inline assembly, whose operand placement and
-/// clobber names are target-specific and implemented for x86_64 Linux and s390x.
+/// clobber names are target-specific and implemented for x86_64, aarch64 and s390x.
 pub fn unsupported_inline_asm(backend: &str) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "inline assembly is not supported by the {backend} backend; it is implemented for x86_64 Linux and s390x"
+        "inline assembly is not supported by the {backend} backend; it is implemented for x86_64, aarch64 and s390x"
     )))
 }
 
@@ -67,6 +67,41 @@ pub fn reject_thread_local_globals(module: &MirModule, backend: &str) -> Result<
                 "thread-local storage is not supported by the {backend} backend; it is implemented for x86_64 and s390x (global '{name}')"
             ),
         ))),
+    }
+}
+
+/// The refusal for a thread-local global on a COFF or Mach-O target. Both need TLS
+/// relocations and sections that the ras 0.2.2 assembler cannot write.
+pub fn unsupported_thread_local_on_os(name: &str, target_os: TargetOperatingSystem) -> LaminaError {
+    let needs = if os_uses_macho(target_os) {
+        "__DATA,__thread_vars and @TLVP relocations"
+    } else {
+        "a TEB TLS-array load (%gs:0x58) and @SECREL32 relocations"
+    };
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+        "thread-local storage on {target_os:?} is not supported: '{name}' needs {needs}, which the ras 0.2.2 assembler cannot encode"
+    )))
+}
+
+/// Rejects a module with a thread-local global on a COFF or Mach-O target, before any
+/// code is written.
+pub fn reject_thread_local_globals_on_os(
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+) -> Result<(), LaminaError> {
+    if !(os_uses_coff(target_os) || os_uses_macho(target_os)) {
+        return Ok(());
+    }
+    let mut names: Vec<&str> = module
+        .globals
+        .iter()
+        .filter(|(_, global)| global.thread_local.is_some())
+        .map(|(name, _)| name.as_str())
+        .collect();
+    names.sort_unstable();
+    match names.first() {
+        None => Ok(()),
+        Some(name) => Err(unsupported_thread_local_on_os(name, target_os)),
     }
 }
 
@@ -732,12 +767,7 @@ fn place_function_assembly(
 ) -> Result<Vec<u8>, CodegenError> {
     let elf = os_uses_elf_visibility(target_os);
     let section = match (&func.sig.section, func.sig.placement) {
-        (Some(_), _) if !elf => {
-            return Err(CodegenError::UnsupportedFeature(format!(
-                "@section on '{func_name}' is only supported on ELF targets"
-            )));
-        }
-        (Some(name), _) => Some(name.clone()),
+        (Some(name), _) => Some(named_code_section(func_name, name, target_os)?),
         (None, Some(CodePlacement::Cold)) if elf => Some(format!(".text.unlikely.{func_name}")),
         (None, Some(CodePlacement::Hot)) if elf => Some(format!(".text.hot.{func_name}")),
         (None, _) => None,
@@ -758,6 +788,23 @@ fn place_function_assembly(
         placed.extend_from_slice(b"    .text\n");
     }
     Ok(placed)
+}
+
+/// The section a `@section` name places code in. COFF objects take any section name, and
+/// the assembler marks it as code. Mach-O objects have a fixed section set (`.text`,
+/// `.rodata`, `.data`, `.bss`) that ras 0.2.2 writes, so the only name it can place code in
+/// is `.text`, and any other name is refused.
+fn named_code_section(
+    func_name: &str,
+    name: &str,
+    target_os: TargetOperatingSystem,
+) -> Result<String, CodegenError> {
+    if os_uses_macho(target_os) && name != ".text" {
+        return Err(CodegenError::UnsupportedFeature(format!(
+            "@section '{name}' on '{func_name}' cannot be placed on {target_os:?}: the ras 0.2.2 assembler writes only .text, .rodata, .data and .bss into Mach-O objects"
+        )));
+    }
+    Ok(name.to_string())
 }
 
 /// ELF targets take `.internal`, `.hidden` and `.protected`. Mach-O has only
@@ -938,11 +985,7 @@ pub fn emit_global_data<W: Write>(
         let align_log2 = global.align.trailing_zeros();
         let size = global.size;
         if global.thread_local.is_some() && (os_uses_macho(target_os) || os_uses_coff(target_os)) {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                format!(
-                    "thread-local storage is implemented for ELF targets only; '{name}' cannot be placed on {target_os:?}"
-                ),
-            )));
+            return Err(unsupported_thread_local_on_os(name, target_os));
         }
         let (data_section, bss_section) = match global.thread_local {
             None => (data_section, bss_section),
@@ -2439,7 +2482,7 @@ entry:
         ] {
             let text = unsupported_inline_asm(backend).to_string();
             assert!(text.contains(backend), "{text}");
-            assert!(text.contains("x86_64 Linux and s390x"), "{text}");
+            assert!(text.contains("x86_64, aarch64 and s390x"), "{text}");
             assert!(!text.contains("x86_64 Linux only"), "{text}");
         }
     }

@@ -121,20 +121,13 @@ fn win64_variadic_stack_arguments_follow_the_home_space() {
 }
 
 #[test]
-fn win64_thread_local_and_custom_sections_are_refused() {
-    let error = assemble_for_windows(
-        "fn @f() -> i64 {\nentry:\n    ret.i64 0\n}\n@section(\".text.custom\")\nfn @placed() -> i64 {\nentry:\n    ret.i64 0\n}\n",
-    )
-    .expect_err("custom sections are refused off ELF");
-    assert!(error.contains("only supported on ELF targets"), "{error}");
+fn win64_thread_local_is_refused_with_the_relocations_it_needs() {
     let error = assemble_for_windows(
         "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
     )
-    .expect_err("thread locals are refused off ELF");
-    assert!(
-        error.contains("implemented for ELF targets only"),
-        "{error}"
-    );
+    .expect_err("thread locals are refused on Windows");
+    assert!(error.contains("@SECREL32"), "{error}");
+    assert!(error.contains("ras 0.2.2"), "{error}");
 }
 
 #[test]
@@ -1810,8 +1803,8 @@ fn thread_local_storage_is_refused_on_mach_o() {
     let mir = from_ir_x86_64(&ir, "tls").unwrap();
     let mut output = Vec::new();
     let error = generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::MacOS)
-        .expect_err("Mach-O has no .tbss");
-    assert!(error.to_string().contains("ELF targets only"), "{error}");
+        .expect_err("Mach-O thread locals are refused");
+    assert!(error.to_string().contains("@TLVP"), "{error}");
 }
 
 #[test]
@@ -1864,4 +1857,58 @@ fn a_stated_alignment_does_not_change_x86_64_code() {
         assemble("store.i32 %p, 1"),
         assemble("store.i32 %p, 1 align 1"),
     );
+}
+
+#[test]
+fn coff_section_attribute_places_code_in_the_named_section() {
+    let asm = assemble_for_windows(
+        "@section(\".text.custom\")\nfn @placed(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\n",
+    )
+    .unwrap();
+    assert!(
+        asm.contains("    .section .text.custom,\"ax\",@progbits\n"),
+        "{asm}"
+    );
+}
+
+#[test]
+fn macho_section_attribute_accepts_only_text() {
+    let mac_asm = |section: &str| {
+        let source = format!(
+            "@section(\"{section}\")\nfn @placed(i64 %x) -> i64 {{\nentry:\n    ret.i64 %x\n}}\n"
+        );
+        let ir = parse_module(&source).unwrap();
+        let mir = from_ir_x86_64(&ir, "macho_section").unwrap();
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::MacOS)
+            .map(|()| String::from_utf8(output).unwrap())
+    };
+    let asm = mac_asm(".text").unwrap();
+    assert!(
+        asm.contains("    .section .text,\"ax\",@progbits\n"),
+        "{asm}"
+    );
+    let error = mac_asm(".text.custom").unwrap_err().to_string();
+    assert!(error.contains("'.text.custom'"), "{error}");
+    assert!(error.contains("ras 0.2.2"), "{error}");
+}
+
+#[test]
+fn thread_local_globals_are_refused_on_windows_and_macho_before_any_code() {
+    let source = "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %x = load.i64 $t\n    ret.i64 %x\n}\n";
+    let ir = parse_module(source).unwrap();
+    let mir = from_ir_x86_64(&ir, "tls_refusal").unwrap();
+    for (os, needle) in [
+        (TargetOperatingSystem::Windows, "@SECREL32"),
+        (TargetOperatingSystem::MacOS, "@TLVP"),
+    ] {
+        let mut output = Vec::new();
+        let error = generate_mir_x86_64(&mir, &mut output, os)
+            .expect_err("thread-local global must be refused")
+            .to_string();
+        assert!(error.contains("'t'"), "{error}");
+        assert!(error.contains(needle), "{error}");
+        assert!(error.contains("ras 0.2.2"), "{error}");
+        assert!(output.is_empty(), "{os:?} wrote code before refusing");
+    }
 }
