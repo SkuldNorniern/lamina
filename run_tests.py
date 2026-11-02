@@ -164,6 +164,20 @@ def is_crash(code):
         return True
     return (code & 0xFFFFFFFF) >= 0xC0000000
 
+def record_crash(executable_path, code):
+    """Append a crashed binary to target/crashes.txt so CI can debug it.
+
+    A crash leaves no stdout and often no stderr, so the exit status alone says
+    nothing about where it died. The workflow re-runs these under a debugger.
+    """
+    try:
+        path = Path(__file__).parent / 'target' / 'crashes.txt'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(f"{executable_path}\t{describe_exit(code)}\n")
+    except OSError:
+        pass
+
 def execution_failure(stdout, stderr, code):
     parts = [describe_exit(code)]
     if stderr:
@@ -296,6 +310,7 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
     _, stdout, stderr, exit_code = run_program(argv, project_root, stdin_input)
 
     if is_crash(exit_code):
+        record_crash(executable_path, exit_code)
         return False, execution_failure(stdout, stderr, exit_code)
 
     # Return output lines (filter out empty lines and debug text)
@@ -304,6 +319,12 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
     return True, output_lines
 
 def run_tests(use_mir=False, target=None, report_only=False):
+    crashes = Path(__file__).parent / 'target' / 'crashes.txt'
+    try:
+        crashes.parent.mkdir(parents=True, exist_ok=True)
+        crashes.write_text('')
+    except OSError:
+        pass
     """Run all test cases and report results"""
     mode = "MIR assembly" if use_mir else "default"
     if target:

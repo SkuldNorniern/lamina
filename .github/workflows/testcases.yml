@@ -82,6 +82,42 @@ jobs:
         run: python3 run_tests.py --report-only
         if: runner.os != 'Linux'
 
+      # A crashed testcase writes no stdout and usually no stderr, so the exit
+      # status alone does not say where it died. run_tests.py lists the crashed
+      # binaries; re-run each under a debugger and print the system crash report.
+      - name: Crash reports
+        if: always()
+        shell: bash
+        run: |
+          list=target/crashes.txt
+          [ -s "$list" ] || { echo "no crashes recorded"; exit 0; }
+          echo "=== crashed binaries ==="
+          cat "$list"
+          while IFS=$'\t' read -r bin reason; do
+            [ -x "$bin" ] || continue
+            echo "=== $bin ($reason) ==="
+            case "${{ runner.os }}" in
+              macOS)
+                lldb --batch -o run -o 'bt all' -o quit -- "$bin" 2>&1 | tail -40
+                ;;
+              Linux)
+                if command -v gdb >/dev/null; then
+                  gdb -batch -ex run -ex 'bt' --args "$bin" 2>&1 | tail -40
+                fi
+                ;;
+              Windows)
+                echo "no debugger wired up on Windows yet"
+                ;;
+            esac
+          done < "$list"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            for f in ~/Library/Logs/DiagnosticReports/*.ips; do
+              [ -e "$f" ] || continue
+              echo "=== $f ==="
+              head -60 "$f"
+            done
+          fi
+
   # Static codegen metrics (instruction, spill, call, branch and frame counts per
   # testcase per opt level) compared against metrics/baseline-x86_64.txt. Any
   # difference fails this job. A codegen change therefore needs the baseline
