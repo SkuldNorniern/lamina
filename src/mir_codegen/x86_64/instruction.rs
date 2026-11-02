@@ -1303,17 +1303,14 @@ pub(super) fn emit_instruction_x86_64(
                         emit_io_result(writer, true, false)?;
                     }
                     TargetOperatingSystem::Windows => {
-                        // putchar returns the character written, or -1 on failure.
-                        writeln!(writer, "    movzbl (%rsp), %ecx")?;
+                        writeln!(writer, "    movq %rsp, %rdx")?;
+                        writeln!(writer, "    movq $1, %r8")?;
+                        writeln!(writer, "    movq ${}, %rcx", fd::STDOUT)?;
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        writeln!(writer, "    call putchar")?;
+                        writeln!(writer, "    call _write")?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        writeln!(writer, "    movl %eax, %ecx")?;
-                        writeln!(writer, "    movl $1, %eax")?;
-                        writeln!(writer, "    movl $-2, %edx")?;
-                        writeln!(writer, "    cmpl $-1, %ecx")?;
-                        writeln!(writer, "    cmovel %edx, %eax")?;
-                        writeln!(writer, "    cltq")?;
+                        writeln!(writer, "    movslq %eax, %rax")?;
+                        emit_io_result(writer, false, false)?;
                     }
                     TargetOperatingSystem::Linux => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
