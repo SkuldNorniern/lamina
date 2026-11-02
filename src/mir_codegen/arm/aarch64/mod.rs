@@ -5,8 +5,10 @@
 
 mod atomic;
 mod bit;
+mod overflow;
 mod simd;
 mod util;
+mod variadic;
 
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
@@ -22,8 +24,7 @@ use crate::mir_codegen::common::{
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, unsupported_inline_asm, unsupported_overflow_flag,
-    unsupported_thread_local,
+    reject_thread_local_globals, unsupported_inline_asm, unsupported_thread_local,
 };
 use crate::mir_codegen::simd::reserve_vector_slots;
 use lamina_mir::SourceLoc;
@@ -532,6 +533,10 @@ fn compile_single_function_aarch64_with(
         .map(|p| ArgKind::of(p.ty, p.aggregate, func.pointer_width))
         .collect();
     let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
+    let variadic_start = func.sig.variadic.then(|| {
+        let named = classify_aarch64_arguments(&param_kinds, target_os, None);
+        (16 + aarch64_stack_bytes(&named).next_multiple_of(8)) as i32
+    });
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
@@ -772,6 +777,7 @@ fn compile_single_function_aarch64_with(
                         func.sig.ret_aggregate,
                         func.sig.ret_ty.filter(|ty| ty.is_float()),
                         sret_slot,
+                        variadic_start,
                         func.pointer_width,
                     )?;
                 }
@@ -959,6 +965,7 @@ fn emit_block<W: Write>(
     ret_aggregate: Option<Aggregate>,
     ret_float: Option<MirType>,
     sret_slot: Option<i32>,
+    variadic_start: Option<i32>,
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     for inst in insts {
@@ -971,9 +978,14 @@ fn emit_block<W: Write>(
             MirInst::ThreadLocalAddr { .. } => {
                 return Err(unsupported_thread_local("AArch64"));
             }
-            MirInst::IntOverflow { .. } => {
-                return Err(unsupported_overflow_flag("AArch64"));
-            }
+            MirInst::IntOverflow {
+                op,
+                ty,
+                signed,
+                dst,
+                lhs,
+                rhs,
+            } => overflow::emit(w, *op, ty, *signed, dst, lhs, rhs, frame, ra, pointer_width)?,
             MirInst::SymbolAddress { dst, symbol } => {
                 let label = abi.mangle_function_name(symbol);
                 let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
@@ -1007,6 +1019,7 @@ fn emit_block<W: Write>(
                         ret_aggregate,
                         ret_float,
                         sret_slot,
+                        variadic_start,
                         pointer_width,
                     )?;
                 }
@@ -1934,11 +1947,7 @@ fn emit_block<W: Write>(
             | MirInst::VaArg { .. }
             | MirInst::VaEnd { .. }
             | MirInst::VaCopy { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    format!(
-                        "variadic argument `{inst}` is not yet supported by the AArch64 backend"
-                    ),
-                )));
+                variadic::emit(inst, w, frame, ra, abi.target_os(), variadic_start)?;
             }
             MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra)?,
             MirInst::AtomicLoad { .. }

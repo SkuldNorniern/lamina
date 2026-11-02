@@ -747,3 +747,116 @@ fn mach_o_io_intrinsics_report_a_failed_syscall_as_minus_two() -> Result<(), Box
     assert!(!assembly.contains("csel x0, x9, x0, cs"), "{assembly}");
     Ok(())
 }
+
+fn darwin_add_immediates(assembly: &str) -> Vec<&str> {
+    assembly
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("add ") && line.contains(", #"))
+        .collect()
+}
+
+#[test]
+fn darwin_variadic_callee_reads_its_arguments_from_the_stack() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let module = parse_module(
+        "fn @sum(i64 %n, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  %y = va_arg.i32 %ap\n  va_end %ap\n  %w = extend.i32.i64 %y\n  %s = add.i64 %x, %w\n  ret.i64 %s\n}\n",
+    )?;
+    let mir = from_ir_x86_64(&module, "darwin_va").expect("lower variadic callee");
+
+    let mut output = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::MacOS,
+        PointerWidth::Bits64,
+    )?;
+    let darwin = String::from_utf8(output)?;
+    assert!(
+        darwin_add_immediates(&darwin)
+            .iter()
+            .any(|line| line.ends_with("x29, #16")),
+        "{darwin}"
+    );
+    assert!(
+        darwin_add_immediates(&darwin)
+            .iter()
+            .any(|line| line.ends_with(", #8")),
+        "{darwin}"
+    );
+    assert!(darwin.contains("    sxtw "), "{darwin}");
+
+    let mut output = Vec::new();
+    let error = generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )
+    .err()
+    .ok_or("expected a rejection on Linux")?;
+    assert!(
+        error
+            .to_string()
+            .contains("is not yet supported by the AArch64 backend on Linux"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn darwin_variadic_area_starts_after_named_stack_arguments() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let module = parse_module(
+        "fn @f(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, i32 %i, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  va_end %ap\n  ret.i64 %x\n}\n",
+    )?;
+    let mir = from_ir_x86_64(&module, "darwin_va_named").expect("lower variadic callee");
+    let mut output = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::MacOS,
+        PointerWidth::Bits64,
+    )?;
+    let assembly = String::from_utf8(output)?;
+    assert!(
+        darwin_add_immediates(&assembly)
+            .iter()
+            .any(|line| line.ends_with("x29, #24")),
+        "{assembly}"
+    );
+    Ok(())
+}
+
+#[test]
+fn checked_arithmetic_reads_the_flags_or_the_widened_result() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let cases: [(&str, &str, &[&str]); 7] = [
+        ("add.ovf.i64", "i64", &["cmn ", ", vs"]),
+        ("add.ovf.u64", "i64", &["cmn ", ", cs"]),
+        ("sub.ovf.u64", "i64", &["cmp ", ", cc"]),
+        ("mul.ovf.i64", "i64", &["smulh ", "asr #63"]),
+        ("mul.ovf.u64", "i64", &["umulh "]),
+        ("mul.ovf.i32", "i32", &["sbfx ", "mul "]),
+        ("add.ovf.u8", "i8", &["ubfx ", "cset "]),
+    ];
+    for (op, ty, expected) in cases {
+        let source = format!(
+            "fn @main({ty} %a, {ty} %b) -> i64 {{\nentry:\n  %f = {op} %a, %b\n  %e = extend.bool.i64 %f\n  ret.i64 %e\n}}\n"
+        );
+        let module = parse_module(&source)?;
+        let mir = from_ir_x86_64(&module, "ovf").expect("lower checked arithmetic");
+        let mut output = Vec::new();
+        generate_mir_aarch64(
+            &mir,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            PointerWidth::Bits64,
+        )?;
+        let assembly = String::from_utf8(output)?;
+        for line in expected {
+            assert!(assembly.contains(line), "{op} lacks `{line}`:\n{assembly}");
+        }
+    }
+    Ok(())
+}
