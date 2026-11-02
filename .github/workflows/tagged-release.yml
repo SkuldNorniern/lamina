@@ -128,16 +128,18 @@ jobs:
           # The C SDK archives are named by lamina-c, which versions separately.
           echo "sdk_version=$(manifest_version lamina-c/Cargo.toml)" >> "$GITHUB_OUTPUT"
 
+      # The notes are rewritten two steps down, so nothing here generates a
+      # changelog. Walking every commit back to the previous tag is what broke
+      # this step on v0.2.0.
       - name: Publish release (permanent — never deleted)
-        id: auto_release
-        uses: "marvinpinto/action-automatic-releases@latest"
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
-          title: "Lamina ${{ github.ref_name }}"
-          files: |
-            artifacts/lamina
-            artifacts/*.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Lamina ${GITHUB_REF_NAME}" \
+            --notes "Release notes follow." \
+            artifacts/lamina \
+            artifacts/*.tar.gz \
             artifacts/*.sha256
 
       - name: Generate release notes from conventional commits
