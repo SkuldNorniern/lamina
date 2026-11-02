@@ -35,6 +35,8 @@ ROOT = Path(__file__).resolve().parent.parent
 METRICS_DIR = ROOT / "metrics"
 BASELINE = METRICS_DIR / "baseline-x86_64.txt"
 TESTCASES = ROOT / "testcases"
+# Kept in step with CROSS_TARGETS and HOST_VARIANTS in run_tests.py.
+VARIANT_SUFFIXES = ("s390x_linux", "aarch64_linux", "aarch64_macos", "x86_64_windows")
 COMPILER = ROOT / "target" / "release" / ("lamina.exe" if os.name == "nt" else "lamina")
 TARGET = "x86_64_linux"
 LEVELS = (0, 1, 2, 3)
@@ -131,7 +133,14 @@ def compile_one(source, level, tmpdir, compiler):
 
 
 def testcase_sources():
-    return {p.stem: p for p in sorted(TESTCASES.glob("*.lamina"))}
+    """Base testcases only. `<name>.<target>.lamina` is a per-target variant of
+    another testcase, and is compiled for that target rather than x86_64."""
+    variants = {t for t in VARIANT_SUFFIXES}
+    return {
+        p.stem: p
+        for p in sorted(TESTCASES.glob("*.lamina"))
+        if p.stem.rpartition(".")[2] not in variants or "." not in p.stem
+    }
 
 
 def benchmark_sources():
@@ -147,7 +156,9 @@ def collect(sources=None, compiler=COMPILER):
         sources = testcase_sources()
     names = sorted(sources)
     results = {}
-    with tempfile.TemporaryDirectory(prefix="lamina-metrics-") as tmpdir:
+    scratch = ROOT / "target" / "metrics"
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="run-", dir=scratch) as tmpdir:
         jobs = [(n, lv) for n in names for lv in LEVELS]
         with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
             futures = {pool.submit(compile_one, sources[n], lv, tmpdir, compiler): (n, lv) for n, lv in jobs}
