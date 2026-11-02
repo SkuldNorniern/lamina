@@ -250,7 +250,13 @@ pub(super) fn compile_single_function_x86_64(
         .filter(|aggregate| returns_through_pointer(*aggregate, target_os));
     let sret_slot = sret.map(|_| X86Frame::calculate_stack_offset(total_slots + saved_regs.len()));
     let va_base = total_slots + saved_regs.len() + usize::from(sret.is_some());
-    let va_area = if func.sig.variadic && target_os != TargetOperatingSystem::Windows {
+    let va_area = if !func.sig.variadic {
+        None
+    } else if target_os == TargetOperatingSystem::Windows {
+        Some(VaArea::win64(
+            func.sig.params.len() + usize::from(sret.is_some()),
+        ))
+    } else {
         let descs: Vec<ArgDesc> = func
             .sig
             .params
@@ -262,15 +268,9 @@ pub(super) fn compile_single_function_x86_64(
             .collect();
         let locations = classify_argument_descs_with_sret(&descs, target_os, sret.is_some());
         let save = X86Frame::calculate_stack_offset(va_base + SAVE_AREA_SLOTS - 1);
-        Some(VaArea::new(save, &locations))
-    } else {
-        None
+        Some(VaArea::sysv(save, &locations))
     };
-    let va_slots = if va_area.is_some() {
-        SAVE_AREA_SLOTS
-    } else {
-        0
-    };
+    let va_slots = va_area.as_ref().map_or(0, VaArea::save_slots);
     let stack_size = (va_base + va_slots) * 8;
     let has_frame = !naked
         && (settings.regalloc == RegallocStrategy::Incremental

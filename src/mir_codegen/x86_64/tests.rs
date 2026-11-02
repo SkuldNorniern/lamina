@@ -55,6 +55,88 @@ fn calls_that_may_be_variadic_report_vector_count_in_al() {
     assert!(!before("    call known").contains("%eax"), "{assembly}");
 }
 
+fn assemble_for_windows(source: &str) -> Result<String, String> {
+    let ir = parse_module(source).unwrap();
+    let mir = from_ir_x86_64(&ir, "win64").unwrap();
+    let mut output = Vec::new();
+    generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Windows)
+        .map_err(|error| error.to_string())?;
+    Ok(String::from_utf8(output).unwrap())
+}
+
+const WIN64_VARIADIC_SUM: &str = "fn @sum(i64 %n, ...) -> i64 {\nentry:\n    %ap = stackalloc.valist\n    va_start %ap\n    %x = va_arg.i64 %ap\n    %y = va_arg.f64 %ap\n    va_end %ap\n    %yi = fptoint.f64.i64 %y\n    %r = add.i64 %n, %x\n    %s = add.i64 %r, %yi\n    ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n    %a = call @sum(1, 2, 2.5)\n    ret.i64 %a\n}\n";
+
+#[test]
+fn win64_variadic_callee_spills_all_four_argument_registers_into_home_space() {
+    let assembly = assemble_for_windows(WIN64_VARIADIC_SUM).unwrap();
+    let sum = assembly.split("\nsum:\n").nth(1).unwrap();
+    for (offset, reg) in [(16, "rcx"), (24, "rdx"), (32, "r8"), (40, "r9")] {
+        assert!(
+            sum.contains(&format!("    movq %{reg}, {offset}(%rbp)")),
+            "{sum}"
+        );
+    }
+    assert!(!sum.contains("%al"), "{sum}");
+    assert!(!sum.contains("movups"), "{sum}");
+}
+
+#[test]
+fn win64_va_list_is_a_pointer_to_the_first_variadic_slot() {
+    let assembly = assemble_for_windows(WIN64_VARIADIC_SUM).unwrap();
+    let sum = assembly.split("\nsum:\n").nth(1).unwrap();
+    assert!(
+        sum.contains("    leaq 24(%rbp), %rax\n    movq %rax, (%rcx)"),
+        "{sum}"
+    );
+    assert_eq!(sum.matches("    addq $8, (%rcx)").count(), 2, "{sum}");
+    assert!(sum.contains("    movq (%rdx), %rax"), "{sum}");
+}
+
+#[test]
+fn win64_variadic_call_passes_each_float_in_its_xmm_and_general_register() {
+    let assembly = assemble_for_windows(WIN64_VARIADIC_SUM).unwrap();
+    let main = assembly.split("\nsum:\n").next().unwrap();
+    assert!(main.contains("    movq %xmm2, %r8\n    call sum"), "{main}");
+    assert!(
+        main.contains("    movq $1, %rcx\n    movq $2, %rdx"),
+        "{main}"
+    );
+}
+
+#[test]
+fn win64_variadic_stack_arguments_follow_the_home_space() {
+    let assembly = assemble_for_windows(
+        "fn @count(i64 %n, ...) -> i64 {\nentry:\n    %ap = stackalloc.valist\n    va_start %ap\n    %x = va_arg.i64 %ap\n    va_end %ap\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %a = call @count(0, 1, 2, 3, 4, 5)\n    ret.i64 %a\n}\n",
+    )
+    .unwrap();
+    let main = assembly.split("\nmain:\n").nth(1).unwrap();
+    assert!(
+        main.contains("    movq $4, %rax\n    movq %rax, 32(%rsp)"),
+        "{main}"
+    );
+    assert!(
+        main.contains("    movq $5, %rax\n    movq %rax, 40(%rsp)"),
+        "{main}"
+    );
+}
+
+#[test]
+fn win64_thread_local_and_custom_sections_are_refused() {
+    let error = assemble_for_windows(
+        "fn @f() -> i64 {\nentry:\n    ret.i64 0\n}\n@section(\".text.custom\")\nfn @placed() -> i64 {\nentry:\n    ret.i64 0\n}\n",
+    )
+    .expect_err("custom sections are refused off ELF");
+    assert!(error.contains("only supported on ELF targets"), "{error}");
+    let error = assemble_for_windows(
+        "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
+    )
+    .expect_err("thread locals are refused off ELF");
+    assert!(
+        error.contains("implemented for ELF targets only"),
+        "{error}"
+    );
+}
+
 #[test]
 fn rotated_loops_with_shared_exit_branch_back_conditionally() {
     let ir = parse_module(

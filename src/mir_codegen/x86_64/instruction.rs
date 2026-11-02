@@ -1,4 +1,4 @@
-use super::variadic::SAVE_AREA_SLOTS;
+use super::variadic::VaArea;
 use super::*;
 use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::{align_up, unsupported_io};
@@ -13,9 +13,9 @@ fn restore_saved_registers<W: Write>(
     stack_size: usize,
     saved_regs: &[&str],
     sret: bool,
-    variadic: bool,
+    va_area: Option<&VaArea>,
 ) -> Result<(), Error> {
-    let trailing = usize::from(sret) + if variadic { SAVE_AREA_SLOTS } else { 0 };
+    let trailing = usize::from(sret) + va_area.map_or(0, VaArea::save_slots);
     let first_slot = stack_size / 8 - saved_regs.len() - trailing;
     for (index, reg) in saved_regs.iter().enumerate() {
         let offset = X86Frame::calculate_stack_offset(first_slot + index);
@@ -33,6 +33,24 @@ fn widen_external_argument<W: Write>(
 ) -> Result<(), LaminaError> {
     if let Some((width, signed)) = abi_extensions.external_argument(callee, index) {
         extend_integer(writer, register, width, signed)?;
+    }
+    Ok(())
+}
+
+/// Win64 passes a float in its xmm register and in the general register of the same
+/// position, so a variadic callee that reads it as an integer finds it there. Run after
+/// every general register is loaded, since the copies write argument registers.
+fn duplicate_win64_float_arguments(
+    writer: &mut impl Write,
+    locations: &[ArgLocation],
+    arg_regs: &[&str],
+) -> Result<(), LaminaError> {
+    for location in locations {
+        if let ArgLocation::Xmm(xmm) = location
+            && let Some(gpr) = arg_regs.get(*xmm)
+        {
+            writeln!(writer, "    movq %xmm{xmm}, %{gpr}")?;
+        }
     }
     Ok(())
 }
@@ -1672,6 +1690,9 @@ pub(super) fn emit_instruction_x86_64(
                         )?;
                     }
                 }
+                if target_os == TargetOperatingSystem::Windows {
+                    duplicate_win64_float_arguments(writer, &locations, arg_regs)?;
+                }
 
                 for (index, at) in copy_offsets.iter().enumerate() {
                     if let (Some(at), ArgLocation::Gpr(gpr)) = (*at, &locations[index]) {
@@ -1991,15 +2012,7 @@ pub(super) fn emit_instruction_x86_64(
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }
         | MirInst::VaCopy { .. } => {
-            super::variadic::emit(
-                inst,
-                writer,
-                reg_alloc,
-                stack_slots,
-                va_area,
-                target_os,
-                func_name,
-            )?;
+            super::variadic::emit(inst, writer, reg_alloc, stack_slots, va_area, func_name)?;
         }
         MirInst::TailCall { name, args } if name == func_name => {
             // Self tail call: move the arguments straight into the parameter homes as a
@@ -2108,7 +2121,7 @@ pub(super) fn emit_instruction_x86_64(
                     stack_size,
                     saved_regs,
                     sret_slot.is_some(),
-                    va_area.is_some(),
+                    va_area,
                 )?;
                 if has_frame {
                     X86Frame::generate_epilogue(writer, stack_size, unwind)?;
@@ -2150,14 +2163,11 @@ pub(super) fn emit_instruction_x86_64(
                     widen_external_argument(writer, abi_extensions, name, index, arg_regs[*gpr])?;
                 }
             }
+            if target_os == TargetOperatingSystem::Windows {
+                duplicate_win64_float_arguments(writer, &locations, arg_regs)?;
+            }
 
-            restore_saved_registers(
-                writer,
-                stack_size,
-                saved_regs,
-                sret_slot.is_some(),
-                va_area.is_some(),
-            )?;
+            restore_saved_registers(writer, stack_size, saved_regs, sret_slot.is_some(), va_area)?;
             if unwind {
                 writeln!(writer, "    .cfi_remember_state")?;
             }
@@ -2466,6 +2476,9 @@ pub(super) fn emit_instruction_x86_64(
                 reg_alloc,
                 stack_slots,
             )?;
+            if target_os == TargetOperatingSystem::Windows {
+                duplicate_win64_float_arguments(writer, &locations, arg_regs)?;
+            }
 
             if target_os != TargetOperatingSystem::Windows {
                 // al carries the vector-register count for a variadic callee, and a
@@ -2693,13 +2706,7 @@ pub(super) fn emit_instruction_x86_64(
                 }
             }
             // Epilogue
-            restore_saved_registers(
-                writer,
-                stack_size,
-                saved_regs,
-                sret_slot.is_some(),
-                va_area.is_some(),
-            )?;
+            restore_saved_registers(writer, stack_size, saved_regs, sret_slot.is_some(), va_area)?;
             if has_frame {
                 X86Frame::generate_epilogue(writer, stack_size, unwind)?;
             } else {
