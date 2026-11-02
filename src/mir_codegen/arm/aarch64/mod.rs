@@ -5,6 +5,7 @@
 
 mod atomic;
 mod bit;
+mod inline_asm;
 mod overflow;
 mod simd;
 mod util;
@@ -23,9 +24,7 @@ use crate::mir_codegen::common::{
     self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
-use crate::mir_codegen::common::{
-    reject_thread_local_globals, unsupported_inline_asm, unsupported_thread_local,
-};
+use crate::mir_codegen::common::{reject_thread_local_globals, unsupported_thread_local};
 use crate::mir_codegen::simd::reserve_vector_slots;
 use lamina_mir::SourceLoc;
 
@@ -1956,7 +1955,7 @@ fn emit_block<W: Write>(
             | MirInst::AtomicCompareExchange { .. }
             | MirInst::Fence { .. } => atomic::emit(inst, w, frame, ra, pointer_width)?,
             MirInst::InlineAsm { .. } => {
-                return Err(unsupported_inline_asm("AArch64"));
+                inline_asm::emit(inst, w, frame, ra, pointer_width)?;
             }
         }
     }
