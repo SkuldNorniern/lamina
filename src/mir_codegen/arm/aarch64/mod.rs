@@ -481,13 +481,6 @@ fn compile_single_function_aarch64_with(
                 }
             };
             plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
-            for (v, a) in &plan {
-                if reserved.is_none()
-                    && let MirAllocation::Spill(off) = a
-                {
-                    frame.slots.insert(Register::Virtual(*v), *off);
-                }
-            }
             frame.recompute_frame_size_from_slots();
             Some(plan)
         } else {
