@@ -55,6 +55,7 @@ CROSS_TARGETS = {
 HOST_VARIANTS = {
     ('Darwin', 'arm64'): 'aarch64_macos',
     ('Linux', 'aarch64'): 'aarch64_linux',
+    ('Windows', 'AMD64'): 'x86_64_windows',
 }
 
 VARIANT_TARGETS = set(CROSS_TARGETS) | set(HOST_VARIANTS.values())

@@ -1,0 +1,30 @@
+# per-thread storage under the local-exec model
+@thread_local global $counter: i64 = 0
+global $seen: i64 = 0
+
+@extern fn @CreateThread(ptr %attrs, i64 %stack, ptr %f, ptr %arg, i32 %flags, ptr %id) -> ptr
+@extern fn @WaitForSingleObject(ptr %handle, i32 %ms) -> i32
+
+fn @worker(ptr %arg) -> ptr {
+  entry:
+    store.i64 $counter, 7
+    %v = load.i64 $counter
+    store.i64 $seen, %v
+    ret.ptr 0
+}
+
+fn @main() -> i64 {
+  entry:
+    store.i64 $counter, 5
+    %f = funcaddr @worker
+    %h = call @CreateThread(0, 0, %f, 0, 0, 0)
+    %wr = call @WaitForSingleObject(%h, -1)
+    %mine = load.i64 $counter
+    %theirs = load.i64 $seen
+    %d1 = add.i64 %mine, 48
+    %w1 = writebyte %d1
+    %d2 = add.i64 %theirs, 48
+    %w2 = writebyte %d2
+    %nl = writebyte 10
+    ret.i64 0
+}
