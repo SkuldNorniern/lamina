@@ -9107,6 +9107,18 @@ branches 1
 frame clobber 16
 frame main 16
 
+[inline_asm_clobber.aarch64_linux O0]
+status compile-failed
+
+[inline_asm_clobber.aarch64_linux O1]
+status compile-failed
+
+[inline_asm_clobber.aarch64_linux O2]
+status compile-failed
+
+[inline_asm_clobber.aarch64_linux O3]
+status compile-failed
+
 [inline_asm_clobber.s390x_linux O0]
 status compile-failed
 
@@ -9146,6 +9158,18 @@ spills 14
 calls 0
 branches 2
 frame main 32
+
+[inline_asm_loop.aarch64_linux O0]
+status compile-failed
+
+[inline_asm_loop.aarch64_linux O1]
+status compile-failed
+
+[inline_asm_loop.aarch64_linux O2]
+status compile-failed
+
+[inline_asm_loop.aarch64_linux O3]
+status compile-failed
 
 [inline_asm_loop.s390x_linux O0]
 status compile-failed
@@ -9187,6 +9211,18 @@ calls 0
 branches 2
 frame main 16
 
+[inline_asm_pressure.aarch64_linux O0]
+status compile-failed
+
+[inline_asm_pressure.aarch64_linux O1]
+status compile-failed
+
+[inline_asm_pressure.aarch64_linux O2]
+status compile-failed
+
+[inline_asm_pressure.aarch64_linux O3]
+status compile-failed
+
 [inline_asm_pressure.s390x_linux O0]
 status compile-failed
 
@@ -9227,6 +9263,18 @@ calls 0
 branches 1
 frame main 16
 
+[inline_asm_rdtsc.aarch64_linux O0]
+status compile-failed
+
+[inline_asm_rdtsc.aarch64_linux O1]
+status compile-failed
+
+[inline_asm_rdtsc.aarch64_linux O2]
+status compile-failed
+
+[inline_asm_rdtsc.aarch64_linux O3]
+status compile-failed
+
 [inline_asm_unused O0]
 insns 93
 spills 17
@@ -9254,6 +9302,18 @@ spills 8
 calls 0
 branches 1
 frame main 16
+
+[inline_asm_unused.aarch64_linux O0]
+status compile-failed
+
+[inline_asm_unused.aarch64_linux O1]
+status compile-failed
+
+[inline_asm_unused.aarch64_linux O2]
+status compile-failed
+
+[inline_asm_unused.aarch64_linux O3]
+status compile-failed
 
 [inline_asm_unused.s390x_linux O0]
 status compile-failed
