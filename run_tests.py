@@ -40,6 +40,13 @@ CROSS_TARGETS = {
         'sysroot': '/usr/s390x-linux-gnu',
         'unsupported': S390X_UNSUPPORTED,
     },
+    'aarch64_linux': {
+        'byteorder': 'little',
+        'compiler': 'aarch64-linux-gnu-gcc',
+        'emulator': 'qemu-aarch64-static',
+        'sysroot': '/usr/aarch64-linux-gnu',
+        'unsupported': {},
+    },
 }
 
 def variant_target(test_path):

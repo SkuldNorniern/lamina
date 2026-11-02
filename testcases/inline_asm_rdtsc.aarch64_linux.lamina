@@ -1,0 +1,18 @@
+# The generic timer counter is read twice with a delay between; it must not go backwards
+fn @main() -> i64 {
+entry:
+  %a = asm.i64 "mrs $0, cntvct_el0", out(reg)
+  %b = asm.i64 "mov x9, #1000\n1: subs x9, x9, #1\nb.ne 1b\nmrs $0, cntvct_el0", out(reg), clobber(x9, flags)
+  %d = sub.i64 %b, %a
+  %ok = gt.i64 %d, 0
+  br %ok, good, bad
+good:
+  %o = writebyte 79
+  %k = writebyte 75
+  %n = writebyte 10
+  ret.i64 0
+bad:
+  %f = writebyte 70
+  %n2 = writebyte 10
+  ret.i64 1
+}
