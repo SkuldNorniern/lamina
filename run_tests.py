@@ -5,6 +5,7 @@ Runs test cases and verifies their expected outputs.
 """
 
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -49,11 +50,24 @@ CROSS_TARGETS = {
     },
 }
 
+# A native run compiles for the host with no --target, so it takes the variant for
+# the host's own target. Keyed by (platform.system(), platform.machine()).
+HOST_VARIANTS = {
+    ('Darwin', 'arm64'): 'aarch64_macos',
+    ('Linux', 'aarch64'): 'aarch64_linux',
+}
+
+VARIANT_TARGETS = set(CROSS_TARGETS) | set(HOST_VARIANTS.values())
+
+def host_variant():
+    """The variant a native run on this machine selects, or None."""
+    return HOST_VARIANTS.get((platform.system(), platform.machine()))
+
 def variant_target(test_path):
     """The target that `<name>.<target>.lamina` is a variant for, or None for a base testcase."""
     stem = Path(test_path).stem
     _, dot, suffix = stem.rpartition('.')
-    return suffix if dot and suffix in CROSS_TARGETS else None
+    return suffix if dot and suffix in VARIANT_TARGETS else None
 
 def testcase_source(test_path, target=None):
     """The file to compile for `target`: its variant when one exists, else the testcase."""
@@ -263,7 +277,7 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
     # Compile the test
     cmd_flags = "--emit-asm" if use_mir else ""
     target_flag = f"--target {target}" if target else ""
-    source_path = testcase_source(test_path, target)
+    source_path = testcase_source(test_path, target or host_variant())
     compile_cmd = (
         f'cargo run --release --quiet -- {source_path} {cmd_flags} {target_flag} -o "{executable_path}"'
     )

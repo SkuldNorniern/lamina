@@ -1,0 +1,26 @@
+# A callee clobbers x19 and x20 and must restore them; a value live across the call survives
+fn @clobber() -> i64 {
+entry:
+  asm.void "mov x19, #99\nmov x20, #98", clobber(x19, x20)
+  ret.i64 7
+}
+
+fn @main() -> i64 {
+entry:
+  %a = add.i64 40, 0
+  %c = call @clobber()
+  %s = add.i64 %a, %c
+  asm.void "mov x19, #77", clobber(x19)
+  %t = add.i64 %s, 0
+  %ok = eq.i64 %t, 47
+  br %ok, good, bad
+good:
+  %o = writebyte 79
+  %k = writebyte 75
+  %nl = writebyte 10
+  ret.i64 0
+bad:
+  %f = writebyte 70
+  %nl2 = writebyte 10
+  ret.i64 1
+}
