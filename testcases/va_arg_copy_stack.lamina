@@ -29,7 +29,7 @@ entry:
 @extern
 fn @printf(ptr %fmt, ...) -> i32
 
-global $fmt: [5 x i8] = "%ld\n"
+global $fmt: [6 x i8] = "%lld\n"
 
 fn @main() -> i64 {
 entry:
