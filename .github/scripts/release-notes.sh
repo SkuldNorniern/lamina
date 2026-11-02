@@ -19,8 +19,12 @@ fi
 
 KNOWN='feat|fix|perf|refactor|docs|test|style|ci|chore|build|revert'
 
+# `@name` in a subject is Lamina IR annotation syntax, but GitHub renders it in
+# release notes as a mention of whoever owns that username. Wrap those in a code
+# span, which GitHub does not linkify.
 subjects() {
-  git log "$RANGE" --no-merges --pretty=format:'%s'
+  git log "$RANGE" --no-merges --pretty=format:'%s' \
+    | sed -E 's/(^|[^`[:alnum:]_])@([A-Za-z_][A-Za-z0-9_-]*)/\1`@\2`/g'
 }
 
 # Scopes are kept and rendered in bold, so `fix(parser): x` reads
