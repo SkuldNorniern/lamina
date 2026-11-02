@@ -1998,6 +1998,7 @@ fn load_reg_to<W: Write>(
                     let mut addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     if addr == dest {
                         if let Some(other) = ra.alloc_scratch() {
+                            ra.free_scratch(addr);
                             addr = other;
                         } else {
                             addr = if dest != "x11" { "x11" } else { "x10" };
@@ -2048,6 +2049,7 @@ fn store_result<W: Write>(
                     let mut addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     if addr == src_reg {
                         if let Some(other) = ra.alloc_scratch() {
+                            ra.free_scratch(addr);
                             addr = other;
                         } else {
                             addr = if src_reg != "x11" { "x11" } else { "x10" };
