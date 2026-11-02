@@ -121,13 +121,35 @@ fn win64_variadic_stack_arguments_follow_the_home_space() {
 }
 
 #[test]
-fn win64_thread_local_is_refused_with_the_relocations_it_needs() {
-    let error = assemble_for_windows(
+fn win64_thread_local_uses_the_tls_index_sequence_and_secrel() {
+    let asm = assemble_for_windows(
         "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
     )
-    .expect_err("thread locals are refused on Windows");
-    assert!(error.contains("@SECREL32"), "{error}");
-    assert!(error.contains("does not emit"), "{error}");
+    .unwrap();
+    assert!(asm.contains("\n.section .tls$,\"aw\"\n"), "{asm}");
+    assert!(asm.contains("\n    .zero 8\n"), "{asm}");
+    assert!(asm.contains("    movq %gs:0x58, %rax\n"), "{asm}");
+    assert!(asm.contains("    movl _tls_index(%rip), %ecx\n"), "{asm}");
+    assert!(asm.contains("    movq (%rax,%rcx,8), %rax\n"), "{asm}");
+    assert!(asm.contains("    leaq t@SECREL32(%rax), %rax\n"), "{asm}");
+    assert!(!asm.contains("_tls_index:"), "{asm}");
+    assert!(!asm.contains("_tls_used"), "{asm}");
+}
+
+#[test]
+fn win64_thread_local_alignment_above_eight_is_refused_before_any_code() {
+    let ir = parse_module(
+        "@align(16)\n@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n",
+    )
+    .unwrap();
+    let mir = from_ir_x86_64(&ir, "tls_align").unwrap();
+    let mut output = Vec::new();
+    let error = generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Windows)
+        .expect_err("a 16-byte thread-local is refused on Windows")
+        .to_string();
+    assert!(error.contains("'t'"), "{error}");
+    assert!(error.contains("16 bytes"), "{error}");
+    assert!(output.is_empty());
 }
 
 #[test]
@@ -1872,7 +1894,7 @@ fn coff_section_attribute_places_code_in_the_named_section() {
 }
 
 #[test]
-fn macho_section_attribute_accepts_only_text() {
+fn macho_section_attribute_maps_text_names_and_refuses_the_rest() {
     let mac_asm = |section: &str| {
         let source = format!(
             "@section(\"{section}\")\nfn @placed(i64 %x) -> i64 {{\nentry:\n    ret.i64 %x\n}}\n"
@@ -1888,27 +1910,29 @@ fn macho_section_attribute_accepts_only_text() {
         asm.contains("    .section .text,\"ax\",@progbits\n"),
         "{asm}"
     );
-    let error = mac_asm(".text.custom").unwrap_err().to_string();
-    assert!(error.contains("'.text.custom'"), "{error}");
-    assert!(error.contains("ras 0.2.2"), "{error}");
+    let asm = mac_asm(".text.custom").unwrap();
+    assert!(
+        asm.contains("    .section __TEXT,__custom,regular,pure_instructions\n"),
+        "{asm}"
+    );
+    for name in [".rodata", ".text.", ".text.sixteen_chars_xx"] {
+        let error = mac_asm(name).unwrap_err().to_string();
+        assert!(error.contains(&format!("'{name}'")), "{error}");
+        assert!(error.contains("16 bytes"), "{error}");
+    }
 }
 
 #[test]
-fn thread_local_globals_are_refused_on_windows_and_macho_before_any_code() {
+fn thread_local_globals_are_refused_on_macho_before_any_code() {
     let source = "@thread_local global $t: i64 = 0\nfn @main() -> i64 {\nentry:\n    %x = load.i64 $t\n    ret.i64 %x\n}\n";
     let ir = parse_module(source).unwrap();
     let mir = from_ir_x86_64(&ir, "tls_refusal").unwrap();
-    for (os, needle) in [
-        (TargetOperatingSystem::Windows, "@SECREL32"),
-        (TargetOperatingSystem::MacOS, "@TLVP"),
-    ] {
-        let mut output = Vec::new();
-        let error = generate_mir_x86_64(&mir, &mut output, os)
-            .expect_err("thread-local global must be refused")
-            .to_string();
-        assert!(error.contains("'t'"), "{error}");
-        assert!(error.contains(needle), "{error}");
-        assert!(error.contains("does not emit"), "{error}");
-        assert!(output.is_empty(), "{os:?} wrote code before refusing");
-    }
+    let mut output = Vec::new();
+    let error = generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::MacOS)
+        .expect_err("thread-local global must be refused on Mach-O")
+        .to_string();
+    assert!(error.contains("'t'"), "{error}");
+    assert!(error.contains("@TLVP"), "{error}");
+    assert!(error.contains("does not emit"), "{error}");
+    assert!(output.is_empty(), "wrote code before refusing");
 }

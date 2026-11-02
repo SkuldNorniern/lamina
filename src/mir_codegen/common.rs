@@ -70,8 +70,8 @@ pub fn reject_thread_local_globals(module: &MirModule, backend: &str) -> Result<
     }
 }
 
-/// The refusal for a thread-local global on a COFF or Mach-O target that the x86_64
-/// backend does not emit. Both need TLS relocations and sections it never writes.
+/// The refusal for a thread-local global on a target whose TLS layout the backend does not
+/// emit.
 pub fn unsupported_thread_local_on_os(name: &str, target_os: TargetOperatingSystem) -> LaminaError {
     let needs = if os_uses_macho(target_os) {
         "__DATA,__thread_vars and @TLVP relocations"
@@ -79,8 +79,39 @@ pub fn unsupported_thread_local_on_os(name: &str, target_os: TargetOperatingSyst
         "a TEB TLS-array load (%gs:0x58) and @SECREL32 relocations"
     };
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "thread-local storage on {target_os:?} is not supported: '{name}' needs {needs}, which the x86_64 backend does not emit"
+        "thread-local storage on {target_os:?} is not supported: '{name}' needs {needs}, which this backend does not emit"
     )))
+}
+
+/// Rejects the thread-local globals the x86_64 backend cannot place on a target, before any
+/// code is written. Mach-O needs TLV descriptors it does not write. COFF takes `.tls$` data
+/// aligned to at most 8 bytes, since the TLS directory weld builds has no room for more.
+pub fn reject_x86_64_thread_local_globals(
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+) -> Result<(), LaminaError> {
+    let mut globals: Vec<(&str, usize)> = module
+        .globals
+        .iter()
+        .filter(|(_, global)| global.thread_local.is_some())
+        .map(|(name, global)| (name.as_str(), global.align))
+        .collect();
+    globals.sort_unstable();
+    if os_uses_macho(target_os)
+        && let Some((name, _)) = globals.first()
+    {
+        return Err(unsupported_thread_local_on_os(name, target_os));
+    }
+    if os_uses_coff(target_os)
+        && let Some((name, align)) = globals.iter().find(|(_, align)| *align > 8)
+    {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "thread-local '{name}' is aligned to {align} bytes, but the .tls$ section takes at most 8-byte alignment on {target_os:?}"
+            ),
+        )));
+    }
+    Ok(())
 }
 
 /// Rejects a module with a thread-local global on a COFF or Mach-O target, before any
@@ -767,9 +798,13 @@ fn place_function_assembly(
 ) -> Result<Vec<u8>, CodegenError> {
     let elf = os_uses_elf_visibility(target_os);
     let section = match (&func.sig.section, func.sig.placement) {
-        (Some(name), _) => Some(named_code_section(func_name, name, target_os)?),
-        (None, Some(CodePlacement::Cold)) if elf => Some(format!(".text.unlikely.{func_name}")),
-        (None, Some(CodePlacement::Hot)) if elf => Some(format!(".text.hot.{func_name}")),
+        (Some(name), _) => Some(code_section_directive(func_name, name, target_os)?),
+        (None, Some(CodePlacement::Cold)) if elf => Some(format!(
+            "    .section .text.unlikely.{func_name},\"ax\",@progbits\n"
+        )),
+        (None, Some(CodePlacement::Hot)) if elf => Some(format!(
+            "    .section .text.hot.{func_name},\"ax\",@progbits\n"
+        )),
         (None, _) => None,
     };
     if section.is_none() && func.sig.align.is_none() {
@@ -777,7 +812,7 @@ fn place_function_assembly(
     }
     let mut placed = Vec::new();
     if let Some(section) = &section {
-        placed.extend_from_slice(format!("    .section {section},\"ax\",@progbits\n").as_bytes());
+        placed.extend_from_slice(section.as_bytes());
     }
     if let Some(alignment) = func.sig.align {
         placed
@@ -790,21 +825,33 @@ fn place_function_assembly(
     Ok(placed)
 }
 
-/// The section a `@section` name places code in. COFF objects take any section name, and
-/// the assembler marks it as code. Mach-O objects have a fixed section set (`.text`,
-/// `.rodata`, `.data`, `.bss`) that ras 0.2.2 writes, so the only name it can place code in
-/// is `.text`, and any other name is refused.
-fn named_code_section(
+/// The directive that opens the section a `@section` name places code in. COFF and ELF
+/// take any section name. Mach-O names a section by a `segment,section` pair of at most 16
+/// bytes each, so the only names with a mapping are `.text`, which stays in `__TEXT,__text`,
+/// and `.text.<name>`, which goes to `__TEXT,__<name>` when `<name>` is 1 to 14 bytes of
+/// ASCII letters, digits and underscores. Any other name is refused.
+fn code_section_directive(
     func_name: &str,
     name: &str,
     target_os: TargetOperatingSystem,
 ) -> Result<String, CodegenError> {
-    if os_uses_macho(target_os) && name != ".text" {
-        return Err(CodegenError::UnsupportedFeature(format!(
-            "@section '{name}' on '{func_name}' cannot be placed on {target_os:?}: the ras 0.2.2 assembler writes only .text, .rodata, .data and .bss into Mach-O objects"
-        )));
+    if !os_uses_macho(target_os) || name == ".text" {
+        return Ok(format!("    .section {name},\"ax\",@progbits\n"));
     }
-    Ok(name.to_string())
+    let suffix = name.strip_prefix(".text.").filter(|suffix| {
+        (1..=14).contains(&suffix.len())
+            && suffix
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    });
+    match suffix {
+        Some(suffix) => Ok(format!(
+            "    .section __TEXT,__{suffix},regular,pure_instructions\n"
+        )),
+        None => Err(CodegenError::UnsupportedFeature(format!(
+            "@section '{name}' on '{func_name}' has no section on {target_os:?}: Mach-O names a section by a segment and a section of at most 16 bytes, and only '.text' and '.text.<name>' (name of 1 to 14 letters, digits or underscores, placed in __TEXT,__<name>) are mapped"
+        ))),
+    }
 }
 
 /// ELF targets take `.internal`, `.hidden` and `.protected`. Mach-O has only
@@ -977,6 +1024,17 @@ pub fn emit_global_data<W: Write>(
     emit_global_storage(writer, module, target_os, mangle, |_| true)
 }
 
+/// Emits the globals of the x86_64 backend, whose thread-locals on COFF targets go to `.tls$`.
+pub fn emit_x86_64_global_data<W: Write>(
+    writer: &mut W,
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+    mangle: impl Fn(&str) -> String,
+) -> Result<(), LaminaError> {
+    reject_x86_64_thread_local_globals(module, target_os)?;
+    emit_global_storage(writer, module, target_os, mangle, |_| true)
+}
+
 /// Emits storage for the globals that are not thread-local.
 pub fn emit_static_global_data<W: Write>(
     writer: &mut W,
@@ -1000,6 +1058,14 @@ fn emit_global_storage<W: Write>(
         os if os_uses_macho(os) => (".section __DATA,__data", ".section __DATA,__data"),
         _ => (".data", ".bss"),
     };
+    let (tls_data_section, tls_bss_section) = if os_uses_coff(target_os) {
+        (".section .tls$,\"aw\"", ".section .tls$,\"aw\"")
+    } else {
+        (
+            ".section .tdata,\"awT\",@progbits",
+            ".section .tbss,\"awT\",@nobits",
+        )
+    };
     let mut names: Vec<&str> = module
         .globals
         .iter()
@@ -1011,10 +1077,7 @@ fn emit_global_storage<W: Write>(
         let global = &module.globals[name];
         let (data_section, bss_section) = match global.thread_local {
             None => (data_section, bss_section),
-            Some(_) => (
-                ".section .tdata,\"awT\",@progbits",
-                ".section .tbss,\"awT\",@nobits",
-            ),
+            Some(_) => (tls_data_section, tls_bss_section),
         };
         write_global_storage(writer, &mangle(name), global, data_section, bss_section)?;
     }

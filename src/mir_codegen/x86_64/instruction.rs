@@ -2200,14 +2200,21 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::ThreadLocalAddr { dst, symbol, model } => {
             let label = X86ABI::new(target_os).mangle_function_name(symbol);
-            match model {
-                TlsModel::LocalExec => {
-                    writeln!(writer, "    movq %fs:0, %rax")?;
-                    writeln!(writer, "    leaq {label}@tpoff(%rax), %rax")?;
-                }
-                TlsModel::InitialExec => {
-                    writeln!(writer, "    movq {label}@gottpoff(%rip), %rax")?;
-                    writeln!(writer, "    addq %fs:0, %rax")?;
+            if os_uses_coff(target_os) {
+                writeln!(writer, "    movq %gs:0x58, %rax")?;
+                writeln!(writer, "    movl _tls_index(%rip), %ecx")?;
+                writeln!(writer, "    movq (%rax,%rcx,8), %rax")?;
+                writeln!(writer, "    leaq {label}@SECREL32(%rax), %rax")?;
+            } else {
+                match model {
+                    TlsModel::LocalExec => {
+                        writeln!(writer, "    movq %fs:0, %rax")?;
+                        writeln!(writer, "    leaq {label}@tpoff(%rax), %rax")?;
+                    }
+                    TlsModel::InitialExec => {
+                        writeln!(writer, "    movq {label}@gottpoff(%rip), %rax")?;
+                        writeln!(writer, "    addq %fs:0, %rax")?;
+                    }
                 }
             }
             if let Some(dp) = mapped_register(dst, reg_alloc) {

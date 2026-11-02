@@ -55,6 +55,7 @@ pub(super) fn instruction_clobbers(
             }
             _ => scratch,
         },
+        MirInst::ThreadLocalAddr { .. } if os_uses_coff(target_os) => vec!["rcx"],
         MirInst::IntToFloat { .. } | MirInst::FloatToInt { .. } => vec!["rcx", "rdx"],
         MirInst::IntUnary { .. } => vec!["rcx"],
         MirInst::IntRotate { .. } => vec!["rcx", "rdx"],
