@@ -31,7 +31,7 @@ pub mod util;
 use constants::{fd, freebsd, linux, macos, stack, windows};
 use lamina_codegen::LocalRegisterAllocator;
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
-use lamina_codegen::{os_uses_elf, os_uses_macho};
+use lamina_codegen::{os_uses_coff, os_uses_elf, os_uses_macho};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     io::{self, Error, Write},
@@ -199,6 +199,12 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
+        if os_uses_coff(target_os) {
+            writeln!(writer, ".def {label}")?;
+            writeln!(writer, ".scl 2")?;
+            writeln!(writer, ".type 32")?;
+            writeln!(writer, ".endef")?;
+        }
     }
 
     writeln!(writer, ".text")?;
