@@ -43,15 +43,27 @@ fn unknown_register_is_rejected_with_the_valid_set() {
 }
 
 #[test]
-fn inline_asm_is_rejected_off_x86_64_linux() {
-    for os in [TargetOperatingSystem::Windows, TargetOperatingSystem::MacOS] {
-        let error = assembly_for(
-            "fn @f() -> i64 {\nentry:\n    asm.void \"nop\"\n    ret.i64 0\n}\n",
-            os,
-        )
-        .expect_err("inline asm must be rejected off Linux");
-        assert!(error.contains("inline assembly for Linux only"), "{error}");
-    }
+fn inline_asm_is_rejected_off_x86_64_linux_and_windows() {
+    let error = assembly_for(
+        "fn @f() -> i64 {\nentry:\n    asm.void \"nop\"\n    ret.i64 0\n}\n",
+        TargetOperatingSystem::MacOS,
+    )
+    .expect_err("inline asm must be rejected on macOS");
+    assert!(
+        error.contains("inline assembly for Linux and Windows only"),
+        "{error}"
+    );
+}
+
+#[test]
+fn win64_callee_saved_registers_clobbered_by_inline_asm_are_saved() {
+    let asm = assembly_for(
+        "fn @f() -> i64 {\nentry:\n    asm.void \"nop\", clobber(rsi, rdi)\n    ret.i64 0\n}\n",
+        TargetOperatingSystem::Windows,
+    )
+    .expect("inline asm should emit on Windows");
+    assert!(asm.contains("movq %rsi, "), "{asm}");
+    assert!(asm.contains("movq %rdi, "), "{asm}");
 }
 
 #[test]

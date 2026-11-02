@@ -1,4 +1,4 @@
-//! Inline assembly for x86_64 Linux.
+//! Inline assembly for x86_64 Linux and Windows.
 //!
 //! Operands are bound to physical registers before the template runs: inputs are copied
 //! into their registers, the template is emitted with `$n` replaced by the register of
@@ -183,9 +183,12 @@ pub(super) fn emit<W: Write>(
             "inline assembly emitter received another instruction".to_owned(),
         ));
     };
-    if target_os != TargetOperatingSystem::Linux {
+    if !matches!(
+        target_os,
+        TargetOperatingSystem::Linux | TargetOperatingSystem::Windows
+    ) {
         return Err(LaminaError::ValidationError(
-            "the x86_64 backend emits inline assembly for Linux only".to_owned(),
+            "the x86_64 backend emits inline assembly for Linux and Windows only".to_owned(),
         ));
     }
     let bindings = bind(operands, clobbers)?;
