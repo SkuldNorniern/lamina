@@ -860,3 +860,60 @@ fn checked_arithmetic_reads_the_flags_or_the_widened_result() -> Result<(), Box<
     }
     Ok(())
 }
+
+#[test]
+fn macho_thread_locals_use_tlv_descriptors_and_thread_sections() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let ir = "@thread_local global $t: i64 = 0\n@thread_local global $u: i64 = 5\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $t\n  %b = load.i64 $u\n  %c = add.i64 %a, %b\n  ret.i64 %c\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir_x86_64(&module, "tls").expect("lower thread-local module");
+    let mut out = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut out,
+        TargetOperatingSystem::MacOS,
+        PointerWidth::Bits64,
+    )?;
+    let asm = String::from_utf8(out)?;
+    for symbol in ["_t", "_u"] {
+        let access = format!(
+            "    adrp x0, {symbol}.tlv@TLVPPAGE\n    ldr x0, [x0, {symbol}.tlv@TLVPPAGEOFF]\n    ldr x8, [x0]\n    blr x8\n"
+        );
+        assert!(asm.contains(&access), "{asm}");
+    }
+    assert!(
+        asm.contains(
+            ".section __DATA,__thread_vars,thread_local_variables\n.p2align 3\n_t.tlv:\n    .quad __tlv_bootstrap\n    .quad 0\n    .quad _t\n.p2align 3\n_u.tlv:\n    .quad __tlv_bootstrap\n    .quad 0\n    .quad _u\n"
+        ),
+        "{asm}"
+    );
+    assert!(
+        asm.contains(
+            ".section __DATA,__thread_bss,thread_local_zerofill\n.p2align 3\n_t:\n    .zero 8\n"
+        ),
+        "{asm}"
+    );
+    assert!(
+        asm.contains(".section __DATA,__thread_data,thread_local_regular\n.p2align 3\n_u:\n    .byte 0x05, 0x00"),
+        "{asm}"
+    );
+    assert!(!asm.contains(".tdata") && !asm.contains(".tbss"), "{asm}");
+    Ok(())
+}
+
+#[test]
+fn thread_locals_stay_refused_outside_aarch64_macos() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let ir = "@thread_local global $t: i64 = 0\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $t\n  ret.i64 %a\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir_x86_64(&module, "tls").expect("lower thread-local module");
+    for os in [TargetOperatingSystem::Linux, TargetOperatingSystem::Windows] {
+        let mut out = Vec::new();
+        let error = generate_mir_aarch64(&mir, &mut out, os, PointerWidth::Bits64)
+            .expect_err("thread-local global must be refused")
+            .to_string();
+        assert!(error.contains("thread-local storage"), "{os:?}: {error}");
+        assert!(out.is_empty(), "{os:?} wrote code before refusing");
+    }
+    Ok(())
+}

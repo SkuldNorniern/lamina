@@ -41,7 +41,7 @@ pub fn unsupported_overflow_flag(backend: &str) -> LaminaError {
 /// target-specific and implemented for x86_64 and s390x.
 pub fn unsupported_thread_local(backend: &str) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "thread-local storage ('@thread_local') is not supported by the {backend} backend; it is implemented for x86_64 and s390x"
+        "thread-local storage ('@thread_local') is not supported by the {backend} backend; it is implemented for x86_64 and s390x, and for AArch64 on macOS"
     )))
 }
 
@@ -64,14 +64,14 @@ pub fn reject_thread_local_globals(module: &MirModule, backend: &str) -> Result<
         None => Ok(()),
         Some((name, _)) => Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
             format!(
-                "thread-local storage is not supported by the {backend} backend; it is implemented for x86_64 and s390x (global '{name}')"
+                "thread-local storage is not supported by the {backend} backend; it is implemented for x86_64 and s390x, and for AArch64 on macOS (global '{name}')"
             ),
         ))),
     }
 }
 
-/// The refusal for a thread-local global on a COFF or Mach-O target. Both need TLS
-/// relocations and sections that the ras 0.2.2 assembler cannot write.
+/// The refusal for a thread-local global on a COFF or Mach-O target that the x86_64
+/// backend does not emit. Both need TLS relocations and sections it never writes.
 pub fn unsupported_thread_local_on_os(name: &str, target_os: TargetOperatingSystem) -> LaminaError {
     let needs = if os_uses_macho(target_os) {
         "__DATA,__thread_vars and @TLVP relocations"
@@ -79,7 +79,7 @@ pub fn unsupported_thread_local_on_os(name: &str, target_os: TargetOperatingSyst
         "a TEB TLS-array load (%gs:0x58) and @SECREL32 relocations"
     };
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "thread-local storage on {target_os:?} is not supported: '{name}' needs {needs}, which the ras 0.2.2 assembler cannot encode"
+        "thread-local storage on {target_os:?} is not supported: '{name}' needs {needs}, which the x86_64 backend does not emit"
     )))
 }
 
@@ -973,20 +973,42 @@ pub fn emit_global_data<W: Write>(
     target_os: TargetOperatingSystem,
     mangle: impl Fn(&str) -> String,
 ) -> Result<(), LaminaError> {
+    reject_thread_local_globals_on_os(module, target_os)?;
+    emit_global_storage(writer, module, target_os, mangle, |_| true)
+}
+
+/// Emits storage for the globals that are not thread-local.
+pub fn emit_static_global_data<W: Write>(
+    writer: &mut W,
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+    mangle: impl Fn(&str) -> String,
+) -> Result<(), LaminaError> {
+    emit_global_storage(writer, module, target_os, mangle, |global| {
+        global.thread_local.is_none()
+    })
+}
+
+fn emit_global_storage<W: Write>(
+    writer: &mut W,
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+    mangle: impl Fn(&str) -> String,
+    select: impl Fn(&Global) -> bool,
+) -> Result<(), LaminaError> {
     let (data_section, bss_section) = match target_os {
         os if os_uses_macho(os) => (".section __DATA,__data", ".section __DATA,__data"),
         _ => (".data", ".bss"),
     };
-    let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
+    let mut names: Vec<&str> = module
+        .globals
+        .iter()
+        .filter(|(_, global)| select(global))
+        .map(|(name, _)| name.as_str())
+        .collect();
     names.sort_unstable();
     for name in names {
         let global = &module.globals[name];
-        let label = mangle(name);
-        let align_log2 = global.align.trailing_zeros();
-        let size = global.size;
-        if global.thread_local.is_some() && (os_uses_macho(target_os) || os_uses_coff(target_os)) {
-            return Err(unsupported_thread_local_on_os(name, target_os));
-        }
         let (data_section, bss_section) = match global.thread_local {
             None => (data_section, bss_section),
             Some(_) => (
@@ -994,28 +1016,92 @@ pub fn emit_global_data<W: Write>(
                 ".section .tbss,\"awT\",@nobits",
             ),
         };
-        match global.initializer.as_deref() {
-            Some(bytes) if bytes.iter().any(|&b| b != 0) => {
-                writeln!(writer, "{data_section}")?;
-                writeln!(writer, ".p2align {align_log2}")?;
-                writeln!(writer, "{label}:")?;
-                for chunk in bytes.chunks(16) {
-                    let list: Vec<String> = chunk.iter().map(|b| format!("{b:#04x}")).collect();
-                    writeln!(writer, "    .byte {}", list.join(", "))?;
-                }
-                if let Some(tail) = size.checked_sub(bytes.len())
-                    && tail > 0
-                {
-                    writeln!(writer, "    .zero {tail}")?;
-                }
+        write_global_storage(writer, &mangle(name), global, data_section, bss_section)?;
+    }
+    Ok(())
+}
+
+fn write_global_storage<W: Write>(
+    writer: &mut W,
+    label: &str,
+    global: &Global,
+    data_section: &str,
+    bss_section: &str,
+) -> Result<(), LaminaError> {
+    let align_log2 = global.align.trailing_zeros();
+    let size = global.size;
+    match global.initializer.as_deref() {
+        Some(bytes) if bytes.iter().any(|&b| b != 0) => {
+            writeln!(writer, "{data_section}")?;
+            writeln!(writer, ".p2align {align_log2}")?;
+            writeln!(writer, "{label}:")?;
+            for chunk in bytes.chunks(16) {
+                let list: Vec<String> = chunk.iter().map(|b| format!("{b:#04x}")).collect();
+                writeln!(writer, "    .byte {}", list.join(", "))?;
             }
-            _ => {
-                writeln!(writer, "{bss_section}")?;
-                writeln!(writer, ".p2align {align_log2}")?;
-                writeln!(writer, "{label}:")?;
-                writeln!(writer, "    .zero {size}")?;
+            if let Some(tail) = size.checked_sub(bytes.len())
+                && tail > 0
+            {
+                writeln!(writer, "    .zero {tail}")?;
             }
         }
+        _ => {
+            writeln!(writer, "{bss_section}")?;
+            writeln!(writer, ".p2align {align_log2}")?;
+            writeln!(writer, "{label}:")?;
+            writeln!(writer, "    .zero {size}")?;
+        }
+    }
+    Ok(())
+}
+
+/// The symbol of a thread-local's TLV descriptor. Source identifiers have no dots, so
+/// the suffix cannot collide with a mangled global.
+pub fn macho_tlv_descriptor(label: &str) -> String {
+    format!("{label}.tlv")
+}
+
+/// Emits the thread-local globals of a Mach-O target. Each gets a 24-byte TLV descriptor
+/// in `__thread_vars`: the `__tlv_bootstrap` thunk, a zero key that dyld fills, and the
+/// storage address, which the linker turns into the offset from the template start. The
+/// storage itself goes to `__thread_data` when it has a nonzero initializer, else to
+/// `__thread_bss`.
+pub fn emit_macho_thread_local_globals<W: Write>(
+    writer: &mut W,
+    module: &MirModule,
+    mangle: impl Fn(&str) -> String,
+) -> Result<(), LaminaError> {
+    let mut names: Vec<&str> = module
+        .globals
+        .iter()
+        .filter(|(_, global)| global.thread_local.is_some())
+        .map(|(name, _)| name.as_str())
+        .collect();
+    names.sort_unstable();
+    if names.is_empty() {
+        return Ok(());
+    }
+    writeln!(
+        writer,
+        ".section __DATA,__thread_vars,thread_local_variables"
+    )?;
+    for name in &names {
+        let label = mangle(name);
+        writeln!(writer, ".p2align 3")?;
+        writeln!(writer, "{}:", macho_tlv_descriptor(&label))?;
+        writeln!(writer, "    .quad __tlv_bootstrap")?;
+        writeln!(writer, "    .quad 0")?;
+        writeln!(writer, "    .quad {label}")?;
+    }
+    for name in names {
+        let global = &module.globals[name];
+        write_global_storage(
+            writer,
+            &mangle(name),
+            global,
+            ".section __DATA,__thread_data,thread_local_regular",
+            ".section __DATA,__thread_bss,thread_local_zerofill",
+        )?;
     }
     Ok(())
 }

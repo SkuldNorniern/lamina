@@ -127,7 +127,7 @@ fn win64_thread_local_is_refused_with_the_relocations_it_needs() {
     )
     .expect_err("thread locals are refused on Windows");
     assert!(error.contains("@SECREL32"), "{error}");
-    assert!(error.contains("ras 0.2.2"), "{error}");
+    assert!(error.contains("does not emit"), "{error}");
 }
 
 #[test]
@@ -1908,7 +1908,7 @@ fn thread_local_globals_are_refused_on_windows_and_macho_before_any_code() {
             .to_string();
         assert!(error.contains("'t'"), "{error}");
         assert!(error.contains(needle), "{error}");
-        assert!(error.contains("ras 0.2.2"), "{error}");
+        assert!(error.contains("does not emit"), "{error}");
         assert!(output.is_empty(), "{os:?} wrote code before refusing");
     }
 }

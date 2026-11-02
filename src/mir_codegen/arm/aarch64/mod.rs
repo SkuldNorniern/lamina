@@ -20,7 +20,8 @@ use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::unsupported_io;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
-    emit_global_directives, emit_symbol_visibility, integer_conversion, self_tail_arguments,
+    emit_global_directives, emit_macho_thread_local_globals, emit_static_global_data,
+    emit_symbol_visibility, integer_conversion, macho_tlv_descriptor, self_tail_arguments,
     self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
@@ -451,7 +452,9 @@ fn compile_single_function_aarch64_with(
         .any(|i| {
             matches!(
                 &i.instr,
-                MirInst::Call { .. } | MirInst::CallIndirect { .. }
+                MirInst::Call { .. }
+                    | MirInst::CallIndirect { .. }
+                    | MirInst::ThreadLocalAddr { .. }
             )
         });
     let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
@@ -866,7 +869,9 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    reject_thread_local_globals(module, "AArch64")?;
+    if !os_uses_macho(target_os) {
+        reject_thread_local_globals(module, "AArch64")?;
+    }
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     let abi = AArch64ABI::new(target_os);
     reject_register_symbols(module, &abi)?;
@@ -899,9 +904,16 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
-    emit_global_data(writer, module, target_os, |name| {
-        abi.mangle_function_name(name)
-    })?;
+    if os_uses_macho(target_os) {
+        emit_static_global_data(writer, module, target_os, |name| {
+            abi.mangle_function_name(name)
+        })?;
+        emit_macho_thread_local_globals(writer, module, |name| abi.mangle_function_name(name))?;
+    } else {
+        emit_global_data(writer, module, target_os, |name| {
+            abi.mangle_function_name(name)
+        })?;
+    }
     emit_gnu_stack_note(writer, target_os)?;
 
     Ok(())
@@ -974,8 +986,16 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc 1 {} {}", loc.line, loc.column)?;
         }
         match inst {
-            MirInst::ThreadLocalAddr { .. } => {
-                return Err(unsupported_thread_local("AArch64"));
+            MirInst::ThreadLocalAddr { dst, symbol, .. } => {
+                if !os_uses_macho(abi.target_os()) {
+                    return Err(unsupported_thread_local("AArch64"));
+                }
+                let descriptor = macho_tlv_descriptor(&abi.mangle_function_name(symbol));
+                writeln!(w, "    adrp x0, {descriptor}@TLVPPAGE")?;
+                writeln!(w, "    ldr x0, [x0, {descriptor}@TLVPPAGEOFF]")?;
+                writeln!(w, "    ldr x8, [x0]")?;
+                writeln!(w, "    blr x8")?;
+                store_result(w, dst, "x0", frame, ra)?;
             }
             MirInst::IntOverflow {
                 op,
