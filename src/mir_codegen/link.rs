@@ -1216,9 +1216,8 @@ mod tests {
         ] {
             assert!(weld_gap(arch, os).is_none(), "{arch:?} {os:?}");
         }
-        for (arch, os) in [(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)] {
-            assert!(weld_gap(arch, os).is_some(), "{arch:?} {os:?}");
-        }
+        let (arch, os) = (TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux);
+        assert!(weld_gap(arch, os).is_some(), "{arch:?} {os:?}");
     }
 
     #[test]
