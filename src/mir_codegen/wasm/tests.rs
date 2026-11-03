@@ -108,11 +108,15 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
     )
     .expect("WASM codegen should succeed");
     let guard = TempDir::new(&format!("lamina-wasm-{test_name}"));
-    let wat_path = guard.path().join("module.wat");
-    fs::write(&wat_path, wat).expect("write wat");
+    // The module runs in its binary form, so every execution test here also covers
+    // the in-process writer rather than wasmtime's own text reader.
+    let text = String::from_utf8(wat).expect("WAT should be UTF-8");
+    let binary = super::binary::encode_module(&text).expect("the wasm writer should encode");
+    let wasm_path = guard.path().join("module.wasm");
+    fs::write(&wasm_path, binary).expect("write wasm");
     let output = Command::new("wasmtime")
         .args(["run", "--invoke", "main"])
-        .arg(&wat_path)
+        .arg(&wasm_path)
         .output()
         .expect("run wasmtime");
     assert!(
@@ -235,6 +239,87 @@ fn optimized_tail_calls_run_in_constant_stack() {
         return;
     };
     assert_eq!(stdout, "42\n");
+}
+
+#[test]
+fn relocated_global_initializers_hold_real_addresses() {
+    let Some(stdout) = run_wasm_main(
+        "global_relocs",
+        "global $s: [4 x i8] = \"xyz\"\nglobal $p: ptr = $s + 1\nglobal $fp: ptr = @g\n\nfn @f() -> i64 {\nentry:\n  ret.i64 65\n}\n\nfn @g() -> i64 {\nentry:\n  ret.i64 66\n}\n\nfn @main() -> i64 {\nentry:\n  %q = load.ptr $p\n  %c = load.i8 %q\n  %w1 = writebyte %c\n  %sp = writebyte 32\n  %h = load.ptr $fp\n  %r = callptr.i64 %h()\n  %w2 = writebyte %r\n  %nl = writebyte 10\n  ret.i64 0\n}",
+        0,
+    ) else {
+        return;
+    };
+    assert_eq!(stdout, "y B\n0\n");
+}
+
+#[test]
+fn an_address_wasm_cannot_place_is_refused_by_name() {
+    let mut module = MirModule::new("extern_reloc");
+    let mut global = Global::new("p", MirType::Scalar(ScalarType::Ptr), PointerWidth::Bits32);
+    global.initializer = Some(vec![0; 4]);
+    global.relocations.push(GlobalRelocation {
+        offset: 0,
+        symbol: "elsewhere".to_string(),
+        addend: 0,
+        size: 4,
+    });
+    module.add_global(global);
+    module.add_function(
+        FunctionBuilder::new("main")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(MirInst::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
+            .build(),
+    );
+    let mut wat = Vec::new();
+    let error = generate_mir_wasm(
+        &module,
+        &mut wat,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Unknown,
+        PointerWidth::Bits32,
+    )
+    .expect_err("an unplaceable address must be refused, not zeroed");
+    let message = error.to_string();
+    assert!(message.contains("$p"), "{message}");
+    assert!(message.contains("elsewhere"), "{message}");
+}
+
+#[test]
+fn every_lane_width_the_backend_vectorizes_runs_under_wasmtime() {
+    let Some(stdout) = run_wasm_main(
+        "lane_widths",
+        "fn @main() -> i64 {\n  entry:\n    %b8 = stackalloc.[16 x i8]\n    %v8 = splat.<16 x i8> 5\n    %w8 = splat.<16 x i8> 3\n    %a8 = add.<16 x i8> %v8, %w8\n    %s8 = sub.<16 x i8> %a8, %w8\n    %h8 = shl.<16 x i8> %s8, 2\n    %r8 = shr.<16 x i8> %h8, 1\n    %i8 = insertlane.<16 x i8> %r8, 9, 2\n    store.<16 x i8> %b8, %i8\n    %x8 = extractlane.<16 x i8> %i8, 3\n    %e8 = extend.i8.i64 %x8\n    call @print_i64(%e8)\n    %y8 = extractlane.<16 x i8> %i8, 2\n    %f8 = extend.i8.i64 %y8\n    call @print_i64(%f8)\n\n    %v16 = splat.<8 x i16> 7\n    %w16 = splat.<8 x i16> 6\n    %m16 = mul.<8 x i16> %v16, %w16\n    %h16 = shr.<8 x i16> %m16, 1\n    %d16 = sub.<8 x i16> %h16, %w16\n    %u16 = add.<8 x i16> %d16, %v16\n    %j16 = insertlane.<8 x i16> %u16, 11, 5\n    %x16 = extractlane.<8 x i16> %j16, 5\n    %e16 = extend.i16.i64 %x16\n    call @print_i64(%e16)\n    %z16 = extractlane.<8 x i16> %j16, 1\n    %g16 = extend.i16.i64 %z16\n    call @print_i64(%g16)\n\n    %v64 = splat.<2 x i64> 100\n    %w64 = splat.<2 x i64> 4\n    %m64 = mul.<2 x i64> %v64, %w64\n    %d64 = sub.<2 x i64> %m64, %w64\n    %a64 = add.<2 x i64> %d64, %w64\n    %h64 = shl.<2 x i64> %a64, 1\n    %j64 = insertlane.<2 x i64> %h64, 3, 0\n    %x64 = extractlane.<2 x i64> %j64, 1\n    call @print_i64(%x64)\n    %y64 = extractlane.<2 x i64> %j64, 0\n    call @print_i64(%y64)\n\n    %vf = splat.<2 x f64> 2.5\n    %wf = splat.<2 x f64> 4.0\n    %mf = mul.<2 x f64> %vf, %wf\n    %af = add.<2 x f64> %mf, %wf\n    %sf = sub.<2 x f64> %af, %vf\n    %qf = insertlane.<2 x f64> %sf, 6.5, 0\n    %xf = extractlane.<2 x f64> %qf, 1\n    %zf = extractlane.<2 x f64> %qf, 0\n    %bf = fptoint.f64.i64 %zf\n    call @print_i64(%bf)\n    %cf = fptoint.f64.i64 %xf\n    call @print_i64(%cf)\n\n    %v32 = splat.<4 x f32> 1.5\n    %w32 = splat.<4 x f32> 2.0\n    %a32 = add.<4 x f32> %v32, %w32\n    %s32 = sub.<4 x f32> %a32, %v32\n    %x32 = extractlane.<4 x f32> %s32, 2\n    %c32 = fptoint.f32.i64 %x32\n    call @print_i64(%c32)\n\n    %p32 = splat.<4 x i32> 9\n    %q32 = splat.<4 x i32> 2\n    %k32 = shl.<4 x i32> %p32, 2\n    %l32 = shr.<4 x i32> %k32, 1\n    %u8 = splat.<16 x u8> 200\n    %k8 = shr.<16 x u8> %u8, 2\n    %c8 = extractlane.<16 x u8> %k8, 0\n    %d8 = extend.u8.i64 %c8\n    call @print_i64(%d8)\n    %uu16 = splat.<8 x u16> 60000\n    %k16 = shr.<8 x u16> %uu16, 3\n    %c16 = extractlane.<8 x u16> %k16, 1\n    %d16b = extend.u16.i64 %c16\n    call @print_i64(%d16b)\n    %u64 = splat.<2 x u64> 64\n    %k64 = shr.<2 x u64> %u64, 2\n    %c64 = extractlane.<2 x u64> %k64, 0\n    %cc64 = bitcast.u64.i64 %c64\n    call @print_i64(%cc64)\n    %u32 = splat.<4 x u32> 80\n    %k32b = shr.<4 x u32> %u32, 3\n    %c32b = extractlane.<4 x u32> %k32b, 0\n    %d32b = extend.u32.i64 %c32b\n    call @print_i64(%d32b)\n    %t32 = splat.<4 x i32> 5\n    %r32 = or.<4 x i32> %l32, %t32\n    %n32 = extractlane.<4 x i32> %r32, 0\n    %o32 = extend.i32.i64 %n32\n    call @print_i64(%o32)\n    ret.i64 0\n}",
+        0,
+    ) else {
+        return;
+    };
+    assert_eq!(
+        stdout,
+        "10\n9\n11\n22\n800\n3\n6\n11\n2\n50\n7500\n16\n10\n23\n0\n"
+    );
+}
+
+#[test]
+fn a_variadic_call_is_refused_by_name_rather_than_written_unloadable() {
+    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [3 x i8] = \"%d\"\n\nfn @main() -> i64 {\nentry:\n  %f = getelem.i8 $fmt, 0\n  %r = call @printf(%f, 42)\n  ret.i64 0\n}\n";
+    let ir = parse_module(source).expect("source should parse");
+    let mir = from_ir_x86_64(&ir, "module").expect("source should lower");
+    let mut wat = Vec::new();
+    let error = generate_mir_wasm(
+        &mir,
+        &mut wat,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Wasi,
+        PointerWidth::Bits32,
+    )
+    .expect_err("a variadic call must be refused");
+    let message = error.to_string();
+    assert!(message.contains("@printf"), "{message}");
+    assert!(message.contains("variadic"), "{message}");
 }
 
 fn emit_wat(source: &str, arch: TargetArchitecture) -> String {
