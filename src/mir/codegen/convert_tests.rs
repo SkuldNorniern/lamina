@@ -352,7 +352,7 @@ fn aggregate_of_any_size_carries_its_layout() {
 #[test]
 fn float_aggregates_are_refused_by_name_where_the_backend_does_not_place_them() {
     use lamina_platform::TargetArchitecture;
-    let layout = TargetArchitecture::Riscv64.data_layout();
+    let layout = TargetArchitecture::LoongArch64.data_layout();
     let float =
         parse_module("fn @take(struct { a: f64, b: f64 } %p) -> i64 {\nentry:\nret.i64 0\n}")
             .expect("parse float aggregate");
@@ -1567,7 +1567,10 @@ fn float_aggregate_classification_follows_each_architecture_abi() {
             FloatAggregateAbi::Win64 => {
                 panic!("{arch:?} declares Win64 on the architecture; only a target does")
             }
-            FloatAggregateAbi::SysV | FloatAggregateAbi::Aapcs64 => {
+            FloatAggregateAbi::SysV
+            | FloatAggregateAbi::Aapcs64
+            | FloatAggregateAbi::Riscv64Lp64d
+            | FloatAggregateAbi::S390x => {
                 let module = result
                     .unwrap_or_else(|e| panic!("{arch:?} declares placement but failed: {e}"));
                 let class = module.functions["take"].sig.params[0]
@@ -1638,7 +1641,12 @@ fn only_architectures_with_verified_placement_declare_a_float_aggregate_abi() {
         .collect();
     assert_eq!(
         declaring,
-        vec![TargetArchitecture::X86_64, TargetArchitecture::Aarch64],
+        vec![
+            TargetArchitecture::X86_64,
+            TargetArchitecture::Aarch64,
+            TargetArchitecture::Riscv64,
+            TargetArchitecture::S390x,
+        ],
         "an architecture declares a float aggregate ABI; its backend must place float \
          aggregates in the right registers and be checked against a C oracle before it \
          is added here"

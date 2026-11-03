@@ -310,3 +310,89 @@ entry:
         );
     }
 }
+
+fn lowered_aggregate(source: &str, function: &str) -> Aggregate {
+    let ir = parse_module(source).expect("parse");
+    let mir = from_ir_for_target(&ir, "module", TargetArchitecture::S390x.data_layout())
+        .expect("lower to MIR");
+    mir.functions[function].sig.params[0]
+        .aggregate
+        .expect("aggregate marker")
+}
+
+#[test]
+fn a_record_of_one_float_travels_as_that_float() {
+    let single = lowered_aggregate(
+        "fn @take(struct { a: f32 } %p) -> i64 {\nentry:\nret.i64 0\n}",
+        "take",
+    );
+    let kind = ArgKind {
+        ty: MirType::Scalar(ScalarType::Ptr),
+        aggregate: Some(single),
+    };
+    assert_eq!(
+        kind.aggregate_float().map(|field| field.bytes),
+        Some(4),
+        "a record of one float rides in a floating-point register"
+    );
+    assert_eq!(classify_kinds(&[kind], 0), vec![ArgPlace::Fpr(0)]);
+
+    let nested = lowered_aggregate(
+        "fn @take(struct { a: struct { b: f64 } } %p) -> i64 {\nentry:\nret.i64 0\n}",
+        "take",
+    );
+    assert_eq!(
+        ArgKind {
+            ty: MirType::Scalar(ScalarType::Ptr),
+            aggregate: Some(nested),
+        }
+        .aggregate_float()
+        .map(|field| field.bytes),
+        Some(8),
+        "the one-member rule follows a chain of records down"
+    );
+}
+
+#[test]
+fn a_float_pair_takes_a_general_register_and_a_float_triple_a_reference() {
+    let pair = lowered_aggregate(
+        "fn @take(struct { a: f32, b: f32 } %p) -> i64 {\nentry:\nret.i64 0\n}",
+        "take",
+    );
+    let pair = ArgKind {
+        ty: MirType::Scalar(ScalarType::Ptr),
+        aggregate: Some(pair),
+    };
+    assert_eq!(pair.aggregate_float(), None);
+    assert!(!pair.by_reference());
+    assert_eq!(classify_kinds(&[pair], 0), vec![ArgPlace::Gpr(0)]);
+
+    let triple = lowered_aggregate(
+        "fn @take(struct { a: f32, b: f32, c: f32 } %p) -> i64 {\nentry:\nret.i64 0\n}",
+        "take",
+    );
+    assert!(
+        ArgKind {
+            ty: MirType::Scalar(ScalarType::Ptr),
+            aggregate: Some(triple),
+        }
+        .by_reference(),
+        "twelve bytes is not one, two, four or eight, so it travels by reference"
+    );
+}
+
+#[test]
+fn an_aggregate_of_an_odd_size_travels_by_reference() {
+    for size in [3usize, 5, 6, 7] {
+        let kind = ArgKind {
+            ty: MirType::Scalar(ScalarType::Ptr),
+            aggregate: Some(Aggregate {
+                size,
+                align: 1,
+                class: AggregateClass::Integer,
+                shape: AggregateShape::Composite,
+            }),
+        };
+        assert!(kind.by_reference(), "{size} bytes travels by reference");
+    }
+}

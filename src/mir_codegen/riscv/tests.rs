@@ -1,6 +1,6 @@
 use super::*;
-use crate::mir::FunctionBuilder;
 use crate::mir::codegen::from_ir_for_target;
+use crate::mir::{AggregateClass, AggregateShape, FloatMember, FunctionBuilder};
 use crate::mir_codegen::simd_support::objdump_tool;
 use crate::mir_codegen::test_support::cross_assembler_ready;
 use crate::parser::parse_module;
@@ -1285,4 +1285,87 @@ fn a_variadic_callee_with_a_full_register_file_reserves_nothing() -> Result<(), 
     let (down, up) = sp_delta(body);
     assert_eq!(down + up, 0, "sp is not restored: {body}");
     Ok(())
+}
+
+fn lp64d_asm(source: &str) -> String {
+    let ir = parse_module(source).expect("parse");
+    let module = from_ir_for_target(&ir, "module", TargetArchitecture::Riscv64.data_layout())
+        .expect("lower to MIR");
+    let mut output = Vec::new();
+    generate_mir_riscv_with_units_and_settings(
+        &module,
+        &mut output,
+        RiscVTarget::general(Xlen::Rv64),
+        TargetOperatingSystem::Linux,
+        1,
+        &MirCodegenSettings::default(),
+    )
+    .expect("emit");
+    String::from_utf8(output).expect("utf8")
+}
+
+#[test]
+fn a_struct_of_two_floats_arrives_in_the_float_argument_registers() {
+    let asm = lp64d_asm(
+        "fn @take(struct { a: f32, b: f32 } %p) -> i64 {\nentry:\nret.i64 0\n}\n\
+         fn @takd(struct { a: f64, b: f64 } %p) -> i64 {\nentry:\nret.i64 0\n}",
+    );
+    assert!(asm.contains("fsw fa0,"), "{asm}");
+    assert!(asm.contains("fsw fa1,"), "{asm}");
+    assert!(asm.contains("fsd fa0,"), "{asm}");
+    assert!(asm.contains("fsd fa1,"), "{asm}");
+}
+
+#[test]
+fn a_float_beside_an_integer_takes_one_register_of_each_class() {
+    let asm = lp64d_asm("fn @take(struct { a: f32, b: i32 } %p) -> i64 {\nentry:\nret.i64 0\n}");
+    assert!(asm.contains("fsw fa0,"), "{asm}");
+    assert!(asm.contains("sw a0,"), "{asm}");
+
+    let asm = lp64d_asm("fn @take(struct { a: i64, b: f64 } %p) -> i64 {\nentry:\nret.i64 0\n}");
+    assert!(asm.contains("sd a0,"), "{asm}");
+    assert!(asm.contains("fsd fa0,"), "{asm}");
+}
+
+#[test]
+fn more_than_two_members_falls_back_to_the_integer_convention() {
+    let asm =
+        lp64d_asm("fn @take(struct { a: f32, b: f32, c: f32 } %p) -> i64 {\nentry:\nret.i64 0\n}");
+    assert!(
+        !asm.contains("fa0"),
+        "a float triple takes no float register: {asm}"
+    );
+    assert!(asm.contains("sd a0,"), "{asm}");
+    assert!(asm.contains("sd a1,"), "{asm}");
+}
+
+#[test]
+fn a_float_pair_without_two_free_float_registers_falls_back_to_the_integer_convention() {
+    let mut kinds = vec![ArgKind::scalar(MirType::Scalar(ScalarType::F64)); 7];
+    kinds.extend([ArgKind {
+        ty: MirType::Scalar(ScalarType::Ptr),
+        aggregate: Some(Aggregate {
+            size: 8,
+            align: 4,
+            class: AggregateClass::Flattened {
+                first: FlatField {
+                    offset: 0,
+                    bytes: 4,
+                    float: Some(FloatMember::F32),
+                },
+                second: Some(FlatField {
+                    offset: 4,
+                    bytes: 4,
+                    float: Some(FloatMember::F32),
+                }),
+            },
+            shape: AggregateShape::Composite,
+        }),
+    }]);
+    let places =
+        classify_riscv_arguments(&kinds, 0, PointerWidth::Bits64, TargetArchitecture::Riscv64);
+    assert!(
+        matches!(places[7], RiscVArgPlace::Words { first: 0, words: 1 }),
+        "one free float register is not two, so the pair takes a0"
+    );
 }
