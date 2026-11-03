@@ -55,6 +55,27 @@ fn duplicate_win64_float_arguments(
     Ok(())
 }
 
+fn copy_exact_bytes_to_stack(
+    writer: &mut impl Write,
+    size: usize,
+    src: &str,
+    dst: usize,
+) -> Result<(), LaminaError> {
+    let mut at = 0;
+    while at < size {
+        let (mov, register, width) = match size - at {
+            8.. => ("movq", "%r10", 8),
+            4..=7 => ("movl", "%r10d", 4),
+            2..=3 => ("movw", "%r10w", 2),
+            _ => ("movb", "%r10b", 1),
+        };
+        writeln!(writer, "    {mov} {at}(%{src}), {register}")?;
+        writeln!(writer, "    {mov} {register}, {}(%rsp)", dst + at)?;
+        at += width;
+    }
+    Ok(())
+}
+
 fn copy_exact_bytes(
     writer: &mut impl Write,
     size: usize,
@@ -1594,17 +1615,10 @@ pub(super) fn emit_instruction_x86_64(
                         let Some(at) = *at else {
                             continue;
                         };
-                        let words = descs[index].aggregate.map_or(0, |a| a.words());
-                        for word in 0..words {
-                            load_aggregate_word(
-                                &args[index],
-                                word,
-                                writer,
-                                reg_alloc,
-                                stack_slots,
-                            )?;
-                            writeln!(writer, "    movq %rax, {}(%rsp)", at + word * 8)?;
-                        }
+                        let size = descs[index].aggregate.map_or(0, |a| a.size);
+                        load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                        copy_exact_bytes_to_stack(writer, size, "rax", at)?;
+                        writer.rax_value = None;
                     }
                     for (slot, entry) in stack_args.iter().enumerate() {
                         let stack_offset = shadow_space + (slot * stack::SLOT_SIZE);
