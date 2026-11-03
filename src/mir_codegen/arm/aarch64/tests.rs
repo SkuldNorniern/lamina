@@ -880,21 +880,94 @@ fn darwin_variadic_callee_reads_its_arguments_from_the_stack() -> Result<(), Box
     );
     assert!(darwin.contains("    sxtw "), "{darwin}");
 
+    Ok(())
+}
+
+fn emit_aarch64(ir: &str, name: &str, os: TargetOperatingSystem) -> Result<String, Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let module = parse_module(ir)?;
+    let mir = from_ir_x86_64(&module, name).map_err(|e| format!("{e:?}"))?;
     let mut output = Vec::new();
-    let error = generate_mir_aarch64(
-        &mir,
-        &mut output,
-        TargetOperatingSystem::Windows,
-        PointerWidth::Bits64,
-    )
-    .err()
-    .ok_or("expected a rejection on Windows")?;
+    generate_mir_aarch64(&mir, &mut output, os, PointerWidth::Bits64)?;
+    Ok(String::from_utf8(output)?)
+}
+
+const WINDOWS_VA_SUM: &str = "fn @sum(i64 %n, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  %y = va_arg.i32 %ap\n  va_end %ap\n  %w = extend.i32.i64 %y\n  %s = add.i64 %x, %w\n  ret.i64 %s\n}\n";
+
+#[test]
+fn windows_spills_its_argument_registers_against_the_stack_arguments() -> Result<(), Box<dyn Error>>
+{
+    let windows = emit_aarch64(WINDOWS_VA_SUM, "windows_va", TargetOperatingSystem::Windows)?;
+    // One named word leaves x1..x7 to spill: 56 bytes, which the frame record carries
+    // so that the area ends at x29+80, where the incoming stack arguments begin.
     assert!(
-        error
-            .to_string()
-            .contains("is not yet supported by the AArch64 backend on Windows"),
-        "{error}"
+        windows.contains("    stp x29, x30, [sp, #-80]!\n"),
+        "{windows}"
     );
+    assert!(
+        windows.contains("    ldp x29, x30, [sp], #80\n"),
+        "{windows}"
+    );
+    assert!(windows.contains("    add x16, x29, #24\n"), "{windows}");
+    for index in 1..8 {
+        assert!(
+            windows.contains(&format!("    str x{index}, [x16, #{}]\n", (index - 1) * 8)),
+            "{windows}"
+        );
+    }
+    assert!(!windows.contains("    str q"), "{windows}");
+    assert!(!windows.contains("    str x0, [x16"), "{windows}");
+    Ok(())
+}
+
+#[test]
+fn windows_starts_va_list_at_the_first_unnamed_slot() -> Result<(), Box<dyn Error>> {
+    let windows = emit_aarch64(WINDOWS_VA_SUM, "windows_va", TargetOperatingSystem::Windows)?;
+    assert!(
+        darwin_add_immediates(&windows)
+            .iter()
+            .any(|line| line.ends_with("x29, #24")),
+        "{windows}"
+    );
+    assert!(
+        darwin_add_immediates(&windows)
+            .iter()
+            .any(|line| line.ends_with(", #8")),
+        "{windows}"
+    );
+    assert!(windows.contains("    sxtw "), "{windows}");
+    Ok(())
+}
+
+#[test]
+fn windows_serves_an_f64_va_arg_from_the_general_save_area() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @pick(i64 %n, ...) -> f64 {\nentry:\n  %ap = stackalloc.valist\n  %d = va_arg.f64 %ap\n  va_end %ap\n  ret.f64 %d\n}\n";
+    let windows = emit_aarch64(ir, "windows_va_f64", TargetOperatingSystem::Windows)?;
+    // Windows has no vector save area, so the double arrives through the same
+    // eight-byte walk as an integer.
+    assert!(!windows.contains("    str q"), "{windows}");
+    assert!(
+        darwin_add_immediates(&windows)
+            .iter()
+            .any(|line| line.ends_with(", #8")),
+        "{windows}"
+    );
+    Ok(())
+}
+
+#[test]
+fn windows_sends_variadic_floats_in_general_registers() -> Result<(), Box<dyn Error>> {
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @main() -> i64 {\nentry:\n  %f = getelem.i8 $fmt, 0\n  %r = call @printf(%f, 7, 2.5)\n  ret.i64 0\n}\n";
+    let windows = emit_aarch64(ir, "windows_variadic_call", TargetOperatingSystem::Windows)?;
+    assert!(!windows.contains("fmov d0,"), "{windows}");
+    assert!(
+        !windows
+            .lines()
+            .map(str::trim)
+            .any(|line| line.starts_with("str ") && line.contains("[sp, #")),
+        "{windows}"
+    );
+    assert!(windows.contains("movk x2, #16388, lsl #48"), "{windows}");
     Ok(())
 }
 
