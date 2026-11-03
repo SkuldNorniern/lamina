@@ -1655,3 +1655,83 @@ fn unsigned_narrow_sources_are_extended_in_scratch() -> Result<(), Box<dyn Error
     assert!(extensions >= 2, "expected source extensions in {assembly}");
     Ok(())
 }
+
+/// Whether the constant reaches the code only through a register, never as an operand of
+/// the instruction that consumes it.
+fn every_use_is_a_move(assembly: &str, constant: &str) -> bool {
+    assembly
+        .lines()
+        .filter(|line| line.contains(constant))
+        .all(|line| line.trim_start().starts_with("mov "))
+}
+
+fn linux_aarch64(ir: &str, name: &str) -> String {
+    emit_aarch64(ir, name, TargetOperatingSystem::Linux).expect("emit aarch64 assembly")
+}
+
+#[test]
+fn twelve_bit_constant_rides_inside_the_arithmetic_instruction() {
+    let ir = "fn @main(i64 %x) -> i64 {\nentry:\n  %a = add.i64 %x, 4095\n  %b = sub.i64 %a, 1\n  %c = add.i64 %b, 4096\n  ret.i64 %c\n}\n";
+    let assembly = linux_aarch64(ir, "arith_imm");
+    assert!(assembly.contains(", #4095\n"), "{assembly}");
+    assert!(assembly.contains(", #1\n"), "{assembly}");
+    assert!(assembly.contains(", #1, lsl #12\n"), "{assembly}");
+    assert!(!assembly.contains("#4096\n"), "{assembly}");
+}
+
+#[test]
+fn constant_outside_the_twelve_bit_forms_still_goes_through_a_register() {
+    let ir = "fn @main(i64 %x) -> i64 {\nentry:\n  %a = add.i64 %x, 12345\n  ret.i64 %a\n}\n";
+    let assembly = linux_aarch64(ir, "arith_wide");
+    assert!(assembly.contains("#12345"), "{assembly}");
+    assert!(every_use_is_a_move(&assembly, "#12345"), "{assembly}");
+}
+
+#[test]
+fn negative_constant_folds_into_the_opposite_arithmetic_mnemonic() {
+    let ir = "fn @main(i64 %x) -> i64 {\nentry:\n  %a = add.i64 %x, -7\n  %b = sub.i64 %a, -9\n  ret.i64 %b\n}\n";
+    let assembly = linux_aarch64(ir, "arith_negative");
+    assert!(assembly.contains("    sub x"), "{assembly}");
+    assert!(assembly.contains(", #7\n"), "{assembly}");
+    assert!(assembly.contains(", #9\n"), "{assembly}");
+}
+
+#[test]
+fn encodable_bitmask_rides_inside_the_logical_instruction() {
+    let ir = "fn @main(i64 %x) -> i64 {\nentry:\n  %a = and.i64 %x, 2147483647\n  %b = or.i64 %a, 65535\n  %c = xor.i64 %b, 255\n  ret.i64 %c\n}\n";
+    let assembly = linux_aarch64(ir, "logical_imm");
+    assert!(assembly.contains("and x"), "{assembly}");
+    assert!(assembly.contains("#0x7fffffff"), "{assembly}");
+    assert!(assembly.contains("#0xffff"), "{assembly}");
+    assert!(assembly.contains("#0xff"), "{assembly}");
+    assert!(!assembly.contains("movz x9, #65535"), "{assembly}");
+}
+
+#[test]
+fn unencodable_bitmask_is_materialized_rather_than_mis_encoded() {
+    let ir = "fn @main(i64 %x) -> i64 {\nentry:\n  %a = and.i64 %x, 12345\n  ret.i64 %a\n}\n";
+    let assembly = linux_aarch64(ir, "logical_wide");
+    assert!(assembly.contains("#12345"), "{assembly}");
+    assert!(every_use_is_a_move(&assembly, "#12345"), "{assembly}");
+    assert!(!assembly.contains("#0x3039"), "{assembly}");
+}
+
+#[test]
+fn comparison_constant_rides_inside_cmp_and_cmn() {
+    let ir = "fn @main(i64 %x) -> i64 {\nentry:\n  %a = lt.i64 %x, 10\n  %b = gt.i64 %x, -10\n  %u = extend.bool.i64 %a\n  %v = extend.bool.i64 %b\n  %c = and.i64 %u, %v\n  ret.i64 %c\n}\n";
+    let assembly = linux_aarch64(ir, "cmp_imm");
+    assert!(assembly.contains("cmp x"), "{assembly}");
+    assert!(assembly.contains(", #10\n"), "{assembly}");
+    assert!(assembly.contains("cmn x"), "{assembly}");
+}
+
+#[test]
+fn switch_case_constants_in_range_compare_without_a_register() {
+    let ir = "fn @main(i64 %x) -> i64 {\nentry:\n  switch.i64 %x, default, [7, hit], [-5, neg]\nhit:\n  ret.i64 1\nneg:\n  ret.i64 2\ndefault:\n  ret.i64 3\n}\n";
+    let assembly = linux_aarch64(ir, "switch_small");
+    assert!(assembly.contains(", #7\n"), "{assembly}");
+    assert!(assembly.contains("    cmn x"), "{assembly}");
+    assert!(assembly.contains(", #5\n"), "{assembly}");
+    assert!(!assembly.contains("    cmp x9, x"), "{assembly}");
+    assert!(!assembly.contains("mov x9, #7"), "{assembly}");
+}

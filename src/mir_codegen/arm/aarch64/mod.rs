@@ -5,6 +5,7 @@
 
 mod atomic;
 mod bit;
+mod imm;
 mod inline_asm;
 mod overflow;
 mod simd;
@@ -34,6 +35,7 @@ use std::{
     sync::Arc,
 };
 
+use imm::{arith_immediate, logical_immediate, negated_arith_immediate};
 use util::{emit_mov_imm64, imm_to_u64};
 
 use crate::{
@@ -1307,8 +1309,14 @@ fn emit_block<W: Write>(
                             | IntBinOp::SRem
                     ))
                     || masks_shift_amount;
-                let rhs_unused =
-                    is_shift && matches!(rhs, Operand::Immediate(_)) && !zero && !overflow;
+                let folded_rhs = match rhs {
+                    Operand::Immediate(immediate) if !zero && !overflow && !rewrites_rhs => {
+                        fold_int_binary_immediate(*op, imm_to_u64(immediate))
+                    }
+                    _ => None,
+                };
+                let rhs_unused = folded_rhs.is_some()
+                    || (is_shift && matches!(rhs, Operand::Immediate(_)) && !zero && !overflow);
                 let dst_written_once =
                     !zero && !overflow && !matches!(op, IntBinOp::URem | IntBinOp::SRem);
 
@@ -1379,69 +1387,73 @@ fn emit_block<W: Write>(
                     let mask = ty.size_bytes(pointer_width) * 8 - 1;
                     writeln!(w, "    and {rr}, {rr}, #{mask}")?;
                 }
-                match op {
-                    IntBinOp::Add => {
-                        writeln!(w, "    add {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::Sub => {
-                        writeln!(w, "    sub {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::Mul => {
-                        writeln!(w, "    mul {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::UDiv => {
-                        writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::SDiv => {
-                        writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::URem => {
-                        writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
-                        writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
-                    }
-                    IntBinOp::SRem => {
-                        writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
-                        writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
-                    }
-                    IntBinOp::And => {
-                        writeln!(w, "    and {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::Or => {
-                        writeln!(w, "    orr {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::Xor => {
-                        writeln!(w, "    eor {dl}, {rl}, {rr}")?;
-                    }
-                    IntBinOp::Shl => match rhs {
-                        Operand::Immediate(imm) => {
-                            let mut sh = imm_to_u64(imm) as u32;
-                            sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
-                            writeln!(w, "    lsl {dl}, {rl}, #{sh}")?;
+                if let Some((mnemonic, operand)) = &folded_rhs {
+                    writeln!(w, "    {mnemonic} {dl}, {rl}, {operand}")?;
+                } else {
+                    match op {
+                        IntBinOp::Add => {
+                            writeln!(w, "    add {dl}, {rl}, {rr}")?;
                         }
-                        _ => {
-                            writeln!(w, "    lslv {dl}, {rl}, {rr}")?;
+                        IntBinOp::Sub => {
+                            writeln!(w, "    sub {dl}, {rl}, {rr}")?;
                         }
-                    },
-                    IntBinOp::LShr => match rhs {
-                        Operand::Immediate(imm) => {
-                            let mut sh = imm_to_u64(imm) as u32;
-                            sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
-                            writeln!(w, "    lsr {dl}, {rl}, #{sh}")?;
+                        IntBinOp::Mul => {
+                            writeln!(w, "    mul {dl}, {rl}, {rr}")?;
                         }
-                        _ => {
-                            writeln!(w, "    lsrv {dl}, {rl}, {rr}")?;
+                        IntBinOp::UDiv => {
+                            writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
                         }
-                    },
-                    IntBinOp::AShr => match rhs {
-                        Operand::Immediate(imm) => {
-                            let mut sh = imm_to_u64(imm) as u32;
-                            sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
-                            writeln!(w, "    asr {dl}, {rl}, #{sh}")?;
+                        IntBinOp::SDiv => {
+                            writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
                         }
-                        _ => {
-                            writeln!(w, "    asrv {dl}, {rl}, {rr}")?;
+                        IntBinOp::URem => {
+                            writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
+                            writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
                         }
-                    },
+                        IntBinOp::SRem => {
+                            writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
+                            writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
+                        }
+                        IntBinOp::And => {
+                            writeln!(w, "    and {dl}, {rl}, {rr}")?;
+                        }
+                        IntBinOp::Or => {
+                            writeln!(w, "    orr {dl}, {rl}, {rr}")?;
+                        }
+                        IntBinOp::Xor => {
+                            writeln!(w, "    eor {dl}, {rl}, {rr}")?;
+                        }
+                        IntBinOp::Shl => match rhs {
+                            Operand::Immediate(imm) => {
+                                let mut sh = imm_to_u64(imm) as u32;
+                                sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
+                                writeln!(w, "    lsl {dl}, {rl}, #{sh}")?;
+                            }
+                            _ => {
+                                writeln!(w, "    lslv {dl}, {rl}, {rr}")?;
+                            }
+                        },
+                        IntBinOp::LShr => match rhs {
+                            Operand::Immediate(imm) => {
+                                let mut sh = imm_to_u64(imm) as u32;
+                                sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
+                                writeln!(w, "    lsr {dl}, {rl}, #{sh}")?;
+                            }
+                            _ => {
+                                writeln!(w, "    lsrv {dl}, {rl}, {rr}")?;
+                            }
+                        },
+                        IntBinOp::AShr => match rhs {
+                            Operand::Immediate(imm) => {
+                                let mut sh = imm_to_u64(imm) as u32;
+                                sh &= ty.size_bytes(pointer_width) as u32 * 8 - 1;
+                                writeln!(w, "    asr {dl}, {rl}, #{sh}")?;
+                            }
+                            _ => {
+                                writeln!(w, "    asrv {dl}, {rl}, {rr}")?;
+                            }
+                        },
+                    }
                 }
                 extend_integer(w, &dl, ty, true, pointer_width)?;
                 if let Some(s) = dst_scratch {
@@ -1563,13 +1575,30 @@ fn emit_block<W: Write>(
                         x_alias(s)
                     }
                 };
+                let folded_rhs = match rhs {
+                    Operand::Immediate(immediate) => {
+                        let value = imm_to_u64(immediate);
+                        let value = if unsigned_extend {
+                            let bits = ty.size_bytes(pointer_width) as u32 * 8;
+                            value & ((1u64 << bits) - 1)
+                        } else {
+                            value
+                        };
+                        fold_int_cmp_immediate(value)
+                    }
+                    _ => None,
+                };
                 let mut rhs_scratch = None;
-                let rr = match operand_in_register(rhs, ra) {
-                    Some(preg) if !unsigned_extend => x_alias(preg),
-                    _ => {
-                        let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                        rhs_scratch = Some(s);
-                        x_alias(s)
+                let rr = if folded_rhs.is_some() {
+                    "<unused>".to_string()
+                } else {
+                    match operand_in_register(rhs, ra) {
+                        Some(preg) if !unsigned_extend => x_alias(preg),
+                        _ => {
+                            let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                            rhs_scratch = Some(s);
+                            x_alias(s)
+                        }
                     }
                 };
                 let mut dst_scratch = None;
@@ -1589,9 +1618,14 @@ fn emit_block<W: Write>(
                 }
                 if unsigned_extend {
                     extend_integer(w, &rl, ty, false, pointer_width)?;
-                    extend_integer(w, &rr, ty, false, pointer_width)?;
+                    if folded_rhs.is_none() {
+                        extend_integer(w, &rr, ty, false, pointer_width)?;
+                    }
                 }
-                writeln!(w, "    cmp {rl}, {rr}")?;
+                match &folded_rhs {
+                    Some((mnemonic, operand)) => writeln!(w, "    {mnemonic} {rl}, {operand}")?,
+                    None => writeln!(w, "    cmp {rl}, {rr}")?,
+                }
                 let cond = int_condition(*op);
                 writeln!(w, "    cset {dl}, {cond}")?;
                 if let Some(s) = dst_scratch {
@@ -2321,12 +2355,28 @@ fn emit_block<W: Write>(
                 cases,
                 default,
             } => {
+                let folded: Vec<_> = cases
+                    .iter()
+                    .map(|(case_val, _)| fold_int_cmp_immediate(*case_val as u64))
+                    .collect();
                 let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let constant = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let constant = if folded.iter().any(Option::is_none) {
+                    Some(ra.alloc_scratch().ok_or_else(scratch_error)?)
+                } else {
+                    None
+                };
                 load_reg_to(w, value, t, frame, ra)?;
-                for (case_val, case_label) in cases {
-                    emit_mov_imm64(w, constant, *case_val as u64)?;
-                    writeln!(w, "    cmp {}, {}", x_alias(t), x_alias(constant))?;
+                for ((case_val, case_label), fold) in cases.iter().zip(&folded) {
+                    match (fold, constant) {
+                        (Some((mnemonic, operand)), _) => {
+                            writeln!(w, "    {mnemonic} {}, {operand}", x_alias(t))?;
+                        }
+                        (None, Some(constant)) => {
+                            emit_mov_imm64(w, constant, *case_val as u64)?;
+                            writeln!(w, "    cmp {}, {}", x_alias(t), x_alias(constant))?;
+                        }
+                        (None, None) => unreachable!("a case without a fold reserved a register"),
+                    }
                     emit_branch_if(
                         w,
                         "eq",
@@ -2335,7 +2385,9 @@ fn emit_block<W: Write>(
                     )?;
                 }
                 writeln!(w, "    b {block_prefix}{default}")?;
-                ra.free_scratch(constant);
+                if let Some(constant) = constant {
+                    ra.free_scratch(constant);
+                }
                 ra.free_scratch(t);
             }
             MirInst::Comment { text } => {
@@ -2381,6 +2433,31 @@ fn emit_materialize_operand<W: Write>(
         Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
     }
     Ok(())
+}
+
+/// The mnemonic and operand text that carry `value` inside an integer binary instruction,
+/// or `None` when the constant has to be materialised into a register first.
+fn fold_int_binary_immediate(op: IntBinOp, value: u64) -> Option<(&'static str, String)> {
+    match op {
+        IntBinOp::Add => arith_immediate(value)
+            .map(|text| ("add", text))
+            .or_else(|| negated_arith_immediate(value).map(|text| ("sub", text))),
+        IntBinOp::Sub => arith_immediate(value)
+            .map(|text| ("sub", text))
+            .or_else(|| negated_arith_immediate(value).map(|text| ("add", text))),
+        IntBinOp::And => logical_immediate(value).map(|text| ("and", text)),
+        IntBinOp::Or => logical_immediate(value).map(|text| ("orr", text)),
+        IntBinOp::Xor => logical_immediate(value).map(|text| ("eor", text)),
+        _ => None,
+    }
+}
+
+/// The comparison mnemonic and operand text that carry `value`, or `None` when it needs a
+/// register. A negative constant compares through `cmn`, which sets the same flags.
+fn fold_int_cmp_immediate(value: u64) -> Option<(&'static str, String)> {
+    arith_immediate(value)
+        .map(|text| ("cmp", text))
+        .or_else(|| negated_arith_immediate(value).map(|text| ("cmn", text)))
 }
 
 /// The physical register a source operand already occupies, when reading it needs no
