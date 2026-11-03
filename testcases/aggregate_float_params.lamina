@@ -1,0 +1,181 @@
+type !F2 = struct { a: f32, b: f32 }
+type !D2 = struct { a: f64, b: f64 }
+type !FI = struct { a: f32, b: i32 }
+type !IF = struct { a: i64, b: f64 }
+type !D3 = struct { a: f64, b: f64, c: f64 }
+
+fn @f2_sum(!F2 %p) -> f32 {
+  entry:
+    %ap = getfieldptr.!F2 %p, 0
+    %bp = getfieldptr.!F2 %p, 1
+    %a = load.f32 %ap
+    %b = load.f32 %bp
+    %s = add.f32 %a, %b
+    ret.f32 %s
+}
+
+fn @f2_make(f32 %x) -> !F2 {
+  entry:
+    %p = stackalloc.!F2
+    %pa = getfieldptr.!F2 %p, 0
+    %pb = getfieldptr.!F2 %p, 1
+    store.f32 %pa, %x
+    %y = mul.f32 %x, 3.0
+    store.f32 %pb, %y
+    ret.!F2 %p
+}
+
+fn @d2_make(f64 %x) -> !D2 {
+  entry:
+    %p = stackalloc.!D2
+    %pa = getfieldptr.!D2 %p, 0
+    %pb = getfieldptr.!D2 %p, 1
+    store.f64 %pa, %x
+    %y = mul.f64 %x, 2.0
+    store.f64 %pb, %y
+    ret.!D2 %p
+}
+
+fn @d2_sum(!D2 %p) -> f64 {
+  entry:
+    %ap = getfieldptr.!D2 %p, 0
+    %bp = getfieldptr.!D2 %p, 1
+    %a = load.f64 %ap
+    %b = load.f64 %bp
+    %s = add.f64 %a, %b
+    ret.f64 %s
+}
+
+fn @fi_sum(!FI %p) -> i64 {
+  entry:
+    %ap = getfieldptr.!FI %p, 0
+    %bp = getfieldptr.!FI %p, 1
+    %a = load.f32 %ap
+    %b = load.i32 %bp
+    %ai = fptoint.f32.i64 %a
+    %bi = extend.i32.i64 %b
+    %s = add.i64 %ai, %bi
+    ret.i64 %s
+}
+
+fn @if_scale(!IF %p) -> i64 {
+  entry:
+    %ap = getfieldptr.!IF %p, 0
+    %bp = getfieldptr.!IF %p, 1
+    %a = load.i64 %ap
+    %b = load.f64 %bp
+    %d = mul.f64 %b, 2.0
+    %di = fptoint.f64.i64 %d
+    %s = add.i64 %a, %di
+    ret.i64 %s
+}
+
+fn @d3_sum(!D3 %p) -> f64 {
+  entry:
+    %ap = getfieldptr.!D3 %p, 0
+    %bp = getfieldptr.!D3 %p, 1
+    %cp = getfieldptr.!D3 %p, 2
+    %a = load.f64 %ap
+    %b = load.f64 %bp
+    %c = load.f64 %cp
+    %ab = add.f64 %a, %b
+    %s = add.f64 %ab, %c
+    ret.f64 %s
+}
+
+fn @spill(f64 %a0, f64 %a1, f64 %a2, f64 %a3, f64 %a4, f64 %a5, f64 %a6, f64 %a7, !F2 %p, i64 %k) -> i64 {
+  entry:
+    %ap = getfieldptr.!F2 %p, 0
+    %pa = load.f32 %ap
+    %pi = fptoint.f32.i64 %pa
+    %a7i = fptoint.f64.i64 %a7
+    %s0 = add.i64 %pi, %k
+    %s1 = add.i64 %s0, %a7i
+    ret.i64 %s1
+}
+
+fn @print_i64(i64 %n) -> void {
+  entry:
+    %neg = lt.i64 %n, 0
+    %m = sub.i64 0, %n
+    %s = select.i64 %neg, %m, %n
+    %u = bitcast.i64.u64 %s
+    br %neg, minus, digits
+  minus:
+    %c = writebyte 45
+    jmp digits
+  digits:
+    call @put_u64(%u)
+    %nl = writebyte 10
+    ret.void
+}
+
+fn @put_u64(u64 %n) -> void {
+  entry:
+    %q = div.u64 %n, 10
+    %r = rem.u64 %n, 10
+    %d = add.u64 %r, 48
+    %z = eq.u64 %q, 0
+    br %z, last, more
+  more:
+    call @put_u64(%q)
+    jmp last
+  last:
+    %w = writebyte %d
+    ret.void
+}
+
+fn @main() -> i64 {
+  entry:
+    %f = stackalloc.!F2
+    %fa = getfieldptr.!F2 %f, 0
+    %fb = getfieldptr.!F2 %f, 1
+    store.f32 %fa, 1.5
+    store.f32 %fb, 2.25
+    %fs = call @f2_sum(!F2 %f)
+    %fs4 = mul.f32 %fs, 4.0
+    %fsi = fptoint.f32.i64 %fs4
+    call @print_i64(%fsi)
+
+    %made = call @f2_make(2.0)
+    %made_sum = call @f2_sum(!F2 %made)
+    %made_i = fptoint.f32.i64 %made_sum
+    call @print_i64(%made_i)
+
+    %d = call @d2_make(1.5)
+    %dsum = call @d2_sum(!D2 %d)
+    %dscaled = mul.f64 %dsum, 2.0
+    %dsi = fptoint.f64.i64 %dscaled
+    call @print_i64(%dsi)
+
+    %fi = stackalloc.!FI
+    %fia = getfieldptr.!FI %fi, 0
+    %fib = getfieldptr.!FI %fi, 1
+    store.f32 %fia, 2.0
+    store.i32 %fib, 40
+    %fis = call @fi_sum(!FI %fi)
+    call @print_i64(%fis)
+
+    %ifv = stackalloc.!IF
+    %ifa = getfieldptr.!IF %ifv, 0
+    %ifb = getfieldptr.!IF %ifv, 1
+    store.i64 %ifa, 10
+    store.f64 %ifb, 0.5
+    %ifs = call @if_scale(!IF %ifv)
+    call @print_i64(%ifs)
+
+    %t = stackalloc.!D3
+    %ta = getfieldptr.!D3 %t, 0
+    %tb = getfieldptr.!D3 %t, 1
+    %tc = getfieldptr.!D3 %t, 2
+    store.f64 %ta, 1.0
+    store.f64 %tb, 2.0
+    store.f64 %tc, 3.0
+    %t3 = call @d3_sum(!D3 %t)
+    %t3i = fptoint.f64.i64 %t3
+    call @print_i64(%t3i)
+
+    %sp = call @spill(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, !F2 %f, 9)
+    call @print_i64(%sp)
+    ret.i64 0
+}

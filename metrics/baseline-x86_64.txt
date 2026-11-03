@@ -3,6 +3,74 @@
 # insns: emitted instructions. spills: mov* with an N(%rbp)/N(%rsp) operand.
 # calls: call instructions. branches: j* instructions. frame: subq $N,%rsp per function.
 
+[aggregate_float_params O0]
+insns 667
+spills 216
+calls 18
+branches 3
+frame d2_make 64
+frame d2_sum 64
+frame d3_sum 96
+frame f2_make 48
+frame f2_sum 64
+frame fi_sum 80
+frame if_scale 80
+frame main 304
+frame print_i64 64
+frame put_u64 48
+frame spill 80
+
+[aggregate_float_params O1]
+insns 600
+spills 77
+calls 18
+branches 3
+frame d2_make 32
+frame d2_sum 48
+frame d3_sum 64
+frame f2_make 32
+frame f2_sum 32
+frame fi_sum 16
+frame if_scale 32
+frame main 160
+frame print_i64 32
+frame put_u64 32
+frame spill 32
+
+[aggregate_float_params O2]
+insns 898
+spills 100
+calls 18
+branches 17
+frame d2_make 32
+frame d2_sum 48
+frame d3_sum 64
+frame f2_make 32
+frame f2_sum 32
+frame fi_sum 16
+frame if_scale 32
+frame main 208
+frame print_i64 32
+frame put_u64 32
+frame spill 32
+
+[aggregate_float_params O3]
+insns 900
+spills 102
+calls 18
+branches 17
+frame d2_make 32
+frame d2_sum 48
+frame d3_sum 64
+frame f2_make 32
+frame f2_sum 32
+frame fi_sum 16
+frame if_scale 32
+frame main 208
+frame print_i64 32
+frame put_u64 32
+frame spill 32
+
 [aggregate_memory_params O0]
 insns 269
 spills 108
