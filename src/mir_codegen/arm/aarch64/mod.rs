@@ -541,6 +541,12 @@ fn compile_single_function_aarch64_with(
         Some(_) => adjusted_frame_size + 16,
         None => adjusted_frame_size,
     };
+    let va_save = (func.sig.variadic && os_uses_elf(target_os))
+        .then(|| -adjusted_frame_size - variadic::SAVE_AREA_BYTES);
+    let adjusted_frame_size = match va_save {
+        Some(_) => adjusted_frame_size + variadic::SAVE_AREA_BYTES,
+        None => adjusted_frame_size,
+    };
 
     frame.frame_size = adjusted_frame_size;
     let page_size = TargetArchitecture::Aarch64.stack_page_size() as u64;
@@ -564,10 +570,16 @@ fn compile_single_function_aarch64_with(
         .map(|p| ArgKind::of(p.ty, p.aggregate, func.pointer_width))
         .collect();
     let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
-    let variadic_start = func.sig.variadic.then(|| {
-        let named = classify_aarch64_arguments(&param_kinds, target_os, None);
-        (16 + aarch64_stack_bytes(&named).next_multiple_of(8)) as i32
+    let va_area = func.sig.variadic.then(|| {
+        let stack_start = (16 + aarch64_stack_bytes(&param_places).next_multiple_of(8)) as i32;
+        match va_save {
+            Some(save) => variadic::VaArea::aapcs64(save, stack_start, &param_places),
+            None => variadic::VaArea::darwin(stack_start),
+        }
     });
+    if let Some(area) = &va_area {
+        variadic::spill_save_area(&mut output, area).map_err(lamina_to_codegen_error)?;
+    }
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
@@ -825,7 +837,7 @@ fn compile_single_function_aarch64_with(
                         func.sig.ret_aggregate,
                         func.sig.ret_ty.filter(|ty| ty.is_float()),
                         sret_slot,
-                        variadic_start,
+                        va_area,
                         func.pointer_width,
                     )?;
                 }
@@ -1022,7 +1034,7 @@ fn emit_block<W: Write>(
     ret_aggregate: Option<Aggregate>,
     ret_float: Option<MirType>,
     sret_slot: Option<i32>,
-    variadic_start: Option<i32>,
+    va_area: Option<variadic::VaArea>,
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     for inst in insts {
@@ -1109,7 +1121,7 @@ fn emit_block<W: Write>(
                         ret_aggregate,
                         ret_float,
                         sret_slot,
-                        variadic_start,
+                        va_area,
                         pointer_width,
                     )?;
                 }
@@ -2110,7 +2122,7 @@ fn emit_block<W: Write>(
             | MirInst::VaArg { .. }
             | MirInst::VaEnd { .. }
             | MirInst::VaCopy { .. } => {
-                variadic::emit(inst, w, frame, ra, abi.target_os(), variadic_start)?;
+                variadic::emit(inst, w, frame, ra, abi.target_os(), va_area, block_prefix)?;
             }
             MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra)?,
             MirInst::AtomicLoad { .. }

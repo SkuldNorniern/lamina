@@ -843,16 +843,113 @@ fn darwin_variadic_callee_reads_its_arguments_from_the_stack() -> Result<(), Box
     let error = generate_mir_aarch64(
         &mir,
         &mut output,
-        TargetOperatingSystem::Linux,
+        TargetOperatingSystem::Windows,
         PointerWidth::Bits64,
     )
     .err()
-    .ok_or("expected a rejection on Linux")?;
+    .ok_or("expected a rejection on Windows")?;
     assert!(
         error
             .to_string()
-            .contains("is not yet supported by the AArch64 backend on Linux"),
+            .contains("is not yet supported by the AArch64 backend on Windows"),
         "{error}"
+    );
+    Ok(())
+}
+
+fn linux_va_assembly(source: &str, name: &str) -> Result<String, Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let module = parse_module(source)?;
+    let mir = from_ir_x86_64(&module, name).expect("lower variadic callee");
+    let mut output = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
+    Ok(String::from_utf8(output)?)
+}
+
+#[test]
+fn linux_variadic_prologue_spills_all_argument_registers() -> Result<(), Box<dyn Error>> {
+    let assembly = linux_va_assembly(
+        "fn @sum(i64 %n, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  va_end %ap\n  ret.i64 %x\n}\n",
+        "linux_va_spill",
+    )?;
+    let stores: Vec<&str> = assembly
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("str x") || line.starts_with("str q"))
+        .collect();
+    for index in 0..8 {
+        assert!(
+            stores.contains(&format!("str x{index}, [x16, #{}]", index * 8).as_str()),
+            "{assembly}"
+        );
+        assert!(
+            stores.contains(&format!("str q{index}, [x16, #{}]", 64 + index * 16).as_str()),
+            "{assembly}"
+        );
+    }
+    assert!(
+        assembly
+            .lines()
+            .any(|line| line.trim().starts_with("sub x16, x29, #")),
+        "{assembly}"
+    );
+    Ok(())
+}
+
+#[test]
+fn linux_variadic_va_arg_walks_general_then_vector_then_stack() -> Result<(), Box<dyn Error>> {
+    let assembly = linux_va_assembly(
+        "fn @mix(i64 %n, ...) -> f64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  %y = va_arg.f64 %ap\n  va_end %ap\n  ret.f64 %y\n}\n",
+        "linux_va_walk",
+    )?;
+    let trimmed: Vec<&str> = assembly.lines().map(str::trim).collect();
+    assert_eq!(
+        trimmed
+            .iter()
+            .filter(|line| line.starts_with("ldrsw "))
+            .count(),
+        2,
+        "{assembly}"
+    );
+    assert!(
+        trimmed
+            .iter()
+            .any(|line| line.starts_with("b.ge .L_mix.va_arg")),
+        "{assembly}"
+    );
+    assert!(
+        trimmed
+            .iter()
+            .any(|line| line.ends_with(", #8]") && line.starts_with("ldr ")),
+        "{assembly}"
+    );
+    assert!(
+        trimmed
+            .iter()
+            .any(|line| line.ends_with(", #16]") && line.starts_with("ldr ")),
+        "{assembly}"
+    );
+    Ok(())
+}
+
+#[test]
+fn linux_variadic_va_copy_moves_the_whole_va_list() -> Result<(), Box<dyn Error>> {
+    let assembly = linux_va_assembly(
+        "fn @copy(i64 %n, ...) -> i64 {\nentry:\n  %a = stackalloc.valist\n  %b = stackalloc.valist\n  va_start %a\n  va_copy %b, %a\n  %x = va_arg.i64 %b\n  va_end %a\n  va_end %b\n  ret.i64 %x\n}\n",
+        "linux_va_copy",
+    )?;
+    assert!(
+        assembly
+            .lines()
+            .filter(|line| line.trim().starts_with("ldr "))
+            .count()
+            >= 4,
+        "{assembly}"
     );
     Ok(())
 }
