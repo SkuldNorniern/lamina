@@ -10899,6 +10899,70 @@ frame print_u64 16
 frame put_u64 32
 frame square 0
 
+[odd_sized_global_addresses O0]
+insns 159
+spills 67
+calls 18
+branches 1
+frame first_byte 32
+frame five 0
+frame main 176
+frame one 0
+frame pad 0
+frame print_i64 32
+frame put_u64 48
+frame spot 0
+frame three 0
+frame two 0
+
+[odd_sized_global_addresses O1]
+insns 149
+spills 30
+calls 18
+branches 1
+frame first_byte 0
+frame five 0
+frame main 80
+frame one 0
+frame pad 0
+frame print_i64 16
+frame put_u64 32
+frame spot 0
+frame three 0
+frame two 0
+
+[odd_sized_global_addresses O2]
+insns 268
+spills 34
+calls 10
+branches 1
+frame first_byte 0
+frame five 0
+frame main 64
+frame one 0
+frame pad 0
+frame print_i64 16
+frame put_u64 32
+frame spot 0
+frame three 0
+frame two 0
+
+[odd_sized_global_addresses O3]
+insns 266
+spills 32
+calls 10
+branches 1
+frame first_byte 0
+frame five 0
+frame main 64
+frame one 0
+frame pad 0
+frame print_i64 16
+frame put_u64 32
+frame spot 0
+frame three 0
+frame two 0
+
 [output_freestanding O0]
 insns 83
 spills 21

@@ -1,0 +1,66 @@
+global $one: [3 x i8] = "Pq"
+global $two: [5 x i8] = "Rstu"
+global $three: [7 x i8] = "Vwxyz!"
+global $pad: [3 x i8]
+global $spot: [1 x i8]
+global $five: [9 x i8] = "Abcdefgh"
+
+fn @first_byte(ptr %p) -> i64 {
+entry:
+  %c = load.i8 %p
+  %w = extend.i8.i64 %c
+  ret.i64 %w
+}
+
+fn @main() -> i64 {
+entry:
+  %p1 = getelem.i8 $one, 0
+  %p2 = getelem.i8 $two, 0
+  %p3 = getelem.i8 $three, 0
+  %p5 = getelem.i8 $five, 0
+  %b1 = call @first_byte(%p1)
+  %b2 = call @first_byte(%p2)
+  %b3 = call @first_byte(%p3)
+  %b5 = call @first_byte(%p5)
+  call @print_i64(%b1)
+  call @print_i64(%b2)
+  call @print_i64(%b3)
+  call @print_i64(%b5)
+  %t1 = getelem.i8 $two, 3
+  %t2 = getelem.i8 $three, 5
+  %t3 = getelem.i8 $five, 7
+  %c1 = call @first_byte(%t1)
+  %c2 = call @first_byte(%t2)
+  %c3 = call @first_byte(%t3)
+  call @print_i64(%c1)
+  call @print_i64(%c2)
+  call @print_i64(%c3)
+  %q = getelem.i8 $spot, 0
+  store.i8 %q, 7
+  %z = call @first_byte(%q)
+  call @print_i64(%z)
+  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %u = bitcast.i64.u64 %n
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
