@@ -1,0 +1,26 @@
+# Pointers inside aggregate initializers: a struct field beside a literal, and
+# an array of addresses. Each slot carries a relocation, not bytes.
+type !Entry = struct { name: ptr, code: i64 }
+
+global $a: [2 x i8] = "A"
+global $b: [2 x i8] = "B"
+global $e: !Entry = { $a, 7 }
+global $table: [2 x ptr] = [ $a, $b ]
+
+fn @main() -> i64 {
+  entry:
+    %np = getfieldptr.!Entry $e, 0
+    %p1 = load.ptr %np
+    %c1 = load.i8 %p1
+    %w1 = writebyte %c1
+    %cp = getfieldptr.!Entry $e, 1
+    %code = load.i64 %cp
+    %cc = add.i64 %code, 48
+    %w2 = writebyte %cc
+    %t1 = getelem.ptr $table, 1
+    %p2 = load.ptr %t1
+    %c2 = load.i8 %p2
+    %w3 = writebyte %c2
+    %nl = writebyte 10
+    ret.i64 0
+}

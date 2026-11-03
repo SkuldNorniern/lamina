@@ -2743,6 +2743,50 @@ frame answer 0
 frame fp 0
 frame main 32
 
+[global_pointer_fields O0]
+insns 85
+spills 25
+calls 0
+branches 0
+frame a 0
+frame b 0
+frame e 0
+frame main 128
+frame table 0
+
+[global_pointer_fields O1]
+insns 78
+spills 12
+calls 0
+branches 0
+frame a 0
+frame b 0
+frame e 0
+frame main 32
+frame table 0
+
+[global_pointer_fields O2]
+insns 78
+spills 12
+calls 0
+branches 0
+frame a 0
+frame b 0
+frame e 0
+frame main 32
+frame table 0
+
+[global_pointer_fields O3]
+insns 76
+spills 10
+calls 0
+branches 0
+frame a 0
+frame b 0
+frame e 0
+frame main 32
+frame table 0
+
 [global_pointer_relocation O0]
 insns 60
 spills 16
