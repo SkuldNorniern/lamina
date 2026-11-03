@@ -266,6 +266,20 @@ fn unknown_condition(cond: &str) -> LaminaError {
     )))
 }
 
+fn libc_write(os: TargetOperatingSystem) -> &'static str {
+    match os {
+        TargetOperatingSystem::Windows => "_write",
+        _ => "write",
+    }
+}
+
+fn libc_read(os: TargetOperatingSystem) -> &'static str {
+    match os {
+        TargetOperatingSystem::Windows => "_read",
+        _ => "read",
+    }
+}
+
 fn scratch_error() -> CodegenError {
     CodegenError::UnsupportedFeature("aarch64 scratch registers exhausted".to_string())
 }
@@ -1810,14 +1824,14 @@ fn emit_block<W: Write>(
                             }
                             writeln!(w, "    add sp, sp, #16")?;
                         }
-                        TargetOperatingSystem::Linux => {
+                        os @ (TargetOperatingSystem::Linux | TargetOperatingSystem::Windows) => {
                             emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
                             writeln!(w, "    sub sp, sp, #16")?;
                             writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
                             writeln!(w, "    mov x0, #1")?;
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
-                            writeln!(w, "    bl write")?;
+                            writeln!(w, "    bl {}", libc_write(os))?;
                             emit_io_result(w, false, false)?;
                             writeln!(w, "    dmb sy")?;
                             if let Some(dst) = ret {
@@ -1840,11 +1854,11 @@ fn emit_block<W: Write>(
                             writeln!(w, "    svc #0")?;
                             writeln!(w, "    csinv x0, x0, xzr, cc")?;
                         }
-                        TargetOperatingSystem::Linux => {
+                        os @ (TargetOperatingSystem::Linux | TargetOperatingSystem::Windows) => {
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
-                            writeln!(w, "    bl read")?;
+                            writeln!(w, "    bl {}", libc_read(os))?;
                         }
                         other => {
                             return Err(unsupported_io(name, other));
@@ -1870,11 +1884,11 @@ fn emit_block<W: Write>(
                             writeln!(w, "    svc #0")?;
                             emit_io_result(w, true, false)?;
                         }
-                        TargetOperatingSystem::Linux => {
+                        os @ (TargetOperatingSystem::Linux | TargetOperatingSystem::Windows) => {
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #1")?;
-                            writeln!(w, "    bl write")?;
+                            writeln!(w, "    bl {}", libc_write(os))?;
                             emit_io_result(w, false, false)?;
                         }
                         other => {
@@ -1896,12 +1910,12 @@ fn emit_block<W: Write>(
                             emit_io_result(w, true, true)?;
                             writeln!(w, "2:")?;
                         }
-                        TargetOperatingSystem::Linux => {
+                        os @ (TargetOperatingSystem::Linux | TargetOperatingSystem::Windows) => {
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    cbz x2, 2f")?;
-                            writeln!(w, "    bl read")?;
+                            writeln!(w, "    bl {}", libc_read(os))?;
                             emit_io_result(w, false, true)?;
                             writeln!(w, "2:")?;
                         }
