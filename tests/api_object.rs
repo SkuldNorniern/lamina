@@ -157,9 +157,15 @@ fn x86_64_windows_yields_coff_with_main() {
 
 #[test]
 fn target_without_object_writer_is_refused_with_typed_error() {
-    let error = compile("aarch64_windows").expect_err("COFF writer is x86_64 only");
+    let error = compile("riscv64_windows").expect_err("COFF carries x86_64 and aarch64 only");
     assert!(
-        matches!(error, ObjectError::UnsupportedTarget(target) if target.architecture == TargetArchitecture::Aarch64),
+        matches!(error, ObjectError::UnsupportedTarget(target) if target.architecture == TargetArchitecture::Riscv64),
         "got {error:?}"
     );
+}
+
+#[test]
+fn aarch64_windows_yields_coff_with_main() {
+    let object = compile("aarch64_windows").expect("object bytes");
+    assert_coff_symbol(&object, 0xAA64, "main");
 }
