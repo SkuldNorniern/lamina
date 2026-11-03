@@ -1,6 +1,7 @@
 use super::*;
 use crate::mir::FunctionBuilder;
 use crate::mir::codegen::from_ir_for_target;
+use crate::mir_codegen::simd_support::objdump_tool;
 use crate::mir_codegen::test_support::cross_assembler_ready;
 use crate::parser::parse_module;
 use crate::test_support::TempDir;
@@ -345,10 +346,8 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
             "{allocator:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let output = Command::new("llvm-objdump-18")
-            .arg("-d")
-            .arg(&object)
-            .output()?;
+        let objdump = objdump_tool().ok_or("llvm-objdump not installed")?;
+        let output = Command::new(objdump).arg("-d").arg(&object).output()?;
         assert!(
             output.status.success(),
             "{}",
