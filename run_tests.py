@@ -117,6 +117,20 @@ S390X_UNSUPPORTED = {
 # by the target's byte order, not the host's. A testcase `<name>.<target>.lamina`
 # is compiled in place of `<name>.lamina` for that target and shares its expected
 # output; variant files are never run as testcases of their own.
+RISCV64_UNSUPPORTED = {
+    'checked_arithmetic': "the backend has no overflow flag for '<op>.ovf'",
+    'inline_asm_clobber': 'inline assembly is not implemented for RISC-V',
+    'inline_asm_loop': 'inline assembly is not implemented for RISC-V',
+    'inline_asm_pressure': 'inline assembly is not implemented for RISC-V',
+    'inline_asm_rdtsc': 'rdtsc reads the x86 timestamp counter; no RISC-V equivalent',
+    'inline_asm_unused': 'inline assembly is not implemented for RISC-V',
+    'load_store_alignment': 'the backend issues no unaligned store',
+    'thread_local_storage': 'thread-local storage is not implemented for RISC-V',
+    'vector_operations': 'vectors need the V extension, which rv64imafd does not carry',
+    **FLOAT_AGGREGATE_UNSUPPORTED,
+}
+
+
 CROSS_TARGETS = {
     's390x_linux': {
         'byteorder': 'big',
@@ -131,6 +145,13 @@ CROSS_TARGETS = {
         'emulator': 'qemu-aarch64-static',
         'sysroot': '/usr/aarch64-linux-gnu',
         'unsupported': {},
+    },
+    'riscv64_linux': {
+        'byteorder': 'little',
+        'compiler': 'riscv64-linux-gnu-gcc',
+        'emulator': 'qemu-riscv64-static',
+        'sysroot': '/usr/riscv64-linux-gnu',
+        'unsupported': RISCV64_UNSUPPORTED,
     },
     'armv7_linux': {
         'byteorder': 'little',
