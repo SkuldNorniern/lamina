@@ -62,19 +62,12 @@ ILP32_UNSUPPORTED = {
         for name in ('atomic_cmpxchg', 'atomic_orderings', 'atomics')
     },
     **{
-        name: 'reading a 64-bit variadic argument out of 32-bit slots is not implemented'
+        name: 'callptr carries no callee signature, so a legalized pair cannot cross it as a named argument or a result'
         for name in (
-            'callee_saved_pressure',
             'callptr_float_literal',
             'function_pointers',
             'global_function_address',
-            'va_arg_chain',
-            'va_arg_copy',
-            'va_arg_copy_stack',
             'va_arg_mixed',
-            'va_arg_narrow',
-            'va_arg_no_variadic',
-            'va_arg_sum',
         )
     },
     **{
