@@ -1644,3 +1644,45 @@ fn only_architectures_with_verified_placement_declare_a_float_aggregate_abi() {
          is added here"
     );
 }
+
+/// A legalized pair in a variadic tail reaches the callee as its value. The call
+/// records the aggregate for the backend, because the callee's declaration says
+/// nothing about an argument past its named parameters.
+#[test]
+fn a_wide_argument_in_the_variadic_tail_carries_the_aggregate_it_is_passed_as() {
+    use lamina_platform::TargetArchitecture;
+    let ir = parse_module(
+        "@extern fn @printf(ptr %fmt, ...) -> i32\n\
+         global $fmt: [6 x i8] = \"%lld\\n\"\n\
+         fn @main() -> i32 {\nentry:\n  %x = add.i64 1, 2\n  \
+         %r = call @printf(ptr $fmt, i64 %x)\n  ret.i32 %r\n}\n",
+    )
+    .expect("parse");
+    let module = from_ir_for_target(&ir, "tail", TargetArchitecture::I686.data_layout())
+        .expect("lower a pair in the variadic tail");
+    let main = &module.functions["main"];
+    let (_, aggregate) = main
+        .variadic_wide_arguments
+        .iter()
+        .next()
+        .expect("the pair is marked for the backend");
+    assert_eq!(aggregate.size, 8);
+    assert!(aggregate.is_wide_scalar());
+}
+
+#[test]
+fn a_128_bit_argument_in_the_variadic_tail_is_refused_by_name() {
+    use lamina_platform::TargetArchitecture;
+    let ir = parse_module(
+        "@extern fn @printf(ptr %fmt, ...) -> i32\n\
+         global $fmt: [4 x i8] = \"%s\\n\"\n\
+         fn @main() -> i32 {\nentry:\n  %x = extend.u64.i128 7\n  \
+         %r = call @printf(ptr $fmt, i128 %x)\n  ret.i32 %r\n}\n",
+    )
+    .expect("parse");
+    let error = from_ir_for_target(&ir, "tail", TargetArchitecture::X86_64.data_layout())
+        .expect_err("no backend places a 128-bit integer in a variadic tail");
+    let message = error.to_string();
+    assert!(message.contains("@printf"), "{message}");
+    assert!(message.contains("variadic tail"), "{message}");
+}

@@ -354,3 +354,55 @@ mod ordered_comparison_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod variadic_wide_argument_tests {
+    use crate::mir::codegen::from_ir_for_target;
+    use crate::parser::parse_module;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    fn emit(source: &str) -> String {
+        let ir = parse_module(source).expect("parse");
+        let mir = from_ir_for_target(&ir, "i686_variadic", TargetArchitecture::I686.data_layout())
+            .expect("lower");
+        let mut out = Vec::new();
+        super::super::generate_mir_i686_with_units_and_settings(
+            &mir,
+            &mut out,
+            TargetOperatingSystem::Linux,
+            1,
+            &Default::default(),
+        )
+        .expect("codegen");
+        String::from_utf8(out).expect("utf8")
+    }
+
+    #[test]
+    fn a_legalized_pair_in_the_variadic_tail_travels_as_its_two_words() {
+        let assembly = emit(
+            "@extern fn @printf(ptr %fmt, ...) -> i32\n\
+             global $fmt: [6 x i8] = \"%lld\\n\"\n\
+             fn @main() -> i32 {\nentry:\n  %x = add.i64 1, 2\n  \
+             %r = call @printf(ptr $fmt, i64 %x)\n  ret.i32 %r\n}\n",
+        );
+        assert!(assembly.contains("    movl 0(%ecx), %eax"), "{assembly}");
+        assert!(assembly.contains("    movl %eax, 4(%esp)"), "{assembly}");
+        assert!(assembly.contains("    movl 4(%ecx), %eax"), "{assembly}");
+        assert!(assembly.contains("    movl %eax, 8(%esp)"), "{assembly}");
+    }
+
+    #[test]
+    fn a_named_wide_parameter_of_a_variadic_callee_travels_as_its_two_words() {
+        let assembly = emit(
+            "@extern fn @take(i64 %a, ...) -> i32\n\
+             fn @main() -> i32 {\nentry:\n  %x = add.i64 1, 2\n  \
+             %r = call @take(i64 %x, i32 5)\n  ret.i32 %r\n}\n",
+        );
+        assert!(assembly.contains("    movl 0(%ecx), %eax"), "{assembly}");
+        assert!(assembly.contains("    movl %eax, 0(%esp)"), "{assembly}");
+        assert!(assembly.contains("    movl 4(%ecx), %eax"), "{assembly}");
+        assert!(assembly.contains("    movl %eax, 4(%esp)"), "{assembly}");
+        assert!(assembly.contains("    movl %eax, 8(%esp)"), "{assembly}");
+    }
+}
