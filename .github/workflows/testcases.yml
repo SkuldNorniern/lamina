@@ -32,8 +32,7 @@ jobs:
           sudo apt-get install -y \
             gcc-multilib libc6-dev-i386 \
             lld-18 llvm-18 \
-            qemu-user-static \
-            gcc-aarch64-linux-gnu gcc-s390x-linux-gnu
+            qemu-user-static
       # The wasm backend tests run their output under the wasmtime CLI. Without
       # it they skip, and the backend goes untested while the job stays green.
       - name: Install wasmtime
@@ -132,8 +131,11 @@ jobs:
       # A crashed testcase writes no stdout and usually no stderr, so the exit
       # status alone does not say where it died. run_tests.py lists the crashed
       # binaries; re-run each under a debugger and print the system crash report.
+      # Diagnostic only: a debugger that cannot produce a backtrace must not turn
+      # a reported crash into a second, unrelated job failure.
       - name: Crash reports
         if: always()
+        continue-on-error: true
         shell: bash
         run: |
           list=target/crashes.txt
@@ -145,11 +147,11 @@ jobs:
             echo "=== $bin ($reason) ==="
             case "${{ runner.os }}" in
               macOS)
-                lldb --batch -o run -o 'bt all' -o quit -- "$bin" 2>&1 | tail -40
+                lldb --batch -o run -o 'bt all' -o quit -- "$bin" 2>&1 | tail -40 || true
                 ;;
               Linux)
                 if command -v gdb >/dev/null; then
-                  gdb -batch -ex run -ex 'bt' --args "$bin" 2>&1 | tail -40
+                  gdb -batch -ex run -ex 'bt' --args "$bin" 2>&1 | tail -40 || true
                 fi
                 ;;
               Windows)
