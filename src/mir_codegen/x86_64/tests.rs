@@ -2165,22 +2165,30 @@ fn macho_refuses_protected_global_by_name() {
 }
 
 #[test]
-fn coff_refuses_weak_and_visibility_globals_by_name() {
-    for (annotation, global, construct) in [
-        ("@weak", "w", "@weak"),
-        ("@hidden", "h", "@hidden"),
-        ("@internal", "i", "@internal"),
+fn coff_refuses_protected_global_by_name() {
+    let error = x86_64_global_linkage_for(
+        "@protected global $prot: i64 = 1\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n",
+        TargetOperatingSystem::Windows,
+    )
+    .expect_err("protected global on COFF");
+    assert!(
+        error.contains("@protected on global 'prot' is not supported for Windows"),
+        "{error}"
+    );
+}
+
+#[test]
+fn coff_weak_and_hidden_globals_emit_their_directives() {
+    for (annotation, global, directive) in [
+        ("@weak", "w", ".weak w"),
+        ("@hidden", "h", ".local h"),
+        ("@internal", "i", ".local i"),
     ] {
         let source = format!(
             "{annotation} global ${global}: i64 = 1\nfn @main() -> i64 {{\nentry:\n    ret.i64 0\n}}\n"
         );
-        let error = x86_64_global_linkage_for(&source, TargetOperatingSystem::Windows)
-            .expect_err("refused on COFF");
-        assert!(
-            error.contains(&format!(
-                "{construct} on global '{global}' is not supported for Windows"
-            )),
-            "{error}"
-        );
+        let text = x86_64_global_linkage_for(&source, TargetOperatingSystem::Windows)
+            .expect("accepted on COFF");
+        assert!(text.contains(directive), "{directive}: {text}");
     }
 }

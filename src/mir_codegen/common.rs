@@ -884,7 +884,8 @@ fn code_section_directive(
 }
 
 /// ELF targets take `.internal`, `.hidden` and `.protected`. Mach-O has only
-/// `.private_extern`, and COFF, wasm and GPU targets have no such symbol visibility.
+/// `.private_extern`, COFF has no visibility at all and expresses "not exported"
+/// as a file-local symbol, and wasm and GPU targets have no such symbol visibility.
 fn os_uses_elf_visibility(target_os: TargetOperatingSystem) -> bool {
     matches!(
         target_os,
@@ -907,6 +908,12 @@ fn visibility_directive(
             _ => Some(".private_extern"),
         };
     }
+    if os_uses_coff(target_os) {
+        return match visibility {
+            SymbolVisibility::Protected => None,
+            _ => Some(".local"),
+        };
+    }
     if !os_uses_elf_visibility(target_os) {
         return None;
     }
@@ -918,10 +925,69 @@ fn visibility_directive(
     })
 }
 
-fn check_global_linkage(
+/// Why `target_os` cannot express this combination of visibility and weak binding,
+/// or `None` when it can.
+fn linkage_refusal(
+    target_os: TargetOperatingSystem,
+    visibility: Option<SymbolVisibility>,
+    weak: bool,
+    thread_local: bool,
+) -> Option<&'static str> {
+    if os_uses_elf_visibility(target_os) {
+        return None;
+    }
+    if os_uses_macho(target_os) {
+        return match (visibility, weak, thread_local) {
+            (Some(SymbolVisibility::Protected), _, _) => Some(
+                "Mach-O has no protected visibility; use @hidden for a symbol that is not exported",
+            ),
+            (_, true, true) => Some(
+                "the thread-local descriptor that Mach-O emits for it cannot be a weak definition",
+            ),
+            _ => None,
+        };
+    }
+    if os_uses_coff(target_os) {
+        return match (visibility, weak, thread_local) {
+            (Some(SymbolVisibility::Protected), _, _) => Some(
+                "COFF has no protected visibility; use @hidden for a symbol that is not exported",
+            ),
+            (Some(_), true, _) => Some(
+                "COFF resolves a weak external across objects, so it has to stay an external symbol, and the only thing COFF has to say a symbol is not exported is to make it file-local",
+            ),
+            (_, true, true) => Some("COFF has no weak thread-local definition"),
+            _ => None,
+        };
+    }
+    Some("only ELF, Mach-O and COFF targets express symbol visibility and weak binding")
+}
+
+fn check_symbol_linkage(
     module: &MirModule,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
+    let mut functions: Vec<(&str, Option<SymbolVisibility>, bool)> = module
+        .functions
+        .iter()
+        .filter(|(name, _)| !module.is_external(name))
+        .map(|(name, func)| (name.as_str(), func.sig.visibility, func.sig.weak))
+        .filter(|(_, visibility, weak)| visibility.is_some() || *weak)
+        .collect();
+    functions.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    for (name, visibility, weak) in functions {
+        let construct = match (visibility, weak) {
+            (_, true) => "@weak",
+            (Some(visibility), false) => visibility_annotation(visibility),
+            (None, false) => continue,
+        };
+        if let Some(reason) = linkage_refusal(target_os, visibility, weak, false) {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "{construct} on function '{name}' is not supported for {target_os:?}: {reason}"
+                ),
+            )));
+        }
+    }
     let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
     names.sort_unstable();
     for name in names {
@@ -931,24 +997,12 @@ fn check_global_linkage(
             (_, true) => "@weak".to_string(),
             (Some(visibility), false) => visibility_annotation(visibility).to_string(),
         };
-        let reason = if os_uses_elf_visibility(target_os) {
-            None
-        } else if os_uses_macho(target_os) {
-            match (global.visibility, global.weak, global.thread_local) {
-                (Some(SymbolVisibility::Protected), _, _) => Some(
-                    "Mach-O has no protected visibility; use @hidden for a symbol that is not exported",
-                ),
-                (_, true, Some(_)) => Some(
-                    "the thread-local descriptor that Mach-O emits for it cannot be a weak definition",
-                ),
-                _ => None,
-            }
-        } else {
-            Some(
-                "only ELF and Mach-O targets express symbol visibility and weak binding for globals",
-            )
-        };
-        if let Some(reason) = reason {
+        if let Some(reason) = linkage_refusal(
+            target_os,
+            global.visibility,
+            global.weak,
+            global.thread_local.is_some(),
+        ) {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!(
                     "{construct} on global '{name}' is not supported for {target_os:?}: {reason}"
@@ -976,7 +1030,7 @@ pub fn emit_symbol_visibility<W: Write>(
     target_os: TargetOperatingSystem,
     mangle: impl Fn(&str) -> String,
 ) -> Result<(), LaminaError> {
-    check_global_linkage(module, target_os)?;
+    check_symbol_linkage(module, target_os)?;
     let mut names: Vec<(&str, SymbolVisibility)> = module
         .functions
         .iter()
@@ -2688,12 +2742,28 @@ entry:
 }
 "#;
 
-    fn emit_visibility_module(os: TargetOperatingSystem) -> String {
-        let ir = parse_module(VISIBILITY_SOURCE).expect("parse visibility module");
+    fn emit_visibility_source(source: &str, os: TargetOperatingSystem) -> String {
+        let ir = parse_module(source).expect("parse visibility module");
         let mir = from_ir_x86_64(&ir, "visibility").expect("lower visibility module");
         let mut output = Vec::new();
         generate_mir_x86_64(&mir, &mut output, os).expect("emit visibility module");
         String::from_utf8(output).expect("utf8 assembly")
+    }
+
+    fn emit_visibility_module(os: TargetOperatingSystem) -> String {
+        emit_visibility_source(VISIBILITY_SOURCE, os)
+    }
+
+    /// Mach-O and COFF refuse `@protected` by name, so they get the same module
+    /// with that function and its call removed.
+    fn emit_unprotected_visibility_module(os: TargetOperatingSystem) -> String {
+        let source = VISIBILITY_SOURCE
+            .replace(
+                "@protected fn @protected_fn() -> i64 {\nentry:\n ret.i64 2\n}\n",
+                "",
+            )
+            .replace(" %b = call @protected_fn()\n", "");
+        emit_visibility_source(&source, os)
     }
 
     #[test]
@@ -2712,7 +2782,7 @@ entry:
 
     #[test]
     fn macho_visibility_uses_private_extern_and_skips_protected() {
-        let text = emit_visibility_module(TargetOperatingSystem::MacOS);
+        let text = emit_unprotected_visibility_module(TargetOperatingSystem::MacOS);
         assert!(text.contains(".private_extern _hidden_fn\n"), "{text}");
         assert!(text.contains(".private_extern _internal_fn\n"), "{text}");
         assert!(text.contains(".private_extern _private_fn\n"), "{text}");
@@ -2723,14 +2793,8 @@ entry:
 
     #[test]
     fn coff_targets_emit_no_elf_visibility_directives() {
-        let text = emit_visibility_module(TargetOperatingSystem::Windows);
-        for directive in [
-            ".hidden",
-            ".protected",
-            ".internal",
-            ".local",
-            ".private_extern",
-        ] {
+        let text = emit_unprotected_visibility_module(TargetOperatingSystem::Windows);
+        for directive in [".hidden", ".protected", ".internal", ".private_extern"] {
             assert!(!text.contains(directive), "{directive}: {text}");
         }
     }
@@ -2754,7 +2818,7 @@ entry:
 
     #[test]
     fn cold_and_hot_sections_are_not_emitted_for_macho() {
-        let text = emit_visibility_module(TargetOperatingSystem::MacOS);
+        let text = emit_unprotected_visibility_module(TargetOperatingSystem::MacOS);
         assert!(!text.contains(".text.unlikely"), "{text}");
         assert!(!text.contains(".text.hot"), "{text}");
     }
