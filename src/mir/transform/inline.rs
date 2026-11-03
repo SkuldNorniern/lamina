@@ -1,7 +1,8 @@
 //! Function inlining transforms for MIR.
 
 use crate::mir::{
-    AddressMode, AsmOperand, Block, Function, Instruction, Module, Operand, Register, VirtualReg,
+    AddressMode, Aggregate, AsmOperand, Block, Function, Instruction, Module, Operand, Register,
+    VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use lamina_mir::Located;
@@ -242,6 +243,17 @@ impl ModuleInlining {
                 if let Some(align) = callee.stack_alignments.get(&slot) {
                     caller.stack_alignments.insert(fresh, *align);
                 }
+            }
+        }
+        let mut wide_arguments: Vec<(VirtualReg, Aggregate)> = callee
+            .variadic_wide_arguments
+            .iter()
+            .map(|(reg, aggregate)| (*reg, *aggregate))
+            .collect();
+        wide_arguments.sort_unstable_by_key(|(reg, _)| *reg);
+        for (reg, aggregate) in wide_arguments {
+            if let Register::Virtual(fresh) = rename(&Register::Virtual(reg)) {
+                caller.variadic_wide_arguments.insert(fresh, aggregate);
             }
         }
         let id = self.inline_counter.get();

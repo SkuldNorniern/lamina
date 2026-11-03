@@ -35,10 +35,10 @@ use crate::{
         value_types,
     },
     mir::{
-        AddressMode, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
-        Global, GlobalRelocation, Immediate, Instruction, IntBinOp, IntCmpOp, IntOverflowOp,
-        IntRotOp, IntUnOp, MemoryAttrs, MirType, Module, Operand, Parameter, Register,
-        RegisterClass, ScalarType, Signature, SymbolVisibility, TlsModel as MirTlsModel,
+        AddressMode, Aggregate, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp,
+        FloatUnOp, Function, Global, GlobalRelocation, Immediate, Instruction, IntBinOp, IntCmpOp,
+        IntOverflowOp, IntRotOp, IntUnOp, MemoryAttrs, MirType, Module, Operand, Parameter,
+        Register, RegisterClass, ScalarType, Signature, SymbolVisibility, TlsModel as MirTlsModel,
         VectorLane, VectorOp, VectorType, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
@@ -151,6 +151,9 @@ struct VarBindings<'a> {
     wide: HashMap<&'a str, [Register; 2]>,
     /// Compiler-rt routines this function calls, to be declared in the module.
     libcalls: BTreeMap<String, wide::LibCall>,
+    /// Addresses of legalized pairs handed to a call where the callee's declaration
+    /// gives no type for them, with the aggregate the callee reads there.
+    variadic_wide: HashMap<VirtualReg, Aggregate>,
 }
 
 impl<'a> Deref for VarBindings<'a> {
@@ -1580,6 +1583,7 @@ fn convert_function<'a>(
 
     mir_func.stack_reservations = reservations;
     mir_func.stack_alignments = alignments;
+    mir_func.variadic_wide_arguments = mem::take(&mut var_to_reg.variadic_wide);
     libcalls.extend(mem::take(&mut var_to_reg.libcalls));
 
     Ok(mir_func)

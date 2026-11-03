@@ -6,7 +6,7 @@ use lamina_platform::PointerWidth;
 
 use crate::{
     block::Block,
-    instruction::Instruction,
+    instruction::{Instruction, Operand},
     register::Register,
     register::VirtualReg,
     types::{Aggregate, MirType, Signedness},
@@ -219,6 +219,13 @@ pub struct Function {
     /// `stackalloc ... align n` when n exceeds the 8-byte slot size.
     pub stack_alignments: HashMap<VirtualReg, usize>,
 
+    /// Registers that hold the address of a legalized integer pair a call passes
+    /// where the callee's declaration gives no type for it: past the named
+    /// parameters of a variadic callee. The aggregate is what the callee reads
+    /// there. Nothing else tells such an address from a pointer argument, so a
+    /// backend without this passes the address where the value belongs.
+    pub variadic_wide_arguments: HashMap<VirtualReg, Aggregate>,
+
     /// Width of data pointers on the target this function is lowered for. Sizes of
     /// pointer-typed values derive from it.
     pub pointer_width: PointerWidth,
@@ -239,6 +246,7 @@ impl Function {
             entry: "entry".to_string(),
             stack_reservations: HashMap::new(),
             stack_alignments: HashMap::new(),
+            variadic_wide_arguments: HashMap::new(),
             pointer_width: PointerWidth::Bits64,
             int64_regs: true,
         }
@@ -252,6 +260,17 @@ impl Function {
     pub fn with_int64_regs(mut self, int64_regs: bool) -> Self {
         self.int64_regs = int64_regs;
         self
+    }
+
+    /// The aggregate a call argument is passed by value as when the callee's
+    /// declaration gives no type for it, or `None` for an ordinary argument.
+    pub fn variadic_wide_argument(&self, arg: &Operand) -> Option<Aggregate> {
+        match arg {
+            Operand::Register(Register::Virtual(vreg)) => {
+                self.variadic_wide_arguments.get(vreg).copied()
+            }
+            _ => None,
+        }
     }
 
     /// Set the entry block label

@@ -540,6 +540,25 @@ impl<'c, 'a> Cx<'c, 'a> {
         Operand::Register(address)
     }
 
+    /// Records that `address` holds a legalized pair a call passes where the callee's
+    /// declaration gives no type for it, so a backend can place it as the callee reads
+    /// it. A pair of this width in a variadic tail has no lowering on a target whose
+    /// registers already hold one word of it, so that stops the compile by name.
+    fn mark_variadic_wide(&mut self, address: &Operand, callee: &str) -> Result<(), FromIRError> {
+        if self.int64_regs {
+            return Err(FromIRError::NotLegalizable(format!(
+                "a 128-bit integer passed to '@{callee}' past its named parameters: no backend places one in a variadic tail"
+            )));
+        }
+        let Operand::Register(Register::Virtual(vreg)) = address else {
+            return Err(FromIRError::InvalidIR);
+        };
+        self.vars
+            .variadic_wide
+            .insert(*vreg, wide_aggregate(self.int64_regs));
+        Ok(())
+    }
+
     fn libcall_name(
         &mut self,
         symbol: RuntimeSymbol,
@@ -899,7 +918,12 @@ fn touches_wide(
             module.functions.get(func_name).is_some_and(|callee| {
                 is_wide_type(&callee.signature.return_type, int64_regs)
                     || callee.signature.params.iter().any(|p| is_wide_type(&p.ty, int64_regs))
-            }) || args.iter().any(|(_, arg)| is_wide_value(arg, vars, int64_regs))
+            }) || args
+                .iter()
+                .any(|(ty, arg)| {
+                    ty.as_ref().is_some_and(|ty| is_wide_type(ty, int64_regs))
+                        || is_wide_value(arg, vars, int64_regs)
+                })
         }
         IRInst::Write { .. }
         | IRInst::Read { .. }
@@ -1288,13 +1312,19 @@ pub(super) fn lower_instruction<'a>(
         } => {
             let callee = cx.module.functions.get(func_name);
             let mut mir_args = Vec::with_capacity(args.len());
-            for (index, (_, arg)) in args.iter().enumerate() {
-                let param_wide = callee
-                    .and_then(|f| f.signature.params.get(index))
-                    .is_some_and(|p| is_wide_type(&p.ty, cx.int64_regs));
-                if param_wide || is_wide_value(arg, cx.vars, cx.int64_regs) {
+            for (index, (ty, arg)) in args.iter().enumerate() {
+                let declared = callee.and_then(|f| f.signature.params.get(index));
+                let param_wide = declared.is_some_and(|p| is_wide_type(&p.ty, cx.int64_regs));
+                let stated_wide = ty
+                    .as_ref()
+                    .is_some_and(|ty| is_wide_type(ty, cx.int64_regs));
+                if param_wide || stated_wide || is_wide_value(arg, cx.vars, cx.int64_regs) {
                     let words = cx.operand_words(arg)?;
-                    mir_args.push(cx.spill(words));
+                    let address = cx.spill(words);
+                    if declared.is_none() {
+                        cx.mark_variadic_wide(&address, func_name)?;
+                    }
+                    mir_args.push(address);
                 } else {
                     mir_args.push(resolve_operand(arg, cx.vregs, cx.vars, cx.globals)?);
                 }
