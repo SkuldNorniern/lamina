@@ -48,26 +48,18 @@ impl X86Frame {
                 format!("frame of {stack_size} bytes is too large to probe"),
             ));
         }
-        match probe {
-            StackProbe::Chkstk => {
-                writeln!(writer, "    movl ${stack_size}, %eax")?;
-                writeln!(writer, "    call __chkstk")?;
-                writeln!(writer, "    subq %rax, %rsp")?;
-            }
-            StackProbe::PageLoop => {
-                writeln!(writer, "    leaq -{stack_size}(%rsp), %r11")?;
-                let remainder = stack_size % page_size;
-                if remainder != 0 {
-                    writeln!(writer, "    subq ${remainder}, %rsp")?;
-                    writeln!(writer, "    orq $0, (%rsp)")?;
-                }
-                writeln!(writer, "1:")?;
-                writeln!(writer, "    subq ${page_size}, %rsp")?;
-                writeln!(writer, "    orq $0, (%rsp)")?;
-                writeln!(writer, "    cmpq %r11, %rsp")?;
-                writeln!(writer, "    ja 1b")?;
-            }
+        let StackProbe::PageLoop = probe;
+        writeln!(writer, "    leaq -{stack_size}(%rsp), %r11")?;
+        let remainder = stack_size % page_size;
+        if remainder != 0 {
+            writeln!(writer, "    subq ${remainder}, %rsp")?;
+            writeln!(writer, "    orq $0, (%rsp)")?;
         }
+        writeln!(writer, "1:")?;
+        writeln!(writer, "    subq ${page_size}, %rsp")?;
+        writeln!(writer, "    orq $0, (%rsp)")?;
+        writeln!(writer, "    cmpq %r11, %rsp")?;
+        writeln!(writer, "    ja 1b")?;
         Ok(())
     }
 
