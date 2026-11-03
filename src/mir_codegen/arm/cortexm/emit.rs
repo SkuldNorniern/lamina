@@ -8,8 +8,8 @@ use crate::mir_codegen::common::{
 use crate::{
     error::LaminaError,
     mir::{
-        Aggregate, Instruction as MirInst, IntBinOp, IntRotOp, IntUnOp, MemoryAttrs, MirType,
-        Operand, Register, ScalarType,
+        Aggregate, Function, Instruction as MirInst, IntBinOp, IntRotOp, IntUnOp, MemoryAttrs,
+        MirType, Operand, Register, ScalarType,
     },
     mir_codegen::{
         MirCodegenSettings,
@@ -32,6 +32,7 @@ use crate::mir_codegen::arm::armv7::abi::Signatures;
 pub(crate) const POINTER_WIDTH: PointerWidth = PointerWidth::Bits32;
 
 pub(crate) struct Ctx<'a> {
+    pub(crate) func: &'a Function,
     pub(crate) isa: Isa,
     pub(crate) access: Access<'a>,
     pub(crate) abi: &'a CortexMAbi,

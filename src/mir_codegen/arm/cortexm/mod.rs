@@ -361,6 +361,7 @@ fn compile_function(
     let epilogue = format!(".Lret_{label}");
     let block_prefix = format!(".L_{label}.");
     let ctx = Ctx {
+        func,
         isa,
         access,
         abi: &cortexm,

@@ -163,7 +163,7 @@ impl Signatures {
         }
     }
 
-    fn call_abi(&self, callee: &str, args: &[Operand]) -> CallAbi {
+    fn call_abi(&self, callee: &str, args: &[Operand], func: &Function) -> CallAbi {
         let fixed = self.variadic.get(callee).copied();
         let declared = self.params.get(callee);
         let matches_prototype =
@@ -180,13 +180,20 @@ impl Signatures {
                 })
                 .collect()
         };
+        let declared_aggregates = self.param_aggregates.get(callee);
         let aggregates = if matches_prototype {
-            self.param_aggregates
-                .get(callee)
+            declared_aggregates
                 .cloned()
                 .unwrap_or_else(|| vec![None; args.len()])
         } else {
-            vec![None; args.len()]
+            let fixed = fixed.unwrap_or(0);
+            args.iter()
+                .enumerate()
+                .map(|(index, arg)| match declared_aggregates {
+                    Some(sizes) if index < fixed && index < sizes.len() => sizes[index],
+                    _ => func.variadic_wide_argument(arg).map(|a| a.size),
+                })
+                .collect()
         };
         CallAbi {
             types,
@@ -199,6 +206,7 @@ impl Signatures {
 
 struct EmitCtx<'a> {
     func_name: &'a str,
+    func: &'a Function,
     target_os: TargetOperatingSystem,
     settings: &'a MirCodegenSettings,
     label_seq: u32,
@@ -316,6 +324,7 @@ fn compile_function(
 
     let mut ctx = EmitCtx {
         func_name,
+        func,
         target_os,
         settings,
         label_seq: 0,
@@ -778,7 +787,7 @@ fn emit_instruction<W: Write>(
             if emit_builtin(name, args, ret.as_ref(), writer, slots, ctx)? {
                 return Ok(());
             }
-            let call = ctx.signatures.call_abi(name, args);
+            let call = ctx.signatures.call_abi(name, args, ctx.func);
             let target = call_target(name, ctx.target_os);
             emit_call(
                 &call,
@@ -833,7 +842,7 @@ fn emit_instruction<W: Write>(
                     "i686 does not tail call @{name} from a function that returns an aggregate"
                 )));
             }
-            let call = ctx.signatures.call_abi(name, args);
+            let call = ctx.signatures.call_abi(name, args, ctx.func);
             let target = call_target(name, ctx.target_os);
             emit_call(&call, name, args, None, Some(&target), writer, slots)?;
             abi::epilogue(writer, 0)?;

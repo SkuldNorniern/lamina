@@ -343,6 +343,7 @@ fn compile_single_function_riscv(
 
     let mut ctx = EmitCtx {
         func_name,
+        func,
         target,
         target_os,
         settings,
@@ -1033,7 +1034,7 @@ impl AggregateSignatures {
     /// Arguments of a call as the convention sees them. A matching prototype gives the
     /// kinds; past a variadic callee's fixed parameters, and for a callee with no
     /// prototype, the operand does.
-    fn arguments(&self, callee: &str, args: &[Operand]) -> Vec<ArgKind> {
+    fn arguments(&self, callee: &str, args: &[Operand], func: &Function) -> Vec<ArgKind> {
         let fixed = self.fixed_arguments(callee);
         if fixed.is_none()
             && let Some(kinds) = self.params.get(callee).filter(|k| k.len() == args.len())
@@ -1046,7 +1047,15 @@ impl AggregateSignatures {
             .enumerate()
             .map(|(index, arg)| match declared {
                 Some(kinds) if index < fixed && index < kinds.len() => kinds[index],
-                _ => ArgKind::scalar(promoted_argument_type(arg)),
+                // A legalized pair the callee's declaration does not type reaches it
+                // as the aggregate it was spilled to, not as the address of one.
+                _ => match func.variadic_wide_argument(arg) {
+                    Some(aggregate) => ArgKind {
+                        ty: MirType::Scalar(ScalarType::Ptr),
+                        aggregate: Some(aggregate),
+                    },
+                    None => ArgKind::scalar(promoted_argument_type(arg)),
+                },
             })
             .collect()
     }
@@ -1063,6 +1072,7 @@ impl AggregateSignatures {
 /// Everything the instruction emitter needs beyond the instruction itself.
 struct EmitCtx<'a> {
     func_name: &'a str,
+    func: &'a Function,
     target: RiscVTarget,
     target_os: TargetOperatingSystem,
     settings: &'a MirCodegenSettings,
@@ -1557,7 +1567,7 @@ fn emit_instruction_riscv<W: Write>(
                 // General function call implementation
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
 
-                let mut kinds = ctx.signatures.arguments(name, args);
+                let mut kinds = ctx.signatures.arguments(name, args, ctx.func);
                 // LP64D sends a variadic argument through the integer bank, a float
                 // included, so the callee's va_arg finds the bits where it looks.
                 if let Some(fixed) = ctx.signatures.fixed_arguments(name) {
@@ -1726,7 +1736,7 @@ fn emit_instruction_riscv<W: Write>(
                 || ctx.signatures.result(name).is_some()
                 || ctx
                     .signatures
-                    .arguments(name, args)
+                    .arguments(name, args, ctx.func)
                     .iter()
                     .any(|kind| kind.aggregate.is_some())
             {
@@ -1735,7 +1745,7 @@ fn emit_instruction_riscv<W: Write>(
                 )));
             }
             let arg_regs = RiscVAbi::ARG_REGISTERS;
-            let kinds = ctx.signatures.arguments(name, args);
+            let kinds = ctx.signatures.arguments(name, args, ctx.func);
             let places = classify_riscv_arguments(
                 &kinds,
                 0,

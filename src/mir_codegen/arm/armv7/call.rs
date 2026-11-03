@@ -284,7 +284,7 @@ pub(crate) fn emit_call<W: Write>(
     let hidden = returns_in_memory(result);
     let plan = plan_call(
         args,
-        ctx.signatures.arguments(name, args),
+        ctx.signatures.arguments(name, args, ctx.func),
         ctx.signatures.fixed_arguments(name),
         hidden,
         ctx.signatures.uses_base_standard(name),
@@ -360,7 +360,7 @@ pub(crate) fn emit_tail_call<W: Write>(
     let hidden = returns_in_memory(result);
     let plan = plan_call(
         args,
-        ctx.signatures.arguments(name, args),
+        ctx.signatures.arguments(name, args, ctx.func),
         ctx.signatures.fixed_arguments(name),
         hidden,
         ctx.signatures.uses_base_standard(name),

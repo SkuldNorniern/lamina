@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::mir::{
-    Aggregate, Immediate, MirType, Module as MirModule, Operand, Register, RegisterClass,
+    Aggregate, Function, Immediate, MirType, Module as MirModule, Operand, Register, RegisterClass,
     ScalarType,
 };
 use lamina_codegen::abi::{Abi, common_call_stub};
@@ -299,7 +299,12 @@ impl Signatures {
             .then(|| self.params.get(callee).map_or(0, Vec::len))
     }
 
-    pub(crate) fn arguments(&self, callee: &str, args: &[Operand]) -> Vec<ArgKind> {
+    pub(crate) fn arguments(
+        &self,
+        callee: &str,
+        args: &[Operand],
+        func: &Function,
+    ) -> Vec<ArgKind> {
         let fixed = self.fixed_arguments(callee);
         if fixed.is_none()
             && let Some(kinds) = self.params.get(callee).filter(|k| k.len() == args.len())
@@ -312,7 +317,14 @@ impl Signatures {
             .enumerate()
             .map(|(index, arg)| match declared {
                 Some(kinds) if index < fixed && index < kinds.len() => kinds[index],
-                _ => ArgKind::of(promoted(arg), None),
+                // A legalized pair the callee's declaration does not type reaches it
+                // as the aggregate the pair was spilled to, not as its address.
+                _ => match func.variadic_wide_argument(arg) {
+                    Some(aggregate) => {
+                        ArgKind::of(MirType::Scalar(ScalarType::Ptr), Some(aggregate))
+                    }
+                    None => ArgKind::of(promoted(arg), None),
+                },
             })
             .collect()
     }

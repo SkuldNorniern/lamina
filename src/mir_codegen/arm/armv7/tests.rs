@@ -267,3 +267,31 @@ fn an_aeabi_helper_still_reads_the_base_standard() {
     assert!(signatures.uses_base_standard("__aeabi_d2lz"));
     assert!(!signatures.uses_base_standard("__fixdfdi"));
 }
+
+const WIDE_IN_THE_VARIADIC_TAIL: &str = "@extern fn @printf(ptr %fmt, ...) -> i32\n\
+     global $fmt: [6 x i8] = \"%lld\\n\"\n\
+     fn @main() -> i32 {\nentry:\n  %x = add.i64 1, 2\n  \
+     %r = call @printf(ptr $fmt, i64 %x)\n  ret.i32 %r\n}\n";
+
+#[test]
+fn a_legalized_pair_in_the_variadic_tail_travels_as_its_value_in_an_even_core_pair() {
+    let assembly = compile(WIDE_IN_THE_VARIADIC_TAIL);
+    assert!(assembly.contains("ldr r2, ["), "{assembly}");
+    assert!(assembly.contains("ldr r3, ["), "{assembly}");
+    assert!(!assembly.contains("ldr r1, ["), "{assembly}");
+}
+
+#[test]
+fn a_named_wide_parameter_of_a_variadic_callee_travels_as_its_value() {
+    let assembly = compile(
+        "@extern fn @take(i64 %a, ...) -> i32\n\
+         fn @main() -> i32 {\nentry:\n  %x = add.i64 1, 2\n  \
+         %r = call @take(i64 %x, i32 5)\n  ret.i32 %r\n}\n",
+    );
+    assert!(assembly.contains("ldr r0, ["), "{assembly}");
+    assert!(assembly.contains("ldr r1, ["), "{assembly}");
+    assert!(
+        assembly.contains("mov r2, #5") || assembly.contains("movw r2, #5"),
+        "{assembly}"
+    );
+}

@@ -91,7 +91,7 @@ pub(crate) fn outgoing_space(
                         plan_call(
                             isa,
                             args,
-                            signatures.arguments(name, args),
+                            signatures.arguments(name, args, func),
                             signatures.fixed_arguments(name),
                             hidden,
                         )
@@ -231,7 +231,7 @@ pub(crate) fn emit_call<W: Write>(
     let plan = plan_call(
         ctx.isa,
         args,
-        ctx.signatures.arguments(name, args),
+        ctx.signatures.arguments(name, args, ctx.func),
         ctx.signatures.fixed_arguments(name),
         hidden,
     )?;

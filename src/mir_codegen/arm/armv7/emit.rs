@@ -8,8 +8,8 @@ use std::io::Write;
 use crate::{
     error::LaminaError,
     mir::{
-        Aggregate, FloatBinOp, FloatUnOp, Instruction as MirInst, IntBinOp, IntRotOp, IntUnOp,
-        MirType, Operand, Register, ScalarType,
+        Aggregate, FloatBinOp, FloatUnOp, Function, Instruction as MirInst, IntBinOp, IntRotOp,
+        IntUnOp, MirType, Operand, Register, ScalarType,
     },
     mir_codegen::{
         MirCodegenSettings,
@@ -32,6 +32,7 @@ use super::operand::{
 pub(crate) const POINTER_WIDTH: PointerWidth = PointerWidth::Bits32;
 
 pub(crate) struct Ctx<'a> {
+    pub(crate) func: &'a Function,
     pub(crate) frame: &'a FrameMap,
     pub(crate) abi: &'a Armv7Abi,
     pub(crate) signatures: &'a Signatures,
