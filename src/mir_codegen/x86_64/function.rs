@@ -281,8 +281,18 @@ pub(super) fn compile_single_function_x86_64(
             || func.sig.params.len() > abi.arg_registers().len()
             || va_area.is_some());
     if has_frame {
-        X86Frame::generate_prologue(&mut output, stack_size, unwind)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        X86Frame::generate_prologue(
+            &mut output,
+            stack_size,
+            unwind,
+            target_os.stack_probe(),
+            TargetArchitecture::X86_64.stack_page_size(),
+        )
+        .map_err(|e| {
+            CodegenError::InvalidCodegenOptions(format!(
+                "function '{func_name}' on x86_64 {target_os:?}: {e}"
+            ))
+        })?;
     } else if unwind {
         writeln!(output, "    .cfi_def_cfa %rsp, 8").map_err(io_codegen_error)?;
     }

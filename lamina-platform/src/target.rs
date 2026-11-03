@@ -373,6 +373,12 @@ impl fmt::Display for TargetArchitecture {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StackProbe {
+    Chkstk,
+    PageLoop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetOperatingSystem {
     Cuda,
     AmdHsa,
@@ -402,6 +408,14 @@ pub enum TargetOperatingSystem {
 }
 
 impl TargetOperatingSystem {
+    pub const fn stack_probe(self) -> Option<StackProbe> {
+        match self {
+            Self::Windows => Some(StackProbe::Chkstk),
+            Self::Linux | Self::MacOS => Some(StackProbe::PageLoop),
+            _ => None,
+        }
+    }
+
     /// Whether a target on this operating system links C runtime objects and a libc that
     /// the environment axis chooses.
     ///

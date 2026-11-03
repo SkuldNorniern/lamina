@@ -56,7 +56,7 @@ use lamina_codegen::{
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
 };
 use lamina_codegen::{os_uses_elf, os_uses_macho};
-use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, StackProbe, TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {
@@ -543,7 +543,13 @@ fn compile_single_function_aarch64_with(
     };
 
     frame.frame_size = adjusted_frame_size;
-    if adjusted_frame_size > 0 {
+    let page_size = TargetArchitecture::Aarch64.stack_page_size() as u64;
+    if target_os.stack_probe() == Some(StackProbe::PageLoop)
+        && adjusted_frame_size as u64 > page_size
+    {
+        emit_probed_sp_sub(&mut output, adjusted_frame_size as u64, page_size)
+            .map_err(lamina_to_codegen_error)?;
+    } else if adjusted_frame_size > 0 {
         emit_sp_adjust(&mut output, "sub", adjusted_frame_size as u64)
             .map_err(lamina_to_codegen_error)?;
     }
@@ -2287,6 +2293,23 @@ fn emit_branch_if<W: Write>(
     Ok(())
 }
 
+fn emit_probed_sp_sub<W: Write>(w: &mut W, amount: u64, page_size: u64) -> Result<(), LaminaError> {
+    emit_mov_imm64(w, "x16", amount)?;
+    writeln!(w, "    sub x16, sp, x16")?;
+    let remainder = amount % page_size;
+    if remainder != 0 {
+        emit_sp_adjust(w, "sub", remainder)?;
+        writeln!(w, "    str xzr, [sp]")?;
+    }
+    emit_mov_imm64(w, "x17", page_size)?;
+    writeln!(w, "1:")?;
+    writeln!(w, "    sub sp, sp, x17")?;
+    writeln!(w, "    str xzr, [sp]")?;
+    writeln!(w, "    cmp sp, x16")?;
+    writeln!(w, "    b.hi 1b")?;
+    Ok(())
+}
+
 fn emit_sp_adjust<W: Write>(w: &mut W, op: &str, amount: u64) -> Result<(), LaminaError> {
     if amount <= 4095 {
         writeln!(w, "    {op} sp, sp, #{amount}")?;
@@ -2705,5 +2728,7 @@ fn extend_integer(
     Ok(())
 }
 
+#[cfg(test)]
+mod stack_probe_tests;
 #[cfg(test)]
 mod tests;

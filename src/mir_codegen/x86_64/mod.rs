@@ -16,6 +16,8 @@ mod moves;
 mod selection;
 mod simd;
 #[cfg(test)]
+mod stack_probe_tests;
+#[cfg(test)]
 mod tests;
 mod variadic;
 #[cfg(test)]
