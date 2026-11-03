@@ -252,7 +252,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     })?;
 
     let settings_arc = Arc::new(settings.clone());
-    let abi_extensions = Arc::new(AbiExtensions::from_module(module));
+    let abi_extensions = Arc::new(AbiExtensions::from_module(module, target_os));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_single_function_x86_64(

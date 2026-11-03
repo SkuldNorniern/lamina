@@ -1055,12 +1055,13 @@ pub(super) struct AbiExtensions {
     return_aggregates: HashMap<String, Aggregate>,
     return_types: HashMap<String, MirType>,
     variadic: HashSet<String>,
-    /// Symbols whose address is loaded through the GOT under `@pic` or `@pie`.
+    /// Symbols whose address is loaded through the GOT: under `@pic` or `@pie`, and for
+    /// undefined externals on macOS, which dyld can only bind through a slot.
     got_symbols: HashSet<String>,
 }
 
 impl AbiExtensions {
-    pub(super) fn from_module(module: &MirModule) -> Self {
+    pub(super) fn from_module(module: &MirModule, target_os: TargetOperatingSystem) -> Self {
         let returns = module
             .functions
             .iter()
@@ -1111,6 +1112,9 @@ impl AbiExtensions {
             .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
             .collect();
         let got_symbols = match module.relocation {
+            RelocationModel::Static if target_os == TargetOperatingSystem::MacOS => {
+                module.external_functions.clone()
+            }
             RelocationModel::Static => HashSet::new(),
             RelocationModel::Pie => module.external_functions.clone(),
             RelocationModel::Pic => module

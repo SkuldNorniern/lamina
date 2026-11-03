@@ -33,6 +33,32 @@ fn position_independent_modules_load_external_addresses_through_the_got() {
 }
 
 #[test]
+fn macos_external_function_addresses_load_through_the_got() {
+    let ir = parse_module(
+        "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n",
+    )
+    .unwrap();
+    let mir = from_ir_x86_64(&ir, "static").unwrap();
+    let assemble = |os: TargetOperatingSystem| {
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, os).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+    let macos = assemble(TargetOperatingSystem::MacOS);
+    assert!(
+        macos.contains("    movq _printf@GOTPCREL(%rip), "),
+        "{macos}"
+    );
+    assert!(!macos.contains("leaq _printf(%rip)"), "{macos}");
+    assert!(macos.contains("    leaq _twice(%rip), "), "{macos}");
+    assert!(!macos.contains("_twice@GOTPCREL"), "{macos}");
+
+    let linux = assemble(TargetOperatingSystem::Linux);
+    assert!(linux.contains("    leaq printf(%rip), "), "{linux}");
+    assert!(!linux.contains("GOTPCREL"), "{linux}");
+}
+
+#[test]
 fn calls_that_may_be_variadic_report_vector_count_in_al() {
     let ir = parse_module(
         "@extern\nfn @printf(ptr %fmt, ...) -> i32\n@extern\nfn @unknown(i64 %a, ...) -> i64\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @known(i64 %a) -> i64 {\nentry:\n    ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n    %k = call @known(1)\n    %u = call @unknown(1)\n    %f = getelem.i8 $fmt, 0\n    %p = call @printf(%f, 2.5)\n    ret.i64 %k\n}\n",
