@@ -280,6 +280,14 @@ pub(super) fn compile_single_function_x86_64(
             || stack_size != 0
             || func.sig.params.len() > abi.arg_registers().len()
             || va_area.is_some());
+    let windows_unwind = super::unwind::plan(
+        target_os,
+        naked,
+        has_frame,
+        &saved_regs,
+        total_slots,
+        stack_size,
+    );
     if has_frame {
         X86Frame::generate_prologue(
             &mut output,
@@ -296,15 +304,27 @@ pub(super) fn compile_single_function_x86_64(
     } else if unwind {
         writeln!(output, "    .cfi_def_cfa %rsp, 8").map_err(io_codegen_error)?;
     }
+    if windows_unwind.is_described() {
+        writeln!(output, "{}:", super::unwind::alloc_end_label(&label))
+            .map_err(io_codegen_error)?;
+    }
 
     for (index, reg) in saved_regs.iter().enumerate() {
         let offset = X86Frame::calculate_stack_offset(total_slots + index);
         writeln!(output, "    movq %{reg}, {offset}(%rbp)")
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        if windows_unwind.describes_saves() {
+            writeln!(output, "{}:", super::unwind::save_label(&label, index))
+                .map_err(io_codegen_error)?;
+        }
         if unwind {
             writeln!(output, "    .cfi_offset %{reg}, {}", offset - 16)
                 .map_err(io_codegen_error)?;
         }
+    }
+    if windows_unwind.is_described() {
+        writeln!(output, "{}:", super::unwind::prologue_end_label(&label))
+            .map_err(io_codegen_error)?;
     }
 
     if let Some(area) = &va_area {
@@ -613,6 +633,11 @@ pub(super) fn compile_single_function_x86_64(
 
     if unwind {
         writeln!(output, "    .cfi_endproc").map_err(io_codegen_error)?;
+    }
+    if windows_unwind.is_described() {
+        writeln!(output, "{}:", super::unwind::function_end_label(&label))
+            .map_err(io_codegen_error)?;
+        super::unwind::emit(&mut output, &label, &windows_unwind).map_err(io_codegen_error)?;
     }
     Ok(strip_self_moves(output.inner))
 }

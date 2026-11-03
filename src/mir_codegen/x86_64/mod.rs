@@ -19,6 +19,7 @@ mod simd;
 mod stack_probe_tests;
 #[cfg(test)]
 mod tests;
+mod unwind;
 mod variadic;
 #[cfg(test)]
 mod vector_surface_tests;
