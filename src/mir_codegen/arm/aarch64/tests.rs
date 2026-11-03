@@ -954,19 +954,95 @@ fn macho_thread_locals_use_tlv_descriptors_and_thread_sections() -> Result<(), B
     Ok(())
 }
 
+fn aarch64_thread_local_asm(annotation: &str, os: TargetOperatingSystem) -> String {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let source = format!(
+        "{annotation} global $t: i64 = 0\nfn @main() -> i64 {{\nentry:\n    store.i64 $t, 7\n    %v = load.i64 $t\n    ret.i64 %v\n}}\n"
+    );
+    let module = parse_module(&source).unwrap();
+    let mir = from_ir_x86_64(&module, "tls").unwrap();
+    let mut output = Vec::new();
+    generate_mir_aarch64(&mir, &mut output, os, PointerWidth::Bits64).unwrap();
+    String::from_utf8(output).unwrap()
+}
+
 #[test]
-fn thread_locals_stay_refused_outside_aarch64_macos() -> Result<(), Box<dyn Error>> {
+fn elf_local_exec_thread_local_reads_tp_and_adds_tprel_pair() {
+    let asm = aarch64_thread_local_asm("@thread_local", TargetOperatingSystem::Linux);
+    let mrs = asm
+        .lines()
+        .find(|line| line.starts_with("    mrs ") && line.ends_with(", tpidr_el0"))
+        .expect(&asm);
+    let reg = &mrs["    mrs ".len()..mrs.len() - ", tpidr_el0".len()];
+    let sequence = format!(
+        "{mrs}\n    add {reg}, {reg}, :tprel_hi12:t, lsl #12\n    add {reg}, {reg}, :tprel_lo12_nc:t\n"
+    );
+    assert!(asm.contains(&sequence), "{asm}");
+    assert!(
+        !asm.contains("gottprel") && !asm.contains("TLVPPAGE"),
+        "{asm}"
+    );
+    assert!(asm.contains(".section .tbss,\"awT\",@nobits"), "{asm}");
+}
+
+#[test]
+fn elf_initial_exec_thread_local_loads_gottprel_and_adds_tp() {
+    let asm = aarch64_thread_local_asm("@thread_local(initial_exec)", TargetOperatingSystem::Linux);
+    let adrp = asm
+        .lines()
+        .find(|line| line.starts_with("    adrp ") && line.ends_with(", :gottprel:t"))
+        .expect(&asm);
+    let reg = &adrp["    adrp ".len()..adrp.len() - ", :gottprel:t".len()];
+    let ldr = format!("    ldr {reg}, [{reg}, :gottprel_lo12:t]");
+    let mrs_line = asm
+        .lines()
+        .skip_while(|line| *line != ldr)
+        .nth(1)
+        .expect(&asm);
+    let tp = mrs_line
+        .strip_prefix("    mrs ")
+        .and_then(|rest| rest.strip_suffix(", tpidr_el0"))
+        .expect(&asm);
+    let sequence = format!("{adrp}\n{ldr}\n{mrs_line}\n    add {reg}, {reg}, {tp}\n");
+    assert!(asm.contains(&sequence), "{asm}");
+    assert!(!asm.contains(":tprel_"), "{asm}");
+    assert!(asm.contains(".section .tbss,\"awT\",@nobits"), "{asm}");
+}
+
+#[test]
+fn elf_initialized_thread_local_goes_to_tdata() {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let source = "@thread_local global $t: i64 = 9\nfn @main() -> i64 {\nentry:\n    %v = load.i64 $t\n    ret.i64 %v\n}\n";
+    let module = parse_module(source).unwrap();
+    let mir = from_ir_x86_64(&module, "tls").unwrap();
+    let mut output = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )
+    .unwrap();
+    let asm = String::from_utf8(output).unwrap();
+    assert!(asm.contains(".section .tdata,\"awT\",@progbits"), "{asm}");
+}
+
+#[test]
+fn thread_locals_stay_refused_on_coff() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "@thread_local global $t: i64 = 0\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $t\n  ret.i64 %a\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir_x86_64(&module, "tls").expect("lower thread-local module");
-    for os in [TargetOperatingSystem::Linux, TargetOperatingSystem::Windows] {
-        let mut out = Vec::new();
-        let error = generate_mir_aarch64(&mir, &mut out, os, PointerWidth::Bits64)
-            .expect_err("thread-local global must be refused")
-            .to_string();
-        assert!(error.contains("thread-local storage"), "{os:?}: {error}");
-        assert!(out.is_empty(), "{os:?} wrote code before refusing");
-    }
+    let mut out = Vec::new();
+    let error = generate_mir_aarch64(
+        &mir,
+        &mut out,
+        TargetOperatingSystem::Windows,
+        PointerWidth::Bits64,
+    )
+    .expect_err("thread-local global must be refused")
+    .to_string();
+    assert!(error.contains("thread-local storage"), "{error}");
+    assert!(out.is_empty(), "wrote code before refusing");
     Ok(())
 }

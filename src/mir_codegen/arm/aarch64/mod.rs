@@ -27,7 +27,7 @@ use crate::mir_codegen::common::{
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
 use crate::mir_codegen::common::{reject_thread_local_globals, unsupported_thread_local};
 use crate::mir_codegen::simd::reserve_vector_slots;
-use lamina_mir::SourceLoc;
+use lamina_mir::{SourceLoc, TlsModel};
 
 use std::{
     collections::HashMap, collections::HashSet, io::Error as IoError, io::Write, slice, str,
@@ -55,7 +55,7 @@ use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
 };
-use lamina_codegen::{os_uses_elf, os_uses_macho};
+use lamina_codegen::{os_uses_coff, os_uses_elf, os_uses_macho};
 use lamina_platform::{PointerWidth, StackProbe, TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
@@ -915,8 +915,8 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
-    if !os_uses_macho(target_os) {
-        reject_thread_local_globals(module, "AArch64")?;
+    if os_uses_coff(target_os) {
+        reject_thread_local_globals(module, "AArch64 (COFF)")?;
     }
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     let abi = AArch64ABI::new(target_os);
@@ -1032,16 +1032,41 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc {} {} {}", loc.file, loc.line, loc.column)?;
         }
         match inst {
-            MirInst::ThreadLocalAddr { dst, symbol, .. } => {
-                if !os_uses_macho(abi.target_os()) {
+            MirInst::ThreadLocalAddr { dst, symbol, model } => {
+                let target_os = abi.target_os();
+                if os_uses_coff(target_os) {
                     return Err(unsupported_thread_local("AArch64"));
                 }
-                let descriptor = macho_tlv_descriptor(&abi.mangle_function_name(symbol));
-                writeln!(w, "    adrp x0, {descriptor}@TLVPPAGE")?;
-                writeln!(w, "    ldr x0, [x0, {descriptor}@TLVPPAGEOFF]")?;
-                writeln!(w, "    ldr x8, [x0]")?;
-                writeln!(w, "    blr x8")?;
-                store_result(w, dst, "x0", frame, ra)?;
+                if os_uses_macho(target_os) {
+                    let descriptor = macho_tlv_descriptor(&abi.mangle_function_name(symbol));
+                    writeln!(w, "    adrp x0, {descriptor}@TLVPPAGE")?;
+                    writeln!(w, "    ldr x0, [x0, {descriptor}@TLVPPAGEOFF]")?;
+                    writeln!(w, "    ldr x8, [x0]")?;
+                    writeln!(w, "    blr x8")?;
+                    store_result(w, dst, "x0", frame, ra)?;
+                } else {
+                    let label = abi.mangle_function_name(symbol);
+                    let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                    let reg = x_alias(scratch);
+                    match model {
+                        TlsModel::LocalExec => {
+                            writeln!(w, "    mrs {reg}, tpidr_el0")?;
+                            writeln!(w, "    add {reg}, {reg}, :tprel_hi12:{label}, lsl #12")?;
+                            writeln!(w, "    add {reg}, {reg}, :tprel_lo12_nc:{label}")?;
+                        }
+                        TlsModel::InitialExec => {
+                            let thread_pointer = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                            let tp = x_alias(thread_pointer);
+                            writeln!(w, "    adrp {reg}, :gottprel:{label}")?;
+                            writeln!(w, "    ldr {reg}, [{reg}, :gottprel_lo12:{label}]")?;
+                            writeln!(w, "    mrs {tp}, tpidr_el0")?;
+                            writeln!(w, "    add {reg}, {reg}, {tp}")?;
+                            ra.free_scratch(thread_pointer);
+                        }
+                    }
+                    store_result(w, dst, &reg, frame, ra)?;
+                    ra.free_scratch(scratch);
+                }
             }
             MirInst::IntOverflow {
                 op,

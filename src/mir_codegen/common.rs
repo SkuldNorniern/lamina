@@ -42,7 +42,7 @@ pub fn unsupported_overflow_flag(backend: &str) -> LaminaError {
 /// target-specific and implemented for x86_64 and s390x.
 pub fn unsupported_thread_local(backend: &str) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "thread-local storage ('@thread_local') is not supported by the {backend} backend; it is implemented for x86_64 and s390x, and for AArch64 on macOS"
+        "thread-local storage ('@thread_local') is not supported by the {backend} backend; it is implemented for x86_64, AArch64 and s390x"
     )))
 }
 
@@ -65,7 +65,7 @@ pub fn reject_thread_local_globals(module: &MirModule, backend: &str) -> Result<
         None => Ok(()),
         Some((name, _)) => Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
             format!(
-                "thread-local storage is not supported by the {backend} backend; it is implemented for x86_64 and s390x, and for AArch64 on macOS (global '{name}')"
+                "thread-local storage is not supported by the {backend} backend; it is implemented for x86_64, AArch64 and s390x (global '{name}')"
             ),
         ))),
     }
