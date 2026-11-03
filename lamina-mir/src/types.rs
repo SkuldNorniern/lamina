@@ -64,13 +64,43 @@ impl FloatMember {
     }
 }
 
+/// One member an ABI hands a register of its own, with the byte offset it sits at in
+/// the aggregate it was flattened out of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FlatField {
+    pub offset: u32,
+    pub bytes: u32,
+    /// The floating-point type this member is, or `None` when it is an integer that
+    /// takes a general register.
+    pub float: Option<FloatMember>,
+}
+
 /// Field makeup of an aggregate crossing a function boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AggregateClass {
     Integer,
     Eightbytes([EightbyteClass; 2]),
     Memory,
-    Homogeneous { member: FloatMember, count: u8 },
+    Homogeneous {
+        member: FloatMember,
+        count: u8,
+    },
+    /// One or two flattened members, each in a register of its own class. The RISC-V
+    /// hard-float convention, and the single floating-point member that the
+    /// z/Architecture ABI treats as that member.
+    Flattened {
+        first: FlatField,
+        second: Option<FlatField>,
+    },
+}
+
+impl AggregateClass {
+    pub fn flattened(&self) -> Option<(FlatField, Option<FlatField>)> {
+        match self {
+            AggregateClass::Flattened { first, second } => Some((*first, *second)),
+            _ => None,
+        }
+    }
 }
 
 /// What a value of aggregate shape actually is. A [`AggregateShape::Composite`] is a
@@ -119,16 +149,19 @@ impl Aggregate {
         match self.class {
             AggregateClass::Eightbytes(classes) => classes[word],
             AggregateClass::Homogeneous { .. } => EightbyteClass::Sse,
-            AggregateClass::Integer | AggregateClass::Memory => EightbyteClass::Integer,
+            AggregateClass::Integer | AggregateClass::Memory | AggregateClass::Flattened { .. } => {
+                EightbyteClass::Integer
+            }
         }
     }
 
     pub fn homogeneous_members(&self) -> Option<(FloatMember, usize)> {
         match self.class {
             AggregateClass::Homogeneous { member, count } => Some((member, count as usize)),
-            AggregateClass::Integer | AggregateClass::Eightbytes(_) | AggregateClass::Memory => {
-                None
-            }
+            AggregateClass::Integer
+            | AggregateClass::Eightbytes(_)
+            | AggregateClass::Memory
+            | AggregateClass::Flattened { .. } => None,
         }
     }
 
