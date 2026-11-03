@@ -794,16 +794,17 @@ fn element_list_bytes(
         let (at, width) = slots.get(index).ok_or(FromIRError::UnsupportedType)?;
         let literal = match element {
             InitElement::Literal(literal) => literal,
-            InitElement::Global(symbol) | InitElement::Function(symbol) => {
+            InitElement::Symbol(symbol) => {
                 if width != layout.pointer_width.bytes() {
                     return Err(FromIRError::UnsupportedGlobal(format!(
-                        "@{name} element {index} holds the address of {symbol}, so its slot must be ptr-wide, not {width} bytes"
+                        "@{name} element {index} holds the address of {}, so its slot must be ptr-wide, not {width} bytes",
+                        symbol.name
                     )));
                 }
                 relocations.push(GlobalRelocation {
                     offset: at,
-                    symbol: symbol.to_string(),
-                    addend: 0,
+                    symbol: symbol.name.to_string(),
+                    addend: symbol.addend,
                     size: width,
                 });
                 continue;
@@ -988,19 +989,19 @@ fn global_initializer(
     };
     let literal = match value {
         GlobalInit::Value(IRVal::Constant(literal)) => literal,
-        GlobalInit::Function(symbol) => {
+        GlobalInit::Symbol(symbol) => {
             let size = layout.pointer_width.bytes();
             if ty.size_bytes(layout.pointer_width) != size {
                 return Err(FromIRError::UnsupportedGlobal(format!(
-                    "@{name} holds the address of @{symbol}, so its type must be ptr, not {ty}"
+                    "@{name} holds the address of {symbol}, so its type must be ptr, not {ty}"
                 )));
             }
             return Ok(InitializedGlobal {
                 bytes: Some(vec![0; size]),
                 relocations: vec![GlobalRelocation {
                     offset: 0,
-                    symbol: symbol.to_string(),
-                    addend: 0,
+                    symbol: symbol.name.to_string(),
+                    addend: symbol.addend,
                     size,
                 }],
             });
