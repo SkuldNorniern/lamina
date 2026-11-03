@@ -169,3 +169,30 @@ fn aarch64_windows_yields_coff_with_main() {
     let object = compile("aarch64_windows").expect("object bytes");
     assert_coff_symbol(&object, 0xAA64, "main");
 }
+
+#[test]
+fn opt_level_and_debug_lines_change_the_object() {
+    use lamina::api::{ObjectBuild, compile_module_to_object_with};
+    let module = parse_module(MAIN_IR).expect("parse");
+    let target = Target::from_str("x86_64_linux").expect("target");
+
+    let plain = compile_module_to_object_with(&module, target, &ObjectBuild::default())
+        .expect("object bytes");
+
+    let mut debug = ObjectBuild::default();
+    debug.debug_lines = true;
+    let with_lines =
+        compile_module_to_object_with(&module, target, &debug).expect("object bytes with lines");
+    assert!(
+        with_lines.len() > plain.len(),
+        "debug lines added no bytes: {} vs {}",
+        with_lines.len(),
+        plain.len()
+    );
+
+    let mut unoptimized = ObjectBuild::default();
+    unoptimized.opt_level = 0;
+    let at_zero =
+        compile_module_to_object_with(&module, target, &unoptimized).expect("object at opt 0");
+    assert_ne!(at_zero, plain, "opt level did not reach the pipeline");
+}
