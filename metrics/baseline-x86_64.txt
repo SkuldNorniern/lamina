@@ -13487,6 +13487,46 @@ frame main 112
 frame print_digits 32
 frame print_number 32
 
+[variadic_wide_argument O0]
+insns 44
+spills 14
+calls 3
+branches 0
+frame f1 0
+frame f2 0
+frame f3 0
+frame main 64
+
+[variadic_wide_argument O1]
+insns 49
+spills 11
+calls 3
+branches 0
+frame f1 0
+frame f2 0
+frame f3 0
+frame main 48
+
+[variadic_wide_argument O2]
+insns 45
+spills 11
+calls 3
+branches 0
+frame f1 0
+frame f2 0
+frame f3 0
+frame main 48
+
+[variadic_wide_argument O3]
+insns 43
+spills 8
+calls 3
+branches 0
+frame f1 0
+frame f2 0
+frame f3 0
+frame main 32
+
 [vector_operations O0]
 insns 404
 spills 167

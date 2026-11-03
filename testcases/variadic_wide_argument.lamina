@@ -1,0 +1,16 @@
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $f1: [15 x i8] = "%d %d %lld %d\n"
+global $f2: [6 x i8] = "%lld\n"
+global $f3: [14 x i8] = "%d %lld %lld\n"
+
+fn @main() -> i64 {
+entry:
+  %big = mul.i64 3, 4294967296
+  %neg = sub.i64 0, 8589934593
+  %r1 = call @printf(ptr $f1, i32 1, i32 2, i64 %big, i32 5)
+  %r2 = call @printf(ptr $f2, i64 1099511627776)
+  %r3 = call @printf(ptr $f3, i32 3, i64 %big, i64 %neg)
+  ret.i64 0
+}
