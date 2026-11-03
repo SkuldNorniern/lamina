@@ -48,6 +48,15 @@ CROSS_TARGETS = {
         'sysroot': '/usr/aarch64-linux-gnu',
         'unsupported': {},
     },
+    # Lamina links PE output itself with weld, so `compiler` names that linker.
+    # wine runs the executable directly, with no sysroot to point at.
+    'x86_64_windows': {
+        'byteorder': 'little',
+        'compiler': 'weld',
+        'emulator': 'wine',
+        'sysroot': None,
+        'unsupported': {},
+    },
 }
 
 # A native run compiles for the host with no --target, so it takes the variant for
@@ -90,7 +99,7 @@ def cross_toolchain_problem(target):
     for tool in (spec['compiler'], spec['emulator']):
         if shutil.which(tool) is None:
             missing.append(tool)
-    if not (Path(spec['sysroot']) / 'lib' / 'crt1.o').is_file():
+    if spec['sysroot'] and not (Path(spec['sysroot']) / 'lib' / 'crt1.o').is_file():
         missing.append(f"{spec['sysroot']}/lib/crt1.o")
     if missing:
         return "missing " + ", ".join(missing)
@@ -223,6 +232,8 @@ def execution_argv(executable_path, target=None):
     if target is None:
         return [executable_path]
     spec = CROSS_TARGETS[target]
+    if spec['sysroot'] is None:
+        return [spec['emulator'], executable_path]
     return [spec['emulator'], '-L', spec['sysroot'], executable_path]
 
 def run_program(argv, cwd, stdin_input=None):
