@@ -614,6 +614,16 @@ pub fn from_ir_for_target(
                 layout,
                 endianness,
             )?;
+            for hole in &initializer.relocations {
+                let known = ir.functions.contains_key(hole.symbol.as_str())
+                    || ir.global_declarations.contains_key(hole.symbol.as_str());
+                if !known {
+                    return Err(FromIRError::UnsupportedGlobal(format!(
+                        "@{global_name} holds the address of {}, which this module neither defines nor declares",
+                        hole.symbol
+                    )));
+                }
+            }
             let mut global = Global::new(*global_name, ty, layout.pointer_width);
             global.align = global.align.max(declared_align(decl.align));
             if let Some(bytes) = initializer.bytes {
@@ -948,6 +958,23 @@ fn global_initializer(
     };
     let literal = match value {
         GlobalInit::Value(IRVal::Constant(literal)) => literal,
+        GlobalInit::Function(symbol) => {
+            let size = layout.pointer_width.bytes();
+            if ty.size_bytes(layout.pointer_width) != size {
+                return Err(FromIRError::UnsupportedGlobal(format!(
+                    "@{name} holds the address of @{symbol}, so its type must be ptr, not {ty}"
+                )));
+            }
+            return Ok(InitializedGlobal {
+                bytes: Some(vec![0; size]),
+                relocations: vec![GlobalRelocation {
+                    offset: 0,
+                    symbol: symbol.to_string(),
+                    addend: 0,
+                    size,
+                }],
+            });
+        }
         GlobalInit::Value(IRVal::Global(symbol)) => {
             let size = layout.pointer_width.bytes();
             if ty.size_bytes(layout.pointer_width) != size {
