@@ -36,7 +36,14 @@ METRICS_DIR = ROOT / "metrics"
 BASELINE = METRICS_DIR / "baseline-x86_64.txt"
 TESTCASES = ROOT / "testcases"
 # Kept in step with CROSS_TARGETS and HOST_VARIANTS in run_tests.py.
-VARIANT_SUFFIXES = ("s390x_linux", "aarch64_linux", "aarch64_macos", "x86_64_windows")
+VARIANT_SUFFIXES = (
+    "s390x_linux",
+    "aarch64_linux",
+    "aarch64_macos",
+    "armv7_linux",
+    "i686_linux",
+    "x86_64_windows",
+)
 COMPILER = ROOT / "target" / "release" / ("lamina.exe" if os.name == "nt" else "lamina")
 TARGET = "x86_64_linux"
 LEVELS = (0, 1, 2, 3)

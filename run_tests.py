@@ -37,6 +37,74 @@ FLOAT_AGGREGATE_UNSUPPORTED = {
     )
 }
 
+# A target with 32-bit integer registers refuses, by name, every testcase whose
+# shape needs a wider register than it has or a facility its backend does not
+# implement. These are backend gaps, not wrong answers: the compile fails rather
+# than producing a number, so running them reports a failure no fix to the code
+# under test can clear.
+ILP32_UNSUPPORTED = {
+    **{
+        name: 'a 128-bit integer takes four 32-bit registers, and only pairs are split'
+        for name in (
+            'copy_scalar_types',
+            'i128_abi',
+            'i128_arith',
+            'i128_array_heap',
+            'i128_bit_intrinsics',
+            'i128_conv',
+            'i128_float',
+            'i128_literal_call_arg_bug_test',
+            'i128_mem',
+        )
+    },
+    **{
+        name: 'an i64 atomic needs a double-word atomic the backend does not emit'
+        for name in ('atomic_cmpxchg', 'atomic_orderings', 'atomics')
+    },
+    **{
+        name: 'reading a 64-bit variadic argument out of 32-bit slots is not implemented'
+        for name in (
+            'callee_saved_pressure',
+            'callptr_float_literal',
+            'function_pointers',
+            'global_function_address',
+            'va_arg_chain',
+            'va_arg_copy',
+            'va_arg_copy_stack',
+            'va_arg_mixed',
+            'va_arg_narrow',
+            'va_arg_no_variadic',
+            'va_arg_sum',
+        )
+    },
+    **{
+        name: 'inline assembly is not implemented by this backend'
+        for name in (
+            'inline_asm_clobber',
+            'inline_asm_loop',
+            'inline_asm_pressure',
+            'inline_asm_rdtsc',
+            'inline_asm_unused',
+        )
+    },
+    'checked_arithmetic': 'no backend reports the overflow of an i64 register pair as a whole',
+    'thread_local_storage': 'thread-local storage is not implemented by this backend',
+    'vector_operations': 'this backend has no vector unit',
+    **FLOAT_AGGREGATE_UNSUPPORTED,
+}
+
+I686_UNSUPPORTED = {
+    'fptoint_signed': 'x87 reports an out-of-range or NaN operand as the integer indefinite, not as the saturating result the contract names',
+    'fptoint_unsigned': 'x87 reports an out-of-range or NaN operand as the integer indefinite, not as the saturating result the contract names',
+    'select_all_types': 'i686 select on a floating-point value is not implemented',
+    **ILP32_UNSUPPORTED,
+}
+
+ARMV7_UNSUPPORTED = {
+    'load_store_alignment': 'armv7 memory instructions fault on an unaligned address',
+    **ILP32_UNSUPPORTED,
+}
+
 S390X_UNSUPPORTED = {
     'inline_asm_rdtsc': 'rdtsc reads the x86 timestamp counter; no s390x equivalent',
     'vector_operations': 'the z vector facility (z13 and later) is not implemented',
@@ -63,6 +131,24 @@ CROSS_TARGETS = {
         'emulator': 'qemu-aarch64-static',
         'sysroot': '/usr/aarch64-linux-gnu',
         'unsupported': {},
+    },
+    'armv7_linux': {
+        'byteorder': 'little',
+        'compiler': 'arm-linux-gnueabihf-gcc',
+        'emulator': 'qemu-arm-static',
+        'sysroot': '/usr/arm-linux-gnueabihf',
+        'unsupported': ARMV7_UNSUPPORTED,
+    },
+    # i686 runs natively on an x86_64 Linux host, so there is no emulator and no
+    # sysroot: the 32-bit crt and libraries come from the host's own multilib set.
+    'i686_linux': {
+        'byteorder': 'little',
+        'compiler': 'gcc',
+        'emulator': None,
+        'sysroot': None,
+        'crt1': '/usr/lib32/crt1.o',
+        'hosts': {('Linux', 'x86_64'), ('Linux', 'i686')},
+        'unsupported': I686_UNSUPPORTED,
     },
     # Lamina links PE output itself with weld, so `compiler` names that linker.
     # wine runs the executable directly, with no sysroot to point at.
@@ -111,12 +197,18 @@ def discover(pattern):
 def cross_toolchain_problem(target):
     """Return why `target` cannot be built and run here, or None when it can."""
     spec = CROSS_TARGETS[target]
+    hosts = spec.get('hosts')
+    if hosts and (platform.system(), platform.machine()) not in hosts:
+        return f"{target} runs only on " + " or ".join(sorted(f"{s} {m}" for s, m in hosts))
     missing = []
     for tool in (spec['compiler'], spec['emulator']):
-        if shutil.which(tool) is None:
+        if tool is not None and shutil.which(tool) is None:
             missing.append(tool)
-    if spec['sysroot'] and not (Path(spec['sysroot']) / 'lib' / 'crt1.o').is_file():
-        missing.append(f"{spec['sysroot']}/lib/crt1.o")
+    crt1 = spec.get('crt1')
+    if crt1 is None and spec['sysroot']:
+        crt1 = str(Path(spec['sysroot']) / 'lib' / 'crt1.o')
+    if crt1 and not Path(crt1).is_file():
+        missing.append(crt1)
     if missing:
         return "missing " + ", ".join(missing)
     return None
@@ -248,6 +340,8 @@ def execution_argv(executable_path, target=None):
     if target is None:
         return [executable_path]
     spec = CROSS_TARGETS[target]
+    if spec['emulator'] is None:
+        return [executable_path]
     if spec['sysroot'] is None:
         return [spec['emulator'], executable_path]
     return [spec['emulator'], '-L', spec['sysroot'], executable_path]
