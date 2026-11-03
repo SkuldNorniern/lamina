@@ -531,6 +531,59 @@ fn floats_cross_the_boundary_in_v_registers() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn homogeneous_float_aggregates_use_v_registers_and_fall_back_to_the_stack()
+-> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_for_target, parser::parse_module};
+    use lamina_platform::TargetArchitecture;
+    let ir = "type !F2 = struct { a: f32, b: f32 }\ntype !D3 = struct { a: f64, b: f64, c: f64 }\nfn @pass(!F2 %p) -> !F2 {\nentry:\n  ret.!F2 %p\n}\nfn @spill(f64 %a, f64 %b, f64 %c, f64 %d, f64 %e, f64 %f, !D3 %p, f64 %t) -> !D3 {\nentry:\n  %r = stackalloc.!D3\n  ret.!D3 %r\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.!F2\n  %r = call @pass(!F2 %q)\n  ret.i64 0\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir_for_target(
+        &module,
+        "homogeneous",
+        TargetArchitecture::Aarch64.data_layout(),
+    )
+    .expect("lower homogeneous aggregates");
+    let mut output = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
+    let assembly = String::from_utf8(output)?;
+
+    let callee = assembly.split("\npass:\n").nth(1).ok_or("missing pass")?;
+    let prologue = callee
+        .split(".L_pass.entry:")
+        .next()
+        .ok_or("missing entry")?;
+    assert!(prologue.contains("    str s0, ["), "{assembly}");
+    assert!(prologue.contains("    str s1, ["), "{assembly}");
+    assert!(!prologue.contains("str x0, ["), "{assembly}");
+    let epilogue = callee.split(".Lret_pass:").next().ok_or("missing return")?;
+    assert!(epilogue.contains("    ldr s0, ["), "{assembly}");
+    assert!(epilogue.contains("    ldr s1, ["), "{assembly}");
+
+    let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+    let call = caller.split("bl pass").next().ok_or("missing call")?;
+    assert!(call.contains("    ldr s0, ["), "{assembly}");
+    assert!(call.contains("    ldr s1, ["), "{assembly}");
+    assert!(!call.contains("    ldr x0, ["), "{assembly}");
+
+    // Six doubles leave two v registers, too few for the three-member aggregate, which
+    // goes to the stack whole; the scalar after it takes no register either.
+    let spill = assembly.split("\nspill:\n").nth(1).ok_or("missing spill")?;
+    let spill_prologue = spill
+        .split(".L_spill.entry:")
+        .next()
+        .ok_or("missing entry")?;
+    assert!(spill_prologue.contains(", d5\n"), "{assembly}");
+    assert!(!spill_prologue.contains(", d6\n"), "{assembly}");
+    assert!(!spill_prologue.contains(", d7\n"), "{assembly}");
+    Ok(())
+}
+
+#[test]
 fn integer_aggregate_returns_come_back_in_x0_and_x1() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64 }\n  %pa = getfieldptr.struct { a: i64, b: i64 } %p, 0\n  store.i64 %pa, 7\n  ret.struct { a: i64, b: i64 } %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr.struct { a: i64, b: i64 } %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";

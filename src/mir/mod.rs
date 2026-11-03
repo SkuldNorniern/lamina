@@ -7,7 +7,7 @@
 
 pub use lamina_mir::{
     AddressMode, AddressSpace, Aggregate, AggregateClass, AggregateShape, AsmOperand, AtomicBinOp,
-    Block, CodePlacement, EightbyteClass, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
+    Block, CodePlacement, EightbyteClass, FloatBinOp, FloatCmpOp, FloatMember, FloatUnOp, Function,
     FunctionBuilder, Global, GlobalRelocation, Immediate, Instruction, IntBinOp, IntCmpOp,
     IntOverflowOp, IntRotOp, IntUnOp, KernelMetadata, Located, MemoryAttrs, MemoryOrdering,
     MirType, Module, ModuleBuilder, Operand, Parameter, PhysicalReg, Register, RegisterClass,

@@ -39,9 +39,9 @@ use util::{emit_mov_imm64, imm_to_u64};
 use crate::{
     error::LaminaError,
     mir::{
-        AddressMode, Aggregate, FloatBinOp, FloatUnOp, Function, Global, Instruction as MirInst,
-        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
-        VirtualReg, index_scale_shift, register::RegisterClass,
+        AddressMode, Aggregate, FloatBinOp, FloatMember, FloatUnOp, Function, Global,
+        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
+        Register, ScalarType, Signature, VirtualReg, index_scale_shift, register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -93,6 +93,11 @@ enum ArgPlace {
     Fpr {
         index: usize,
     },
+    Homogeneous {
+        first: usize,
+        count: usize,
+        member: FloatMember,
+    },
     /// `bytes` of outgoing stack space at `offset` from the start of the argument area.
     Stack {
         offset: usize,
@@ -101,6 +106,17 @@ enum ArgPlace {
 }
 
 const ARGUMENT_REGISTERS: usize = 8;
+
+fn passed_in_memory(aggregate: Aggregate) -> bool {
+    aggregate.size as u64 > MAX_REGISTER_AGGREGATE && aggregate.homogeneous_members().is_none()
+}
+
+fn member_register(member: FloatMember, index: usize) -> String {
+    match member {
+        FloatMember::F32 => format!("s{index}"),
+        FloatMember::F64 => format!("d{index}"),
+    }
+}
 
 /// One argument as the convention sees it: a float, an integer aggregate, or a plain
 /// integer word.
@@ -118,7 +134,7 @@ struct ArgKind {
 
 impl ArgKind {
     fn of(ty: MirType, aggregate: Option<Aggregate>, pointer_width: PointerWidth) -> Self {
-        let by_reference = aggregate.is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE);
+        let by_reference = aggregate.is_some_and(passed_in_memory);
         Self {
             float: aggregate.is_none() && ty.is_float(),
             ty_is_f32: ty.size_bytes(pointer_width) == 4,
@@ -208,6 +224,20 @@ fn classify_aarch64_arguments(
             }
             continue;
         }
+        if let Some((member, count)) = kind.aggregate.and_then(|a| a.homogeneous_members()) {
+            if fprs + count <= ARGUMENT_REGISTERS {
+                places.push(ArgPlace::Homogeneous {
+                    first: fprs,
+                    count,
+                    member,
+                });
+                fprs += count;
+            } else {
+                fprs = ARGUMENT_REGISTERS;
+                places.push(on_stack(&mut stack, kind, packed));
+            }
+            continue;
+        }
         let words = if kind.by_reference {
             1
         } else {
@@ -246,7 +276,7 @@ fn aarch64_stack_bytes(places: &[ArgPlace]) -> usize {
         .iter()
         .map(|place| match place {
             ArgPlace::Stack { offset, bytes } => offset + bytes,
-            ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } => 0,
+            ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } | ArgPlace::Homogeneous { .. } => 0,
         })
         .max()
         .unwrap_or(0)
@@ -505,7 +535,7 @@ fn compile_single_function_aarch64_with(
     let sret_slot = func
         .sig
         .ret_aggregate
-        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+        .filter(|aggregate| passed_in_memory(*aggregate))
         .map(|_| -adjusted_frame_size - 8);
     let adjusted_frame_size = match sret_slot {
         Some(_) => adjusted_frame_size + 16,
@@ -558,6 +588,23 @@ fn compile_single_function_aarch64_with(
                             })?;
                     }
                     ra_pro.free_scratch(value);
+                }
+                ArgPlace::Homogeneous {
+                    first,
+                    count,
+                    member,
+                } => {
+                    for index in 0..count {
+                        writeln!(
+                            output,
+                            "    str {}, [{addr}, #{}]",
+                            member_register(member, first + index),
+                            index * member.size_bytes()
+                        )
+                        .map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                    }
                 }
                 ArgPlace::Gpr { first, words } if kind.by_reference => {
                     let _ = words;
@@ -1493,6 +1540,12 @@ fn emit_block<W: Write>(
                             emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
                         }
                         ArgPlace::Stack { .. } => {}
+                        ArgPlace::Homogeneous { .. } => {
+                            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                                "aarch64 indirect call with a homogeneous float aggregate argument"
+                                    .to_string(),
+                            )));
+                        }
                     }
                 }
                 // x16 is the intra-procedure scratch register, so it is free here and
@@ -1658,6 +1711,23 @@ fn emit_block<W: Write>(
                                 }
                                 ra.free_scratch(bits);
                             }
+                            ArgPlace::Homogeneous {
+                                first,
+                                count,
+                                member,
+                            } => {
+                                let address = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                                emit_materialize_operand(w, argument, address, frame, ra)?;
+                                for index in 0..count {
+                                    writeln!(
+                                        w,
+                                        "    ldr {}, [{address}, #{}]",
+                                        member_register(member, first + index),
+                                        index * member.size_bytes()
+                                    )?;
+                                }
+                                ra.free_scratch(address);
+                            }
                             ArgPlace::Gpr { .. } if kind.by_reference => {}
                             ArgPlace::Gpr { first, words } => {
                                 if kind.aggregate.is_none() {
@@ -1748,7 +1818,7 @@ fn emit_block<W: Write>(
                             ArgPlace::Stack { offset, .. } => {
                                 writeln!(w, "    str {target}, [sp, #{offset}]")?;
                             }
-                            ArgPlace::Fpr { .. } => {}
+                            ArgPlace::Fpr { .. } | ArgPlace::Homogeneous { .. } => {}
                         }
                         ra.free_scratch(source);
                         ra.free_scratch(target);
@@ -1759,7 +1829,7 @@ fn emit_block<W: Write>(
                         .unwrap_or_else(|| abi.mangle_function_name(name));
                     match signatures
                         .result(name)
-                        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+                        .filter(|aggregate| passed_in_memory(*aggregate))
                         .and(ret.as_ref())
                         .and_then(|dst| frame.slot_of(dst))
                     {
@@ -1784,6 +1854,26 @@ fn emit_block<W: Write>(
                         store_result(w, dst, "x0", frame, ra)?;
                     } else if let Some(dst) = ret {
                         match signatures.result(name) {
+                            Some(aggregate) if aggregate.homogeneous_members().is_some() => {
+                                let (member, count) =
+                                    aggregate.homogeneous_members().ok_or_else(scratch_error)?;
+                                let off = frame.slot_of(dst).ok_or_else(|| {
+                                    LaminaError::ValidationError(
+                                        "aggregate result has no frame slot".to_string(),
+                                    )
+                                })?;
+                                let addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                                emit_frame_slot_address(w, addr, off)?;
+                                for index in 0..count {
+                                    writeln!(
+                                        w,
+                                        "    str {}, [{addr}, #{}]",
+                                        member_register(member, index),
+                                        index * member.size_bytes()
+                                    )?;
+                                }
+                                ra.free_scratch(addr);
+                            }
                             // The result register names the slot the words land in; the
                             // body addresses it with a stack address of its own. A large
                             // one was written through x8 by the callee already.
@@ -1825,6 +1915,23 @@ fn emit_block<W: Write>(
                                 writeln!(w, "    fmov d{index}, {bits}")?;
                             }
                             ra.free_scratch(bits);
+                        }
+                        ArgPlace::Homogeneous {
+                            first,
+                            count,
+                            member,
+                        } => {
+                            let address = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                            emit_materialize_operand(w, argument, address, frame, ra)?;
+                            for index in 0..count {
+                                writeln!(
+                                    w,
+                                    "    ldr {}, [{address}, #{}]",
+                                    member_register(member, first + index),
+                                    index * member.size_bytes()
+                                )?;
+                            }
+                            ra.free_scratch(address);
                         }
                         ArgPlace::Gpr { first, .. } => {
                             emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
@@ -1877,10 +1984,23 @@ fn emit_block<W: Write>(
                 if let Some(v) = value {
                     match ret_aggregate {
                         // The returned operand addresses the aggregate; the words
-                        // themselves go back in x0 and x1.
+                        // themselves go back in x0 and x1, or the members in v0 onward.
                         Some(aggregate) => {
                             let addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
                             emit_materialize_operand(w, v, addr, frame, ra)?;
+                            if let Some((member, count)) = aggregate.homogeneous_members() {
+                                for index in 0..count {
+                                    writeln!(
+                                        w,
+                                        "    ldr {}, [{addr}, #{}]",
+                                        member_register(member, index),
+                                        index * member.size_bytes()
+                                    )?;
+                                }
+                                ra.free_scratch(addr);
+                                writeln!(w, "    b {epilogue_label}")?;
+                                continue;
+                            }
                             match sret_slot {
                                 Some(offset) => {
                                     let buffer = ra.alloc_scratch().ok_or_else(scratch_error)?;

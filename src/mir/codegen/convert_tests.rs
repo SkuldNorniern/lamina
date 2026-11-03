@@ -1,7 +1,9 @@
 #![allow(clippy::expect_used)]
 
 use super::*;
-use crate::mir::{AggregateClass, EightbyteClass, MemoryOrdering, VectorLane, VectorType};
+use crate::mir::{
+    AggregateClass, EightbyteClass, FloatMember, MemoryOrdering, VectorLane, VectorType,
+};
 use lamina_ir::MemoryOrdering as IRMemOrd;
 
 fn lowered_global_module(source: &str) -> Result<Module, FromIRError> {
@@ -350,7 +352,7 @@ fn aggregate_of_any_size_carries_its_layout() {
 #[test]
 fn float_aggregates_are_refused_by_name_where_the_backend_does_not_place_them() {
     use lamina_platform::TargetArchitecture;
-    let layout = TargetArchitecture::Aarch64.data_layout();
+    let layout = TargetArchitecture::Riscv64.data_layout();
     let float =
         parse_module("fn @take(struct { a: f64, b: f64 } %p) -> i64 {\nentry:\nret.i64 0\n}")
             .expect("parse float aggregate");
@@ -399,6 +401,55 @@ fn float_aggregates_carry_their_system_v_classes() {
     assert_eq!(
         function.sig.ret_aggregate.expect("return aggregate").class,
         AggregateClass::Memory
+    );
+}
+
+#[test]
+fn homogeneous_float_aggregates_carry_their_aapcs64_classes() {
+    use lamina_platform::TargetArchitecture;
+    let ir = parse_module(
+        "type !F2 = struct { a: f32, b: f32 }\ntype !F5 = struct { a: f32, b: f32, c: f32, d: f32, e: f32 }\ntype !FI = struct { a: f32, b: i32 }\ntype !IF = struct { a: i64, b: f64 }\ntype !D3 = struct { a: f64, b: f64, c: f64 }\ntype !NEST = struct { a: !F2, b: !F2 }\ntype !ARR = struct { v: [3 x f32] }\nfn @take(!F2 %a, !F5 %b, !FI %c, !IF %d, !D3 %e, !NEST %f, !ARR %g) -> !NEST {\nentry:\n%r = stackalloc.!NEST\nret.!NEST %r\n}",
+    )
+    .expect("parse float aggregates");
+    let module = from_ir_for_target(&ir, "take", TargetArchitecture::Aarch64.data_layout())
+        .expect("lower float aggregates");
+    let function = &module.functions["take"];
+    let classes: Vec<_> = function
+        .sig
+        .params
+        .iter()
+        .map(|p| p.aggregate.expect("aggregate marker").class)
+        .collect();
+    assert_eq!(
+        classes,
+        vec![
+            AggregateClass::Homogeneous {
+                member: FloatMember::F32,
+                count: 2
+            },
+            AggregateClass::Integer,
+            AggregateClass::Integer,
+            AggregateClass::Integer,
+            AggregateClass::Homogeneous {
+                member: FloatMember::F64,
+                count: 3
+            },
+            AggregateClass::Homogeneous {
+                member: FloatMember::F32,
+                count: 4
+            },
+            AggregateClass::Homogeneous {
+                member: FloatMember::F32,
+                count: 3
+            },
+        ]
+    );
+    assert_eq!(
+        function.sig.ret_aggregate.expect("return aggregate").class,
+        AggregateClass::Homogeneous {
+            member: FloatMember::F32,
+            count: 4
+        }
     );
 }
 
@@ -1494,4 +1545,54 @@ fn an_aggregate_crosses_a_boundary_whatever_its_size() {
     )
     .expect("parse");
     from_ir_x86_64(&ir, "big").expect("a 512-byte aggregate crosses a boundary");
+}
+
+#[test]
+fn float_aggregate_classification_follows_each_architecture_abi() {
+    use lamina_platform::{FloatAggregateAbi, TargetArchitecture};
+    let float =
+        parse_module("fn @take(struct { a: f64, b: f64 } %p) -> i64 {\nentry:\nret.i64 0\n}")
+            .expect("parse float aggregate");
+    for arch in TargetArchitecture::all() {
+        let layout = arch.data_layout();
+        let result = from_ir_for_target(&float, "take", layout);
+        match layout.float_aggregates {
+            FloatAggregateAbi::Refused => {
+                let error = result.expect_err(&format!("{arch:?} must refuse a float aggregate"));
+                assert!(
+                    error.to_string().contains("%p of @take has a float field"),
+                    "{arch:?} refused without naming the field: {error}"
+                );
+            }
+            FloatAggregateAbi::SysV | FloatAggregateAbi::Aapcs64 => {
+                let module = result
+                    .unwrap_or_else(|e| panic!("{arch:?} declares placement but failed: {e}"));
+                let class = module.functions["take"].sig.params[0]
+                    .aggregate
+                    .expect("aggregate marker")
+                    .class;
+                assert_ne!(
+                    class,
+                    AggregateClass::Integer,
+                    "{arch:?} placed a float aggregate as a plain integer aggregate"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn only_architectures_with_verified_placement_declare_a_float_aggregate_abi() {
+    use lamina_platform::{FloatAggregateAbi, TargetArchitecture};
+    let declaring: Vec<_> = TargetArchitecture::all()
+        .into_iter()
+        .filter(|arch| arch.data_layout().float_aggregates != FloatAggregateAbi::Refused)
+        .collect();
+    assert_eq!(
+        declaring,
+        vec![TargetArchitecture::X86_64, TargetArchitecture::Aarch64],
+        "an architecture declares a float aggregate ABI; its backend must place float \
+         aggregates in the right registers and be checked against a C oracle before it \
+         is added here"
+    );
 }

@@ -49,12 +49,28 @@ pub enum EightbyteClass {
     Sse,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FloatMember {
+    F32,
+    F64,
+}
+
+impl FloatMember {
+    pub fn size_bytes(self) -> usize {
+        match self {
+            FloatMember::F32 => 4,
+            FloatMember::F64 => 8,
+        }
+    }
+}
+
 /// Field makeup of an aggregate crossing a function boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AggregateClass {
     Integer,
     Eightbytes([EightbyteClass; 2]),
     Memory,
+    Homogeneous { member: FloatMember, count: u8 },
 }
 
 /// What a value of aggregate shape actually is. A [`AggregateShape::Composite`] is a
@@ -102,7 +118,17 @@ impl Aggregate {
     pub fn eightbyte_class(&self, word: usize) -> EightbyteClass {
         match self.class {
             AggregateClass::Eightbytes(classes) => classes[word],
+            AggregateClass::Homogeneous { .. } => EightbyteClass::Sse,
             AggregateClass::Integer | AggregateClass::Memory => EightbyteClass::Integer,
+        }
+    }
+
+    pub fn homogeneous_members(&self) -> Option<(FloatMember, usize)> {
+        match self.class {
+            AggregateClass::Homogeneous { member, count } => Some((member, count as usize)),
+            AggregateClass::Integer | AggregateClass::Eightbytes(_) | AggregateClass::Memory => {
+                None
+            }
         }
     }
 

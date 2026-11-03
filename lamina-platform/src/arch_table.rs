@@ -80,6 +80,13 @@ impl VaListAbi {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FloatAggregateAbi {
+    Refused,
+    SysV,
+    Aapcs64,
+}
+
 /// The facts a target-independent lowering needs to turn IR into MIR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TargetDataLayout {
@@ -87,10 +94,7 @@ pub struct TargetDataLayout {
     pub int_register_bits: u32,
     pub endianness: Endianness,
     pub va_list: VaListAbi,
-    /// Whether this architecture's backend places an aggregate with a float field
-    /// by its own ABI's rules. False means such an aggregate is refused rather
-    /// than passed as if its fields were integers.
-    pub float_aggregates: bool,
+    pub float_aggregates: FloatAggregateAbi,
 }
 
 impl TargetDataLayout {
@@ -151,10 +155,7 @@ pub struct ArchSpec {
     /// such an argument; the riscv psABI makes that rule variadic-only and ppc64 does not
     /// round for named arguments either.
     pub honors_argument_alignment: bool,
-    /// Whether this architecture's backend places an aggregate with a float field
-    /// by its ABI's rules. False refuses such an aggregate instead of passing it
-    /// as though its fields were integers.
-    pub float_aggregates: bool,
+    pub float_aggregates: FloatAggregateAbi,
     pub output_artifact: OutputArtifact,
     /// Environment a hosted target of this architecture means when the target string
     /// names none.
@@ -230,7 +231,7 @@ macro_rules! arch_table {
             va_list: $va_list:expr,
             stack_alignment_at_call: $stack_align:literal,
             honors_argument_alignment: $honors:literal,
-            float_aggregates: $float_aggregates:literal,
+            float_aggregates: $float_aggregates:ident,
             output_artifact: $artifact:ident,
             hosted_environment: $hosted:ident,
             environments: [$($environment:ident),* $(,)?],
@@ -274,7 +275,7 @@ macro_rules! arch_table {
                             va_list: $va_list,
                             stack_alignment_at_call: $stack_align,
                             honors_argument_alignment: $honors,
-                    float_aggregates: $float_aggregates,
+                            float_aggregates: FloatAggregateAbi::$float_aggregates,
                             output_artifact: OutputArtifact::$artifact,
                             hosted_environment: TargetEnvironment::$hosted,
                             environments: &[$(TargetEnvironment::$environment),*],
@@ -335,7 +336,7 @@ arch_table! {
         va_list: VaListAbi::of(24, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: true,
-        float_aggregates: true,
+        float_aggregates: SysV,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl, Lamina],
@@ -364,7 +365,7 @@ arch_table! {
         va_list: VaListAbi::of(32, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: true,
-        float_aggregates: false,
+        float_aggregates: Aapcs64,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl, Lamina],
@@ -391,7 +392,7 @@ arch_table! {
         va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Freestanding,
         environments: [],
@@ -413,7 +414,7 @@ arch_table! {
         va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Eabi,
         environments: [Eabi, Eabihf],
@@ -433,7 +434,7 @@ arch_table! {
         va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Eabihf,
         environments: [Eabi, Eabihf],
@@ -459,7 +460,7 @@ arch_table! {
         va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Eabi,
         environments: [Eabi],
@@ -480,7 +481,7 @@ arch_table! {
         va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Eabi,
         environments: [Eabi],
@@ -500,7 +501,7 @@ arch_table! {
         va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -525,7 +526,7 @@ arch_table! {
         va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -550,7 +551,7 @@ arch_table! {
         va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -576,7 +577,7 @@ arch_table! {
         va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu],
@@ -596,7 +597,7 @@ arch_table! {
         va_list: VaListAbi::of(4, 4),
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Module,
         hosted_environment: Freestanding,
         environments: [],
@@ -616,7 +617,7 @@ arch_table! {
         va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Module,
         hosted_environment: Freestanding,
         environments: [],
@@ -637,7 +638,7 @@ arch_table! {
         va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -663,7 +664,7 @@ arch_table! {
         va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -688,7 +689,7 @@ arch_table! {
         va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -713,7 +714,7 @@ arch_table! {
         va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -738,7 +739,7 @@ arch_table! {
         va_list: VaListAbi::of(8, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -763,7 +764,7 @@ arch_table! {
         va_list: VaListAbi::of(32, 8),
         stack_alignment_at_call: 8,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -788,7 +789,7 @@ arch_table! {
         va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Text,
         hosted_environment: Freestanding,
         environments: [],
@@ -808,7 +809,7 @@ arch_table! {
         va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 1,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Text,
         hosted_environment: Freestanding,
         environments: [],
@@ -829,7 +830,7 @@ arch_table! {
         va_list: VaListAbi::Undefined,
         stack_alignment_at_call: 16,
         honors_argument_alignment: false,
-        float_aggregates: false,
+        float_aggregates: Refused,
         output_artifact: Executable,
         hosted_environment: Freestanding,
         environments: [],

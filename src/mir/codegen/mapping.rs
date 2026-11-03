@@ -12,12 +12,12 @@ use crate::{
     mir::{
         codegen::error::FromIRError,
         types::{
-            Aggregate, AggregateClass, AggregateShape, EightbyteClass, MirType, ScalarType,
-            Signedness, VectorLane, VectorType,
+            Aggregate, AggregateClass, AggregateShape, EightbyteClass, FloatMember, MirType,
+            ScalarType, Signedness, VectorLane, VectorType,
         },
     },
 };
-use lamina_platform::TargetDataLayout;
+use lamina_platform::{FloatAggregateAbi, TargetDataLayout};
 
 /// Largest aggregate passed in registers. Beyond this size every target in the table,
 /// ppc64le included, passes and returns the value in memory through a hidden pointer.
@@ -111,6 +111,8 @@ fn integer_fields_only(ty: &IRType<'_>) -> bool {
     }
 }
 
+const MAX_HOMOGENEOUS_MEMBERS: usize = 4;
+
 /// The ABI of the integer that takes two registers, crossing a boundary: two words,
 /// aligned to its own size, one INTEGER aggregate, as System V classifies `__int128`.
 pub fn wide_aggregate(int64_regs: bool) -> Aggregate {
@@ -145,11 +147,6 @@ pub fn classify_aggregate(
         return Ok(None);
     }
     let integer_only = integer_fields_only(ty);
-    if !integer_only && !layout.float_aggregates {
-        return Err(FromIRError::UnsupportedAggregate(format!(
-            "{what} has a float field, which this target's backend does not place yet"
-        )));
-    }
     let size = sizeof_type(ty, layout).ok_or(FromIRError::UnsupportedType)?;
     if size == 0 {
         return Err(FromIRError::UnsupportedAggregate(format!(
@@ -159,7 +156,15 @@ pub fn classify_aggregate(
     let class = if integer_only {
         AggregateClass::Integer
     } else {
-        sysv_eightbyte_class(ty, size, what, layout)?
+        match layout.float_aggregates {
+            FloatAggregateAbi::Refused => {
+                return Err(FromIRError::UnsupportedAggregate(format!(
+                    "{what} has a float field, which this target's backend does not place yet"
+                )));
+            }
+            FloatAggregateAbi::SysV => sysv_eightbyte_class(ty, size, what, layout)?,
+            FloatAggregateAbi::Aapcs64 => aapcs64_class(ty, size, what, layout)?,
+        }
     };
     Ok(Some(Aggregate {
         size: size as usize,
@@ -173,7 +178,41 @@ struct Leaf {
     offset: u64,
     size: u64,
     float: bool,
+    member: Option<FloatMember>,
     unaligned: bool,
+}
+
+fn aapcs64_class(
+    ty: &IRType<'_>,
+    size: u64,
+    what: &str,
+    layout: TargetDataLayout,
+) -> Result<AggregateClass, FromIRError> {
+    let mut leaves = Vec::new();
+    collect_leaves(ty, 0, what, layout, &mut leaves)?;
+    let Some(first) = leaves.first().and_then(|leaf| leaf.member) else {
+        return Ok(AggregateClass::Integer);
+    };
+    let homogeneous = leaves.len() <= MAX_HOMOGENEOUS_MEMBERS
+        && leaves.iter().all(|leaf| leaf.member == Some(first));
+    if !homogeneous {
+        return Ok(AggregateClass::Integer);
+    }
+    if leaves.iter().any(|leaf| leaf.unaligned) {
+        return Err(FromIRError::UnsupportedAggregate(format!(
+            "{what} has a misaligned float member, which no float placement covers"
+        )));
+    }
+    let members = leaves.len() as u64;
+    if members * first.size_bytes() as u64 != size {
+        return Err(FromIRError::UnsupportedAggregate(format!(
+            "{what} is a float aggregate with padding, which no float placement covers"
+        )));
+    }
+    Ok(AggregateClass::Homogeneous {
+        member: first,
+        count: members as u8,
+    })
 }
 
 fn sysv_eightbyte_class(
@@ -234,10 +273,16 @@ fn collect_leaves(
         IRType::Primitive(p) => {
             let size = sizeof_type(ty, layout).ok_or(FromIRError::UnsupportedType)?;
             let align = align_of_type(ty, layout);
+            let member = match p {
+                IRPrim::F32 => Some(FloatMember::F32),
+                IRPrim::F64 => Some(FloatMember::F64),
+                _ => None,
+            };
             leaves.push(Leaf {
                 offset,
                 size,
-                float: matches!(p, IRPrim::F32 | IRPrim::F64),
+                float: member.is_some(),
+                member,
                 unaligned: !offset.is_multiple_of(align),
             });
             Ok(())

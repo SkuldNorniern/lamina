@@ -28,8 +28,8 @@ pub mod simd;
 
 // Re-export main types
 pub use arch_table::{
-    ArchSpec, Endianness, LinuxInterpreters, OutputArtifact, PointerWidth, TargetArchitecture,
-    TargetDataLayout, ToolchainTriples, VaListAbi,
+    ArchSpec, Endianness, FloatAggregateAbi, LinuxInterpreters, OutputArtifact, PointerWidth,
+    TargetArchitecture, TargetDataLayout, ToolchainTriples, VaListAbi,
 };
 pub use arch_variant::{
     Aarch64Level, ArchVariant, Armv7Profile, Armv7Variant, PowerLevel, RiscvIsa, VariantAxis,
