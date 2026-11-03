@@ -25,6 +25,10 @@ pub(super) const DIV_LO: &str = "%r5";
 
 pub(super) const WORD: i32 = 8;
 
+/// Least alignment a symbol may have, in bytes. `larl` names an address as a signed
+/// halfword count from the instruction, so an odd address cannot be formed.
+pub(super) const RELATIVE_LONG_ALIGN: usize = 2;
+
 /// Bytes at the bottom of every frame that a callee saves registers into.
 pub(super) const SAVE_AREA: i32 = 160;
 

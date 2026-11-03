@@ -40,8 +40,8 @@ use crate::{
     },
 };
 use abi::{
-    A0, A1, ARG_FPRS, ARG_GPRS, ArgKind, ArgPlace, DIV_HI, DIV_LO, FA0, FA1, FP, SP, T0, T1, T2,
-    TRAP, WORD,
+    A0, A1, ARG_FPRS, ARG_GPRS, ArgKind, ArgPlace, DIV_HI, DIV_LO, FA0, FA1, FP,
+    RELATIVE_LONG_ALIGN, SP, T0, T1, T2, TRAP, WORD,
 };
 use lamina_mir::{SourceLoc, TlsModel};
 use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
@@ -216,9 +216,31 @@ pub fn generate_mir_s390x_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
-    emit_global_data(writer, module, target_os, str::to_string)?;
+    emit_global_data(
+        writer,
+        &relative_long_module(module),
+        target_os,
+        str::to_string,
+    )?;
     emit_gnu_stack_note(writer, target_os)?;
     Ok(())
+}
+
+/// `larl`, which every symbol reference here goes through, encodes a halfword
+/// displacement and so can only name an even address. A byte-aligned global placed on
+/// an odd one is loaded off by one, silently, so every global is given at least
+/// halfword alignment. Only the globals are rewritten; the data emitter reads nothing
+/// else from the module.
+fn relative_long_module(module: &MirModule) -> MirModule {
+    let mut copy = MirModule::new(module.name.clone());
+    copy.relocation = module.relocation;
+    copy.source_files = module.source_files.clone();
+    for (name, global) in &module.globals {
+        let mut global = global.clone();
+        global.align = global.align.max(RELATIVE_LONG_ALIGN);
+        copy.globals.insert(name.clone(), global);
+    }
+    copy
 }
 
 /// Bytes of outgoing argument area the widest call in this function needs.
