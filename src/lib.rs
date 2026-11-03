@@ -680,7 +680,11 @@ entry:
         compile_lamina_ir_to_assembly(SIMPLE_IR, &mut assembly, 1)
             .expect("host assembly should compile");
 
-        assert!(!assembly.is_empty());
+        let host = Target::detect_host().expect("host target").to_str();
+        let mut expected = Vec::new();
+        compile_lamina_ir_to_target_assembly(SIMPLE_IR, &mut expected, &host, 1)
+            .expect("assembly for the detected host");
+        assert_eq!(assembly, expected);
     }
 
     #[test]
