@@ -43,11 +43,11 @@ fn small_frame_gets_no_probe() {
 }
 
 #[test]
-fn windows_large_frame_calls_chkstk_with_the_size_in_eax() {
+fn windows_large_frame_probes_without_calling_out() {
     let asm = assembly_with_frame("[65536 x i8]", TargetOperatingSystem::Windows);
-    let expected = "    movl $65552, %eax\n    call __chkstk\n    subq %rax, %rsp\n";
+    let expected = "    leaq -65552(%rsp), %r11\n    subq $16, %rsp\n    orq $0, (%rsp)\n1:\n    subq $4096, %rsp\n    orq $0, (%rsp)\n    cmpq %r11, %rsp\n    ja 1b\n";
     assert!(asm.contains(expected), "{asm}");
-    assert!(!asm.contains("orq $0, (%rsp)"), "{asm}");
+    assert!(!asm.contains("__chkstk"), "{asm}");
 }
 
 #[test]

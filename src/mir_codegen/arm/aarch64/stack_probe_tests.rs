@@ -48,8 +48,9 @@ fn frame_of_exactly_one_page_is_not_probed() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn windows_keeps_its_unprobed_frame() -> Result<(), Box<dyn Error>> {
+fn windows_large_frame_is_probed() -> Result<(), Box<dyn Error>> {
     let asm = assembly_with_frame("[65536 x i8]", TargetOperatingSystem::Windows)?;
-    assert!(!asm.contains("b.hi 1b"), "{asm}");
+    assert!(asm.contains("b.hi 1b"), "{asm}");
+    assert!(asm.contains("str xzr, [sp]"), "{asm}");
     Ok(())
 }
