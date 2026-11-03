@@ -1,0 +1,138 @@
+type !F2 = struct { a: f32, b: f32 }
+type !D3 = struct { a: f64, b: f64, c: f64 }
+
+fn @spill6(f64 %a0, f64 %a1, f64 %a2, f64 %a3, f64 %a4, f64 %a5, !D3 %p, f64 %t) -> !D3 {
+  entry:
+    %r = stackalloc.!D3
+    %pa = getfieldptr.!D3 %p, 0
+    %pb = getfieldptr.!D3 %p, 1
+    %va = load.f64 %pa
+    %vb = load.f64 %pb
+    %ra = getfieldptr.!D3 %r, 0
+    %rb = getfieldptr.!D3 %r, 1
+    %rc = getfieldptr.!D3 %r, 2
+    store.f64 %ra, %va
+    store.f64 %rb, %vb
+    store.f64 %rc, %t
+    ret.!D3 %r
+}
+
+fn @fit5(f64 %a0, f64 %a1, f64 %a2, f64 %a3, f64 %a4, !D3 %p, f64 %t) -> !D3 {
+  entry:
+    %r = stackalloc.!D3
+    %pa = getfieldptr.!D3 %p, 0
+    %pb = getfieldptr.!D3 %p, 1
+    %va = load.f64 %pa
+    %vb = load.f64 %pb
+    %ra = getfieldptr.!D3 %r, 0
+    %rb = getfieldptr.!D3 %r, 1
+    %rc = getfieldptr.!D3 %r, 2
+    store.f64 %ra, %va
+    store.f64 %rb, %vb
+    store.f64 %rc, %t
+    ret.!D3 %r
+}
+
+fn @fspill(f32 %a0, f32 %a1, f32 %a2, f32 %a3, f32 %a4, f32 %a5, f32 %a6, !F2 %p, f32 %t) -> !F2 {
+  entry:
+    %r = stackalloc.!F2
+    %pa = getfieldptr.!F2 %p, 0
+    %va = load.f32 %pa
+    %ra = getfieldptr.!F2 %r, 0
+    %rb = getfieldptr.!F2 %r, 1
+    store.f32 %ra, %va
+    store.f32 %rb, %t
+    ret.!F2 %r
+}
+
+fn @main() -> i64 {
+  entry:
+    %p = stackalloc.!D3
+    %pa = getfieldptr.!D3 %p, 0
+    %pb = getfieldptr.!D3 %p, 1
+    %pc = getfieldptr.!D3 %p, 2
+    store.f64 %pa, 0.5
+    store.f64 %pb, 1.25
+    store.f64 %pc, -3.0
+    %r6 = call @spill6(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, !D3 %p, 7.5)
+    %r6a = getfieldptr.!D3 %r6, 0
+    %r6b = getfieldptr.!D3 %r6, 1
+    %r6c = getfieldptr.!D3 %r6, 2
+    %x6a = load.f64 %r6a
+    %x6b = load.f64 %r6b
+    %x6c = load.f64 %r6c
+    %y6a = mul.f64 %x6a, 100.0
+    %y6b = mul.f64 %x6b, 100.0
+    %y6c = mul.f64 %x6c, 100.0
+    %i6a = fptoint.f64.i64 %y6a
+    %i6b = fptoint.f64.i64 %y6b
+    %i6c = fptoint.f64.i64 %y6c
+    call @print_i64(%i6a)
+    call @print_i64(%i6b)
+    call @print_i64(%i6c)
+
+    %f5 = call @fit5(1.0, 2.0, 3.0, 4.0, 5.0, !D3 %p, 7.5)
+    %f5a = getfieldptr.!D3 %f5, 0
+    %f5b = getfieldptr.!D3 %f5, 1
+    %f5c = getfieldptr.!D3 %f5, 2
+    %u5a = load.f64 %f5a
+    %u5b = load.f64 %f5b
+    %u5c = load.f64 %f5c
+    %z5a = mul.f64 %u5a, 100.0
+    %z5b = mul.f64 %u5b, 100.0
+    %z5c = mul.f64 %u5c, 100.0
+    %j5a = fptoint.f64.i64 %z5a
+    %j5b = fptoint.f64.i64 %z5b
+    %j5c = fptoint.f64.i64 %z5c
+    call @print_i64(%j5a)
+    call @print_i64(%j5b)
+    call @print_i64(%j5c)
+
+    %q = stackalloc.!F2
+    %qa = getfieldptr.!F2 %q, 0
+    store.f32 %qa, 1.5
+    %sf = call @fspill(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, !F2 %q, 7.5)
+    %sfa = getfieldptr.!F2 %sf, 0
+    %sfb = getfieldptr.!F2 %sf, 1
+    %ua = load.f32 %sfa
+    %ub = load.f32 %sfb
+    %va = mul.f32 %ua, 100.0
+    %vb = mul.f32 %ub, 100.0
+    %ia = fptoint.f32.i64 %va
+    %ib = fptoint.f32.i64 %vb
+    call @print_i64(%ia)
+    call @print_i64(%ib)
+    ret.i64 0
+}
+
+fn @print_i64(i64 %n) -> void {
+  entry:
+    %neg = lt.i64 %n, 0
+    %m = sub.i64 0, %n
+    %s = select.i64 %neg, %m, %n
+    %u = bitcast.i64.u64 %s
+    br %neg, minus, digits
+  minus:
+    %c = writebyte 45
+    jmp digits
+  digits:
+    call @put_u64(%u)
+    %nl = writebyte 10
+    ret.void
+}
+
+fn @put_u64(u64 %n) -> void {
+  entry:
+    %q = div.u64 %n, 10
+    %r = rem.u64 %n, 10
+    %d = add.u64 %r, 48
+    %z = eq.u64 %q, 0
+    br %z, last, more
+  more:
+    call @put_u64(%q)
+    jmp last
+  last:
+    %w = writebyte %d
+    ret.void
+}
+

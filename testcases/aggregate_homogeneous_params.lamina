@@ -1,0 +1,333 @@
+type !F2 = struct { a: f32, b: f32 }
+type !F3 = struct { a: f32, b: f32, c: f32 }
+type !F4 = struct { a: f32, b: f32, c: f32, d: f32 }
+type !F5 = struct { a: f32, b: f32, c: f32, d: f32, e: f32 }
+type !D2 = struct { a: f64, b: f64 }
+type !D4 = struct { a: f64, b: f64, c: f64, d: f64 }
+type !FI = struct { a: f32, b: i32 }
+type !NEST = struct { a: !F2, b: !F2 }
+type !ARR = struct { v: [3 x f32] }
+
+fn @sum_f2(!F2 %p) -> f32 {
+  entry:
+    %p0 = getfieldptr.!F2 %p, 0
+    %v0 = load.f32 %p0
+    %p1 = getfieldptr.!F2 %p, 1
+    %v1 = load.f32 %p1
+    %s1 = add.f32 %v0, %v1
+    ret.f32 %s1
+}
+
+fn @sum_f3(!F3 %p) -> f32 {
+  entry:
+    %p0 = getfieldptr.!F3 %p, 0
+    %v0 = load.f32 %p0
+    %p1 = getfieldptr.!F3 %p, 1
+    %v1 = load.f32 %p1
+    %p2 = getfieldptr.!F3 %p, 2
+    %v2 = load.f32 %p2
+    %s1 = add.f32 %v0, %v1
+    %s2 = add.f32 %s1, %v2
+    ret.f32 %s2
+}
+
+fn @sum_f4(!F4 %p) -> f32 {
+  entry:
+    %p0 = getfieldptr.!F4 %p, 0
+    %v0 = load.f32 %p0
+    %p1 = getfieldptr.!F4 %p, 1
+    %v1 = load.f32 %p1
+    %p2 = getfieldptr.!F4 %p, 2
+    %v2 = load.f32 %p2
+    %p3 = getfieldptr.!F4 %p, 3
+    %v3 = load.f32 %p3
+    %s1 = add.f32 %v0, %v1
+    %s2 = add.f32 %s1, %v2
+    %s3 = add.f32 %s2, %v3
+    ret.f32 %s3
+}
+
+fn @sum_f5(!F5 %p) -> f32 {
+  entry:
+    %p0 = getfieldptr.!F5 %p, 0
+    %v0 = load.f32 %p0
+    %p1 = getfieldptr.!F5 %p, 1
+    %v1 = load.f32 %p1
+    %p2 = getfieldptr.!F5 %p, 2
+    %v2 = load.f32 %p2
+    %p3 = getfieldptr.!F5 %p, 3
+    %v3 = load.f32 %p3
+    %p4 = getfieldptr.!F5 %p, 4
+    %v4 = load.f32 %p4
+    %s1 = add.f32 %v0, %v1
+    %s2 = add.f32 %s1, %v2
+    %s3 = add.f32 %s2, %v3
+    %s4 = add.f32 %s3, %v4
+    ret.f32 %s4
+}
+
+fn @sum_d2(!D2 %p) -> f64 {
+  entry:
+    %p0 = getfieldptr.!D2 %p, 0
+    %v0 = load.f64 %p0
+    %p1 = getfieldptr.!D2 %p, 1
+    %v1 = load.f64 %p1
+    %s1 = add.f64 %v0, %v1
+    ret.f64 %s1
+}
+
+fn @sum_d4(!D4 %p) -> f64 {
+  entry:
+    %p0 = getfieldptr.!D4 %p, 0
+    %v0 = load.f64 %p0
+    %p1 = getfieldptr.!D4 %p, 1
+    %v1 = load.f64 %p1
+    %p2 = getfieldptr.!D4 %p, 2
+    %v2 = load.f64 %p2
+    %p3 = getfieldptr.!D4 %p, 3
+    %v3 = load.f64 %p3
+    %s1 = add.f64 %v0, %v1
+    %s2 = add.f64 %s1, %v2
+    %s3 = add.f64 %s2, %v3
+    ret.f64 %s3
+}
+
+fn @sum_fi(!FI %p) -> i64 {
+  entry:
+    %ap = getfieldptr.!FI %p, 0
+    %bp = getfieldptr.!FI %p, 1
+    %a = load.f32 %ap
+    %b = load.i32 %bp
+    %ai = fptoint.f32.i64 %a
+    %bi = extend.i32.i64 %b
+    %s = add.i64 %ai, %bi
+    ret.i64 %s
+}
+
+fn @sum_nest(!NEST %p) -> f32 {
+  entry:
+    %ap = getfieldptr.!NEST %p, 0
+    %bp = getfieldptr.!NEST %p, 1
+    %a0 = getfieldptr.!F2 %ap, 0
+    %a1 = getfieldptr.!F2 %ap, 1
+    %b0 = getfieldptr.!F2 %bp, 0
+    %b1 = getfieldptr.!F2 %bp, 1
+    %va0 = load.f32 %a0
+    %va1 = load.f32 %a1
+    %vb0 = load.f32 %b0
+    %vb1 = load.f32 %b1
+    %s1 = add.f32 %va0, %va1
+    %s2 = add.f32 %vb0, %vb1
+    %s = add.f32 %s1, %s2
+    ret.f32 %s
+}
+
+fn @sum_arr(!ARR %p) -> f32 {
+  entry:
+    %vp = getfieldptr.!ARR %p, 0
+    %e0 = getelem.f32 %vp, 0
+    %e1 = getelem.f32 %vp, 1
+    %e2 = getelem.f32 %vp, 2
+    %v0 = load.f32 %e0
+    %v1 = load.f32 %e1
+    %v2 = load.f32 %e2
+    %s1 = add.f32 %v0, %v1
+    %s = add.f32 %s1, %v2
+    ret.f32 %s
+}
+
+fn @scale_f3(!F3 %p, f32 %k) -> f32 {
+  entry:
+    %ap = getfieldptr.!F3 %p, 0
+    %bp = getfieldptr.!F3 %p, 1
+    %cp = getfieldptr.!F3 %p, 2
+    %a = load.f32 %ap
+    %b = load.f32 %bp
+    %c = load.f32 %cp
+    %ak = mul.f32 %a, %k
+    %s1 = add.f32 %ak, %b
+    %s = add.f32 %s1, %c
+    ret.f32 %s
+}
+
+fn @mk_f2(f32 %x) -> !F2 {
+  entry:
+    %p = stackalloc.!F2
+    %pa = getfieldptr.!F2 %p, 0
+    %pb = getfieldptr.!F2 %p, 1
+    store.f32 %pa, %x
+    %y = mul.f32 %x, 2.0
+    store.f32 %pb, %y
+    ret.!F2 %p
+}
+
+fn @mk_d4(f64 %x) -> !D4 {
+  entry:
+    %p = stackalloc.!D4
+    %pa = getfieldptr.!D4 %p, 0
+    %pb = getfieldptr.!D4 %p, 1
+    %pc = getfieldptr.!D4 %p, 2
+    %pd = getfieldptr.!D4 %p, 3
+    store.f64 %pa, %x
+    %x1 = add.f64 %x, 1.0
+    store.f64 %pb, %x1
+    %x2 = add.f64 %x, 2.0
+    store.f64 %pc, %x2
+    %x3 = add.f64 %x, 3.0
+    store.f64 %pd, %x3
+    ret.!D4 %p
+}
+
+fn @mk_f5() -> !F5 {
+  entry:
+    %p = stackalloc.!F5
+    %pa = getfieldptr.!F5 %p, 0
+    %pb = getfieldptr.!F5 %p, 1
+    %pc = getfieldptr.!F5 %p, 2
+    %pd = getfieldptr.!F5 %p, 3
+    %pe = getfieldptr.!F5 %p, 4
+    store.f32 %pa, 1.0
+    store.f32 %pb, 2.0
+    store.f32 %pc, 3.0
+    store.f32 %pd, 4.0
+    store.f32 %pe, 5.0
+    ret.!F5 %p
+}
+
+fn @main() -> i64 {
+  entry:
+    %p2 = stackalloc.!F2
+    %p2a = getfieldptr.!F2 %p2, 0
+    %p2b = getfieldptr.!F2 %p2, 1
+    store.f32 %p2a, 1.5
+    store.f32 %p2b, 2.25
+    %s2 = call @sum_f2(!F2 %p2)
+    %s2m = mul.f32 %s2, 100.0
+    %s2i = fptoint.f32.i64 %s2m
+    call @print_i64(%s2i)
+
+    %p3 = stackalloc.!F3
+    %p3a = getfieldptr.!F3 %p3, 0
+    %p3b = getfieldptr.!F3 %p3, 1
+    %p3c = getfieldptr.!F3 %p3, 2
+    store.f32 %p3a, 0.5
+    store.f32 %p3b, 1.25
+    store.f32 %p3c, 3.0
+    %s3 = call @sum_f3(!F3 %p3)
+    %s3i = mul.f32 %s3, 100.0
+    %s3r = fptoint.f32.i64 %s3i
+    call @print_i64(%s3r)
+
+    %k3 = call @scale_f3(!F3 %p3, 2.0)
+    %k3i = mul.f32 %k3, 100.0
+    %k3r = fptoint.f32.i64 %k3i
+    call @print_i64(%k3r)
+
+    %p4 = stackalloc.!F4
+    %p4a = getfieldptr.!F4 %p4, 0
+    %p4b = getfieldptr.!F4 %p4, 1
+    %p4c = getfieldptr.!F4 %p4, 2
+    %p4d = getfieldptr.!F4 %p4, 3
+    store.f32 %p4a, 1.0
+    store.f32 %p4b, 2.0
+    store.f32 %p4c, 3.0
+    store.f32 %p4d, 4.0
+    %s4 = call @sum_f4(!F4 %p4)
+    %s4i = fptoint.f32.i64 %s4
+    call @print_i64(%s4i)
+
+    %p5 = call @mk_f5()
+    %s5 = call @sum_f5(!F5 %p5)
+    %s5i = fptoint.f32.i64 %s5
+    call @print_i64(%s5i)
+
+    %p6 = stackalloc.!D2
+    %p6a = getfieldptr.!D2 %p6, 0
+    %p6b = getfieldptr.!D2 %p6, 1
+    store.f64 %p6a, 1.5
+    store.f64 %p6b, 2.25
+    %s6 = call @sum_d2(!D2 %p6)
+    %s6i = mul.f64 %s6, 100.0
+    %s6r = fptoint.f64.i64 %s6i
+    call @print_i64(%s6r)
+
+    %d4 = call @mk_d4(2.0)
+    %s7 = call @sum_d4(!D4 %d4)
+    %s7i = fptoint.f64.i64 %s7
+    call @print_i64(%s7i)
+
+    %fi = stackalloc.!FI
+    %fia = getfieldptr.!FI %fi, 0
+    %fib = getfieldptr.!FI %fi, 1
+    store.f32 %fia, 2.5
+    store.i32 %fib, 40
+    %s8 = call @sum_fi(!FI %fi)
+    call @print_i64(%s8)
+
+    %nest = stackalloc.!NEST
+    %na = getfieldptr.!NEST %nest, 0
+    %nb = getfieldptr.!NEST %nest, 1
+    %na0 = getfieldptr.!F2 %na, 0
+    %na1 = getfieldptr.!F2 %na, 1
+    %nb0 = getfieldptr.!F2 %nb, 0
+    %nb1 = getfieldptr.!F2 %nb, 1
+    store.f32 %na0, 1.0
+    store.f32 %na1, 2.0
+    store.f32 %nb0, 3.0
+    store.f32 %nb1, 4.0
+    %s9 = call @sum_nest(!NEST %nest)
+    %s9i = fptoint.f32.i64 %s9
+    call @print_i64(%s9i)
+
+    %arr = stackalloc.!ARR
+    %av = getfieldptr.!ARR %arr, 0
+    %ae0 = getelem.f32 %av, 0
+    %ae1 = getelem.f32 %av, 1
+    %ae2 = getelem.f32 %av, 2
+    store.f32 %ae0, 0.25
+    store.f32 %ae1, 0.5
+    store.f32 %ae2, 0.75
+    %s10 = call @sum_arr(!ARR %arr)
+    %s10i = mul.f32 %s10, 100.0
+    %s10r = fptoint.f32.i64 %s10i
+    call @print_i64(%s10r)
+
+    %m2 = call @mk_f2(1.5)
+    %s11 = call @sum_f2(!F2 %m2)
+    %s11i = mul.f32 %s11, 100.0
+    %s11r = fptoint.f32.i64 %s11i
+    call @print_i64(%s11r)
+    ret.i64 0
+}
+
+fn @print_i64(i64 %n) -> void {
+  entry:
+    %neg = lt.i64 %n, 0
+    %m = sub.i64 0, %n
+    %s = select.i64 %neg, %m, %n
+    %u = bitcast.i64.u64 %s
+    br %neg, minus, digits
+  minus:
+    %c = writebyte 45
+    jmp digits
+  digits:
+    call @put_u64(%u)
+    %nl = writebyte 10
+    ret.void
+}
+
+fn @put_u64(u64 %n) -> void {
+  entry:
+    %q = div.u64 %n, 10
+    %r = rem.u64 %n, 10
+    %d = add.u64 %r, 48
+    %z = eq.u64 %q, 0
+    br %z, last, more
+  more:
+    call @put_u64(%q)
+    jmp last
+  last:
+    %w = writebyte %d
+    ret.void
+}
+

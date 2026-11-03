@@ -71,6 +71,142 @@ frame print_i64 32
 frame put_u64 32
 frame spill 32
 
+[aggregate_homogeneous_params O0]
+insns 1218
+spills 432
+calls 27
+branches 3
+frame main 640
+frame mk_d4 112
+frame mk_f2 48
+frame mk_f5 80
+frame print_i64 64
+frame put_u64 48
+frame scale_f3 112
+frame sum_arr 96
+frame sum_d2 64
+frame sum_d4 128
+frame sum_f2 64
+frame sum_f3 96
+frame sum_f4 112
+frame sum_f5 144
+frame sum_fi 80
+frame sum_nest 128
+
+[aggregate_homogeneous_params O1]
+insns 1081
+spills 168
+calls 27
+branches 3
+frame main 304
+frame mk_d4 80
+frame mk_f2 32
+frame mk_f5 32
+frame print_i64 32
+frame put_u64 32
+frame scale_f3 80
+frame sum_arr 64
+frame sum_d2 48
+frame sum_d4 96
+frame sum_f2 32
+frame sum_f3 64
+frame sum_f4 80
+frame sum_f5 96
+frame sum_fi 16
+frame sum_nest 80
+
+[aggregate_homogeneous_params O2]
+insns 1552
+spills 209
+calls 27
+branches 25
+frame main 416
+frame mk_d4 80
+frame mk_f2 32
+frame mk_f5 32
+frame print_i64 32
+frame put_u64 32
+frame scale_f3 80
+frame sum_arr 64
+frame sum_d2 48
+frame sum_d4 96
+frame sum_f2 32
+frame sum_f3 64
+frame sum_f4 80
+frame sum_f5 96
+frame sum_fi 16
+frame sum_nest 80
+
+[aggregate_homogeneous_params O3]
+insns 1561
+spills 218
+calls 27
+branches 25
+frame main 416
+frame mk_d4 80
+frame mk_f2 32
+frame mk_f5 32
+frame print_i64 32
+frame put_u64 32
+frame scale_f3 80
+frame sum_arr 64
+frame sum_d2 48
+frame sum_d4 96
+frame sum_f2 32
+frame sum_f3 64
+frame sum_f4 80
+frame sum_f5 96
+frame sum_fi 16
+frame sum_nest 80
+
+[aggregate_homogeneous_spill O0]
+insns 617
+spills 205
+calls 13
+branches 3
+frame fit5 144
+frame fspill 80
+frame main 416
+frame print_i64 64
+frame put_u64 48
+frame spill6 144
+
+[aggregate_homogeneous_spill O1]
+insns 570
+spills 90
+calls 13
+branches 3
+frame fit5 80
+frame fspill 32
+frame main 256
+frame print_i64 32
+frame put_u64 32
+frame spill6 80
+
+[aggregate_homogeneous_spill O2]
+insns 911
+spills 124
+calls 13
+branches 19
+frame fit5 80
+frame fspill 32
+frame main 352
+frame print_i64 32
+frame put_u64 32
+frame spill6 80
+
+[aggregate_homogeneous_spill O3]
+insns 904
+spills 109
+calls 13
+branches 19
+frame fit5 80
+frame fspill 32
+frame main 304
+frame print_i64 32
+frame put_u64 32
+frame spill6 80
+
 [aggregate_memory_params O0]
 insns 269
 spills 108
