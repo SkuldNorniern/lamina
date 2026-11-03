@@ -1,3 +1,4 @@
+pub mod binary;
 mod simd;
 pub mod util;
 
@@ -13,22 +14,21 @@ use crate::mir_codegen::simd::vector_slots;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    fs,
     sync::Arc,
 };
 
-use std::{io::Write, process::id, str};
+use std::{io::Write, str};
 
-use crate::cache::lamina_cache_dir;
 use crate::error::LaminaError;
 
 use crate::{
     mir::{
-        AddressMode, Function, Global, Immediate, Instruction as MirInst, IntBinOp, IntCmpOp,
-        MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
+        AddressMode, Function, Global, GlobalRelocation, Immediate, Instruction as MirInst,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
+        VirtualReg,
     },
     mir_codegen::{
-        Codegen, CodegenError, CodegenOptions, assemble,
+        Codegen, CodegenError, CodegenOptions,
         capability::{CapabilitySet, CodegenCapability},
         common::{CodegenBase, compile_functions_parallel, parallel_codegen_error},
         validate_module_call_parameters,
@@ -36,7 +36,7 @@ use crate::{
 };
 
 use lamina_codegen::wasm::WasmABI;
-use lamina_platform::{PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
 use util::{
     emit_float_binary_op, emit_float_cmp_op, emit_float_unary_op, emit_int_binary_op,
     emit_int_cmp_op, load_fp_operand_wasm, load_operand_wasm, load_register_wasm,
@@ -179,51 +179,13 @@ impl<'a> Codegen for WasmCodegen<'a> {
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
-        // WASM codegen matches other targets: emit_asm generates WAT,
-        // then assemble module handles wat2wasm conversion
-        // This keeps the pipeline consistent: emit_asm -> assemble -> link
-
-        // First generate WAT text format
         self.emit_asm()?;
-
-        // Get the WAT content
-        let wat_content = self.base.drain_output();
-
-        let cache_dir = lamina_cache_dir().map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!(
-                "Failed to create WASM cache directory: {e}"
-            ))
+        let wat = self.base.drain_output();
+        let text = String::from_utf8(wat).map_err(|e| {
+            CodegenError::InvalidCodegenOptions(format!("WASM text is not UTF-8: {e}"))
         })?;
-        let temp_wat = cache_dir.join(format!("lamina_wasm_{}.wat", id()));
-        fs::write(&temp_wat, &wat_content).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to write temporary WAT file: {e}"))
-        })?;
-
-        // Convert WAT to binary WASM using wat2wasm
-        let temp_wasm = cache_dir.join(format!("lamina_wasm_{}.wasm", id()));
-        let _assemble_result = assemble::assemble(
-            &temp_wat,
-            &temp_wasm,
-            Target::new(TargetArchitecture::Wasm32, self.base.target_os),
-            Some(assemble::AssemblerBackend::Wat2Wasm),
-            &[],
-            self.base.verbose,
-        )
-        .map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to assemble WASM: {e}"))
-        })?;
-
-        // Read binary WASM back into output buffer
-        let wasm_binary = fs::read(&temp_wasm).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to read WASM binary: {e}"))
-        })?;
-
-        self.base.output = wasm_binary;
-
-        // Clean up temporary files
-        let _ = fs::remove_file(&temp_wat);
-        let _ = fs::remove_file(&temp_wasm);
-
+        self.base.output = binary::encode_module(&text)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("{e}")))?;
         Ok(())
     }
 }
@@ -387,6 +349,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     reject_function_placement(module, "WASM")?;
     reject_thread_local_globals(module, "WASM")?;
     reject_global_linkage(module, "WASM")?;
+    reject_variadic_calls(module)?;
     let arch = match memory {
         Memory::I32 => TargetArchitecture::Wasm32,
         Memory::I64 => TargetArchitecture::Wasm64,
@@ -529,6 +492,12 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         .any(|inst| {
             matches!(&inst.instr, MirInst::SymbolAddress { symbol, .. }
                 if addresses.functions.contains_key(symbol))
+        })
+        || module.globals.values().any(|global| {
+            global
+                .relocations
+                .iter()
+                .any(|hole| addresses.functions.contains_key(&hole.symbol))
         });
     for (arity, returns) in &indirect {
         let name = signature_name(*arity, *returns);
@@ -592,9 +561,10 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         "  (global $sp (mut {index}) ({index}.const {WASM_STACK_TOP}))"
     )?;
     for (name, global) in &module.globals {
-        let Some(bytes) = global.initializer.as_deref() else {
+        if global.initializer.is_none() && global.relocations.is_empty() {
             continue;
-        };
+        }
+        let bytes = resolve_global_initializer(name, global, &addresses)?;
         if bytes.iter().all(|&b| b == 0) {
             continue;
         }
@@ -978,6 +948,35 @@ fn reinterpret_in(
 
 /// Functions the module can take the address of, in table order. Imports and
 /// definitions share one index space, and the table lists both.
+/// A wasm import declares exactly the parameters it takes, so a call that hands a
+/// callee more arguments than it declares has no form here. Refusing it by name
+/// beats writing a module no engine will load.
+fn reject_variadic_calls(module: &MirModule) -> Result<(), LaminaError> {
+    let mut offenders: Vec<(&str, &str)> = Vec::new();
+    for (caller, func) in &module.functions {
+        for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+            let MirInst::Call { name, args, .. } = &inst.instr else {
+                continue;
+            };
+            let Some(callee) = module.functions.get(name) else {
+                continue;
+            };
+            if callee.sig.variadic || args.len() > callee.sig.params.len() {
+                offenders.push((caller.as_str(), name.as_str()));
+            }
+        }
+    }
+    offenders.sort_unstable();
+    if let Some((caller, callee)) = offenders.first() {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "WASM has no variadic call, and @{caller} calls @{callee} with more arguments than it declares"
+            ),
+        )));
+    }
+    Ok(())
+}
+
 fn function_table(module: &MirModule) -> Vec<&str> {
     let mut names: Vec<&str> = module
         .external_functions
@@ -1000,6 +999,88 @@ fn function_table(module: &MirModule) -> Vec<&str> {
 fn signature_name(arity: usize, returns: bool) -> String {
     let result = if returns { "r" } else { "v" };
     format!("sig_{arity}_{result}")
+}
+
+/// The bytes a global's data segment carries, with every symbol address written in.
+/// A data symbol resolves to its linear-memory offset and a function symbol to its
+/// slot in the module table, both of which the module build already fixed, so nothing
+/// here is left for a linker.
+fn resolve_global_initializer(
+    name: &str,
+    global: &Global,
+    addresses: &Addresses,
+) -> Result<Vec<u8>, LaminaError> {
+    let mut bytes = global.initializer.clone().unwrap_or_default();
+    if bytes.len() < global.size {
+        bytes.resize(global.size, 0);
+    }
+    let mut holes: Vec<&GlobalRelocation> = global.relocations.iter().collect();
+    holes.sort_by_key(|hole| hole.offset);
+    let mut at = 0usize;
+    for hole in holes {
+        if hole.offset < at {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "WASM cannot write global ${name}: its relocations overlap at byte {}",
+                    hole.offset
+                ),
+            )));
+        }
+        let end = hole.offset.checked_add(hole.size).filter(|e| *e <= bytes.len())
+            .ok_or_else(|| {
+                LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+                    "WASM cannot write global ${name}: a {}-byte address at byte {} runs past its {} bytes",
+                    hole.size, hole.offset, bytes.len()
+                )))
+            })?;
+        if !matches!(hole.size, 1 | 2 | 4 | 8) {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "WASM cannot write global ${name}: it needs a {}-byte address slot",
+                    hole.size
+                ),
+            )));
+        }
+        let value = if let Some(address) = addresses.globals.get(&hole.symbol) {
+            i64::from(*address)
+                .checked_add(hole.addend)
+                .filter(|v| *v >= 0)
+                .ok_or_else(|| {
+                    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+                        "WASM cannot write global ${name}: ${} plus {} leaves linear memory",
+                        hole.symbol, hole.addend
+                    )))
+                })? as u64
+        } else if let Some(slot) = addresses.functions.get(&hole.symbol) {
+            if hole.addend != 0 {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!(
+                        "WASM cannot write global ${name}: @{} is a table index, which {} cannot be added to",
+                        hole.symbol, hole.addend
+                    ),
+                )));
+            }
+            u64::from(*slot)
+        } else {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "WASM cannot write global ${name}: {} is defined in another module, and wasm has no linker here to place it",
+                    hole.symbol
+                ),
+            )));
+        };
+        if hole.size < 8 && value >= (1u64 << (hole.size * 8)) {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "WASM cannot write global ${name}: {value} does not fit the {}-byte slot at byte {}",
+                    hole.size, hole.offset
+                ),
+            )));
+        }
+        bytes[hole.offset..end].copy_from_slice(&value.to_le_bytes()[..hole.size]);
+        at = end;
+    }
+    Ok(bytes)
 }
 
 fn global_addresses(module: &MirModule) -> Result<BTreeMap<String, u32>, LaminaError> {
