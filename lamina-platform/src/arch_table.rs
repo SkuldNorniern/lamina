@@ -86,6 +86,12 @@ pub enum FloatAggregateAbi {
     SysV,
     Aapcs64,
     Win64,
+    /// RISC-V hard-float: a struct that flattens to one or two floating-point members,
+    /// or to one floating-point and one integer member, takes a register per member.
+    Riscv64Lp64d,
+    /// z/Architecture ELF: a record whose one member is a float travels as that float;
+    /// every other aggregate takes a general register or travels by reference.
+    S390x,
 }
 
 /// The facts a target-independent lowering needs to turn IR into MIR.
@@ -565,7 +571,7 @@ arch_table! {
         stack_alignment_at_call: 16,
         stack_page_size: 4096,
         honors_argument_alignment: false,
-        float_aggregates: Refused,
+        float_aggregates: Riscv64Lp64d,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],
@@ -787,7 +793,7 @@ arch_table! {
         stack_alignment_at_call: 8,
         stack_page_size: 4096,
         honors_argument_alignment: false,
-        float_aggregates: Refused,
+        float_aggregates: S390x,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl],

@@ -12,8 +12,8 @@ use crate::{
     mir::{
         codegen::error::FromIRError,
         types::{
-            Aggregate, AggregateClass, AggregateShape, EightbyteClass, FloatMember, MirType,
-            ScalarType, Signedness, VectorLane, VectorType,
+            Aggregate, AggregateClass, AggregateShape, EightbyteClass, FlatField, FloatMember,
+            MirType, ScalarType, Signedness, VectorLane, VectorType,
         },
     },
 };
@@ -165,6 +165,8 @@ pub fn classify_aggregate(
             FloatAggregateAbi::SysV => sysv_eightbyte_class(ty, size, what, layout)?,
             FloatAggregateAbi::Aapcs64 => aapcs64_class(ty, size, what, layout)?,
             FloatAggregateAbi::Win64 => AggregateClass::Integer,
+            FloatAggregateAbi::Riscv64Lp64d => riscv_flat_class(ty, size, what, layout)?,
+            FloatAggregateAbi::S390x => s390x_class(ty, size, layout)?,
         }
     };
     Ok(Some(Aggregate {
@@ -214,6 +216,89 @@ fn aapcs64_class(
         member: first,
         count: members as u8,
     })
+}
+
+/// RISC-V hard-float, LP64D. A struct flattens, nested structs and arrays included;
+/// one floating-point member, two floating-point members, or one floating-point and
+/// one integer member each take a register of their own class. Anything else falls
+/// back to the integer convention, which is two registers up to two words and the
+/// address of a copy beyond that.
+fn riscv_flat_class(
+    ty: &IRType<'_>,
+    size: u64,
+    what: &str,
+    layout: TargetDataLayout,
+) -> Result<AggregateClass, FromIRError> {
+    let integer_fallback = || {
+        if size > MAX_REGISTER_AGGREGATE {
+            AggregateClass::Memory
+        } else {
+            AggregateClass::Integer
+        }
+    };
+    let mut leaves = Vec::new();
+    collect_leaves(ty, 0, what, layout, &mut leaves)?;
+    if leaves.iter().any(|leaf| leaf.unaligned) {
+        return Err(FromIRError::UnsupportedAggregate(format!(
+            "{what} has a misaligned float member, which this target's backend does not place yet"
+        )));
+    }
+    if leaves.len() > 2 || leaves.iter().all(|leaf| !leaf.float) {
+        return Ok(integer_fallback());
+    }
+    let word = u64::from(layout.int_register_bits) / 8;
+    if leaves.iter().any(|leaf| leaf.size > word) {
+        return Ok(integer_fallback());
+    }
+    let field = |leaf: &Leaf| FlatField {
+        offset: leaf.offset as u32,
+        bytes: leaf.size as u32,
+        float: leaf.member,
+    };
+    Ok(AggregateClass::Flattened {
+        first: field(&leaves[0]),
+        second: leaves.get(1).map(field),
+    })
+}
+
+/// z/Architecture ELF. A record whose only member, following single-member records
+/// down, is a float travels in a floating-point register as that float would. Every
+/// other aggregate takes a general register at one, two, four or eight bytes, and
+/// travels as the address of a copy at any other size.
+fn s390x_class(
+    ty: &IRType<'_>,
+    size: u64,
+    layout: TargetDataLayout,
+) -> Result<AggregateClass, FromIRError> {
+    if let Some(member) = sole_float_member(ty) {
+        return Ok(AggregateClass::Flattened {
+            first: FlatField {
+                offset: 0,
+                bytes: member.size_bytes() as u32,
+                float: Some(member),
+            },
+            second: None,
+        });
+    }
+    let _ = layout;
+    Ok(match size {
+        1 | 2 | 4 | 8 => AggregateClass::Integer,
+        _ => AggregateClass::Memory,
+    })
+}
+
+/// The float a record holds as its one and only member, following a chain of
+/// single-member records down. An array is not a member chain, so it does not count.
+fn sole_float_member(ty: &IRType<'_>) -> Option<FloatMember> {
+    match ty {
+        IRType::Primitive(IRPrim::F32) => Some(FloatMember::F32),
+        IRType::Primitive(IRPrim::F64) => Some(FloatMember::F64),
+        IRType::Struct { fields, .. } => match fields.as_slice() {
+            [only] => sole_float_member(&only.ty),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn sysv_eightbyte_class(

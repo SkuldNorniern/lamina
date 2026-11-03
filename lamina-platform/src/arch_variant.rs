@@ -5,7 +5,7 @@
 
 use std::{fmt, str::FromStr};
 
-use crate::arch_table::ArchSpec;
+use crate::arch_table::{ArchSpec, FloatAggregateAbi};
 use crate::cpu_level::X86CpuLevel;
 
 /// RISC-V base width plus the standard extensions the backend decides on.
@@ -325,6 +325,7 @@ impl ArchVariant {
             Self::Riscv(isa) => {
                 if !isa.d {
                     spec.interpreters.gnu = spec.interpreters.gnu_soft_float;
+                    spec.float_aggregates = FloatAggregateAbi::Refused;
                 }
                 spec
             }
