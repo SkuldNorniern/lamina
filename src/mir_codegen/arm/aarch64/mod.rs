@@ -2555,10 +2555,7 @@ fn materialize_address<W: Write>(
                             writeln!(w, "    add {dest}, {dest}, {temp}")?;
                             ra.free_scratch(temp);
                         } else {
-                            // Fallback: use x20 if dest is not x20
-                            let temp = if dest != "x20" { "x20" } else { "x19" };
-                            emit_mov_imm64(w, temp, off_val as u64)?;
-                            writeln!(w, "    add {dest}, {dest}, {temp}")?;
+                            return Err(scratch_error().into());
                         }
                     } else {
                         emit_mov_imm64(w, oreg, off_val as u64)?;
@@ -2582,7 +2579,7 @@ fn materialize_address<W: Write>(
                 if let Some(other) = ra.alloc_scratch() {
                     idx = other;
                 } else {
-                    idx = "x20";
+                    return Err(scratch_error().into());
                 }
             }
             load_reg_to(w, index, idx, frame, ra)?; // idx = index
@@ -2606,9 +2603,7 @@ fn materialize_address<W: Write>(
                     // Offset too large (shouldn't happen with i8, but handle for safety)
                     let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     if oreg == dest {
-                        let temp = if dest != "x20" { "x20" } else { "x19" };
-                        emit_mov_imm64(w, temp, off_val as u64)?;
-                        writeln!(w, "    add {dest}, {dest}, {temp}")?;
+                        return Err(scratch_error().into());
                     } else {
                         emit_mov_imm64(w, oreg, off_val as u64)?;
                         writeln!(w, "    add {dest}, {dest}, {oreg}")?;
