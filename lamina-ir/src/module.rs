@@ -184,28 +184,45 @@ pub enum GlobalInit<'a> {
     /// One element per slot, for a global of array or struct type. Slots left out
     /// are zero.
     List(Vec<InitElement<'a>>),
-    /// The address of a function. Not a `Value`, because nothing else in the IR
-    /// names a function as a value; `funcaddr` takes a bare identifier too.
-    Function(Identifier<'a>),
+    /// The address of a symbol, for a global of pointer type.
+    Symbol(SymbolRef<'a>),
 }
 
-/// One slot of an element list. A symbol's address is not a `Literal`, because its
-/// value is not known until the linker places it.
+/// The address of a symbol, plus a constant. The linker decides the address, so this
+/// is not a `Literal` and a frontend cannot fold it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SymbolRef<'a> {
+    pub name: Identifier<'a>,
+    /// `true` for `@name`, `false` for `$name`. They are separate namespaces in the
+    /// IR even though the object file has one.
+    pub function: bool,
+    pub addend: i64,
+}
+
+impl fmt::Display for SymbolRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sigil = if self.function { '@' } else { '$' };
+        write!(f, "{sigil}{}", self.name)?;
+        match self.addend {
+            0 => Ok(()),
+            n if n > 0 => write!(f, " + {n}"),
+            n => write!(f, " - {}", n.unsigned_abs()),
+        }
+    }
+}
+
+/// One slot of an element list.
 #[derive(Debug, Clone, PartialEq)]
 pub enum InitElement<'a> {
     Literal(Literal<'a>),
-    /// The address of a global.
-    Global(Identifier<'a>),
-    /// The address of a function.
-    Function(Identifier<'a>),
+    Symbol(SymbolRef<'a>),
 }
 
 impl fmt::Display for InitElement<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InitElement::Literal(literal) => write!(f, "{literal}"),
-            InitElement::Global(name) => write!(f, "${name}"),
-            InitElement::Function(name) => write!(f, "@{name}"),
+            InitElement::Symbol(symbol) => write!(f, "{symbol}"),
         }
     }
 }
@@ -214,7 +231,7 @@ impl fmt::Display for GlobalInit<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GlobalInit::Value(value) => write!(f, "{value}"),
-            GlobalInit::Function(name) => write!(f, "@{name}"),
+            GlobalInit::Symbol(symbol) => write!(f, "{symbol}"),
             GlobalInit::List(elements) => {
                 let elements: Vec<String> = elements.iter().map(ToString::to_string).collect();
                 write!(f, "[{}]", elements.join(", "))

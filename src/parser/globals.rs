@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::{
     LaminaError,
     ir::{
-        GlobalDeclaration, GlobalInit, Identifier, InitElement, Literal, PrimitiveType, TlsModel,
-        Type, TypeDeclaration, Value, types::resolve_type_names,
+        GlobalDeclaration, GlobalInit, Identifier, InitElement, Literal, PrimitiveType, SymbolRef,
+        TlsModel, Type, TypeDeclaration, Value, types::resolve_type_names,
     },
     parser::{
         functions::{parse_alignment_argument, unknown_annotation_hint},
@@ -91,9 +91,8 @@ pub fn parse_global_declaration<'a>(
         if state.current_char() == Some('[') || state.current_char() == Some('{') {
             let resolved = resolve_type_names(&ty, types).unwrap_or_else(|| ty.clone());
             Some(GlobalInit::List(parse_initializer_list(state, &resolved)?))
-        } else if state.current_char() == Some('@') {
-            state.advance();
-            Some(GlobalInit::Function(state.parse_identifier_str()?))
+        } else if matches!(state.current_char(), Some('@') | Some('$')) {
+            Some(GlobalInit::Symbol(parse_symbol_ref(state)?))
         } else {
             Some(GlobalInit::Value(parse_value_with_type_hint(state, &ty)?))
         }
@@ -137,6 +136,41 @@ fn parse_tls_model_argument(state: &mut ParserState<'_>) -> Result<TlsModel, Lam
 }
 
 /// Parses `[a, b, c]` for an array global, or `{a, b, c}` for a struct one.
+/// Reads `+ N` or `- N` after a symbol, or nothing. The linker adds it to the
+/// address, so a frontend cannot fold it away.
+fn parse_addend(state: &mut ParserState<'_>) -> Result<i64, LaminaError> {
+    let restore = state.position();
+    state.skip_whitespace_and_comments();
+    let sign = match state.current_char() {
+        Some('+') => 1,
+        Some('-') => -1,
+        _ => {
+            state.set_position(restore);
+            return Ok(0);
+        }
+    };
+    state.advance();
+    state.skip_whitespace_and_comments();
+    let magnitude = state
+        .parse_integer()
+        .map_err(|_| state.error("Expected a whole number after the sign of a symbol's addend"))?;
+    Ok(sign * magnitude)
+}
+
+/// Reads `$name` or `@name`, with an optional addend. The caller has already seen
+/// the sigil is one of those two.
+fn parse_symbol_ref<'a>(state: &mut ParserState<'a>) -> Result<SymbolRef<'a>, LaminaError> {
+    let function = state.current_char() == Some('@');
+    state.advance();
+    let name = state.parse_identifier_str()?;
+    let addend = parse_addend(state)?;
+    Ok(SymbolRef {
+        name,
+        function,
+        addend,
+    })
+}
+
 fn parse_initializer_list<'a>(
     state: &mut ParserState<'a>,
     ty: &Type<'a>,
@@ -180,14 +214,12 @@ fn parse_initializer_list<'a>(
             return Err(state.error(format!("{capacity} elements fit here, this is one more")));
         }
         state.skip_whitespace_and_comments();
-        let element = if state.current_char() == Some('@') {
-            state.advance();
-            InitElement::Function(state.parse_identifier_str()?)
+        let element = if matches!(state.current_char(), Some('@') | Some('$')) {
+            InitElement::Symbol(parse_symbol_ref(state)?)
         } else {
             match parse_value_with_type_hint(state, hint)? {
                 Value::Constant(literal) => InitElement::Literal(literal),
-                Value::Global(name) => InitElement::Global(name),
-                Value::Variable(_) => {
+                Value::Global(_) | Value::Variable(_) => {
                     return Err(state.error(
                         "An element list takes literals and symbol addresses, not a register",
                     ));
