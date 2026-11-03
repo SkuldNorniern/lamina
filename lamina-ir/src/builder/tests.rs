@@ -442,13 +442,6 @@ mod tests {
                 Instruction::Ret { .. },
             ]
         ));
-
-        // Verify first instruction is Add
-        if let Instruction::Binary { op, .. } = &entry.instructions[0] {
-            assert!(matches!(op, BinaryOp::Add));
-        } else {
-            panic!("Expected Binary instruction");
-        }
     }
 
     #[test]

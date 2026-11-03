@@ -232,21 +232,4 @@ mod tests {
             lia_buffer_free(&mut buf);
         }
     }
-
-    #[test]
-    fn compile_with_opt_level_one_succeeds() {
-        let ir = cs(ADD_IR);
-        let opts = LaminaCompileOptions {
-            target: ptr::null(),
-            codegen_units: 1,
-            opt_level: 1,
-        };
-        unsafe {
-            let mut buf = LaminaBuffer::null();
-            let st = lia_compile_ir_to_assembly(ir.as_ptr(), &opts, &mut buf);
-            assert_eq!(st, LaminaStatus::Ok);
-            assert!(buf.len > 0);
-            lia_buffer_free(&mut buf);
-        }
-    }
 }

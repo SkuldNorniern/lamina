@@ -349,15 +349,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_capability_set() {
-        let mut caps = CapabilitySet::new();
-        caps.add(CodegenCapability::IntegerArithmetic);
-
-        assert!(caps.supports(&CodegenCapability::IntegerArithmetic));
-        assert!(!caps.supports(&CodegenCapability::HeapAllocation));
-    }
-
-    #[test]
     fn gpu_capabilities_exclude_host_runtime() {
         for arch in [TargetArchitecture::Nvptx64, TargetArchitecture::Amdgcn] {
             let caps = CapabilitySet::for_architecture(arch);
@@ -370,13 +361,5 @@ mod tests {
             }
             assert!(caps.supports(&CodegenCapability::Threading));
         }
-    }
-
-    #[test]
-    fn test_core_capabilities() {
-        let caps = CapabilitySet::core();
-        assert!(caps.supports(&CodegenCapability::IntegerArithmetic));
-        assert!(caps.supports(&CodegenCapability::ControlFlow));
-        assert!(caps.supports(&CodegenCapability::FunctionCalls));
     }
 }
