@@ -16,6 +16,7 @@ mod bit;
 mod simd;
 use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
+mod variadic;
 
 use crate::mir_codegen::common::{
     align_up, integer_conversion_with_width, io_codegen_error, promoted_argument_type,
@@ -290,8 +291,37 @@ fn compile_single_function_riscv(
         .max()
         .unwrap_or(0);
     let callee_saved_registers = reg_alloc.used_callee_saved_registers();
+    let va_area = func.sig.variadic.then(|| {
+        let kinds: Vec<ArgKind> = func
+            .sig
+            .params
+            .iter()
+            .map(|p| ArgKind {
+                ty: p.ty,
+                aggregate: p.aggregate,
+            })
+            .collect();
+        let first_gpr = usize::from(sret_offset.is_some());
+        let places = classify_riscv_arguments(
+            &kinds,
+            first_gpr,
+            target_pointer(target),
+            target_arch(target),
+        );
+        variadic::VaArea::new(&places, first_gpr, target)
+    });
+    // The save area sits between `fp` and the caller's `sp`, so `fp` starts that far
+    // below the incoming stack arguments and every one of them shifts with it.
+    let incoming_stack_base = va_area.map_or(0, |area| area.reserve());
+    if incoming_stack_base > 0 {
+        RiscVFrame::adjust_sp(&mut output, -i64::from(incoming_stack_base))
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
     RiscVFrame::generate_prologue(&mut output, stack_size, &callee_saved_registers, target)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    if let Some(area) = &va_area {
+        variadic::spill(&mut output, area, target).map_err(io_codegen_error)?;
+    }
 
     if let Some(offset) = sret_offset {
         RiscVFrame::fp_store(&mut output, target.store_word(), "a0", offset, "t0")
@@ -321,6 +351,7 @@ fn compile_single_function_riscv(
         live_across_calls,
         stack_size,
         callee_saved_registers,
+        va_area,
         signatures,
         ret_float: func.sig.ret_ty.filter(MirType::is_float),
         ret_aggregate: func.sig.ret_aggregate,
@@ -768,6 +799,13 @@ fn store_incoming_arguments<W: Write>(
         .collect();
     let pointer = target_pointer(target);
     let places = classify_riscv_arguments(&kinds, first_gpr, pointer, target_arch(target));
+    // In a variadic function `fp` sits below the save area, so every incoming stack
+    // argument is that much further up.
+    let incoming_stack_base = if func.sig.variadic {
+        variadic::VaArea::new(&places, first_gpr, target).reserve()
+    } else {
+        0
+    };
     for ((param, kind), place) in func.sig.params.iter().zip(&kinds).zip(&places) {
         let via_stack_pointer =
             kind.by_reference(pointer) && matches!(place, RiscVArgPlace::Stack(_));
@@ -800,11 +838,13 @@ fn store_incoming_arguments<W: Write>(
                 }
             },
             RiscVArgPlace::Stack(caller) if kind.by_reference(pointer) => {
-                RiscVFrame::fp_load(writer, target.load_word(), "a7", caller as i32 * word, "a7")?;
+                let from = incoming_stack_base + caller as i32 * word;
+                RiscVFrame::fp_load(writer, target.load_word(), "a7", from, "a7")?;
                 copy_from_pointer_to_frame(writer, "a7", words, slot, target)?;
             }
             RiscVArgPlace::Stack(caller) => {
-                RiscVFrame::fp_load(writer, target.load_word(), "t0", caller as i32 * word, "t0")?;
+                let from = incoming_stack_base + caller as i32 * word;
+                RiscVFrame::fp_load(writer, target.load_word(), "t0", from, "t0")?;
                 match reg_alloc.get_mapping(vreg) {
                     Some(physical) => writeln!(writer, "    mv {physical}, t0")?,
                     None => RiscVFrame::fp_store(writer, target.store_word(), "t0", slot, "t0")?,
@@ -827,7 +867,7 @@ fn store_incoming_arguments<W: Write>(
                 words,
             } => {
                 for index in 0..words {
-                    let from = (caller + index) as i32 * word;
+                    let from = incoming_stack_base + (caller + index) as i32 * word;
                     let at = slot + index as i32 * word;
                     RiscVFrame::fp_load(writer, target.load_word(), "t0", from, "t0")?;
                     RiscVFrame::fp_store(writer, target.store_word(), "t0", at, "t0")?;
@@ -835,7 +875,7 @@ fn store_incoming_arguments<W: Write>(
             }
             RiscVArgPlace::Split { reg, slot: caller } => {
                 RiscVFrame::fp_store(writer, target.store_word(), arg_regs[reg], slot, "t0")?;
-                let from = caller as i32 * word;
+                let from = incoming_stack_base + caller as i32 * word;
                 let at = slot + word;
                 RiscVFrame::fp_load(writer, target.load_word(), "t0", from, "t0")?;
                 RiscVFrame::fp_store(writer, target.store_word(), "t0", at, "t0")?;
@@ -1032,6 +1072,9 @@ struct EmitCtx<'a> {
     live_across_calls: HashMap<usize, Vec<VirtualReg>>,
     stack_size: usize,
     callee_saved_registers: Vec<&'static str>,
+    /// Set in a variadic function, where it says where the unnamed arguments sit and
+    /// how much `sp` the prologue took for them.
+    va_area: Option<variadic::VaArea>,
     signatures: &'a AggregateSignatures,
     /// Set when this function returns a float, which leaves in fa0.
     ret_float: Option<MirType>,
@@ -1724,19 +1767,18 @@ fn emit_instruction_riscv<W: Write>(
                     continue;
                 };
                 load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
-                RiscVFrame::fp_store(
-                    writer,
-                    ctx.target.store_word(),
-                    "t0",
-                    slot as i32 * ctx.target.word_bytes(),
-                    "t0",
-                )?;
+                // A tail call reuses the caller's stack argument area, which in a
+                // variadic function begins above the save area rather than at `fp`.
+                let at = ctx.va_area.map_or(0, |area| area.reserve())
+                    + slot as i32 * ctx.target.word_bytes();
+                RiscVFrame::fp_store(writer, ctx.target.store_word(), "t0", at, "t0")?;
             }
             let target_sym = if let Some(stub) = abi.call_stub(name) {
                 stub
             } else {
                 abi.mangle_function_name(name)
             };
+            release_va_save_area(writer, ctx)?;
             RiscVFrame::generate_tail_epilogue(
                 writer,
                 ctx.stack_size,
@@ -1915,6 +1957,7 @@ fn emit_instruction_riscv<W: Write>(
                 }
             }
             // Epilogue
+            release_va_save_area(writer, ctx)?;
             RiscVFrame::generate_epilogue(
                 writer,
                 ctx.stack_size,
@@ -2228,9 +2271,14 @@ fn emit_instruction_riscv<W: Write>(
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }
         | MirInst::VaCopy { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "RISC-V backend does not support variadic arguments yet".to_string(),
-            )));
+            variadic::emit(
+                inst,
+                writer,
+                reg_alloc,
+                stack_slots,
+                ctx.va_area,
+                ctx.target,
+            )?;
         }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
@@ -2239,6 +2287,16 @@ fn emit_instruction_riscv<W: Write>(
         }
     }
 
+    Ok(())
+}
+
+/// Gives back the bytes the prologue took below the incoming stack arguments, so the
+/// epilogue's own unwinding lands on the caller's `sp`.
+fn release_va_save_area<W: Write>(writer: &mut W, ctx: &EmitCtx<'_>) -> Result<(), LaminaError> {
+    let reserve = ctx.va_area.map_or(0, |area| area.reserve());
+    if reserve > 0 {
+        RiscVFrame::adjust_sp(writer, i64::from(reserve))?;
+    }
     Ok(())
 }
 
