@@ -270,3 +270,87 @@ fn a_narrow_unsigned_integer_reaches_a_float_through_the_doubleword_fild() {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod ordered_comparison_tests {
+    use crate::mir::codegen::from_ir_for_target;
+    use crate::mir_codegen::MirCodegenSettings;
+    use crate::parser::parse_module;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    fn emit(source: &str) -> String {
+        let ir = parse_module(source).expect("parse");
+        let mir = from_ir_for_target(&ir, "i686_test", TargetArchitecture::I686.data_layout())
+            .expect("lower");
+        let mut out = Vec::new();
+        super::super::generate_mir_i686_with_units_and_settings(
+            &mir,
+            &mut out,
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        )
+        .expect("emit");
+        String::from_utf8(out).expect("utf8")
+    }
+
+    fn compare(op: &str) -> String {
+        emit(&format!(
+            "fn @c(f64 %a, f64 %b) -> bool {{\nentry:\n  \
+             %r = {op}.f64 %a, %b\n  ret.bool %r\n}}\n"
+        ))
+    }
+
+    /// An unordered compare sets CF and ZF alike, so `setb` and `setbe` answer true
+    /// for NaN. An ordered `lt` and `le` must not, and are taken as the reverse
+    /// `gt` and `ge` instead.
+    #[test]
+    fn an_unordered_operand_makes_every_ordered_comparison_false() {
+        for op in ["lt", "le", "gt", "ge"] {
+            let assembly = compare(op);
+            assert!(
+                !assembly.contains("    setb ") && !assembly.contains("    setbe "),
+                "{op} answers true for an unordered compare:\n{assembly}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_reversed_comparison_puts_its_operands_on_the_stack_the_other_way_round() {
+        let loads = |assembly: &str| {
+            assembly
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix("fldl "))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        };
+        let less = compare("lt");
+        let greater = compare("gt");
+        let (mut reversed, forward) = (loads(&less), loads(&greater));
+        assert_eq!(reversed.len(), 2, "{less}");
+        reversed.reverse();
+        assert_eq!(
+            reversed, forward,
+            "lt did not load the x87 stack the other way round from gt:\n{less}\n{greater}"
+        );
+    }
+
+    /// A boolean is a byte everywhere else in the compiler, so `true + true` is two,
+    /// not the one bit an `andl $1` would leave.
+    #[test]
+    fn boolean_arithmetic_wraps_at_a_byte() {
+        let assembly = emit(
+            "fn @c(bool %a, bool %b) -> bool {\nentry:\n  \
+             %r = add.bool %a, %b\n  ret.bool %r\n}\n",
+        );
+        assert!(
+            !assembly.contains("    andl $1,"),
+            "boolean arithmetic was masked to one bit:\n{assembly}"
+        );
+        assert!(
+            assembly.contains("    movzbl %al, %eax"),
+            "boolean arithmetic did not wrap at a byte:\n{assembly}"
+        );
+    }
+}

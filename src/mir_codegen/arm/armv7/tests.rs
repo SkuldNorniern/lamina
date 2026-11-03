@@ -234,3 +234,36 @@ fn a_result_of_five_bytes_is_copied_a_byte_at_a_time_past_the_first_word() {
     assert_eq!(assembly.matches("ldr r12, [").count(), 1, "{assembly}");
     assert_eq!(assembly.matches("ldrb r12, [").count(), 1, "{assembly}");
 }
+
+/// Lamina compiles the compiler runtime helpers for this target itself, with this
+/// module's own variant, so a call to `__fixdfdi` hands its double to d0. Only the
+/// ARM run-time ABI's own `__aeabi_*` helpers are fixed to the base standard.
+#[test]
+fn a_compiler_runtime_helper_is_called_with_the_module_s_own_float_variant() {
+    let assembly =
+        compile("fn @f(f64 %x) -> i64 {\nentry:\n  %r = fptoint.f64.i64 %x\n  ret.i64 %r\n}\n");
+    assert!(assembly.contains("bl __fixdfdi"), "{assembly}");
+    let call = assembly
+        .split("bl __fixdfdi")
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        !call.contains("vmov r0, r1, d"),
+        "the double was handed to __fixdfdi in core registers:\n{assembly}"
+    );
+}
+
+#[test]
+fn an_aeabi_helper_still_reads_the_base_standard() {
+    let signatures = abi::Signatures::from_module(
+        &from_ir_for_target(
+            &parse_module("fn @main() -> i32 {\nentry:\n  ret.i32 0\n}\n").expect("parse"),
+            "armv7_test",
+            TargetArchitecture::Armv7.data_layout(),
+        )
+        .expect("lower"),
+    );
+    assert!(signatures.uses_base_standard("__aeabi_d2lz"));
+    assert!(!signatures.uses_base_standard("__fixdfdi"));
+}
