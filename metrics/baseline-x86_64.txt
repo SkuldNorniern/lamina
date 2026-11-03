@@ -779,6 +779,54 @@ frame fmt 0
 frame main 32
 frame report 32
 
+[callee_saved_pressure O0]
+insns 486
+spills 225
+calls 10
+branches 13
+frame dense 192
+frame farframe 304
+frame main 32
+frame print_i64 64
+frame put_u64 48
+frame vdense 448
+
+[callee_saved_pressure O1]
+insns 376
+spills 70
+calls 10
+branches 13
+frame dense 48
+frame farframe 64
+frame main 16
+frame print_i64 32
+frame put_u64 32
+frame vdense 288
+
+[callee_saved_pressure O2]
+insns 617
+spills 90
+calls 8
+branches 21
+frame dense 48
+frame farframe 32
+frame main 64
+frame print_i64 32
+frame put_u64 32
+frame vdense 272
+
+[callee_saved_pressure O3]
+insns 627
+spills 93
+calls 8
+branches 24
+frame dense 48
+frame farframe 48
+frame main 64
+frame print_i64 32
+frame put_u64 32
+frame vdense 272
+
 [calling_convention_bug_test O0]
 insns 185
 spills 45

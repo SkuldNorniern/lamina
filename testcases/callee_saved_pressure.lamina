@@ -1,0 +1,179 @@
+# Leaf functions holding more values at once than the caller-saved pool covers, so a
+# backend with a global allocation plan reaches into its callee-saved registers. The
+# three shapes cover a plain leaf, a variadic leaf whose frame also carries a register
+# save area, and a leaf whose frame is far enough from the frame pointer that the saves
+# cannot use a short offset.
+
+fn @dense(i64 %seed) -> i64 {
+entry:
+  %a1 = mul.i64 %seed, 3
+  %a2 = mul.i64 %seed, 5
+  %a3 = mul.i64 %seed, 7
+  %a4 = mul.i64 %seed, 11
+  %a5 = mul.i64 %seed, 13
+  %a6 = mul.i64 %seed, 17
+  %a7 = mul.i64 %seed, 19
+  %a8 = mul.i64 %seed, 23
+  %a9 = mul.i64 %seed, 29
+  %a10 = mul.i64 %seed, 31
+  %b1 = xor.i64 %a1, %a10
+  %b2 = xor.i64 %a2, %a9
+  %b3 = xor.i64 %a3, %a8
+  %b4 = xor.i64 %a4, %a7
+  %b5 = xor.i64 %a5, %a6
+  %c1 = add.i64 %b1, %b2
+  %c2 = add.i64 %b3, %b4
+  %c3 = add.i64 %c1, %c2
+  %c4 = add.i64 %c3, %b5
+  %d1 = add.i64 %c4, %a1
+  %d2 = add.i64 %d1, %a5
+  %d3 = add.i64 %d2, %a10
+  ret.i64 %d3
+}
+
+fn @vdense(i64 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  %acc = stackalloc.i64
+  %i = stackalloc.i64
+  store.i64 %acc, 0
+  store.i64 %i, 0
+  va_start %ap
+  jmp loop
+
+loop:
+  %iv = load.i64 %i
+  %go = lt.i64 %iv, %n
+  br %go, body, done
+
+body:
+  %x = va_arg.i64 %ap
+  %p1 = mul.i64 %x, 3
+  %p2 = mul.i64 %x, 5
+  %p3 = mul.i64 %x, 7
+  %p4 = mul.i64 %x, 11
+  %p5 = mul.i64 %x, 13
+  %p6 = mul.i64 %x, 17
+  %p7 = mul.i64 %x, 19
+  %p8 = mul.i64 %x, 23
+  %p9 = mul.i64 %x, 29
+  %r1 = add.i64 %p1, %p2
+  %r2 = add.i64 %p3, %p4
+  %r3 = add.i64 %p5, %p6
+  %r4 = add.i64 %p7, %p8
+  %r5 = add.i64 %r1, %r2
+  %r6 = add.i64 %r3, %r4
+  %r7 = add.i64 %r5, %r6
+  %r8 = add.i64 %r7, %p9
+  %av = load.i64 %acc
+  %an = add.i64 %av, %r8
+  store.i64 %acc, %an
+  %in = add.i64 %iv, 1
+  store.i64 %i, %in
+  jmp loop
+
+done:
+  va_end %ap
+  %out = load.i64 %acc
+  ret.i64 %out
+}
+
+fn @farframe(i64 %seed) -> i64 {
+entry:
+  %buf = stackalloc.[4096 x i64]
+  %i = stackalloc.i64
+  store.i64 %i, 0
+  jmp fill
+
+fill:
+  %iv = load.i64 %i
+  %go = lt.i64 %iv, 4096
+  br %go, fill_body, sum_init
+
+fill_body:
+  %slot = getelem.i64 %buf, %iv
+  %v1 = add.i64 %iv, %seed
+  %v2 = mul.i64 %v1, 3
+  %v3 = xor.i64 %v2, %v1
+  %v4 = mul.i64 %v3, 5
+  %v5 = xor.i64 %v4, %v2
+  %v6 = mul.i64 %v5, 7
+  %v7 = xor.i64 %v6, %v3
+  %v8 = add.i64 %v7, %v4
+  %v9 = xor.i64 %v8, %v5
+  %v10 = add.i64 %v9, %v6
+  store.i64 %slot, %v10
+  %in = add.i64 %iv, 1
+  store.i64 %i, %in
+  jmp fill
+
+sum_init:
+  %j = stackalloc.i64
+  %acc = stackalloc.i64
+  store.i64 %j, 0
+  store.i64 %acc, 0
+  jmp sum
+
+sum:
+  %jv = load.i64 %j
+  %more = lt.i64 %jv, 4096
+  br %more, sum_body, sum_done
+
+sum_body:
+  %g = getelem.i64 %buf, %jv
+  %gv = load.i64 %g
+  %av = load.i64 %acc
+  %an = add.i64 %av, %gv
+  store.i64 %acc, %an
+  %jn = add.i64 %jv, 1
+  store.i64 %j, %jn
+  jmp sum
+
+sum_done:
+  %out = load.i64 %acc
+  ret.i64 %out
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @main() -> i64 {
+entry:
+  %a = call @dense(7)
+  call @print_i64(%a)
+  %b = call @dense(1000003)
+  call @print_i64(%b)
+  %c = call @vdense(5, 2, 4, 6, 8, 10)
+  call @print_i64(%c)
+  %d = call @farframe(11)
+  call @print_i64(%d)
+  ret.i64 0
+}

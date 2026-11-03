@@ -1143,3 +1143,177 @@ fn thread_locals_stay_refused_on_coff() -> Result<(), Box<dyn Error>> {
     assert!(out.is_empty(), "wrote code before refusing");
     Ok(())
 }
+
+/// Register-hungry leaf whose live values outnumber the caller-saved pool.
+#[cfg(test)]
+const DENSE_LEAF_IR: &str = "fn @dense(i64 %s) -> i64 {\nentry:\n  %a1 = mul.i64 %s, 3\n  %a2 = mul.i64 %s, 5\n  %a3 = mul.i64 %s, 7\n  %a4 = mul.i64 %s, 11\n  %a5 = mul.i64 %s, 13\n  %a6 = mul.i64 %s, 17\n  %a7 = mul.i64 %s, 19\n  %a8 = mul.i64 %s, 23\n  %b1 = xor.i64 %a1, %a8\n  %b2 = xor.i64 %a2, %a7\n  %b3 = xor.i64 %a3, %a6\n  %b4 = xor.i64 %a4, %a5\n  %c1 = add.i64 %b1, %b2\n  %c2 = add.i64 %b3, %b4\n  %c3 = add.i64 %c1, %c2\n  %c4 = add.i64 %c3, %a1\n  %c5 = add.i64 %c4, %a8\n  ret.i64 %c5\n}\n";
+
+#[test]
+fn callee_saved_registers_are_saved_restored_and_described() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let module = parse_module(DENSE_LEAF_IR)?;
+    let mir = from_ir_x86_64(&module, "dense_leaf").expect("lower dense leaf");
+    for regalloc in [
+        RegallocStrategy::LinearScanGlobal,
+        RegallocStrategy::GraphColorGlobal,
+    ] {
+        let settings = MirCodegenSettings {
+            regalloc,
+            ..Default::default()
+        };
+        let mut output = Vec::new();
+        generate_mir_aarch64_with_units_and_settings(
+            &mir,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            1,
+            &settings,
+            PointerWidth::Bits64,
+        )?;
+        let assembly = String::from_utf8(output)?;
+        let (prologue, rest) = assembly
+            .split_once(".L_dense.entry:")
+            .ok_or("missing entry")?;
+        let epilogue = rest.split_once(".Lret_dense:").ok_or("missing epilogue")?.1;
+
+        let used: Vec<usize> = (21..=28)
+            .filter(|index| rest.contains(&format!("x{index},")))
+            .collect();
+        assert!(
+            !used.is_empty(),
+            "{regalloc:?} spilled everything: {assembly}"
+        );
+        for index in used {
+            let saved = prologue.lines().any(|line| {
+                let line = line.trim();
+                (line.starts_with("stp") || line.starts_with("stur") || line.starts_with("str"))
+                    && line.contains(&format!("x{index},"))
+            });
+            assert!(saved, "x{index} is not saved: {assembly}");
+            let restored = epilogue.lines().any(|line| {
+                let line = line.trim();
+                (line.starts_with("ldp") || line.starts_with("ldur") || line.starts_with("ldr"))
+                    && line.contains(&format!("x{index},"))
+            });
+            assert!(restored, "x{index} is not restored: {assembly}");
+            assert!(
+                prologue.contains(&format!(".cfi_offset {index}, ")),
+                "x{index} has no unwind rule: {assembly}"
+            );
+            assert!(
+                epilogue.contains(&format!(".cfi_restore {index}")),
+                "x{index} is never unwound back: {assembly}"
+            );
+        }
+        for reserved in [16, 17, 18, 19, 20] {
+            assert!(
+                !prologue.contains(&format!(".cfi_offset {reserved}, ")),
+                "x{reserved} must not be allocated: {assembly}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn darwin_saves_callee_saved_registers_without_cfi() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let module = parse_module(DENSE_LEAF_IR)?;
+    let mir = from_ir_x86_64(&module, "dense_leaf").expect("lower dense leaf");
+    let settings = MirCodegenSettings {
+        regalloc: RegallocStrategy::LinearScanGlobal,
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    generate_mir_aarch64_with_units_and_settings(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::MacOS,
+        1,
+        &settings,
+        PointerWidth::Bits64,
+    )?;
+    let assembly = String::from_utf8(output)?;
+    assert!(!assembly.contains(".cfi_"), "{assembly}");
+    let (prologue, rest) = assembly
+        .split_once(".L_dense.entry:")
+        .ok_or("missing entry")?;
+    let epilogue = rest.split_once(".Lret_dense:").ok_or("missing epilogue")?.1;
+    for index in 21..=28 {
+        if rest.contains(&format!("x{index},")) {
+            assert!(prologue.contains(&format!("x{index},")), "{assembly}");
+            assert!(epilogue.contains(&format!("x{index},")), "{assembly}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn tail_calls_stay_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
+    use crate::mir::{Block, Parameter};
+    let x = Register::Virtual(VirtualReg::gpr(0));
+    let mut func = Function::new(
+        Signature::new("f")
+            .with_params(vec![Parameter::new(
+                x.clone(),
+                MirType::Scalar(ScalarType::I64),
+            )])
+            .with_return(MirType::Scalar(ScalarType::I64)),
+    );
+    let mut block = Block::new("entry");
+    let mut live = Vec::new();
+    for id in 1..=12 {
+        let dst = Register::Virtual(VirtualReg::gpr(id));
+        block.push(MirInst::IntBinary {
+            op: IntBinOp::Mul,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: dst.clone(),
+            lhs: Operand::Register(x.clone()),
+            rhs: Operand::Immediate(Immediate::I64(i64::from(id) * 2 + 1)),
+        });
+        live.push(dst);
+    }
+    let mut acc = Operand::Register(live[0].clone());
+    for (step, reg) in live.iter().enumerate().skip(1) {
+        let dst = Register::Virtual(VirtualReg::gpr(100 + step as u32));
+        block.push(MirInst::IntBinary {
+            op: IntBinOp::Xor,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: dst.clone(),
+            lhs: acc,
+            rhs: Operand::Register(reg.clone()),
+        });
+        acc = Operand::Register(dst);
+    }
+    block.push(MirInst::TailCall {
+        name: "g".into(),
+        args: vec![acc],
+    });
+    func.add_block(block);
+    for regalloc in [
+        RegallocStrategy::LinearScanGlobal,
+        RegallocStrategy::GraphColorGlobal,
+    ] {
+        let settings = MirCodegenSettings {
+            regalloc,
+            ..Default::default()
+        };
+        let asm = String::from_utf8(
+            compile_single_function_aarch64(
+                "f",
+                &func,
+                TargetOperatingSystem::Linux,
+                &settings,
+                &AggregateSignatures::empty(PointerWidth::Bits64),
+            )
+            .map_err(|error| error.to_string())?,
+        )?;
+        for index in 19..=28 {
+            assert!(
+                !asm.contains(&format!("x{index},")) && !asm.contains(&format!("x{index}]")),
+                "x{index} survives no tail call: {asm}"
+            );
+        }
+    }
+    Ok(())
+}
