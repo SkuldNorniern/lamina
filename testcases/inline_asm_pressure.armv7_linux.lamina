@@ -1,0 +1,26 @@
+# Explicit in/out registers and a narrow signed result, with values live across the asm
+fn @main() -> i64 {
+entry:
+  %a = add.i32 1, 0
+  %b = add.i32 2, 0
+  %c = add.i32 3, 0
+  %d = add.i32 4, 0
+  %e = asm.i32 "add $2, $0, $1", in(r3) %a, in(r4) %b, out(r0), clobber(flags)
+  %f = add.i32 %c, %d
+  %g = add.i32 %e, %f
+  %r = asm.i16 "mvn $0, #4", out(r0), clobber(memory)
+  %neg = lt.i16 %r, 0
+  %ok = eq.i32 %g, 10
+  br %neg, check, bad
+check:
+  br %ok, good, bad
+good:
+  %o = writebyte 79
+  %k = writebyte 75
+  %nl = writebyte 10
+  ret.i64 0
+bad:
+  %f2 = writebyte 70
+  %nl2 = writebyte 10
+  ret.i64 1
+}

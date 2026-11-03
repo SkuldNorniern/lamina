@@ -10,6 +10,7 @@
 pub(crate) mod abi;
 mod call;
 mod emit;
+mod inline_asm;
 mod operand;
 #[cfg(test)]
 mod tests;
@@ -497,6 +498,7 @@ pub fn capabilities() -> CapabilitySet {
         CodegenCapability::StackAllocation,
         CodegenCapability::MemoryOperations,
         CodegenCapability::SystemCalls,
+        CodegenCapability::InlineAssembly,
         CodegenCapability::ForeignFunctionInterface,
         CodegenCapability::AggregateArguments,
         CodegenCapability::IndirectCalls,
