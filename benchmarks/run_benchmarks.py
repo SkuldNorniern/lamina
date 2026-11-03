@@ -43,7 +43,7 @@ TARGET = "x86_64_linux"
 LEVELS = (0, 1, 2, 3)
 DEFAULT_RUNS = 50
 DEFAULT_WARMUP = 3
-SHORT_MS = 20.0
+SHORT_MS = 50.0
 MIN_EFFECT = 0.02
 OUTLIER_K = 3.0
 MIN_OUTLIER_N = 8
@@ -419,7 +419,6 @@ def print_table(results):
     header += f"{'O3 vs O2':<16}"
     print(header)
     print("-" * len(header))
-    warnings = []
     for name, entry in results.items():
         if entry["status"] != "ok":
             print(f"{name:<22}{entry['status'].upper()}: {entry['error']}")
@@ -429,10 +428,22 @@ def print_table(results):
         row += "".join(f"{speedup_cell(lv_stats[0], lv_stats[lv]):<16}" for lv in LEVELS[1:])
         row += f"{speedup_cell(lv_stats[2], lv_stats[3]):<16}"
         print(row)
-        if lv_stats[0]["median"] < SHORT_MS:
-            warnings.append(f"{name}: O0 median {lv_stats[0]['median']:.2f} ms is under {SHORT_MS:g} ms; startup noise dominates")
-    for w in warnings:
-        print(f"warning: {w}")
+    print_short_warnings(results)
+
+
+def print_short_warnings(results):
+    """Warns on the fastest column of each benchmark: that is the one process startup
+    and timer granularity can swamp, whatever the slowest column reads."""
+    for name, entry in results.items():
+        if entry["status"] != "ok":
+            continue
+        cells = {f"O{lv}": entry["levels"][str(lv)] for lv in LEVELS}
+        cells.update(entry["natives"])
+        fastest = min(cells, key=lambda k: cells[k]["median"])
+        median = cells[fastest]["median"]
+        if median < SHORT_MS:
+            print(f"warning: {name}: fastest column {fastest} median {median:.2f} ms is under "
+                  f"{SHORT_MS:g} ms; startup noise dominates")
 
 
 def print_native_table(results, vs_tools):
@@ -464,6 +475,7 @@ def print_native_table(results, vs_tools):
         sizes_rows.append((name, entry["sizes"], entry["stripped"]))
     for note in excluded_notes:
         print(note)
+    print_short_warnings(results)
     print()
     print_size_table(sizes_rows, keys, vs_tools)
 
