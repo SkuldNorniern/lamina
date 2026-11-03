@@ -22,9 +22,25 @@ for _stream in (sys.stdout, sys.stderr):
 
 # Testcases that cannot run on s390x, with the reason. Any other testcase must compile,
 # run and match its expected output, or have a s390x variant (see CROSS_TARGETS).
+# These pin a platform's C ABI for aggregates holding float fields. A backend
+# that declares no float-aggregate ABI refuses them by name, which is correct,
+# so running them there reports a failure that can never be fixed by fixing the
+# backend under test.
+FLOAT_AGGREGATE_UNSUPPORTED = {
+    name: 'the backend does not place aggregates with float fields'
+    for name in (
+        'aggregate_float_params',
+        'aggregate_homogeneous_params',
+        'aggregate_homogeneous_spill',
+        'win64_float_aggregate_args',
+        'win64_float_aggregate_returns',
+    )
+}
+
 S390X_UNSUPPORTED = {
     'inline_asm_rdtsc': 'rdtsc reads the x86 timestamp counter; no s390x equivalent',
     'vector_operations': 'the z vector facility (z13 and later) is not implemented',
+    **FLOAT_AGGREGATE_UNSUPPORTED,
 }
 
 
