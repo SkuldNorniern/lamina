@@ -282,8 +282,10 @@
 //! ## Stability
 //!
 //! The stable surface for emitting object files is [`api::compile_module_to_object`],
-//! its error type [`api::ObjectError`], and the [`api::Module`] and [`api::Target`]
-//! types in its signature. These follow semantic versioning as this project practises it within the
+//! [`api::compile_module_to_object_with`] and its [`api::ObjectBuild`] options, the
+//! error type [`api::ObjectError`], and the [`api::Module`] and [`api::Target`] types
+//! in those signatures. `ObjectBuild` is non-exhaustive, so a later release may add an
+//! option without breaking a caller that builds it from [`Default`]. These follow semantic versioning as this project practises it within the
 //! 0.x series: a 0.x minor release does not remove or change them. Everything else in
 //! this crate, including the assembly-text functions, the `mir`, `mir_codegen` and
 //! `runtime` modules, and the root-level object functions, may change without notice.

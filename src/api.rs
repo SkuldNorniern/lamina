@@ -90,18 +90,59 @@ impl StdError for ObjectError {}
 /// assert_eq!(&object[..4], b"\x7fELF");
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+/// How to build an object: the knobs the `lamina` CLI exposes that change the bytes.
+///
+/// Construct with [`Default`] and set what you need, so a later release may add a
+/// field without breaking callers.
+///
+/// ```
+/// # use lamina::api::ObjectBuild;
+/// let mut build = ObjectBuild::default();
+/// build.opt_level = 2;
+/// build.debug_lines = true;
+/// ```
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ObjectBuild {
+    /// MIR optimization level, as the CLI's `--opt-level` sets it. `0` runs no transforms.
+    pub opt_level: u8,
+    /// Emit source line directives, as the CLI's `-g` does.
+    pub debug_lines: bool,
+}
+
+impl Default for ObjectBuild {
+    fn default() -> Self {
+        Self {
+            opt_level: OPT_LEVEL,
+            debug_lines: false,
+        }
+    }
+}
+
 pub fn compile_module_to_object(module: &Module, target: Target) -> Result<Vec<u8>, ObjectError> {
+    compile_module_to_object_with(module, target, &ObjectBuild::default())
+}
+
+/// Compile a module to object bytes, choosing the optimization level and debug lines.
+///
+/// [`compile_module_to_object`] is this with [`ObjectBuild::default`].
+pub fn compile_module_to_object_with(
+    module: &Module,
+    target: Target,
+    build: &ObjectBuild,
+) -> Result<Vec<u8>, ObjectError> {
     if !is_object_file_supported(target.architecture, target.operating_system) {
         return Err(ObjectError::UnsupportedTarget(target));
     }
 
-    let options = ObjectOptions::for_target(&target, OPT_LEVEL);
+    let mut options = ObjectOptions::for_target(&target, build.opt_level);
+    options.settings.emit_asm_debug_lines = build.debug_lines;
 
     let mut mir_module = from_ir_for_target(module, "module", target.data_layout())
         .map_err(|e| ObjectError::Lowering(e.to_string()))?;
 
     TransformPipeline::default_for_opt_level_on(
-        OPT_LEVEL,
+        build.opt_level,
         vector_unit_for(target.architecture, options.settings.x86_cpu_level()),
     )
     .apply_to_module(&mut mir_module)
