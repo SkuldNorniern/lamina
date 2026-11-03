@@ -1194,13 +1194,13 @@ mod tests {
     }
 
     #[test]
-    fn weld_refused_for_aarch64_linux() {
+    fn weld_refused_for_powerpc64_linux() {
         let error = validate_linker_backend_for_target(
             LinkerBackend::Weld,
-            TargetArchitecture::Aarch64,
+            TargetArchitecture::PowerPC64,
             TargetOperatingSystem::Linux,
         )
-        .expect_err("weld writes no aarch64 ELF image");
+        .expect_err("weld writes no powerpc64 image");
         assert!(error.to_string().contains("weld cannot link"));
     }
 
@@ -1209,16 +1209,14 @@ mod tests {
         for (arch, os) in [
             (TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
             (TargetArchitecture::X86_64, TargetOperatingSystem::Windows),
+            (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
             (TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS),
             (TargetArchitecture::Aarch64, TargetOperatingSystem::Windows),
             (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux),
         ] {
             assert!(weld_gap(arch, os).is_none(), "{arch:?} {os:?}");
         }
-        for (arch, os) in [
-            (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
-            (TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux),
-        ] {
+        for (arch, os) in [(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)] {
             assert!(weld_gap(arch, os).is_some(), "{arch:?} {os:?}");
         }
     }
