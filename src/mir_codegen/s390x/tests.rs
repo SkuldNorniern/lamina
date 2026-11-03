@@ -278,3 +278,35 @@ fn the_save_area_is_indexed_by_register_number() {
     assert!(asm.contains("clgfi %r3, 5"), "{asm}");
     assert!(asm.contains("clgfi %r3, 4"), "{asm}");
 }
+
+#[test]
+fn every_global_is_at_least_halfword_aligned() {
+    let asm = variadic_asm(
+        r#"
+global $odd: [3 x i8] = "Pq"
+global $next: [5 x i8] = "Rstu"
+global $empty: [1 x i8]
+
+fn @main() -> i64 {
+entry:
+  %a = getelem.i8 $odd, 0
+  %b = getelem.i8 $next, 0
+  %c = getelem.i8 $empty, 0
+  %x = load.i8 %a
+  %y = load.i8 %b
+  %z = load.i8 %c
+  ret.i64 0
+}
+"#,
+    );
+    assert!(asm.contains("larl"), "{asm}");
+    for line in asm.lines() {
+        let Some(exponent) = line.trim().strip_prefix(".p2align ") else {
+            continue;
+        };
+        assert!(
+            exponent.trim().parse::<u32>().expect("alignment exponent") >= 1,
+            "a symbol `larl` names cannot sit on an odd address: {asm}"
+        );
+    }
+}
