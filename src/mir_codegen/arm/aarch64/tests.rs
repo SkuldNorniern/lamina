@@ -1463,3 +1463,122 @@ fn no_caller_saved_register_is_read_back_after_a_call() -> Result<(), Box<dyn Er
     }
     Ok(())
 }
+
+fn aarch64_global_assembly(ir: &str, name: &str) -> Result<String, Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let module = parse_module(ir)?;
+    let mir = from_ir_x86_64(&module, name).expect("lower module");
+    let settings = MirCodegenSettings {
+        regalloc: RegallocStrategy::LinearScanGlobal,
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    generate_mir_aarch64_with_units_and_settings(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        1,
+        &settings,
+        PointerWidth::Bits64,
+    )?;
+    Ok(String::from_utf8(output)?)
+}
+
+fn body_of<'a>(assembly: &'a str, label: &str) -> &'a str {
+    let start = assembly
+        .split_once(&format!("\n{label}:\n"))
+        .unwrap_or_else(|| panic!("missing {label} in {assembly}"))
+        .1;
+    let body = start
+        .split_once("\n.L")
+        .map(|(body, _)| body)
+        .unwrap_or(start);
+    body.split_once("    b .Lret")
+        .map(|(body, _)| body)
+        .unwrap_or(body)
+}
+
+#[test]
+fn mapped_three_address_operands_skip_scratch_copies() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @chain(i64 %x, i64 %y) -> i64 {\nentry:\n  %a = mul.i64 %x, 1103515245\n  %b = add.i64 %a, 12345\n  %c = and.i64 %b, 2147483647\n  %d = shr.i64 %c, 7\n  %e = xor.i64 %c, %d\n  %f = add.i64 %e, %y\n  ret.i64 %f\n}\n";
+    let assembly = aarch64_global_assembly(ir, "chain")?;
+    let body = body_of(&assembly, ".L_chain.entry");
+    for line in body.lines().map(str::trim) {
+        assert!(
+            !copies_through_scratch(line),
+            "scratch copy {line} survived in {assembly}"
+        );
+    }
+    for mnemonic in ["mul ", "add ", "and ", "asr ", "eor "] {
+        assert!(
+            body.lines()
+                .any(|line| line.trim_start().starts_with(mnemonic)),
+            "missing {mnemonic} in {assembly}"
+        );
+    }
+    Ok(())
+}
+
+/// A `mov` with a scratch register at either end, which is what routing a mapped value
+/// through scratch produces.
+fn copies_through_scratch(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("mov ") else {
+        return false;
+    };
+    let Some((dst, src)) = rest.split_once(',') else {
+        return false;
+    };
+    let general = |name: &str| {
+        let name = name.trim();
+        (name.starts_with('x') || name.starts_with('w'))
+            && name.len() > 1
+            && name[1..].chars().all(|c| c.is_ascii_digit())
+    };
+    let scratch = |name: &str| matches!(name.trim(), "x9" | "x10" | "x11" | "x12");
+    general(dst) && general(src) && (scratch(dst) || scratch(src))
+}
+
+#[test]
+fn narrow_shift_amount_is_masked_in_scratch() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @shifty(u32 %a, u32 %b) -> u32 {\nentry:\n  %s = shl.u32 %a, %b\n  %t = shr.u32 %s, %b\n  %u = add.u32 %t, %a\n  ret.u32 %u\n}\n";
+    let assembly = aarch64_global_assembly(ir, "shifty")?;
+    let body = body_of(&assembly, ".L_shifty.entry");
+    let mut masks = 0;
+    for line in body.lines().map(str::trim) {
+        let Some(rest) = line.strip_prefix("and ") else {
+            continue;
+        };
+        if !rest.ends_with("#31") {
+            continue;
+        }
+        masks += 1;
+        let dst = rest.split(',').next().unwrap().trim();
+        assert!(
+            matches!(dst, "x9" | "x10" | "x11" | "x12"),
+            "shift mask writes {dst}, not scratch, in {assembly}"
+        );
+    }
+    assert!(masks >= 2, "expected masked shift amounts in {assembly}");
+    Ok(())
+}
+
+#[test]
+fn unsigned_narrow_sources_are_extended_in_scratch() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @cmp(u32 %a, u32 %b) -> u32 {\nentry:\n  %c = lt.u32 %a, %b\n  %z = extend.bool.u32 %c\n  %d = add.u32 %z, %a\n  ret.u32 %d\n}\n";
+    let assembly = aarch64_global_assembly(ir, "cmp")?;
+    let body = body_of(&assembly, ".L_cmp.entry");
+    let mut extensions = 0;
+    for line in body.lines().map(str::trim) {
+        let Some(rest) = line.strip_prefix("ubfx ") else {
+            continue;
+        };
+        extensions += 1;
+        let dst = rest.split(',').next().unwrap().trim();
+        assert!(
+            matches!(dst, "x9" | "x10" | "x11" | "x12"),
+            "source extension writes {dst}, not scratch, in {assembly}"
+        );
+    }
+    assert!(extensions >= 2, "expected source extensions in {assembly}");
+    Ok(())
+}
