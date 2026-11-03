@@ -403,7 +403,7 @@ fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register()
     generate_mir_aarch64(
         &mir,
         &mut output,
-        TargetOperatingSystem::Linux,
+        TargetOperatingSystem::Unknown,
         PointerWidth::Bits64,
     )?;
     let assembly = String::from_utf8(output)?;
