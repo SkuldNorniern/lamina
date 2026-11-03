@@ -515,7 +515,7 @@ pub fn generate_mir_cortexm_with_units_and_settings<W: Write>(
     writeln!(writer, ".arch {}", isa.arch_name())?;
     writeln!(writer, ".thumb")?;
     writeln!(writer, ".text")?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
 
     for func_name in external_names(module) {
         writeln!(writer, ".extern {func_name}")?;

@@ -930,7 +930,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
         .map_err(parallel_codegen_error)?;
 
     writeln!(writer, ".text")?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
 
     for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);
@@ -1023,7 +1023,7 @@ fn emit_block<W: Write>(
         if settings.emit_asm_debug_lines
             && let Some(loc) = loc
         {
-            writeln!(w, "    .loc 1 {} {}", loc.line, loc.column)?;
+            writeln!(w, "    .loc {} {} {}", loc.file, loc.line, loc.column)?;
         }
         match inst {
             MirInst::ThreadLocalAddr { dst, symbol, .. } => {

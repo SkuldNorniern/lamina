@@ -507,7 +507,7 @@ fn emit_ppc64_module<W: Write>(
     }
     writeln!(writer, "{}", abi.get_data_section())?;
     writeln!(writer, "{}", abi.get_text_section())?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
     emit_symbol_visibility(writer, module, target_os, |name| {
         abi.mangle_function_name(name)
@@ -963,7 +963,7 @@ fn emit_instruction_ppc64<W: Write>(
     if settings.emit_asm_debug_lines
         && let Some(loc) = loc
     {
-        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
+        writeln!(writer, "    .loc {} {} {}", loc.file, loc.line, loc.column)?;
     }
     if let Some(operations) = integer_conversion(inst, pointer_width) {
         for operation in operations {

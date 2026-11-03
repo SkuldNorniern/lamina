@@ -243,7 +243,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     }
 
     writeln!(writer, ".text")?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
     emit_symbol_visibility(writer, module, target_os, |name| {
         abi.mangle_function_name(name)

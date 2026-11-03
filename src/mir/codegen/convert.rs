@@ -544,6 +544,7 @@ pub fn from_ir_for_target(
     let int64_regs = layout.has_64bit_int_registers();
     let endianness = layout.endianness;
     let mut mir_module = Module::new(name);
+    mir_module.source_files = ir.source_files.clone();
     #[cfg(feature = "nightly")]
     {
         mir_module.relocation = relocation_model(&ir.annotations);

@@ -100,17 +100,28 @@ impl fmt::Display for MemoryOrdering {
     }
 }
 
+pub const DEFAULT_SOURCE_FILE: NonZeroU32 = NonZeroU32::MIN;
+
 /// A position in the `.lamina` source an instruction was parsed from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceLoc {
     pub line: NonZeroU32,
     pub column: u32,
+    pub file: NonZeroU32,
 }
 
 impl SourceLoc {
     /// A position, or `None` when `line` is zero: lines are numbered from one.
     pub fn new(line: u32, column: u32) -> Option<Self> {
-        NonZeroU32::new(line).map(|line| Self { line, column })
+        Self::in_file(DEFAULT_SOURCE_FILE.get(), line, column)
+    }
+
+    pub fn in_file(file: u32, line: u32, column: u32) -> Option<Self> {
+        Some(Self {
+            line: NonZeroU32::new(line)?,
+            column,
+            file: NonZeroU32::new(file)?,
+        })
     }
 
     pub fn line(self) -> u32 {
@@ -120,7 +131,11 @@ impl SourceLoc {
 
 impl fmt::Display for SourceLoc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
+        if self.file == DEFAULT_SOURCE_FILE {
+            write!(f, "{}:{}", self.line, self.column)
+        } else {
+            write!(f, "{}:{}:{}", self.file, self.line, self.column)
+        }
     }
 }
 
@@ -133,7 +148,18 @@ mod tests {
         assert!(SourceLoc::new(0, 4).is_none());
         let loc = SourceLoc::new(7, 4).expect("line 7 is a line");
         assert_eq!(loc.line(), 7);
+        assert_eq!(loc.file, DEFAULT_SOURCE_FILE);
         assert_eq!(loc.to_string(), "7:4");
+    }
+
+    #[test]
+    fn source_loc_in_a_file_names_that_file() {
+        assert!(SourceLoc::in_file(0, 3, 1).is_none());
+        assert!(SourceLoc::in_file(2, 0, 1).is_none());
+        let loc = SourceLoc::in_file(2, 3, 1).expect("file 2, line 3");
+        assert_eq!(loc.file.get(), 2);
+        assert_eq!(loc.to_string(), "2:3:1");
+        assert_ne!(loc, SourceLoc::new(3, 1).expect("line 3"));
     }
 
     #[test]

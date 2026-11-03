@@ -12,8 +12,9 @@ use crate::{
     verify::{function_errors, verify_module_in_pipeline},
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt,
+    num::NonZeroU32,
 };
 
 /// Global variable declaration
@@ -147,6 +148,8 @@ pub struct Module {
 
     /// Relocation model requested by the module annotations
     pub relocation: RelocationModel,
+
+    pub source_files: BTreeMap<NonZeroU32, String>,
 }
 
 impl Module {
@@ -159,6 +162,7 @@ impl Module {
             external_functions: HashSet::new(),
             exported_functions: HashSet::new(),
             relocation: RelocationModel::Static,
+            source_files: BTreeMap::new(),
         }
     }
 

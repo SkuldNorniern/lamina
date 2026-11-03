@@ -1,6 +1,7 @@
 //! Common code for MIR codegen backends.
 
 use lamina_mir::{Instruction as MirInstruction, ScalarType, SourceLoc, instruction::AddressMode};
+use lamina_platform::DEFAULT_SOURCE_FILE;
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt::{Debug, Display},
@@ -760,16 +761,44 @@ where
     Ok(results)
 }
 
-/// Emit the single `.file 1` entry that every `.loc` in the translation unit refers to.
 pub fn emit_debug_file<W: Write>(
     writer: &mut W,
     settings: &MirCodegenSettings,
+    module: &MirModule,
 ) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
-        let tag = settings.debug_file_tag.replace('"', "'");
-        writeln!(writer, "    .file 1 \"{tag}\"")?;
+        let default_path = module
+            .source_files
+            .get(&DEFAULT_SOURCE_FILE)
+            .map_or(settings.debug_file_tag.as_str(), String::as_str);
+        writeln!(
+            writer,
+            "    .file {DEFAULT_SOURCE_FILE} \"{}\"",
+            escape_asm_string(default_path)
+        )?;
+        for (id, path) in &module.source_files {
+            if *id != DEFAULT_SOURCE_FILE {
+                writeln!(writer, "    .file {id} \"{}\"", escape_asm_string(path))?;
+            }
+        }
     }
     Ok(())
+}
+
+pub fn escape_asm_string(raw: &str) -> String {
+    let mut escaped = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            ch if ch.is_control() => escaped.push_str(&format!("\\{:03o}", ch as u32)),
+            ch => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 /// Emit the `.loc` row for an instruction that came from `loc`. An instruction a
@@ -782,7 +811,7 @@ pub fn emit_source_loc<W: Write>(
     if settings.emit_asm_debug_lines
         && let Some(loc) = loc
     {
-        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
+        writeln!(writer, "    .loc {} {} {}", loc.file, loc.line, loc.column)?;
     }
     Ok(())
 }
@@ -2951,5 +2980,175 @@ entry:
             let text = String::from_utf8(output).expect("utf8 assembly");
             assert_eq!(text.contains(note), expected, "{os:?}: {text}");
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod debug_file_tests {
+    use super::escape_asm_string;
+    use crate::{
+        mir::codegen::from_ir_x86_64,
+        mir_codegen::{MirCodegenSettings, generate_mir_to_target_with_settings},
+        parser::parse_module,
+    };
+    use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
+
+    const TWO_FILE_SOURCE: &str = "\
+.file 2 \"util.lamina\"
+fn @main() -> i32 {
+entry:
+    .loc 2 7 3
+    %a = add.i32 1, 2
+    %b = add.i32 %a, 3
+    ret.i32 %b
+}
+";
+
+    const PLAIN_SOURCE: &str = "\
+fn @main() -> i32 {
+entry:
+    %a = add.i32 1, 2
+    ret.i32 %a
+}
+";
+
+    const DEBUG_ARCHITECTURES: [TargetArchitecture; 7] = [
+        TargetArchitecture::X86_64,
+        TargetArchitecture::Aarch64,
+        TargetArchitecture::Riscv64,
+        TargetArchitecture::Mips64,
+        TargetArchitecture::LoongArch64,
+        TargetArchitecture::S390x,
+        TargetArchitecture::I686,
+    ];
+
+    fn debug_settings(tag: &str) -> MirCodegenSettings {
+        MirCodegenSettings {
+            emit_asm_debug_lines: true,
+            debug_file_tag: tag.to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn emit(source: &str, arch: TargetArchitecture, settings: &MirCodegenSettings) -> String {
+        let ir = parse_module(source).expect("parse");
+        let mir = from_ir_x86_64(&ir, "debug_files").expect("lower");
+        let mut output = Vec::new();
+        generate_mir_to_target_with_settings(
+            &mir,
+            &mut output,
+            &Target::new(arch, TargetOperatingSystem::Linux),
+            1,
+            settings,
+        )
+        .expect("emit");
+        String::from_utf8(output).expect("utf8 assembly")
+    }
+
+    fn lines_starting_with<'a>(text: &'a str, prefix: &str) -> Vec<&'a str> {
+        text.lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with(prefix))
+            .collect()
+    }
+
+    #[test]
+    fn locations_in_different_files_name_different_files() {
+        for arch in DEBUG_ARCHITECTURES {
+            let text = emit(TWO_FILE_SOURCE, arch, &debug_settings("main.lamina"));
+            let mut rows = lines_starting_with(&text, ".loc ");
+            rows.dedup();
+            assert_eq!(
+                rows,
+                [".loc 2 7 3", ".loc 1 6 5", ".loc 1 7 5"],
+                "{arch:?}: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn file_table_is_emitted_once_with_its_ids() {
+        for arch in DEBUG_ARCHITECTURES {
+            let text = emit(TWO_FILE_SOURCE, arch, &debug_settings("main.lamina"));
+            assert_eq!(
+                lines_starting_with(&text, ".file "),
+                [".file 1 \"main.lamina\"", ".file 2 \"util.lamina\""],
+                "{arch:?}: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn module_without_file_information_keeps_the_default_file() {
+        for arch in DEBUG_ARCHITECTURES {
+            let text = emit(PLAIN_SOURCE, arch, &debug_settings("add.lamina"));
+            assert_eq!(
+                lines_starting_with(&text, ".file "),
+                [".file 1 \"add.lamina\""],
+                "{arch:?}: {text}"
+            );
+            let rows = lines_starting_with(&text, ".loc ");
+            assert!(!rows.is_empty(), "{arch:?}: {text}");
+            assert!(
+                rows.iter().all(|row| row.starts_with(".loc 1 ")),
+                "{arch:?}: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn plain_debug_tag_is_emitted_verbatim() {
+        let text = emit(
+            PLAIN_SOURCE,
+            TargetArchitecture::X86_64,
+            &debug_settings("lamina"),
+        );
+        assert!(text.contains("\n    .file 1 \"lamina\"\n"), "{text}");
+    }
+
+    #[test]
+    fn windows_path_in_declared_file_is_escaped() {
+        let source = "\
+.file 2 \"C:\\\\src\\\\main.c\"
+fn @main() -> i32 {
+entry:
+    .loc 2 4 1
+    ret.i32 0
+}
+";
+        let text = emit(
+            source,
+            TargetArchitecture::X86_64,
+            &debug_settings("main.lamina"),
+        );
+        assert!(
+            text.contains("\n    .file 2 \"C:\\\\src\\\\main.c\"\n"),
+            "{text}"
+        );
+        assert!(text.contains("    .loc 2 4 1\n"), "{text}");
+    }
+
+    #[test]
+    fn windows_path_in_debug_tag_is_escaped() {
+        let text = emit(
+            PLAIN_SOURCE,
+            TargetArchitecture::X86_64,
+            &debug_settings("C:\\src\\main.c"),
+        );
+        assert!(
+            text.contains("\n    .file 1 \"C:\\\\src\\\\main.c\"\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn asm_string_escaping_covers_quotes_breaks_and_control_bytes() {
+        assert_eq!(escape_asm_string("plain/name.c"), "plain/name.c");
+        assert_eq!(escape_asm_string("C:\\src"), "C:\\\\src");
+        assert_eq!(escape_asm_string("say \"hi\""), "say \\\"hi\\\"");
+        assert_eq!(escape_asm_string("a\nb\tc\r"), "a\\nb\\tc\\r");
+        assert_eq!(escape_asm_string("\u{1}\u{7f}"), "\\001\\177");
+        assert_eq!(escape_asm_string("é"), "é");
     }
 }

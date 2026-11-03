@@ -259,7 +259,7 @@ pub fn generate_mir_i686_with_units_and_settings<W: Write>(
         .map_err(parallel_codegen_error)?;
 
     writeln!(writer, ".text")?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
     emit_global_directives(writer, module, str::to_string)?;
     emit_symbol_visibility(writer, module, target_os, str::to_string)?;
     for name in external_names(module) {

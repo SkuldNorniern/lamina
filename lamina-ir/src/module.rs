@@ -133,8 +133,9 @@
 //! ```
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt,
+    num::NonZeroU32,
 };
 
 pub use lamina_platform::TlsModel;
@@ -388,6 +389,7 @@ pub struct Module<'a> {
     /// Functions contain the actual code of the module. They are organized
     /// by name for fast lookup during function calls.
     pub functions: HashMap<Identifier<'a>, Function<'a>>,
+    pub source_files: BTreeMap<NonZeroU32, String>,
 
     /// Module-level annotations that affect compilation.
     ///
@@ -407,6 +409,7 @@ impl<'a> Module<'a> {
             type_declarations: HashMap::new(),
             global_declarations: HashMap::new(),
             functions: HashMap::new(),
+            source_files: BTreeMap::new(),
             #[cfg(feature = "nightly")]
             annotations,
         }

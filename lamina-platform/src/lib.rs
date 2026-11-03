@@ -37,7 +37,7 @@ pub use arch_variant::{
 pub use cpu_level::X86CpuLevel;
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
 pub use environment::{CompilerRuntime, Libc, TargetEnvironment};
-pub use shared::{MemoryOrdering, SourceLoc, TlsModel};
+pub use shared::{DEFAULT_SOURCE_FILE, MemoryOrdering, SourceLoc, TlsModel};
 pub use target::{
     Target, TargetOperatingSystem, default_environment, host_arch_list, parse_arch_token,
     parse_architecture, target_alias_list,

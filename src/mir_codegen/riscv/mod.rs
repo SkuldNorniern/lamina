@@ -536,7 +536,7 @@ fn emit_riscv_module<W: Write>(
 
     writeln!(writer, "{}", abi.get_data_section())?;
     writeln!(writer, "{}", abi.get_text_section())?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
     emit_symbol_visibility(writer, module, target_os, |name| {
         abi.mangle_function_name(name)
@@ -1191,7 +1191,7 @@ fn emit_instruction_riscv<W: Write>(
     if settings.emit_asm_debug_lines
         && let Some(loc) = ctx.loc
     {
-        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
+        writeln!(writer, "    .loc {} {} {}", loc.file, loc.line, loc.column)?;
     }
     match inst {
         MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {

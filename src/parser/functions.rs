@@ -4,7 +4,7 @@ use crate::{
     Label, LaminaError,
     ir::{
         BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
-        Instruction, Type,
+        Instruction, SourceLoc, Type,
     },
     parser::{instructions::parse_instruction, state::ParserState, types::parse_type},
 };
@@ -343,6 +343,34 @@ pub fn parse_param_list<'a>(
     Ok((params, false))
 }
 
+fn at_location_directive(state: &ParserState<'_>) -> bool {
+    state.peek_slice(4) == Some(".loc")
+        && state
+            .peek_char(4)
+            .is_some_and(|ch| ch.is_ascii_whitespace())
+}
+
+fn parse_location_directive(state: &mut ParserState<'_>) -> Result<SourceLoc, LaminaError> {
+    state.consume_keyword(".loc")?;
+    let file = parse_location_number(state, "file id")?;
+    let line = parse_location_number(state, "line")?;
+    let column = parse_location_number(state, "column")?;
+    SourceLoc::in_file(file, line, column).ok_or_else(|| {
+        state.error(
+            "Invalid '.loc': file ids and line numbers start at 1\n  Hint: write '.loc <file> <line> <column>'",
+        )
+    })
+}
+
+pub fn parse_location_number(state: &mut ParserState<'_>, what: &str) -> Result<u32, LaminaError> {
+    let value = state.parse_u64()?;
+    u32::try_from(value).map_err(|_| {
+        state.error(format!(
+            "Invalid {what}: {value}\n  Hint: {what} must fit in 32 bits"
+        ))
+    })
+}
+
 /// Parses a basic block.
 ///
 /// A basic block consists of a label followed by a colon, then zero or more
@@ -365,7 +393,20 @@ pub fn parse_basic_block<'a>(
             break;
         }
 
-        let loc = state.source_loc();
+        let explicit_loc = if at_location_directive(state) {
+            let loc = parse_location_directive(state)?;
+            state.skip_whitespace_and_comments();
+            if state.at_block_label() || state.current_char() == Some('}') {
+                return Err(state.error(
+                    "A '.loc' must be followed by an instruction\n  Hint: put '.loc <file> <line> <column>' on the line before the instruction it positions",
+                ));
+            }
+            Some(loc)
+        } else {
+            None
+        };
+
+        let loc = explicit_loc.or_else(|| state.source_loc());
         let instruction = parse_instruction(state)?;
         let is_terminator = instruction.is_terminator();
         instructions.push(instruction);

@@ -207,7 +207,7 @@ pub fn generate_mir_s390x_with_units_and_settings<W: Write>(
     writeln!(writer, ".machinemode zarch")?;
     writeln!(writer, ".data")?;
     writeln!(writer, ".text")?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
     emit_global_directives(writer, module, str::to_string)?;
     emit_symbol_visibility(writer, module, target_os, str::to_string)?;
     for name in external_names(module) {
@@ -700,7 +700,7 @@ fn emit_instruction<W: Write>(
     if ctx.settings.emit_asm_debug_lines
         && let Some(loc) = ctx.loc
     {
-        writeln!(writer, "    .loc 1 {} {}", loc.line, loc.column)?;
+        writeln!(writer, "    .loc {} {} {}", loc.file, loc.line, loc.column)?;
     }
     match inst {
         MirInst::ThreadLocalAddr { dst, symbol, model } => {

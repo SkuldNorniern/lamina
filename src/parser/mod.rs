@@ -8,6 +8,8 @@ mod globals;
 #[cfg(test)]
 mod inline_asm_tests;
 mod instructions;
+#[cfg(test)]
+mod location_tests;
 pub mod state;
 mod types;
 #[cfg(test)]
@@ -16,10 +18,10 @@ mod values;
 #[cfg(test)]
 mod vector_tests;
 
-use std::{mem, str::from_utf8};
+use std::{mem, num::NonZeroU32, str::from_utf8};
 
 use self::{
-    functions::parse_function_def,
+    functions::{parse_function_def, parse_location_number},
     globals::{parse_global_annotations, parse_global_declaration},
     state::ParserState,
     types::parse_type_declaration,
@@ -30,6 +32,7 @@ use crate::{
     LaminaError,
     ir::{AllocType, Module, PrimitiveType, assignment_opcode_names, non_assignment_opcode_names},
 };
+use lamina_platform::DEFAULT_SOURCE_FILE;
 
 /// Calculates the Levenshtein edit distance between two strings.
 ///
@@ -365,6 +368,60 @@ fn check_call_sites(state: &mut ParserState<'_>, module: &Module<'_>) -> Result<
     Ok(())
 }
 
+fn parse_source_file_directive(
+    state: &mut ParserState<'_>,
+    module: &mut Module<'_>,
+) -> Result<(), LaminaError> {
+    state.consume_keyword(".file")?;
+    let id = parse_location_number(state, "file id")?;
+    let id = NonZeroU32::new(id)
+        .ok_or_else(|| state.error("Invalid file id: 0\n  Hint: File ids start at 1"))?;
+    let raw = state.parse_string_literal()?;
+    let path = unescape_file_path(state, raw)?;
+    if module.source_files.insert(id, path).is_some() {
+        return Err(state.error(format!(
+            "Duplicate file id: {id}\n  Hint: Each '.file' id can be declared once"
+        )));
+    }
+    Ok(())
+}
+
+fn unescape_file_path(state: &ParserState<'_>, raw: &str) -> Result<String, LaminaError> {
+    let mut path = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            path.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some(escaped @ ('\\' | '"')) => path.push(escaped),
+            _ => {
+                return Err(state.error(
+                    "Unsupported escape in a '.file' path\n  Hint: write a backslash as \\\\ and a quote as \\\"",
+                ));
+            }
+        }
+    }
+    Ok(path)
+}
+
+fn check_location_files(module: &Module<'_>) -> Result<(), LaminaError> {
+    for function in module.functions.values() {
+        for block in function.basic_blocks.values() {
+            for loc in block.instruction_locs.iter().flatten() {
+                if loc.file != DEFAULT_SOURCE_FILE && !module.source_files.contains_key(&loc.file) {
+                    return Err(LaminaError::ValidationError(format!(
+                        "Location refers to undeclared file id {file}\n  Hint: declare it at the top level with '.file {file} \"<path>\"'",
+                        file = loc.file
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Parses a string containing Lamina IR text into a Module.
 pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
@@ -377,6 +434,11 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
         }
 
         if parse_module_annotation_if_present(&mut state, &mut module)? {
+            continue;
+        }
+
+        if state.peek_slice(5) == Some(".file") {
+            parse_source_file_directive(&mut state, &mut module)?;
             continue;
         }
 
@@ -428,6 +490,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     }
 
     check_call_sites(&mut state, &module)?;
+    check_location_files(&module)?;
     module
         .validate()
         .map_err(|errors| LaminaError::ValidationError(errors.join("\n")))?;

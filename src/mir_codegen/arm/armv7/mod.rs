@@ -432,7 +432,7 @@ pub fn generate_mir_armv7_with_units_and_settings<W: Write>(
     writeln!(writer, ".eabi_attribute 28, 1")?;
     writeln!(writer, ".arm")?;
     writeln!(writer, ".text")?;
-    emit_debug_file(writer, settings)?;
+    emit_debug_file(writer, settings, module)?;
 
     for func_name in external_names(module) {
         writeln!(writer, ".extern {func_name}")?;
