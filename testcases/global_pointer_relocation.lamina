@@ -1,0 +1,18 @@
+# A global holding another global's address. The value is not known until the
+# linker places both, so the initializer carries a relocation, not bytes.
+global $msg: [3 x i8] = "hi"
+global $ptr: ptr = $msg
+global $second: [3 x i8] = "ok"
+global $ptr2: ptr = $second
+
+fn @main() -> i64 {
+  entry:
+    %p = load.ptr $ptr
+    %a = load.i8 %p
+    %w1 = writebyte %a
+    %q = load.ptr $ptr2
+    %b = load.i8 %q
+    %w2 = writebyte %b
+    %nl = writebyte 10
+    ret.i64 0
+}

@@ -2707,6 +2707,50 @@ frame put_u64 32
 frame ratios 0
 frame squares 0
 
+[global_pointer_relocation O0]
+insns 60
+spills 16
+calls 0
+branches 0
+frame main 80
+frame msg 0
+frame ptr 0
+frame ptr2 0
+frame second 0
+
+[global_pointer_relocation O1]
+insns 58
+spills 9
+calls 0
+branches 0
+frame main 32
+frame msg 0
+frame ptr 0
+frame ptr2 0
+frame second 0
+
+[global_pointer_relocation O2]
+insns 58
+spills 9
+calls 0
+branches 0
+frame main 32
+frame msg 0
+frame ptr 0
+frame ptr2 0
+frame second 0
+
+[global_pointer_relocation O3]
+insns 56
+spills 7
+calls 0
+branches 0
+frame main 16
+frame msg 0
+frame ptr 0
+frame ptr2 0
+frame second 0
+
 [global_string O0]
 insns 191
 spills 58
