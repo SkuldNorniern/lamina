@@ -600,21 +600,21 @@ frame print_u64 16
 frame put_u64 32
 
 [atomic_orderings O2]
-insns 13218
+insns 13225
 spills 1349
 calls 255
-branches 567
-frame main 4272
+branches 568
+frame main 176
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
 
 [atomic_orderings O3]
-insns 13218
+insns 13225
 spills 1349
 calls 255
-branches 567
-frame main 4272
+branches 568
+frame main 176
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
@@ -1244,11 +1244,11 @@ frame put_u64 32
 frame test_integer_printing 32
 
 [division_constant_divisors O0]
-insns 6743
+insns 6750
 spills 2543
 calls 2311
-branches 3
-frame main 9232
+branches 4
+frame main 1040
 frame print_i64 64
 frame print_u64 16
 frame put_u64 48
@@ -1400,11 +1400,11 @@ frame ud66 0
 frame ud67 0
 
 [division_constant_divisors O2]
-insns 29709
+insns 29716
 spills 2489
 calls 1811
-branches 1003
-frame main 7840
+branches 1004
+frame main 3744
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
@@ -1478,11 +1478,11 @@ frame ud66 0
 frame ud67 0
 
 [division_constant_divisors O3]
-insns 29700
+insns 29707
 spills 2489
 calls 1811
-branches 1003
-frame main 7840
+branches 1004
+frame main 3744
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
@@ -1556,11 +1556,11 @@ frame ud66 0
 frame ud67 0
 
 [division_runtime_narrowing O0]
-insns 5240
+insns 5247
 spills 1723
 calls 1675
-branches 15
-frame main 6688
+branches 16
+frame main 2592
 frame print_i64 64
 frame print_u64 16
 frame put_u64 48
@@ -1584,11 +1584,11 @@ frame udiv 0
 frame urem 0
 
 [division_runtime_narrowing O2]
-insns 26860
+insns 26867
 spills 1995
 calls 1175
-branches 2015
-frame main 5888
+branches 2016
+frame main 1792
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
@@ -1598,11 +1598,11 @@ frame udiv 0
 frame urem 0
 
 [division_runtime_narrowing O3]
-insns 26860
+insns 26867
 spills 1995
 calls 1175
-branches 2015
-frame main 5888
+branches 2016
+frame main 1792
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
@@ -2256,11 +2256,11 @@ frame test_float_operations 0
 frame test_float_to_int_conversion 0
 
 [fptoint_signed O0]
-insns 7477
+insns 7484
 spills 825
 calls 283
-branches 3
-frame main 4112
+branches 4
+frame main 16
 frame print_i64 64
 frame print_u64 16
 frame put_u64 48
@@ -2276,31 +2276,31 @@ frame print_u64 16
 frame put_u64 32
 
 [fptoint_signed O2]
-insns 19476
+insns 19483
 spills 1459
 calls 283
-branches 563
-frame main 4768
+branches 564
+frame main 672
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
 
 [fptoint_signed O3]
-insns 19476
+insns 19483
 spills 1459
 calls 283
-branches 563
-frame main 4768
+branches 564
+frame main 672
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
 
 [fptoint_unsigned O0]
-insns 6147
+insns 6154
 spills 825
 calls 283
-branches 3
-frame main 4112
+branches 4
+frame main 16
 frame print_i64 64
 frame print_u64 16
 frame put_u64 48
@@ -3688,10 +3688,10 @@ frame split 816
 frame tail 96
 
 [i128_arith O0]
-insns 64797
+insns 64804
 spills 34212
 calls 3241
-branches 3
+branches 4
 frame case0 144
 frame case1 144
 frame case10 16
@@ -4870,7 +4870,7 @@ frame case996 144
 frame case997 144
 frame case998 144
 frame case999 144
-frame main 9424
+frame main 1232
 frame print_i64 64
 frame print_u64 16
 frame put_u64 48
@@ -8480,11 +8480,11 @@ frame print_u64 16
 frame put_u64 32
 
 [i128_bit_intrinsics O0]
-insns 24566
+insns 24573
 spills 14554
 calls 298
-branches 3
-frame main 52624
+branches 4
+frame main 3472
 frame mk_i128 224
 frame mk_u128 224
 frame print_i64 64
@@ -8494,11 +8494,11 @@ frame show_i 176
 frame show_u 160
 
 [i128_bit_intrinsics O1]
-insns 14350
+insns 14357
 spills 620
 calls 298
-branches 3
-frame main 5968
+branches 4
+frame main 1872
 frame mk_i128 16
 frame mk_u128 16
 frame print_i64 32
@@ -8508,11 +8508,11 @@ frame show_i 48
 frame show_u 48
 
 [i128_bit_intrinsics O2]
-insns 13926
+insns 13933
 spills 630
 calls 298
-branches 7
-frame main 5968
+branches 8
+frame main 1872
 frame mk_i128 16
 frame mk_u128 16
 frame print_i64 32
@@ -8522,11 +8522,11 @@ frame show_i 64
 frame show_u 48
 
 [i128_bit_intrinsics O3]
-insns 14719
+insns 14726
 spills 2686
 calls 298
-branches 7
-frame main 13344
+branches 8
+frame main 1056
 frame mk_i128 16
 frame mk_u128 16
 frame print_i64 32
@@ -9960,11 +9960,11 @@ frame print_digit 16
 frame simple_func 0
 
 [large_basic_block O0]
-insns 3426
+insns 3433
 spills 1132
 calls 4
-branches 3
-frame main 8800
+branches 4
+frame main 608
 frame print_i64 64
 frame print_u64 16
 frame put_u64 48
@@ -10034,6 +10034,50 @@ branches 11
 frame main 32
 frame print_digits 32
 frame print_number 32
+
+[large_stack_frame O0]
+insns 181
+spills 63
+calls 8
+branches 4
+frame main 32
+frame print_i64 64
+frame put_u64 48
+frame small_frame 32
+frame spread 80
+
+[large_stack_frame O1]
+insns 161
+spills 19
+calls 8
+branches 4
+frame main 16
+frame print_i64 32
+frame put_u64 32
+frame small_frame 16
+frame spread 4096
+
+[large_stack_frame O2]
+insns 271
+spills 32
+calls 5
+branches 9
+frame main 48
+frame print_i64 32
+frame put_u64 32
+frame small_frame 0
+frame spread 0
+
+[large_stack_frame O3]
+insns 271
+spills 32
+calls 5
+branches 9
+frame main 48
+frame print_i64 32
+frame put_u64 32
+frame small_frame 0
+frame spread 0
 
 [load_store_alignment O0]
 insns 103

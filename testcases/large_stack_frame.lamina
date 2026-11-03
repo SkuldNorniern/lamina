@@ -1,0 +1,66 @@
+fn @spread(i64 %seed) -> i64 {
+entry:
+  %buf = stackalloc.[65536 x i64]
+  %lo = getelem.i64 %buf, 0
+  %mid = getelem.i64 %buf, 32768
+  %hi = getelem.i64 %buf, 65535
+  store.i64 %lo, %seed
+  store.i64 %mid, 20
+  store.i64 %hi, 30
+  %a = load.i64 %lo
+  %b = load.i64 %mid
+  %c = load.i64 %hi
+  %ab = add.i64 %a, %b
+  %abc = add.i64 %ab, %c
+  ret.i64 %abc
+}
+
+fn @small_frame(i64 %seed) -> i64 {
+entry:
+  %slot = stackalloc.i64
+  store.i64 %slot, %seed
+  %v = load.i64 %slot
+  ret.i64 %v
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @main() -> i64 {
+entry:
+  %big = call @spread(10)
+  call @print_i64(%big)
+  %small = call @small_frame(5)
+  call @print_i64(%small)
+  %again = call @spread(%small)
+  call @print_i64(%again)
+  ret.i64 0
+}
