@@ -1,0 +1,18 @@
+# A symbol address plus a constant. The linker resolves the symbol and adds the
+# offset, so the frontend cannot fold it to a literal.
+global $text: [6 x i8] = "ABCDE"
+global $mid: ptr = $text + 2
+global $tbl: [2 x ptr] = [ $text + 1, $text + 3 ]
+
+fn @main() -> i64 {
+  entry:
+    %p = load.ptr $mid
+    %c = load.i8 %p
+    %w = writebyte %c
+    %t = getelem.ptr $tbl, 1
+    %q = load.ptr %t
+    %d = load.i8 %q
+    %w2 = writebyte %d
+    %nl = writebyte 10
+    ret.i64 0
+}
