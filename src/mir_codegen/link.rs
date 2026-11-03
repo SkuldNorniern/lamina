@@ -908,6 +908,7 @@ fn link_object(
             args.extend(object_args(runtime_objects));
             args.push(format!("/OUT:{}", output_path.display()));
             args.push("ucrt.lib".to_string());
+            args.push("libvcruntime.lib".to_string());
             args.push("legacy_stdio_definitions.lib".to_string());
             args.push("kernel32.lib".to_string());
             return run_linker(&link_cmd, args, verbose);
