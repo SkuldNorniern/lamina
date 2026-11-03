@@ -3,9 +3,10 @@
 //! Supports multiple assemblers:
 //! - **Ras**: Drop-in replacement for as/gas; x86_64 and AArch64, ELF (library or `ras` binary).
 //! - gas (GNU Assembler), clang's as
-//! - WASM: wat2wasm
+//! - WASM: the in-process module writer in `mir_codegen::wasm::binary`
 
 use crate::error::LaminaError;
+use crate::mir_codegen::wasm::binary::encode_module;
 use lamina_codegen::os_uses_macho;
 use lamina_platform::{
     ArchVariant, OutputArtifact, RiscvIsa, Target, TargetArchitecture, TargetOperatingSystem,
@@ -26,8 +27,8 @@ pub enum AssemblerBackend {
     Gas,
     /// Clang's integrated assembler
     Lld,
-    /// wat2wasm for WebAssembly
-    Wat2Wasm,
+    /// The in-process WebAssembly module writer
+    WasmWriter,
     /// Custom assembler (specified by name)
     Custom(&'static str),
 }
@@ -61,7 +62,7 @@ pub fn assemble(
     )
 }
 
-/// Like [`assemble`], but passes [`ObjectWriteOptions`] when the backend is Ras (ignored for gas/lld/wat2wasm).
+/// Like [`assemble`], but passes [`ObjectWriteOptions`] when the backend is Ras (ignored for gas/lld and the wasm writer).
 #[allow(clippy::too_many_arguments)]
 pub fn assemble_with_ras_object_options(
     input_path: &Path,
@@ -117,7 +118,7 @@ pub fn assemble_with_ras_object_options(
     }
 }
 
-/// Assemble WASM (WAT -> WASM binary)
+/// Writes a WebAssembly module from the text the backend emitted.
 fn assemble_wasm(
     input_path: &Path,
     output_path: &Path,
@@ -125,39 +126,29 @@ fn assemble_wasm(
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
-    let backend = backend.unwrap_or(AssemblerBackend::Wat2Wasm);
+    let backend = backend.unwrap_or(AssemblerBackend::WasmWriter);
+    if !additional_flags.is_empty() {
+        return Err(LaminaError::ValidationError(format!(
+            "the WASM module writer takes no assembler flags, and was given {}",
+            additional_flags.join(" ")
+        )));
+    }
 
     match backend {
-        AssemblerBackend::Wat2Wasm => {
-            let mut cmd = Command::new("wat2wasm");
-            cmd.arg(input_path);
-            cmd.arg("-o");
-            cmd.arg(output_path);
-            cmd.args(additional_flags);
-            let output = cmd.output().map_err(|e| {
-                LaminaError::ValidationError(format!(
-                    "Failed to spawn wat2wasm: {e}. Make sure wat2wasm is installed and in PATH."
-                ))
-            })?;
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(LaminaError::ValidationError(format!(
-                    "wat2wasm failed: {stderr}"
-                )));
-            }
-
+        AssemblerBackend::WasmWriter => {
+            let text = fs::read_to_string(input_path)?;
+            let module = encode_module(&text)?;
+            fs::write(output_path, module)?;
             if verbose {
                 println!(
-                    "[VERBOSE] wat2wasm: {} -> {}",
+                    "[VERBOSE] wasm writer: {} -> {}",
                     input_path.display(),
                     output_path.display()
                 );
             }
-
             Ok(AssembleResult {
                 output_path: output_path.to_path_buf(),
-                needs_linking: false, // WASM doesn't need linking
+                needs_linking: false,
             })
         }
         _ => Err(LaminaError::ValidationError(format!(
@@ -289,9 +280,9 @@ fn assemble_native(
             (name.to_string(), args)
         }
         AssemblerBackend::Ras => unreachable!("Ras handled above"),
-        AssemblerBackend::Wat2Wasm => {
+        AssemblerBackend::WasmWriter => {
             return Err(LaminaError::ValidationError(
-                "Wat2Wasm is for WASM targets only".to_string(),
+                "the WASM module writer is for WASM targets only".to_string(),
             ));
         }
     };
@@ -612,7 +603,7 @@ fn validate_assembler_backend_for_target(
     target_os: TargetOperatingSystem,
 ) -> Result<AssemblerBackend, LaminaError> {
     match backend {
-        AssemblerBackend::Wat2Wasm => {
+        AssemblerBackend::WasmWriter => {
             if matches!(
                 target_arch,
                 TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
@@ -620,7 +611,7 @@ fn validate_assembler_backend_for_target(
                 Ok(backend)
             } else {
                 Err(LaminaError::ValidationError(
-                    "wat2wasm assembler is only valid for WASM targets".to_string(),
+                    "the WASM module writer is only valid for WASM targets".to_string(),
                 ))
             }
         }
