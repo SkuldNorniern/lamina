@@ -6,7 +6,8 @@
 use std::{fmt, str::FromStr};
 
 use crate::arch_table::{
-    ArchSpec, Endianness, OutputArtifact, PointerWidth, REFUSED_SPELLINGS, TargetDataLayout,
+    ArchSpec, Endianness, FloatAggregateAbi, OutputArtifact, PointerWidth, REFUSED_SPELLINGS,
+    TargetDataLayout,
 };
 use crate::arch_variant::{
     Aarch64Level, ArchVariant, Armv7Profile, Armv7Variant, PowerLevel, RiscvIsa,
@@ -148,7 +149,12 @@ impl Target {
     }
 
     pub fn data_layout(&self) -> TargetDataLayout {
-        self.spec().data_layout()
+        let mut layout = self.spec().data_layout();
+        layout.float_aggregates = match (layout.float_aggregates, self.operating_system) {
+            (FloatAggregateAbi::SysV, TargetOperatingSystem::Windows) => FloatAggregateAbi::Win64,
+            (abi, _) => abi,
+        };
+        layout
     }
 
     /// The ELF interpreter this target's environment asks for, if it asks for one.

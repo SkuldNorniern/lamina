@@ -1,10 +1,13 @@
 use super::*;
 use crate::{
-    mir::{FunctionBuilder, RelocationModel, ScalarType, codegen::from_ir_x86_64},
+    mir::{
+        FunctionBuilder, RelocationModel, ScalarType,
+        codegen::{from_ir_for_target, from_ir_x86_64},
+    },
     parser::parse_module,
 };
 use lamina_mir::Located;
-use lamina_platform::PointerWidth;
+use lamina_platform::{PointerWidth, Target, TargetArchitecture};
 use std::{error::Error as StdError, slice};
 
 #[test]
@@ -57,7 +60,12 @@ fn calls_that_may_be_variadic_report_vector_count_in_al() {
 
 fn assemble_for_windows(source: &str) -> Result<String, String> {
     let ir = parse_module(source).unwrap();
-    let mir = from_ir_x86_64(&ir, "win64").unwrap();
+    let mir = from_ir_for_target(
+        &ir,
+        "win64",
+        Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Windows).data_layout(),
+    )
+    .unwrap();
     let mut output = Vec::new();
     generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Windows)
         .map_err(|error| error.to_string())?;
@@ -1934,5 +1942,99 @@ fn thread_local_globals_are_refused_on_macho_before_any_code() {
     assert!(error.contains("'t'"), "{error}");
     assert!(error.contains("@TLVP"), "{error}");
     assert!(error.contains("does not emit"), "{error}");
+    assert!(output.is_empty(), "wrote code before refusing");
+}
+
+const WIN64_FLOAT_PAIR_TAKE: &str = "type !F2 = struct { a: f32, b: f32 }\nfn @take(!F2 %p) -> i64 {\nentry:\n    %ap = getfieldptr.!F2 %p, 0\n    %a = load.f32 %ap\n    %ai = fptoint.f32.i64 %a\n    ret.i64 %ai\n}\nfn @main() -> i64 {\nentry:\n    %p = stackalloc.!F2\n    %pa = getfieldptr.!F2 %p, 0\n    store.f32 %pa, 2.0\n    %r = call @take(!F2 %p)\n    ret.i64 %r\n}\n";
+
+fn windows_function<'a>(assembly: &'a str, name: &str) -> &'a str {
+    let start = assembly
+        .find(&format!("\n{name}:\n"))
+        .unwrap_or_else(|| panic!("no {name} in {assembly}"));
+    let rest = &assembly[start..];
+    let end = rest.find("\n    ret\n").map_or(rest.len(), |at| at + 9);
+    &rest[..end]
+}
+
+#[test]
+fn win64_float_pair_argument_arrives_in_rcx_and_is_not_loaded_from_xmm() {
+    let assembly = assemble_for_windows(WIN64_FLOAT_PAIR_TAKE).unwrap();
+    let take = windows_function(&assembly, "take");
+    let prologue = take.split(".L_take.entry:").next().unwrap();
+    assert!(prologue.contains("    movq %rcx, -"), "{take}");
+    assert!(!prologue.contains("%xmm"), "{take}");
+    let main = windows_function(&assembly, "main");
+    let staged = main.split("    call take\n").next().unwrap();
+    assert!(!staged.contains("%xmm"), "{main}");
+    assert!(staged.contains("%rcx"), "{main}");
+}
+
+#[test]
+fn win64_float_pair_return_comes_back_in_rax() {
+    let assembly = assemble_for_windows(
+        "type !F2 = struct { a: f32, b: f32 }\nfn @make(f32 %x) -> !F2 {\nentry:\n    %p = stackalloc.!F2\n    %pa = getfieldptr.!F2 %p, 0\n    store.f32 %pa, %x\n    ret.!F2 %p\n}\nfn @main() -> i64 {\nentry:\n    %q = call @make(2.0)\n    %qa = getfieldptr.!F2 %q, 0\n    %v = load.f32 %qa\n    %vi = fptoint.f32.i64 %v\n    ret.i64 %vi\n}\n",
+    )
+    .unwrap();
+    let make = windows_function(&assembly, "make");
+    assert!(make.contains("    movq (%rax), %rax\n    addq $"), "{make}");
+    let main = windows_function(&assembly, "main");
+    assert!(
+        main.contains("    call make\n    addq $32, %rsp\n    movq %rax, "),
+        "{main}"
+    );
+    let staged = main.split("    call make\n").next().unwrap();
+    assert!(!staged.contains("leaq"), "{main}");
+}
+
+#[test]
+fn win64_double_pair_is_passed_by_reference_through_rcx() {
+    let assembly = assemble_for_windows(
+        "type !D2 = struct { a: f64, b: f64 }\nfn @take(!D2 %p) -> i64 {\nentry:\n    %ap = getfieldptr.!D2 %p, 0\n    %a = load.f64 %ap\n    %ai = fptoint.f64.i64 %a\n    ret.i64 %ai\n}\nfn @main() -> i64 {\nentry:\n    %p = stackalloc.!D2\n    %pa = getfieldptr.!D2 %p, 0\n    store.f64 %pa, 2.0\n    %r = call @take(!D2 %p)\n    ret.i64 %r\n}\n",
+    )
+    .unwrap();
+    let take = windows_function(&assembly, "take");
+    assert!(take.contains("    movq 0(%rcx), %rax\n"), "{take}");
+    let main = windows_function(&assembly, "main");
+    let staged = main.split("    call take\n").next().unwrap();
+    assert!(staged.contains("    leaq "), "{main}");
+    assert!(staged.contains(", %rcx\n"), "{main}");
+    assert!(!staged.contains("%xmm"), "{main}");
+}
+
+#[test]
+fn win64_float_struct_fifth_argument_is_passed_on_the_stack() {
+    let assembly = assemble_for_windows(
+        "type !F2 = struct { a: f32, b: f32 }\nfn @fifth(i64 %a, i64 %b, i64 %c, i64 %d, !F2 %p) -> i64 {\nentry:\n    %ap = getfieldptr.!F2 %p, 0\n    %av = load.f32 %ap\n    %ai = fptoint.f32.i64 %av\n    %s = add.i64 %a, %ai\n    ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n    %p = stackalloc.!F2\n    %pa = getfieldptr.!F2 %p, 0\n    store.f32 %pa, 2.0\n    %r = call @fifth(1, 2, 3, 4, !F2 %p)\n    ret.i64 %r\n}\n",
+    )
+    .unwrap();
+    let fifth = windows_function(&assembly, "fifth");
+    assert!(fifth.contains("    movq 48(%rbp), %rax\n"), "{fifth}");
+    let main = windows_function(&assembly, "main");
+    assert!(
+        main.contains("    movq %rax, 32(%rsp)\n    movq $1, %rcx\n    movq $2, %rdx\n    movq $3, %r8\n    movq $4, %r9\n    call fifth\n"),
+        "{main}"
+    );
+}
+
+#[test]
+fn win64_variadic_call_with_a_float_struct_keeps_the_struct_out_of_xmm() {
+    let assembly = assemble_for_windows(
+        "type !F2 = struct { a: f32, b: f32 }\nfn @sum(i64 %n, ...) -> i64 {\nentry:\n    %ap = stackalloc.valist\n    va_start %ap\n    %x = va_arg.i64 %ap\n    va_end %ap\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = stackalloc.!F2\n    %pa = getfieldptr.!F2 %p, 0\n    store.f32 %pa, 2.0\n    %r = call @sum(1, !F2 %p, 2.5)\n    ret.i64 %r\n}\n",
+    )
+    .unwrap();
+    let main = windows_function(&assembly, "main");
+    let staged = main.split("    call sum\n").next().unwrap();
+    assert!(staged.contains("    movq %xmm2, %r8\n"), "{main}");
+    assert!(!staged.contains("%xmm1"), "{main}");
+}
+
+#[test]
+fn float_struct_laid_out_for_sysv_is_refused_by_name_on_windows() {
+    let ir = parse_module(WIN64_FLOAT_PAIR_TAKE).unwrap();
+    let mir = from_ir_x86_64(&ir, "win64").unwrap();
+    let mut output = Vec::new();
+    let error = generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Windows)
+        .expect_err("a System V classified aggregate is not a Win64 placement");
+    assert!(error.to_string().contains("@take"), "{error}");
     assert!(output.is_empty(), "wrote code before refusing");
 }

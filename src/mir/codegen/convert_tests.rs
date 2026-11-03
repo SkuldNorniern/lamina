@@ -1564,6 +1564,9 @@ fn float_aggregate_classification_follows_each_architecture_abi() {
                     "{arch:?} refused without naming the field: {error}"
                 );
             }
+            FloatAggregateAbi::Win64 => {
+                panic!("{arch:?} declares Win64 on the architecture; only a target does")
+            }
             FloatAggregateAbi::SysV | FloatAggregateAbi::Aapcs64 => {
                 let module = result
                     .unwrap_or_else(|e| panic!("{arch:?} declares placement but failed: {e}"));
@@ -1579,6 +1582,51 @@ fn float_aggregate_classification_follows_each_architecture_abi() {
             }
         }
     }
+}
+
+#[test]
+fn win64_float_aggregates_are_chosen_by_target_operating_system() {
+    use lamina_platform::{FloatAggregateAbi, Target, TargetArchitecture, TargetOperatingSystem};
+    let x86 = TargetArchitecture::X86_64;
+    assert_eq!(
+        Target::new(x86, TargetOperatingSystem::Linux)
+            .data_layout()
+            .float_aggregates,
+        FloatAggregateAbi::SysV
+    );
+    assert_eq!(
+        Target::new(x86, TargetOperatingSystem::MacOS)
+            .data_layout()
+            .float_aggregates,
+        FloatAggregateAbi::SysV
+    );
+    assert_eq!(
+        Target::new(x86, TargetOperatingSystem::Windows)
+            .data_layout()
+            .float_aggregates,
+        FloatAggregateAbi::Win64
+    );
+    assert_eq!(x86.data_layout().float_aggregates, FloatAggregateAbi::SysV);
+
+    let pair =
+        parse_module("fn @take(struct { a: f32, b: f32 } %p) -> i64 {\nentry:\nret.i64 0\n}")
+            .expect("parse float pair");
+    let windows = Target::new(x86, TargetOperatingSystem::Windows).data_layout();
+    let module = from_ir_for_target(&pair, "take", windows).expect("win64 places the pair");
+    let aggregate = module.functions["take"].sig.params[0]
+        .aggregate
+        .expect("aggregate marker");
+    assert_eq!(
+        (aggregate.size, aggregate.class),
+        (8, AggregateClass::Integer)
+    );
+
+    let linux = Target::new(x86, TargetOperatingSystem::Linux).data_layout();
+    let module = from_ir_for_target(&pair, "take", linux).expect("sysv places the pair");
+    let aggregate = module.functions["take"].sig.params[0]
+        .aggregate
+        .expect("aggregate marker");
+    assert_ne!(aggregate.class, AggregateClass::Integer);
 }
 
 #[test]

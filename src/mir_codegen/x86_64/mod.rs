@@ -186,7 +186,7 @@ pub fn generate_mir_x86_64_with_units<W: Write>(
     )
 }
 
-fn reject_non_sysv_float_aggregates(
+fn reject_misclassified_windows_aggregates(
     module: &MirModule,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
@@ -211,7 +211,7 @@ fn reject_non_sysv_float_aggregates(
     match names.first() {
         Some(name) => Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
             format!(
-                "x86_64 Windows does not yet pass an aggregate with a float field, as @{name} does"
+                "x86_64 Windows cannot place an aggregate classified for another ABI, as @{name} has"
             ),
         ))),
         None => Ok(()),
@@ -227,7 +227,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::X86_64)?;
     reject_x86_64_thread_local_globals(module, target_os)?;
-    reject_non_sysv_float_aggregates(module, target_os)?;
+    reject_misclassified_windows_aggregates(module, target_os)?;
     let abi = X86ABI::new(target_os);
 
     // Emit external function declarations first

@@ -164,6 +164,7 @@ pub fn classify_aggregate(
             }
             FloatAggregateAbi::SysV => sysv_eightbyte_class(ty, size, what, layout)?,
             FloatAggregateAbi::Aapcs64 => aapcs64_class(ty, size, what, layout)?,
+            FloatAggregateAbi::Win64 => AggregateClass::Integer,
         }
     };
     Ok(Some(Aggregate {

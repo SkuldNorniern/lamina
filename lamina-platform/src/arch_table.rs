@@ -85,6 +85,7 @@ pub enum FloatAggregateAbi {
     Refused,
     SysV,
     Aapcs64,
+    Win64,
 }
 
 /// The facts a target-independent lowering needs to turn IR into MIR.
