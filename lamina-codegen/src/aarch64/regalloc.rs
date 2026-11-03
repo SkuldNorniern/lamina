@@ -23,9 +23,11 @@ const MAP_GPRS: &[&str] = &["x13", "x14", "x15"];
 
 /// Callee-saved registers a global plan may draw on, once the prologue saves them.
 ///
-/// x16 and x17 are the emitter's own scratch, x18 is the platform register on Darwin
-/// and Windows, and x19 and x20 are the address emitter's last-resort temporaries.
-const CALLEE_SAVED_GPRS: &[&str] = &["x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"];
+/// x16 and x17 are the emitter's own scratch, and x18 is the platform register on
+/// Darwin and Windows.
+const CALLEE_SAVED_GPRS: &[&str] = &[
+    "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
+];
 
 const SCRATCH_GPRS: &[&str] = &["x9", "x10", "x11", "x12"];
 
@@ -266,8 +268,8 @@ mod tests {
         let wide = A64RegAlloc::gpr_pool_for_global_allocation(true);
         assert_eq!(narrow, vec!["x13", "x14", "x15"]);
         assert!(wide.starts_with(&["x13", "x14", "x15"]));
-        assert_eq!(wide.len(), 11);
-        for reserved in ["x16", "x17", "x18", "x19", "x20", "x29", "x30"] {
+        assert_eq!(wide.len(), 13);
+        for reserved in ["x16", "x17", "x18", "x29", "x30"] {
             assert!(
                 !wide.contains(&reserved),
                 "{reserved} must stay unallocated"

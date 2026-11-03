@@ -1246,7 +1246,7 @@ fn callee_saved_registers_are_saved_restored_and_described() -> Result<(), Box<d
                 "x{index} is never unwound back: {assembly}"
             );
         }
-        for reserved in [16, 17, 18, 19, 20] {
+        for reserved in [16, 17, 18] {
             assert!(
                 !prologue.contains(&format!(".cfi_offset {reserved}, ")),
                 "x{reserved} must not be allocated: {assembly}"
