@@ -15,6 +15,7 @@
 //! be worse than a failed compile.
 
 mod abi;
+mod inline_asm;
 mod operand;
 #[cfg(test)]
 mod tests;
@@ -28,8 +29,7 @@ use crate::mir_codegen::common::{
     parallel_codegen_error,
 };
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, unsupported_inline_asm, unsupported_overflow_flag,
-    unsupported_thread_local,
+    reject_thread_local_globals, unsupported_overflow_flag, unsupported_thread_local,
 };
 use crate::{
     error::LaminaError,
@@ -59,8 +59,7 @@ use std::{
 
 /// Capabilities declared by this backend; see `CapabilitySet::for_architecture`.
 pub(crate) fn capabilities() -> CapabilitySet {
-    let mut caps = CapabilitySet::standard_native();
-    caps.remove(&CodegenCapability::InlineAssembly);
+    let caps = CapabilitySet::standard_native();
     caps.with(CodegenCapability::IndirectCalls)
         .with(CodegenCapability::AggregateArguments)
 }
@@ -1009,7 +1008,7 @@ fn emit_instruction<W: Write>(
             ));
         }
         MirInst::InlineAsm { .. } => {
-            return Err(unsupported_inline_asm("i686"));
+            inline_asm::emit(inst, writer, slots)?;
         }
         MirInst::VaStart { .. }
         | MirInst::VaArg { .. }

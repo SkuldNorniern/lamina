@@ -1,0 +1,28 @@
+# The asm is side-effecting: it must run on every iteration, not be hoisted
+fn @main() -> i64 {
+entry:
+  %p = stackalloc.i32
+  %zero = add.i32 0, 0
+  store.i32 %p, %zero
+  %i = copy.i32 0
+  jmp loop
+loop:
+  %old = asm.i32 "movl ($0), $1\naddl $$1, ($0)", in(reg) %p, out(reg), clobber(memory, flags)
+  %n = add.i32 %i, 1
+  %done = eq.i32 %n, 10
+  %i = copy.i32 %n
+  br %done, after, loop
+after:
+  %m = load.i32 %p
+  %ok = eq.i32 %m, 10
+  br %ok, good, bad
+good:
+  %o = writebyte 79
+  %k = writebyte 75
+  %nl = writebyte 10
+  ret.i64 0
+bad:
+  %f = writebyte 70
+  %nl2 = writebyte 10
+  ret.i64 1
+}

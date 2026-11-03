@@ -1,0 +1,18 @@
+# rdtsc is read twice with a delay between; the cycle counter must not go backwards
+fn @main() -> i64 {
+entry:
+  %a = asm.i32 "rdtsc", out(eax), clobber(edx)
+  %b = asm.i32 "movl $$2000, %ecx\n1: decl %ecx\njne 1b\nrdtsc", out(eax), clobber(ecx, edx, flags)
+  %d = sub.i32 %b, %a
+  %ok = gt.i32 %d, 0
+  br %ok, good, bad
+good:
+  %o = writebyte 79
+  %k = writebyte 75
+  %n = writebyte 10
+  ret.i64 0
+bad:
+  %f = writebyte 70
+  %n2 = writebyte 10
+  ret.i64 1
+}
