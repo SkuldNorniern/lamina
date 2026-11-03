@@ -18,11 +18,11 @@ entry:
 @extern
 fn @printf(ptr %fmt, ...) -> i32
 
-global $fmt: [5 x i8] = "%ld\n"
+global $fmt: [6 x i8] = "%lld\n"
 
 fn @main() -> i64 {
 entry:
-  %a = call @twice(0, 10, 20, 30, 40, 50, 60, 70, 80)
+  %a = call @twice(0, i64 10, i64 20, i64 30, i64 40, i64 50, i64 60, i64 70, i64 80)
   %q = funcaddr @printf
   %r = callptr.i32 %q(ptr $fmt, ..., i64 %a)
   ret.i64 0

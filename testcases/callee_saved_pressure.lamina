@@ -171,7 +171,7 @@ entry:
   call @print_i64(%a)
   %b = call @dense(1000003)
   call @print_i64(%b)
-  %c = call @vdense(5, 2, 4, 6, 8, 10)
+  %c = call @vdense(5, i64 2, i64 4, i64 6, i64 8, i64 10)
   call @print_i64(%c)
   %d = call @farframe(11)
   call @print_i64(%d)

@@ -13515,6 +13515,42 @@ frame fmt 0
 frame main 32
 frame sum 208
 
+[va_arg_wide_align O0]
+insns 145
+spills 47
+calls 2
+branches 11
+frame fmt 0
+frame main 32
+frame odd 304
+
+[va_arg_wide_align O1]
+insns 141
+spills 22
+calls 2
+branches 11
+frame fmt 0
+frame main 32
+frame odd 208
+
+[va_arg_wide_align O2]
+insns 141
+spills 22
+calls 2
+branches 11
+frame fmt 0
+frame main 32
+frame odd 208
+
+[va_arg_wide_align O3]
+insns 143
+spills 24
+calls 2
+branches 11
+frame fmt 0
+frame main 32
+frame odd 208
+
 [variables O0]
 insns 228
 spills 58

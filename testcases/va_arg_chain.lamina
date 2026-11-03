@@ -26,11 +26,11 @@ entry:
 @extern
 fn @printf(ptr %fmt, ...) -> i32
 
-global $fmt: [5 x i8] = "%ld\n"
+global $fmt: [6 x i8] = "%lld\n"
 
 fn @main() -> i64 {
 entry:
-  %a = call @vchain(1, 14, 2)
+  %a = call @vchain(1, i64 14, i64 2)
   %q = funcaddr @printf
   %r = callptr.i32 %q(ptr $fmt, ..., i64 %a)
   ret.i64 0

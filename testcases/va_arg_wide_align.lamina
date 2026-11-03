@@ -1,0 +1,37 @@
+# A 64-bit variadic argument reached after an odd number of words. AAPCS places one
+# on an even core register pair or an eight-byte-aligned stack slot, so the callee's
+# cursor has to round up before it reads; cdecl packs it with no rounding at all. The
+# narrow arguments between the wide ones keep the cursor off a multiple of eight, so
+# a backend that forgets the rounding reads one word off rather than by luck.
+
+fn @odd(i32 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  va_start %ap
+  %a = va_arg.i64 %ap
+  %b = va_arg.i32 %ap
+  %c = va_arg.i64 %ap
+  %d = va_arg.i32 %ap
+  %e = va_arg.i64 %ap
+  va_end %ap
+  %b64 = extend.i32.i64 %b
+  %d64 = extend.i32.i64 %d
+  %s1 = add.i64 %a, %c
+  %s2 = add.i64 %s1, %e
+  %s3 = add.i64 %b64, %d64
+  %r = add.i64 %s2, %s3
+  ret.i64 %r
+}
+
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [6 x i8] = "%lld\n"
+
+fn @main() -> i64 {
+entry:
+  %r = call @odd(5, i64 4294967296, i32 7, i64 8589934592, i32 9, i64 17179869184)
+  %q = funcaddr @printf
+  %p = callptr.i32 %q(ptr $fmt, ..., i64 %r)
+  ret.i64 0
+}
