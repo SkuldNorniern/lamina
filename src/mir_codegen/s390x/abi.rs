@@ -1,6 +1,6 @@
 //! s390x ELF ABI: register names, frame layout and argument places.
 
-use crate::mir::{Aggregate, MirType};
+use crate::mir::{Aggregate, FlatField, MirType};
 use std::io::{self, Write};
 
 pub(super) const ARG_GPRS: [&str; 5] = ["%r2", "%r3", "%r4", "%r5", "%r6"];
@@ -171,6 +171,29 @@ pub(super) fn fp_store<W: Write>(
     memory(writer, mnemonic, reg, FP, i64::from(offset), scratch)
 }
 
+/// Copies exactly `bytes` bytes from the address in `from` to the address in `to`.
+/// `mvc` moves up to 256 bytes at a time, which is every aggregate the convention
+/// hands over by reference here; anything larger falls back to whole doublewords.
+pub(super) fn copy_exact<W: Write>(
+    writer: &mut W,
+    to: &str,
+    from: &str,
+    bytes: usize,
+) -> io::Result<()> {
+    if bytes == 0 {
+        return Ok(());
+    }
+    if bytes <= 256 {
+        return writeln!(writer, "    mvc 0({bytes},{to}), 0({from})");
+    }
+    for index in 0..bytes.div_ceil(WORD as usize) {
+        let at = index as i64 * i64::from(WORD);
+        memory(writer, "lg", T1, from, at, T2)?;
+        memory(writer, "stg", T1, to, at, T2)?;
+    }
+    Ok(())
+}
+
 /// Materialises `{base} + offset` in `dst`.
 pub(super) fn address<W: Write>(
     writer: &mut W,
@@ -201,6 +224,32 @@ pub(super) fn load_imm<W: Write>(writer: &mut W, reg: &str, value: i64) -> io::R
     }
 }
 
+/// How an aggregate of a given size rides in a general register or a stack slot: one,
+/// two, four or eight bytes, right-aligned in the doubleword. Every other size travels
+/// by reference instead, which is what `None` says.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Packed {
+    pub(super) load: &'static str,
+    pub(super) store: &'static str,
+    /// Bytes from the start of the doubleword to the first byte of the value.
+    pub(super) shift: i64,
+}
+
+pub(super) const fn packed(size: usize) -> Option<Packed> {
+    let (load, store) = match size {
+        1 => ("llgc", "stcy"),
+        2 => ("llgh", "sthy"),
+        4 => ("llgf", "sty"),
+        8 => ("lg", "stg"),
+        _ => return None,
+    };
+    Some(Packed {
+        load,
+        store,
+        shift: WORD as i64 - size as i64,
+    })
+}
+
 /// What one argument is: a scalar of some type, or an aggregate of some size.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ArgKind {
@@ -220,11 +269,21 @@ impl ArgKind {
     /// caller makes. The z/Architecture ABI keeps only a single word by value, unlike
     /// the two that `Aggregate::max_in_registers` assumes of every target.
     pub(super) fn by_reference(&self) -> bool {
-        self.aggregate.is_some_and(|a| a.size > WORD as usize)
+        self.aggregate.is_some_and(|a| packed(a.size).is_none())
     }
 
-    fn float(&self) -> bool {
-        self.aggregate.is_none() && self.ty.is_float()
+    /// The floating-point member an aggregate travels as, when the ABI treats a record
+    /// of one float as that float.
+    pub(super) fn aggregate_float(&self) -> Option<FlatField> {
+        let (first, second) = self.aggregate?.class.flattened()?;
+        second
+            .is_none()
+            .then_some(first)
+            .filter(|f| f.float.is_some())
+    }
+
+    pub(super) fn float(&self) -> bool {
+        (self.aggregate.is_none() && self.ty.is_float()) || self.aggregate_float().is_some()
     }
 }
 

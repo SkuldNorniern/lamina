@@ -111,7 +111,8 @@ impl Signatures {
 
     /// Whether the callee takes a hidden pointer to the aggregate it returns.
     fn hidden_result(&self, callee: &str) -> bool {
-        self.result(callee).is_some_and(|a| a.size > WORD as usize)
+        self.result(callee)
+            .is_some_and(|a| a.size > WORD as usize || a.is_composite())
     }
 
     /// Types of a call's arguments as the convention sees them. A matching prototype
@@ -296,7 +297,7 @@ fn compile_function(
     let hidden = func
         .sig
         .ret_aggregate
-        .is_some_and(|a| a.size > abi::WORD as usize);
+        .is_some_and(|a| a.size > abi::WORD as usize || a.is_composite());
     let sret = hidden.then(|| -(locals as i32) - abi::WORD);
     let locals = locals + usize::from(hidden) * abi::WORD as usize;
     let va = func.sig.variadic.then(|| {
@@ -402,18 +403,43 @@ fn store_incoming_arguments<W: Write>(
                 copy_words(writer, ARG_GPRS[bank], words, offset)?;
             }
             ArgPlace::Gpr(bank) => {
-                abi::fp_store(writer, "stg", ARG_GPRS[bank], offset, T0)?;
+                let store = match kind.aggregate {
+                    Some(aggregate) => {
+                        abi::packed(aggregate.size)
+                            .ok_or_else(|| unsupported("s390x aggregate has no register form"))?
+                            .store
+                    }
+                    None => "stg",
+                };
+                abi::fp_store(writer, store, ARG_GPRS[bank], offset, T0)?;
             }
             ArgPlace::Fpr(bank) => {
+                let single = match kind.aggregate_float() {
+                    Some(field) => field.bytes == 4,
+                    None => single,
+                };
                 store_float(ARG_FPRS[bank], vreg, writer, slots, single)?;
             }
             ArgPlace::Stack(index) => {
                 let at = i64::from(abi::incoming_stack_offset(index));
-                abi::memory(writer, "lg", T0, abi::entry_base(aligned), at, T0)?;
                 if kind.by_reference() {
+                    abi::memory(writer, "lg", T0, abi::entry_base(aligned), at, T0)?;
                     let words = kind.aggregate.map_or(0, |a| a.words());
                     copy_words(writer, T0, words, offset)?;
+                } else if let Some(aggregate) = kind.aggregate {
+                    let packed = abi::packed(aggregate.size)
+                        .ok_or_else(|| unsupported("s390x aggregate has no register form"))?;
+                    abi::memory(
+                        writer,
+                        packed.load,
+                        T0,
+                        abi::entry_base(aligned),
+                        at + packed.shift,
+                        T1,
+                    )?;
+                    abi::fp_store(writer, packed.store, T0, offset, T1)?;
                 } else {
+                    abi::memory(writer, "lg", T0, abi::entry_base(aligned), at, T0)?;
                     abi::fp_store(writer, "stg", T0, offset, T1)?;
                 }
             }
@@ -624,25 +650,36 @@ fn pass_arguments<W: Write>(
             abi::memory(writer, "stg", T1, SP, at + step, T2)?;
         }
     }
-    for ((index, arg), place) in args.iter().enumerate().zip(&places) {
+    for ((index, (arg, kind)), place) in args.iter().zip(kinds).enumerate().zip(&places) {
         let ArgPlace::Stack(at) = *place else {
             continue;
         };
         match copies[index] {
             Some(copy) => abi::address(writer, T0, SP, copy)?,
+            // A float keeps the left half of its doubleword, which is where the
+            // callee reads it from; its bits have to be placed there, not loaded as
+            // an integer from a slot that holds them the same way.
+            None if kind.float() => {
+                load_argument_float(arg, kind, writer, slots, STACK_FLOAT)?;
+                writeln!(writer, "    lgdr {T0}, {STACK_FLOAT}")?;
+            }
+            // A by-value aggregate puts its own bytes in the slot, not its address.
+            None if let Some(aggregate) = kind.aggregate => {
+                let packed = abi::packed(aggregate.size)
+                    .ok_or_else(|| unsupported("s390x aggregate has no register form"))?;
+                load_operand(arg, writer, slots, T0)?;
+                abi::memory(writer, packed.load, T0, T0, 0, T1)?;
+                let at = abi::outgoing_stack_offset(at) + packed.shift;
+                abi::memory(writer, packed.store, T0, SP, at, T1)?;
+                continue;
+            }
             None => load_operand(arg, writer, slots, T0)?,
         }
         abi::memory(writer, "stg", T0, SP, abi::outgoing_stack_offset(at), T1)?;
     }
     for ((arg, kind), place) in args.iter().zip(kinds).zip(&places) {
         if let ArgPlace::Fpr(bank) = *place {
-            load_float_operand(
-                arg,
-                writer,
-                slots,
-                ARG_FPRS[bank],
-                kind.ty.size_bytes(PointerWidth::Bits64) == 4,
-            )?;
+            load_argument_float(arg, kind, writer, slots, ARG_FPRS[bank])?;
         }
     }
     if let Some(offset) = hidden {
@@ -654,14 +691,46 @@ fn pass_arguments<W: Write>(
         };
         match copies[index] {
             Some(copy) => abi::address(writer, ARG_GPRS[bank], SP, copy)?,
-            None if kind.aggregate.is_some() => {
+            None if let Some(aggregate) = kind.aggregate => {
+                let packed = abi::packed(aggregate.size)
+                    .ok_or_else(|| unsupported("s390x aggregate has no register form"))?;
                 load_operand(arg, writer, slots, ARG_GPRS[bank])?;
-                abi::memory(writer, "lg", ARG_GPRS[bank], ARG_GPRS[bank], 0, T0)?;
+                abi::memory(writer, packed.load, ARG_GPRS[bank], ARG_GPRS[bank], 0, T0)?;
             }
             None => load_operand(arg, writer, slots, ARG_GPRS[bank])?,
         }
     }
     Ok(())
+}
+
+/// Scratch floating-point register for a float that travels on the stack. It is not
+/// an argument register, so placing it disturbs nothing already set up.
+const STACK_FLOAT: &str = "%f1";
+
+/// Puts an argument that travels as a float into `dst`. An aggregate the ABI treats as
+/// its one floating-point member arrives as the address of that member.
+fn load_argument_float<W: Write>(
+    arg: &Operand,
+    kind: &ArgKind,
+    writer: &mut W,
+    slots: &Slots,
+    dst: &str,
+) -> Result<(), LaminaError> {
+    match kind.aggregate_float() {
+        Some(field) => {
+            load_operand(arg, writer, slots, T0)?;
+            let load = if field.bytes == 4 { "le" } else { "ld" };
+            abi::memory(writer, load, dst, T0, 0, T1)?;
+            Ok(())
+        }
+        None => load_float_operand(
+            arg,
+            writer,
+            slots,
+            dst,
+            kind.ty.size_bytes(PointerWidth::Bits64) == 4,
+        ),
+    }
 }
 
 /// Stores a call's result into its destination: `%r2`, or `%f0` when the callee returns
@@ -919,11 +988,7 @@ fn emit_instruction<W: Write>(
                     (Some(aggregate), Some(offset)) => {
                         load_operand(val, writer, slots, T0)?;
                         abi::fp_load(writer, "lg", A1, offset, A1)?;
-                        for index in 0..aggregate.words() {
-                            let at = index as i64 * i64::from(WORD);
-                            abi::memory(writer, "lg", T1, T0, at, T2)?;
-                            abi::memory(writer, "stg", T1, A1, at, T2)?;
-                        }
+                        abi::copy_exact(writer, A1, T0, aggregate.size)?;
                         writeln!(writer, "    lgr {A0}, {A1}")?;
                     }
                     (Some(_), None) => {
@@ -1506,7 +1571,7 @@ fn emit_call<W: Write>(
         _ => None,
     };
     let hidden = match result {
-        Some(aggregate) if aggregate.size > WORD as usize => Some(
+        Some(aggregate) if aggregate.size > WORD as usize || aggregate.is_composite() => Some(
             result_slot.ok_or_else(|| unsupported("s390x aggregate result has no frame slot"))?,
         ),
         _ => None,
@@ -1518,7 +1583,7 @@ fn emit_call<W: Write>(
         call_target(name, ctx.target_os)
     )?;
     match (ret, result) {
-        (_, Some(aggregate)) if aggregate.size > WORD as usize => {}
+        (_, Some(aggregate)) if aggregate.size > WORD as usize || aggregate.is_composite() => {}
         (Some(dst), Some(_)) => {
             let offset = result_slot
                 .ok_or_else(|| unsupported("s390x aggregate result has no frame slot"))?;
