@@ -13,6 +13,7 @@ mod emit;
 mod operand;
 #[cfg(test)]
 mod tests;
+mod variadic;
 
 use crate::mir_codegen::common::{reject_thread_local_globals, reject_underaligned_accesses};
 use std::{collections::HashMap, io::Write, sync::Arc};
@@ -44,10 +45,13 @@ use operand::{
 const SAVED_CORE: &str = "{r4, r5, r6, r7, r8, r9, r10, r11, r12, lr}";
 const SAVED_DOUBLES: &str = "{d8, d9, d10, d11, d12, d13, d14, d15}";
 
-pub(crate) fn emit_restore<W: Write>(w: &mut W) -> Result<(), LaminaError> {
+pub(crate) fn emit_restore<W: Write>(w: &mut W, variadic: bool) -> Result<(), LaminaError> {
     writeln!(w, "    mov sp, {ENTRY_SP}")?;
     writeln!(w, "    vpop {SAVED_DOUBLES}")?;
     writeln!(w, "    pop {SAVED_CORE}")?;
+    if variadic {
+        writeln!(w, "    add sp, sp, #{}", variadic::SAVE_AREA_BYTES)?;
+    }
     Ok(())
 }
 
@@ -118,6 +122,7 @@ fn spill_parameter<W: Write>(
     kind: &ArgKind,
     place: &abi::ArgPlace,
     offset: i32,
+    saved: i32,
     scratch: &mut Scratch,
 ) -> Result<(), LaminaError> {
     if let Some(index) = place.vfp {
@@ -165,7 +170,7 @@ fn spill_parameter<W: Write>(
     let Some(span) = place.stack else {
         return Ok(());
     };
-    let at = SAVED_BYTES + span.offset as i32;
+    let at = saved + span.offset as i32;
     let source = scratch.alloc()?;
     entry_sp_address(w, source, at)?;
     if let Some(aggregate) = kind.aggregate {
@@ -209,20 +214,29 @@ fn compile_function(
     signatures: &Signatures,
 ) -> Result<Vec<u8>, LaminaError> {
     reject_wide_integers(func_name, func)?;
+    variadic::reject_co_processor_boundary(func_name, func)?;
     let armv7 = Armv7Abi::new(target_os);
     let label = armv7.mangle_function_name(func_name);
     let mut w: Vec<u8> = Vec::new();
     let mut scratch = Scratch::default();
 
+    let saved = variadic::saved_bytes(func);
     writeln!(w, "{label}:")?;
     writeln!(w, "    .cfi_startproc")?;
+    if func.sig.variadic {
+        variadic::save_core_registers(&mut w)?;
+    }
     writeln!(w, "    push {SAVED_CORE}")?;
-    writeln!(w, "    .cfi_def_cfa_offset 40")?;
+    writeln!(w, "    .cfi_def_cfa_offset {}", saved - SAVED_BYTES + 40)?;
     for (index, number) in [4, 5, 6, 7, 8, 9, 10, 11, 12, 14].into_iter().enumerate() {
-        writeln!(w, "    .cfi_offset {number}, {}", index as i32 * 4 - 40)?;
+        writeln!(
+            w,
+            "    .cfi_offset {number}, {}",
+            index as i32 * 4 - (saved - SAVED_BYTES + 40)
+        )?;
     }
     writeln!(w, "    vpush {SAVED_DOUBLES}")?;
-    writeln!(w, "    .cfi_def_cfa_offset {SAVED_BYTES}")?;
+    writeln!(w, "    .cfi_def_cfa_offset {saved}")?;
     writeln!(w, "    mov {ENTRY_SP}, sp")?;
     writeln!(w, "    .cfi_def_cfa_register 10")?;
 
@@ -269,7 +283,7 @@ fn compile_function(
         .zip(places.iter().skip(skip))
     {
         if let Some(offset) = frame.slot_of(&param.reg) {
-            spill_parameter(&mut w, param.ty, kind, place, offset, &mut scratch)?;
+            spill_parameter(&mut w, param.ty, kind, place, offset, saved, &mut scratch)?;
         }
     }
 
@@ -286,6 +300,11 @@ fn compile_function(
         ret_float: func.sig.ret_ty.filter(|ty| ty.is_float()),
         sret_slot,
         settings,
+        va_base: func
+            .sig
+            .variadic
+            .then(|| variadic::area_base(func))
+            .transpose()?,
     };
 
     let plan = FunctionEmissionPlan::new(func);
@@ -314,7 +333,7 @@ fn compile_function(
 
     writeln!(w, "{epilogue}:")?;
     writeln!(w, "    .cfi_remember_state")?;
-    emit_restore(&mut w)?;
+    emit_restore(&mut w, func.sig.variadic)?;
     writeln!(w, "    .cfi_def_cfa 13, 0")?;
     writeln!(w, "    bx lr")?;
     writeln!(w, "    .cfi_restore_state")?;

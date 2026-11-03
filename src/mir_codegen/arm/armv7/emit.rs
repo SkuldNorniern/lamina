@@ -33,6 +33,9 @@ pub(crate) const POINTER_WIDTH: PointerWidth = PointerWidth::Bits32;
 
 pub(crate) struct Ctx<'a> {
     pub(crate) func: &'a Function,
+    /// Offset from the entry stack pointer of the first unnamed argument, in a
+    /// variadic function.
+    pub(crate) va_base: Option<i32>,
     pub(crate) frame: &'a FrameMap,
     pub(crate) abi: &'a Armv7Abi,
     pub(crate) signatures: &'a Signatures,
@@ -494,9 +497,7 @@ pub(crate) fn emit_instruction<W: Write>(
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }
         | MirInst::VaCopy { .. } => {
-            return Err(unsupported(
-                "armv7 backend does not implement variadic argument reading".to_string(),
-            ));
+            super::variadic::emit(w, inst, ctx.func, ctx.frame, ctx.va_base, scratch)?;
         }
     }
     Ok(())

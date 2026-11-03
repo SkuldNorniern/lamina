@@ -4,7 +4,7 @@ use std::io::Write;
 
 use crate::{
     error::LaminaError,
-    mir::{Aggregate, MirType, Operand, Register},
+    mir::{Aggregate, MirType, Operand, Register, ScalarType},
     mir_codegen::common::unsupported_io,
 };
 use lamina_codegen::abi::Abi;
@@ -333,7 +333,16 @@ pub(crate) fn emit_call_indirect<W: Write>(
     ctx: &Ctx<'_>,
     scratch: &mut Scratch,
 ) -> Result<(), LaminaError> {
-    let kinds: Vec<ArgKind> = arg_types.iter().map(|ty| ArgKind::of(*ty, None)).collect();
+    // A legalized pair the called pointer's signature does not type reaches the
+    // callee as the aggregate it was spilled to, not as its address.
+    let kinds: Vec<ArgKind> = arg_types
+        .iter()
+        .zip(args)
+        .map(|(ty, arg)| match ctx.func.variadic_wide_argument(arg) {
+            Some(aggregate) => ArgKind::of(MirType::Scalar(ScalarType::Ptr), Some(aggregate)),
+            None => ArgKind::of(*ty, None),
+        })
+        .collect();
     let plan = plan_call(args, kinds, variadic_fixed, false, false)?;
 
     let callee = scratch.alloc()?;
@@ -377,7 +386,7 @@ pub(crate) fn emit_tail_call<W: Write>(
         .abi
         .call_stub(name)
         .unwrap_or_else(|| ctx.abi.mangle_function_name(name));
-    super::emit_restore(w)?;
+    super::emit_restore(w, ctx.func.sig.variadic)?;
     writeln!(w, "    b {target}")?;
     Ok(())
 }

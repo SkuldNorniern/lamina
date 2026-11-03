@@ -18,6 +18,7 @@ mod abi;
 mod operand;
 #[cfg(test)]
 mod tests;
+mod variadic;
 
 use crate::mir_codegen::capability::{CapabilitySet, CodegenCapability};
 use crate::mir_codegen::common::{
@@ -218,6 +219,8 @@ struct EmitCtx<'a> {
     /// Whether the return value is a legalized 64-bit integer, which leaves in
     /// `%edx:%eax`.
     wide_return: bool,
+    /// Frame offset of the first unnamed argument, in a variadic function.
+    va_base: Option<i32>,
 }
 
 impl EmitCtx<'_> {
@@ -294,11 +297,6 @@ fn compile_function(
             "i686 does not emit naked function @{func_name}"
         )));
     }
-    if func.sig.variadic {
-        return Err(CodegenError::UnsupportedFeature(format!(
-            "i686 does not define the variadic function @{func_name}; reading a va_list is not implemented"
-        )));
-    }
     let mut output = Vec::new();
     writeln!(output, "{func_name}:").map_err(io)?;
 
@@ -332,6 +330,10 @@ fn compile_function(
         ret_float: func.sig.ret_ty.filter(MirType::is_float),
         sret,
         wide_return,
+        va_base: func
+            .sig
+            .variadic
+            .then(|| variadic::area_base(func, sret.is_some())),
     };
     let plan = FunctionEmissionPlan::new(func);
     if plan
@@ -815,8 +817,14 @@ fn emit_instruction<W: Write>(
                     }
                 }
             }
+            // A legalized pair the called pointer's signature does not type reaches
+            // the callee as the aggregate it was spilled to, not as its address.
+            let aggregates: Vec<Option<usize>> = args
+                .iter()
+                .map(|arg| ctx.func.variadic_wide_argument(arg).map(|a| a.size))
+                .collect();
             let call = CallAbi {
-                aggregates: vec![None; args.len()],
+                aggregates,
                 types,
                 ret_aggregate: None,
                 ret_ty: *ret_ty,
@@ -1007,9 +1015,7 @@ fn emit_instruction<W: Write>(
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }
         | MirInst::VaCopy { .. } => {
-            return Err(unsupported(
-                "i686 variadic argument access is not implemented",
-            ));
+            variadic::emit(inst, writer, slots, ctx.func, ctx.va_base)?;
         }
         MirInst::IntConvert { .. } => {
             return Err(unsupported(
