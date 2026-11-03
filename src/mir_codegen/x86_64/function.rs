@@ -960,10 +960,18 @@ fn home_aggregate_parameters<W: Write>(
                 }
                 _ => continue,
             };
-            for word in 0..aggregate.words() {
-                let at = (word as i32) * 8;
-                writeln!(output, "    movq {at}({pointer}), %rax").map_err(io_error)?;
-                writeln!(output, "    movq %rax, {}(%rbp)", base + at).map_err(io_error)?;
+            let mut at = 0usize;
+            while at < aggregate.size {
+                let (mov, register, width) = match aggregate.size - at {
+                    8.. => ("movq", "%rax", 8),
+                    4..=7 => ("movl", "%eax", 4),
+                    2..=3 => ("movw", "%ax", 2),
+                    _ => ("movb", "%al", 1),
+                };
+                writeln!(output, "    {mov} {at}({pointer}), {register}").map_err(io_error)?;
+                writeln!(output, "    {mov} {register}, {}(%rbp)", base + at as i32)
+                    .map_err(io_error)?;
+                at += width;
             }
             output.rax_value = None;
             continue;
