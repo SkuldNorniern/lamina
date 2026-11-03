@@ -19,7 +19,9 @@ parser.add_argument("--clang", default="clang")
 parser.add_argument("--linker", default=str(rocm / "llvm/bin/ld.lld"))
 parser.add_argument("--hip-library", default=str(rocm / "lib/libamdhip64.so"))
 options = parser.parse_args()
-with tempfile.TemporaryDirectory(prefix="lamina-amdgpu-runtime-") as directory:
+scratch = root / "target" / "amdgpu-runtime"
+scratch.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="lamina-amdgpu-runtime-", dir=scratch) as directory:
     work = pathlib.Path(directory)
     subprocess.run(
         [

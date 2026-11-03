@@ -758,20 +758,16 @@ ret.void
 #[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod execution_tests {
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
-    use std::{
-        env,
-        error::Error,
-        fs,
-        process::{self, Command},
-    };
+    use crate::test_support::TempDir;
+    use std::{error::Error, fs, process::Command};
 
     #[test]
     fn inlining_preserves_native_and_mir_assembly_outputs() -> Result<(), Box<dyn Error>> {
         if !tools_available(&["as", "gcc"]) {
             return Ok(());
         }
-        let directory = env::temp_dir().join(format!("lamina-inlining-{}", process::id()));
-        fs::create_dir_all(&directory)?;
+        let temp = TempDir::new("lamina-inlining");
+        let directory = temp.path();
         for case in [
             "nested_calls",
             "functions",
