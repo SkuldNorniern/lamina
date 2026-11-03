@@ -2015,6 +2015,18 @@ fn win64_by_reference_copy_reads_no_byte_past_the_aggregate() {
 }
 
 #[test]
+fn win64_by_reference_parameter_copy_reads_no_byte_past_the_aggregate() {
+    let assembly = assemble_for_windows(
+        "type !F3 = struct { a: f32, b: f32, c: f32 }\nfn @take(!F3 %p) -> i64 {\nentry:\n    %ap = getfieldptr.!F3 %p, 0\n    %a = load.f32 %ap\n    %ai = fptoint.f32.i64 %a\n    ret.i64 %ai\n}\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n",
+    )
+    .unwrap();
+    let take = windows_function(&assembly, "take");
+    assert!(take.contains("    movq 0(%rcx), %rax\n"), "{take}");
+    assert!(take.contains("    movl 8(%rcx), %eax\n"), "{take}");
+    assert!(!take.contains("    movq 8(%rcx)"), "{take}");
+}
+
+#[test]
 fn win64_float_struct_fifth_argument_is_passed_on_the_stack() {
     let assembly = assemble_for_windows(
         "type !F2 = struct { a: f32, b: f32 }\nfn @fifth(i64 %a, i64 %b, i64 %c, i64 %d, !F2 %p) -> i64 {\nentry:\n    %ap = getfieldptr.!F2 %p, 0\n    %av = load.f32 %ap\n    %ai = fptoint.f32.i64 %av\n    %s = add.i64 %a, %ai\n    ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n    %p = stackalloc.!F2\n    %pa = getfieldptr.!F2 %p, 0\n    store.f32 %pa, 2.0\n    %r = call @fifth(1, 2, 3, 4, !F2 %p)\n    ret.i64 %r\n}\n",
