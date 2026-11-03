@@ -300,54 +300,33 @@ pub(super) fn run(
 }
 
 fn check_wasm(module: &Module, directory: &Path, traps: bool) -> TestResult {
-    if !tools_available(&["wat2wasm", "node"]) {
+    if !tools_available(&["wasmtime"]) {
         return Ok(());
     }
-    let mut bytes = Vec::new();
+    let mut wat = Vec::new();
     generate_mir_wasm(
         module,
-        &mut bytes,
+        &mut wat,
         TargetArchitecture::Wasm32,
-        TargetOperatingSystem::Linux,
+        TargetOperatingSystem::Wasi,
         PointerWidth::Bits64,
     )?;
-    let wat = directory.join("test.wat");
-    let wasm = directory.join("test.wasm");
-    fs::write(&wat, bytes)?;
-    let output = Command::new("wat2wasm")
-        .arg(wat)
-        .arg("-o")
-        .arg(&wasm)
+    let wat_path = directory.join("test.wat");
+    fs::write(&wat_path, wat)?;
+    let output = Command::new("wasmtime")
+        .args(["run", "--invoke", "main"])
+        .arg(&wat_path)
         .output()?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let output = Command::new("node")
-        .args([
-            "-e",
-            r#"
-const fs = require('fs');
-const module = new WebAssembly.Module(fs.readFileSync(process.argv[1]));
-const imports = {};
-for (const entry of WebAssembly.Module.imports(module)) {
-    (imports[entry.module] ??= {})[entry.name] = () => 0n;
-}
-const instance = new WebAssembly.Instance(module, imports);
-const traps = process.argv[2] === 'true';
-try {
-    const value = instance.exports.main();
-    if (traps || value !== 0n) process.exit(1);
-} catch (error) {
-    if (!traps || !(error instanceof WebAssembly.RuntimeError)) throw error;
-}
-"#,
-        ])
-        .arg(&wasm)
-        .arg(traps.to_string())
-        .output()?;
-    assert!(output.status.success(), "WASM traps={traps}: {output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if traps {
+        assert!(
+            !output.status.success() && stderr.contains("wasm trap"),
+            "WASM did not trap: {output:?}"
+        );
+    } else {
+        assert!(output.status.success(), "WASM traps=false: {stderr}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "0\n");
+    }
     Ok(())
 }
 
