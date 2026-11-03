@@ -1051,8 +1051,10 @@ fn weld_supports(target_arch: TargetArchitecture, target_os: TargetOperatingSyst
             TargetOperatingSystem::Linux
                 | TargetOperatingSystem::Windows
                 | TargetOperatingSystem::MacOS
-        ) | (TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS)
-            | (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux)
+        ) | (
+            TargetArchitecture::Aarch64,
+            TargetOperatingSystem::MacOS | TargetOperatingSystem::Windows
+        ) | (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux)
     )
 }
 
@@ -1190,13 +1192,13 @@ mod tests {
     }
 
     #[test]
-    fn weld_refused_for_aarch64_windows() {
+    fn weld_refused_for_aarch64_linux() {
         let error = validate_linker_backend_for_target(
             LinkerBackend::Weld,
             TargetArchitecture::Aarch64,
-            TargetOperatingSystem::Windows,
+            TargetOperatingSystem::Linux,
         )
-        .expect_err("weld links only x86-64 PE objects");
+        .expect_err("weld writes no aarch64 ELF image");
         assert!(error.to_string().contains("weld cannot link"));
     }
 
@@ -1206,6 +1208,7 @@ mod tests {
             (TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
             (TargetArchitecture::X86_64, TargetOperatingSystem::Windows),
             (TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS),
+            (TargetArchitecture::Aarch64, TargetOperatingSystem::Windows),
             (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux),
         ] {
             assert!(weld_gap(arch, os).is_none(), "{arch:?} {os:?}");
@@ -1213,7 +1216,6 @@ mod tests {
         for (arch, os) in [
             (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
             (TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux),
-            (TargetArchitecture::Aarch64, TargetOperatingSystem::Windows),
         ] {
             assert!(weld_gap(arch, os).is_some(), "{arch:?} {os:?}");
         }
