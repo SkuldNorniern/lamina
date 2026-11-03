@@ -362,8 +362,10 @@ def run_tests(use_mir=False, target=None, report_only=False):
 
         expected_output = load_expected_output(test_path, byteorder)
         if expected_output is None:
-             print_colored(f"\n⚠️  Skipping {test_name} (No expected output found)", Colors.YELLOW)
-             continue
+            print_colored(f"\n❌ FAILED {test_name}: No expected output found", Colors.RED)
+            failures.append((test_name, "No expected output found"))
+            failed += 1
+            continue
 
         success, result = compile_and_run_test(test_path, use_mir, target)
         
