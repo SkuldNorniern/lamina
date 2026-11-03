@@ -112,12 +112,19 @@ jobs:
       # The aarch64 backend is only exercised by compiling for it and running the
       # result under an emulator. Building alone proved nothing about it, and the
       # host runner is x86_64.
-      - name: Install aarch64 cross toolchain
+      - name: Install cross toolchains
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user-static
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-s390x-linux-gnu qemu-user-static
       - name: Run testcases (aarch64 linux)
         if: runner.os == 'Linux'
         run: python3 run_tests.py --target aarch64_linux
+      # s390x is the only big-endian target in the suite, so it is what catches a
+      # byte-order assumption baked into codegen.
+      - name: Run testcases (s390x linux)
+        if: runner.os == 'Linux'
+        run: python3 run_tests.py --target s390x_linux
       - name: Run testcases (report only)
         run: python3 run_tests.py --report-only
         if: runner.os != 'Linux'
