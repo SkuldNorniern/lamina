@@ -1232,28 +1232,91 @@ fn emit_block<W: Write>(
                 dst,
                 ty,
             } => {
-                let s_l = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let s_r = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                emit_materialize_operand(w, lhs, s_l, frame, ra)?;
-                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
-                    extend_integer(w, s_l, ty, false, pointer_width)?;
-                    extend_integer(w, s_r, ty, false, pointer_width)?;
-                }
-                let dl = x_alias(s_d);
-                let rl = x_alias(s_l);
-                let rr = x_alias(s_r);
                 let (zero, overflow) = op.division_checks(
                     *ty,
                     lhs.integer_constant(),
                     rhs.integer_constant(),
                     pointer_width,
                 );
+                let narrow = matches!(
+                    ty,
+                    MirType::Scalar(ScalarType::I8 | ScalarType::I16 | ScalarType::I32)
+                );
+                let is_shift = matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr);
+                let masks_shift_amount = is_shift && ty.size_bytes(pointer_width) < 8;
+                let rewrites_lhs = narrow
+                    && matches!(
+                        op,
+                        IntBinOp::UDiv
+                            | IntBinOp::URem
+                            | IntBinOp::LShr
+                            | IntBinOp::SDiv
+                            | IntBinOp::SRem
+                            | IntBinOp::AShr
+                    );
+                let rewrites_rhs = (narrow
+                    && matches!(
+                        op,
+                        IntBinOp::UDiv
+                            | IntBinOp::URem
+                            | IntBinOp::LShr
+                            | IntBinOp::SDiv
+                            | IntBinOp::SRem
+                    ))
+                    || masks_shift_amount;
+                let rhs_unused =
+                    is_shift && matches!(rhs, Operand::Immediate(_)) && !zero && !overflow;
+                let dst_written_once =
+                    !zero && !overflow && !matches!(op, IntBinOp::URem | IntBinOp::SRem);
+
+                let mut lhs_scratch = None;
+                let rl = match operand_in_register(lhs, ra) {
+                    Some(preg) if !rewrites_lhs => x_alias(preg),
+                    _ => {
+                        let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        lhs_scratch = Some(s);
+                        x_alias(s)
+                    }
+                };
+                let mut rhs_scratch = None;
+                let rr = if rhs_unused {
+                    "<unused>".to_string()
+                } else {
+                    match operand_in_register(rhs, ra) {
+                        Some(preg) if !rewrites_rhs => x_alias(preg),
+                        _ => {
+                            let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                            rhs_scratch = Some(s);
+                            x_alias(s)
+                        }
+                    }
+                };
+                let mut dst_scratch = None;
+                let dl = match dest_in_register(dst, ra) {
+                    Some(preg) if dst_written_once => x_alias(preg),
+                    _ => {
+                        let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        dst_scratch = Some(s);
+                        x_alias(s)
+                    }
+                };
+
+                if let Some(s) = lhs_scratch {
+                    emit_materialize_operand(w, lhs, s, frame, ra)?;
+                }
+                if let Some(s) = rhs_scratch {
+                    emit_materialize_operand(w, rhs, s, frame, ra)?;
+                }
+                if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
+                    extend_integer(w, &rl, ty, false, pointer_width)?;
+                    if !rhs_unused {
+                        extend_integer(w, &rr, ty, false, pointer_width)?;
+                    }
+                }
                 if matches!(op, IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::AShr) {
-                    extend_integer(w, s_l, ty, true, pointer_width)?;
-                    if !matches!(op, IntBinOp::AShr) {
-                        extend_integer(w, s_r, ty, true, pointer_width)?;
+                    extend_integer(w, &rl, ty, true, pointer_width)?;
+                    if !matches!(op, IntBinOp::AShr) && !rhs_unused {
+                        extend_integer(w, &rr, ty, true, pointer_width)?;
                     }
                 }
                 if zero {
@@ -1269,9 +1332,7 @@ fn emit_block<W: Write>(
                     )?;
                     writeln!(w, "    cmp {rl}, {dl}\n    b.ne 2f\n    udf #0\n2:")?;
                 }
-                if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr)
-                    && ty.size_bytes(pointer_width) < 8
-                {
+                if masks_shift_amount && !rhs_unused {
                     let mask = ty.size_bytes(pointer_width) * 8 - 1;
                     writeln!(w, "    and {rr}, {rr}, #{mask}")?;
                 }
@@ -1339,11 +1400,19 @@ fn emit_block<W: Write>(
                         }
                     },
                 }
-                extend_integer(w, s_d, ty, true, pointer_width)?;
-                store_result(w, dst, &x_alias(s_d), frame, ra)?;
-                ra.free_scratch(s_l);
-                ra.free_scratch(s_r);
-                ra.free_scratch(s_d);
+                extend_integer(w, &dl, ty, true, pointer_width)?;
+                if let Some(s) = dst_scratch {
+                    store_result(w, dst, &x_alias(s), frame, ra)?;
+                }
+                if let Some(s) = lhs_scratch {
+                    ra.free_scratch(s);
+                }
+                if let Some(s) = rhs_scratch {
+                    ra.free_scratch(s);
+                }
+                if let Some(s) = dst_scratch {
+                    ra.free_scratch(s);
+                }
             }
             MirInst::FloatBinary {
                 op,
@@ -1435,25 +1504,65 @@ fn emit_block<W: Write>(
                 dst,
                 ty,
             } => {
-                let s_l = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let s_r = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                emit_materialize_operand(w, lhs, s_l, frame, ra)?;
-                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                if matches!(
+                let unsigned_extend = matches!(
+                    ty,
+                    MirType::Scalar(ScalarType::I8 | ScalarType::I16 | ScalarType::I32)
+                ) && matches!(
                     op,
                     IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
-                ) {
-                    extend_integer(w, s_l, ty, false, pointer_width)?;
-                    extend_integer(w, s_r, ty, false, pointer_width)?;
+                );
+                let mut lhs_scratch = None;
+                let rl = match operand_in_register(lhs, ra) {
+                    Some(preg) if !unsigned_extend => x_alias(preg),
+                    _ => {
+                        let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        lhs_scratch = Some(s);
+                        x_alias(s)
+                    }
+                };
+                let mut rhs_scratch = None;
+                let rr = match operand_in_register(rhs, ra) {
+                    Some(preg) if !unsigned_extend => x_alias(preg),
+                    _ => {
+                        let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        rhs_scratch = Some(s);
+                        x_alias(s)
+                    }
+                };
+                let mut dst_scratch = None;
+                let dl = match dest_in_register(dst, ra) {
+                    Some(preg) => x_alias(preg),
+                    None => {
+                        let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        dst_scratch = Some(s);
+                        x_alias(s)
+                    }
+                };
+                if let Some(s) = lhs_scratch {
+                    emit_materialize_operand(w, lhs, s, frame, ra)?;
                 }
-                writeln!(w, "    cmp {}, {}", x_alias(s_l), x_alias(s_r))?;
+                if let Some(s) = rhs_scratch {
+                    emit_materialize_operand(w, rhs, s, frame, ra)?;
+                }
+                if unsigned_extend {
+                    extend_integer(w, &rl, ty, false, pointer_width)?;
+                    extend_integer(w, &rr, ty, false, pointer_width)?;
+                }
+                writeln!(w, "    cmp {rl}, {rr}")?;
                 let cond = int_condition(*op);
-                writeln!(w, "    cset {}, {}", x_alias(s_d), cond)?;
-                store_result(w, dst, &x_alias(s_d), frame, ra)?;
-                ra.free_scratch(s_l);
-                ra.free_scratch(s_r);
-                ra.free_scratch(s_d);
+                writeln!(w, "    cset {dl}, {cond}")?;
+                if let Some(s) = dst_scratch {
+                    store_result(w, dst, &x_alias(s), frame, ra)?;
+                }
+                if let Some(s) = lhs_scratch {
+                    ra.free_scratch(s);
+                }
+                if let Some(s) = rhs_scratch {
+                    ra.free_scratch(s);
+                }
+                if let Some(s) = dst_scratch {
+                    ra.free_scratch(s);
+                }
             }
             MirInst::FloatCmp {
                 op,
@@ -2221,6 +2330,25 @@ fn emit_materialize_operand<W: Write>(
         Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
     }
     Ok(())
+}
+
+/// The physical register a source operand already occupies, when reading it needs no
+/// load. Only a virtual register with a global mapping qualifies; an immediate, a frame
+/// slot or a physical operand still goes through scratch.
+fn operand_in_register(op: &Operand, ra: &A64RegAlloc) -> Option<&'static str> {
+    match op {
+        Operand::Register(Register::Virtual(v)) => ra.get_mapping_for(v),
+        _ => None,
+    }
+}
+
+/// The physical register a destination already occupies, so a lowering can write it in
+/// place instead of computing into scratch and copying back.
+fn dest_in_register(dst: &Register, ra: &A64RegAlloc) -> Option<&'static str> {
+    match dst {
+        Register::Virtual(v) => ra.get_mapping_for(v),
+        _ => None,
+    }
 }
 
 /// Load a register value into a destination register.
