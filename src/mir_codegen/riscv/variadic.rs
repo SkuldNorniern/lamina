@@ -31,6 +31,13 @@ fn named_banks(places: &[RiscVArgPlace], first_gpr: usize) -> usize {
             RiscVArgPlace::Gpr(bank) => bank + 1,
             RiscVArgPlace::Words { first, words } => first + words,
             RiscVArgPlace::Split { reg, .. } => reg + 1,
+            RiscVArgPlace::Flat { first, second } => [Some(first), second]
+                .into_iter()
+                .flatten()
+                .filter(|slot| slot.field.float.is_none())
+                .map(|slot| slot.bank + 1)
+                .max()
+                .unwrap_or(0),
             RiscVArgPlace::Fpr(_) | RiscVArgPlace::Stack(_) | RiscVArgPlace::StackWords { .. } => 0,
         })
         .fold(first_gpr, usize::max)
@@ -45,7 +52,10 @@ fn named_stack_words(places: &[RiscVArgPlace]) -> usize {
             RiscVArgPlace::Stack(slot) => slot + 1,
             RiscVArgPlace::StackWords { slot, words } => slot + words,
             RiscVArgPlace::Split { slot, .. } => slot + 1,
-            RiscVArgPlace::Gpr(_) | RiscVArgPlace::Fpr(_) | RiscVArgPlace::Words { .. } => 0,
+            RiscVArgPlace::Gpr(_)
+            | RiscVArgPlace::Fpr(_)
+            | RiscVArgPlace::Words { .. }
+            | RiscVArgPlace::Flat { .. } => 0,
         })
         .max()
         .unwrap_or(0)

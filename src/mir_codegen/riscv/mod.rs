@@ -31,9 +31,9 @@ use util::{
 use crate::{
     error::LaminaError,
     mir::{
-        Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
-        VirtualReg,
+        Aggregate, FlatField, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
+        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
+        Register, ScalarType, Signature, VirtualReg,
         instruction::{AddressMode, Immediate},
         register::RegisterClass,
     },
@@ -598,9 +598,136 @@ enum RiscVArgPlace {
     Gpr(usize),
     Fpr(usize),
     Stack(usize),
-    Words { first: usize, words: usize },
-    StackWords { slot: usize, words: usize },
-    Split { reg: usize, slot: usize },
+    Words {
+        first: usize,
+        words: usize,
+    },
+    StackWords {
+        slot: usize,
+        words: usize,
+    },
+    Split {
+        reg: usize,
+        slot: usize,
+    },
+    /// A struct the hard-float convention flattened: each member in a register of its
+    /// own class, read from and written to its offset within the aggregate.
+    Flat {
+        first: FlatSlot,
+        second: Option<FlatSlot>,
+    },
+}
+
+/// One flattened member and the register it travels in.
+#[derive(Clone, Copy)]
+struct FlatSlot {
+    field: FlatField,
+    bank: usize,
+}
+
+impl FlatSlot {
+    fn register(&self) -> String {
+        match self.field.float {
+            Some(_) => format!("fa{}", self.bank),
+            None => RiscVAbi::ARG_REGISTERS[self.bank].to_string(),
+        }
+    }
+}
+
+/// Assigns each flattened member a register, floats from the floating-point bank and
+/// integers from the integer bank, when every one of them is still free.
+fn flat_slots(
+    aggregate: Aggregate,
+    gprs: usize,
+    fprs: usize,
+    banks: usize,
+) -> Option<(FlatSlot, Option<FlatSlot>, usize, usize)> {
+    let (first, second) = aggregate.class.flattened()?;
+    let (mut gpr, mut fpr) = (gprs, fprs);
+    let mut take = |field: FlatField| -> Option<FlatSlot> {
+        let bank = match field.float {
+            Some(_) => {
+                let bank = fpr;
+                fpr += 1;
+                bank
+            }
+            None => {
+                let bank = gpr;
+                gpr += 1;
+                bank
+            }
+        };
+        (bank < banks).then_some(FlatSlot { field, bank })
+    };
+    let first = take(first)?;
+    let second = match second {
+        Some(field) => Some(take(field)?),
+        None => None,
+    };
+    Some((first, second, gpr, fpr))
+}
+
+/// The registers a flattened aggregate comes back in: every bank is free at a return,
+/// so the members take `fa0`, `fa1`, `a0` and `a1` in the order they appear.
+fn flat_result(aggregate: Aggregate) -> Option<(FlatSlot, Option<FlatSlot>)> {
+    let banks = RiscVAbi::ARG_REGISTERS.len();
+    flat_slots(aggregate, 0, 0, banks).map(|(first, second, _, _)| (first, second))
+}
+
+/// Loads each flattened member out of the aggregate at `address` into its register.
+fn load_flat_members<W: Write>(
+    writer: &mut W,
+    address: &str,
+    first: FlatSlot,
+    second: Option<FlatSlot>,
+) -> io::Result<()> {
+    for slot in [Some(first), second].into_iter().flatten() {
+        let load = flat_load(slot.field);
+        writeln!(
+            writer,
+            "    {load} {}, {}({address})",
+            slot.register(),
+            slot.field.offset
+        )?;
+    }
+    Ok(())
+}
+
+/// Stores each flattened member from its register into the frame slot at `offset`.
+fn store_flat_members<W: Write>(
+    writer: &mut W,
+    offset: i32,
+    first: FlatSlot,
+    second: Option<FlatSlot>,
+) -> io::Result<()> {
+    for slot in [Some(first), second].into_iter().flatten() {
+        let store = flat_store(slot.field);
+        let at = offset + slot.field.offset as i32;
+        RiscVFrame::fp_store(writer, store, &slot.register(), at, "t0")?;
+    }
+    Ok(())
+}
+
+fn flat_load(field: FlatField) -> &'static str {
+    match (field.float, field.bytes) {
+        (Some(_), 4) => "flw",
+        (Some(_), _) => "fld",
+        (None, 1) => "lb",
+        (None, 2) => "lh",
+        (None, 4) => "lw",
+        (None, _) => "ld",
+    }
+}
+
+fn flat_store(field: FlatField) -> &'static str {
+    match (field.float, field.bytes) {
+        (Some(_), 4) => "fsw",
+        (Some(_), _) => "fsd",
+        (None, 1) => "sb",
+        (None, 2) => "sh",
+        (None, 4) => "sw",
+        (None, _) => "sd",
+    }
 }
 
 /// Puts each argument where the call expects it and reserves the outgoing stack area,
@@ -633,7 +760,10 @@ fn pass_riscv_arguments<W: Write>(
             RiscVArgPlace::Stack(_) => 1,
             RiscVArgPlace::StackWords { words, .. } => words,
             RiscVArgPlace::Split { .. } => 1,
-            RiscVArgPlace::Gpr(_) | RiscVArgPlace::Fpr(_) | RiscVArgPlace::Words { .. } => 0,
+            RiscVArgPlace::Gpr(_)
+            | RiscVArgPlace::Fpr(_)
+            | RiscVArgPlace::Words { .. }
+            | RiscVArgPlace::Flat { .. } => 0,
         })
         .sum();
     let mut copies = vec![None; kinds.len()];
@@ -721,6 +851,10 @@ fn pass_riscv_arguments<W: Write>(
                     target.load_word(),
                     arg_regs[reg]
                 )?;
+            }
+            RiscVArgPlace::Flat { first, second } => {
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+                load_flat_members(writer, "t0", first, second)?;
             }
             RiscVArgPlace::Stack(_) | RiscVArgPlace::StackWords { .. } => {}
         }
@@ -874,6 +1008,9 @@ fn store_incoming_arguments<W: Write>(
                     RiscVFrame::fp_store(writer, target.store_word(), "t0", at, "t0")?;
                 }
             }
+            RiscVArgPlace::Flat { first, second } => {
+                store_flat_members(writer, slot, first, second)?;
+            }
             RiscVArgPlace::Split { reg, slot: caller } => {
                 RiscVFrame::fp_store(writer, target.store_word(), arg_regs[reg], slot, "t0")?;
                 let from = incoming_stack_base + caller as i32 * word;
@@ -942,6 +1079,15 @@ fn classify_riscv_arguments(
             stack = stack.next_multiple_of(2);
         }
         match kind.aggregate {
+            Some(aggregate)
+                if !kind.by_reference(pointer)
+                    && let Some((first, second, next_gpr, next_fpr)) =
+                        flat_slots(aggregate, gprs, fprs, banks) =>
+            {
+                places.push(RiscVArgPlace::Flat { first, second });
+                gprs = next_gpr;
+                fprs = next_fpr;
+            }
             Some(aggregate) if !kind.by_reference(pointer) => {
                 let words = aggregate.words_of(pointer);
                 if gprs + words <= banks {
@@ -1648,10 +1794,29 @@ fn emit_instruction_riscv<W: Write>(
                                 "RISC-V aggregate result has no frame slot".to_string(),
                             ))
                         })?;
-                        RiscVFrame::fp_store(writer, ctx.target.store_word(), "a0", slot, "t0")?;
-                        if aggregate.words_of(target_pointer(ctx.target)) > 1 {
-                            let at = slot + ctx.target.word_bytes();
-                            RiscVFrame::fp_store(writer, ctx.target.store_word(), "a1", at, "t0")?;
+                        match flat_result(aggregate) {
+                            Some((first, second)) => {
+                                store_flat_members(writer, slot, first, second)?
+                            }
+                            None => {
+                                RiscVFrame::fp_store(
+                                    writer,
+                                    ctx.target.store_word(),
+                                    "a0",
+                                    slot,
+                                    "t0",
+                                )?;
+                                if aggregate.words_of(target_pointer(ctx.target)) > 1 {
+                                    let at = slot + ctx.target.word_bytes();
+                                    RiscVFrame::fp_store(
+                                        writer,
+                                        ctx.target.store_word(),
+                                        "a1",
+                                        at,
+                                        "t0",
+                                    )?;
+                                }
+                            }
                         }
                     }
                     None => match ctx.signatures.float_result(name) {
@@ -1945,10 +2110,21 @@ fn emit_instruction_riscv<W: Write>(
                     }
                     (Some(aggregate), None) => {
                         load_operand_to_register(val, writer, reg_alloc, stack_slots, "t0")?;
-                        writeln!(writer, "    {} a0, 0(t0)", ctx.target.load_word())?;
-                        if aggregate.words_of(target_pointer(ctx.target)) > 1 {
-                            let at = ctx.target.word_bytes();
-                            writeln!(writer, "    {} a1, {at}(t0)", ctx.target.load_word())?;
+                        match flat_result(aggregate) {
+                            Some((first, second)) => {
+                                load_flat_members(writer, "t0", first, second)?
+                            }
+                            None => {
+                                writeln!(writer, "    {} a0, 0(t0)", ctx.target.load_word())?;
+                                if aggregate.words_of(target_pointer(ctx.target)) > 1 {
+                                    let at = ctx.target.word_bytes();
+                                    writeln!(
+                                        writer,
+                                        "    {} a1, {at}(t0)",
+                                        ctx.target.load_word()
+                                    )?;
+                                }
+                            }
                         }
                     }
                     (None, _) => match ctx.ret_float {
