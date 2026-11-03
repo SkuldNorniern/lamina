@@ -265,9 +265,9 @@ fn @test_struct_array_operations() -> i64 {
     %points = stackalloc.[3 x struct { x: i32, y: i32 }]
 
     # Initialize each point
-    %point0 = getelem.ptr %points, 0
-    %point1 = getelem.ptr %points, 1
-    %point2 = getelem.ptr %points, 2
+    %point0 = getelem.struct { x: i32, y: i32 } %points, 0
+    %point1 = getelem.struct { x: i32, y: i32 } %points, 1
+    %point2 = getelem.struct { x: i32, y: i32 } %points, 2
 
     # Set point 0: (1, 1)
     %p0_x_ptr = getfieldptr.struct { x: i32, y: i32 } %point0, 0
