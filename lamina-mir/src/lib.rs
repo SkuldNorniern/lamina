@@ -52,7 +52,7 @@ pub use simd::{
     vector_alignment, vector_size_bytes,
 };
 pub use types::{
-    AddressSpace, Aggregate, AggregateClass, AggregateShape, MirType, ScalarType, Signedness,
-    VectorLane, VectorType,
+    AddressSpace, Aggregate, AggregateClass, AggregateShape, EightbyteClass, MirType, ScalarType,
+    Signedness, VectorLane, VectorType,
 };
 pub use verify::{verify_function, verify_function_in_pipeline, verify_module_in_pipeline};

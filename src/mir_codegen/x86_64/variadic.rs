@@ -50,18 +50,8 @@ impl VaArea {
     /// `save` is the offset of the save area's first byte. `locations` classifies the
     /// named parameters, which the `va_list` starts past.
     pub(super) fn sysv(save: i32, locations: &[ArgLocation]) -> Self {
-        let gp_words: usize = locations
-            .iter()
-            .map(|location| match location {
-                ArgLocation::Gpr(_) => 1,
-                ArgLocation::GprWords { words, .. } => *words,
-                _ => 0,
-            })
-            .sum();
-        let vector_params = locations
-            .iter()
-            .filter(|location| matches!(location, ArgLocation::Xmm(_)))
-            .count();
+        let gp_words: usize = locations.iter().map(ArgLocation::gpr_words).sum();
+        let vector_params: usize = locations.iter().map(ArgLocation::xmm_words).sum();
         let stack_words = stack_argument_count(locations);
         Self::SysV {
             save,

@@ -41,8 +41,8 @@ use util::*;
 use crate::{
     error::LaminaError,
     mir::{
-        AddressMode, Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
-        Instruction as MirInst, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MirType,
+        AddressMode, Aggregate, AggregateClass, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
+        Global, Instruction as MirInst, IntBinOp, IntCmpOp, IntRotOp, IntUnOp, MirType,
         Module as MirModule, Operand, Parameter, Register, ScalarType, Signature, Signedness,
         VirtualReg, instruction::Immediate, register::RegisterClass,
     },
@@ -186,6 +186,38 @@ pub fn generate_mir_x86_64_with_units<W: Write>(
     )
 }
 
+fn reject_non_sysv_float_aggregates(
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+) -> Result<(), LaminaError> {
+    if target_os != TargetOperatingSystem::Windows {
+        return Ok(());
+    }
+    let mut names: Vec<&String> = module
+        .functions
+        .iter()
+        .filter(|(_, func)| {
+            func.sig
+                .ret_aggregate
+                .is_some_and(|aggregate| aggregate.class != AggregateClass::Integer)
+                || func.sig.params.iter().any(|p| {
+                    p.aggregate
+                        .is_some_and(|aggregate| aggregate.class != AggregateClass::Integer)
+                })
+        })
+        .map(|(name, _)| name)
+        .collect();
+    names.sort();
+    match names.first() {
+        Some(name) => Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "x86_64 Windows does not yet pass an aggregate with a float field, as @{name} does"
+            ),
+        ))),
+        None => Ok(()),
+    }
+}
+
 pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     module: &MirModule,
     writer: &mut W,
@@ -195,6 +227,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::X86_64)?;
     reject_x86_64_thread_local_globals(module, target_os)?;
+    reject_non_sysv_float_aggregates(module, target_os)?;
     let abi = X86ABI::new(target_os);
 
     // Emit external function declarations first

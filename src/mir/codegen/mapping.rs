@@ -5,12 +5,15 @@
 //! that only supported types are converted.
 
 use crate::{
-    ir::types::{PrimitiveType as IRPrim, Type as IRType, align_of_type, sizeof_type},
+    ir::types::{
+        PrimitiveType as IRPrim, Type as IRType, align_of_type, sizeof_type,
+        struct_field_byte_offset,
+    },
     mir::{
         codegen::error::FromIRError,
         types::{
-            Aggregate, AggregateClass, AggregateShape, MirType, ScalarType, Signedness, VectorLane,
-            VectorType,
+            Aggregate, AggregateClass, AggregateShape, EightbyteClass, MirType, ScalarType,
+            Signedness, VectorLane, VectorType,
         },
     },
 };
@@ -141,7 +144,8 @@ pub fn classify_aggregate(
     if !is_aggregate(ty) {
         return Ok(None);
     }
-    if !integer_fields_only(ty) && !layout.float_aggregates {
+    let integer_only = integer_fields_only(ty);
+    if !integer_only && !layout.float_aggregates {
         return Err(FromIRError::UnsupportedAggregate(format!(
             "{what} has a float field, which this target's backend does not place yet"
         )));
@@ -152,10 +156,117 @@ pub fn classify_aggregate(
             "{what} is empty; an aggregate crossing a boundary holds at least one byte"
         )));
     }
+    let class = if integer_only {
+        AggregateClass::Integer
+    } else {
+        sysv_eightbyte_class(ty, size, what, layout)?
+    };
     Ok(Some(Aggregate {
         size: size as usize,
         align: align_of_type(ty, layout) as usize,
-        class: AggregateClass::Integer,
+        class,
         shape: AggregateShape::Composite,
     }))
+}
+
+struct Leaf {
+    offset: u64,
+    size: u64,
+    float: bool,
+    unaligned: bool,
+}
+
+fn sysv_eightbyte_class(
+    ty: &IRType<'_>,
+    size: u64,
+    what: &str,
+    layout: TargetDataLayout,
+) -> Result<AggregateClass, FromIRError> {
+    if size > MAX_REGISTER_AGGREGATE {
+        return Ok(AggregateClass::Memory);
+    }
+    let mut leaves = Vec::new();
+    collect_leaves(ty, 0, what, layout, &mut leaves)?;
+    if leaves.iter().any(|leaf| leaf.unaligned) {
+        return Ok(AggregateClass::Memory);
+    }
+    let mut seen: [Option<EightbyteClass>; 2] = [None; 2];
+    for leaf in &leaves {
+        let class = if leaf.float {
+            EightbyteClass::Sse
+        } else {
+            EightbyteClass::Integer
+        };
+        let first = (leaf.offset / 8) as usize;
+        let last = ((leaf.offset + leaf.size - 1) / 8) as usize;
+        for word in first..=last {
+            let entry = seen.get_mut(word).ok_or_else(|| {
+                FromIRError::UnsupportedAggregate(format!("{what} is over sixteen bytes"))
+            })?;
+            *entry = Some(match (*entry, class) {
+                (Some(EightbyteClass::Integer), _) | (_, EightbyteClass::Integer) => {
+                    EightbyteClass::Integer
+                }
+                _ => EightbyteClass::Sse,
+            });
+        }
+    }
+    let words = size.div_ceil(8) as usize;
+    let mut classes = [EightbyteClass::Integer; 2];
+    for (word, class) in classes.iter_mut().enumerate().take(words) {
+        *class = seen[word].ok_or_else(|| {
+            FromIRError::UnsupportedAggregate(format!(
+                "{what} has an eight-byte word that holds no field"
+            ))
+        })?;
+    }
+    Ok(AggregateClass::Eightbytes(classes))
+}
+
+fn collect_leaves(
+    ty: &IRType<'_>,
+    offset: u64,
+    what: &str,
+    layout: TargetDataLayout,
+    leaves: &mut Vec<Leaf>,
+) -> Result<(), FromIRError> {
+    match ty {
+        IRType::Primitive(p) => {
+            let size = sizeof_type(ty, layout).ok_or(FromIRError::UnsupportedType)?;
+            let align = align_of_type(ty, layout);
+            leaves.push(Leaf {
+                offset,
+                size,
+                float: matches!(p, IRPrim::F32 | IRPrim::F64),
+                unaligned: !offset.is_multiple_of(align),
+            });
+            Ok(())
+        }
+        IRType::Array { element_type, size } => {
+            let element_size =
+                sizeof_type(element_type, layout).ok_or(FromIRError::UnsupportedType)?;
+            for index in 0..*size {
+                collect_leaves(
+                    element_type,
+                    offset + index * element_size,
+                    what,
+                    layout,
+                    leaves,
+                )?;
+            }
+            Ok(())
+        }
+        IRType::Struct { fields, packed } => {
+            for (index, field) in fields.iter().enumerate() {
+                let at = struct_field_byte_offset(fields, *packed, index, layout)
+                    .ok_or(FromIRError::UnsupportedType)?;
+                collect_leaves(&field.ty, offset + at, what, layout, leaves)?;
+            }
+            Ok(())
+        }
+        IRType::Vector { .. } => Err(FromIRError::UnsupportedAggregate(format!(
+            "{what} has a vector field, which no aggregate classification covers"
+        ))),
+        _ => Err(FromIRError::UnsupportedType),
+    }
 }

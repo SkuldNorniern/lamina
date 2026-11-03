@@ -335,7 +335,7 @@ arch_table! {
         va_list: VaListAbi::of(24, 8),
         stack_alignment_at_call: 16,
         honors_argument_alignment: true,
-        float_aggregates: false,
+        float_aggregates: true,
         output_artifact: Executable,
         hosted_environment: Gnu,
         environments: [Gnu, Musl, Lamina],

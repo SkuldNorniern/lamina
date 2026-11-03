@@ -1,7 +1,7 @@
 #![allow(clippy::expect_used)]
 
 use super::*;
-use crate::mir::{MemoryOrdering, VectorLane, VectorType};
+use crate::mir::{AggregateClass, EightbyteClass, MemoryOrdering, VectorLane, VectorType};
 use lamina_ir::MemoryOrdering as IRMemOrd;
 
 fn lowered_global_module(source: &str) -> Result<Module, FromIRError> {
@@ -348,11 +348,13 @@ fn aggregate_of_any_size_carries_its_layout() {
 }
 
 #[test]
-fn float_and_oversized_aggregates_are_rejected_by_name() {
+fn float_aggregates_are_refused_by_name_where_the_backend_does_not_place_them() {
+    use lamina_platform::TargetArchitecture;
+    let layout = TargetArchitecture::Aarch64.data_layout();
     let float =
         parse_module("fn @take(struct { a: f64, b: f64 } %p) -> i64 {\nentry:\nret.i64 0\n}")
             .expect("parse float aggregate");
-    let error = from_ir_x86_64(&float, "take").expect_err("float aggregate rejected");
+    let error = from_ir_for_target(&float, "take", layout).expect_err("float aggregate rejected");
     assert!(
         error.to_string().contains("%p of @take has a float field"),
         "{error}"
@@ -362,12 +364,41 @@ fn float_and_oversized_aggregates_are_rejected_by_name() {
         "fn @make() -> struct { a: f64, b: f64 } {\nentry:\n%p = stackalloc.struct { a: f64, b: f64 }\nret.struct { a: f64, b: f64 } %p\n}",
     )
     .expect("parse float aggregate return");
-    let error = from_ir_x86_64(&returned, "make").expect_err("float aggregate return rejected");
+    let error =
+        from_ir_for_target(&returned, "make", layout).expect_err("float aggregate return rejected");
     assert!(
         error
             .to_string()
             .contains("return of @make has a float field"),
         "{error}"
+    );
+}
+
+#[test]
+fn float_aggregates_carry_their_system_v_classes() {
+    let ir = parse_module(
+        "type !F = struct { a: f32, b: f32 }\ntype !M = struct { a: f64, b: i64 }\ntype !T = struct { a: f64, b: f64, c: f64 }\nfn @take(!F %p, !M %m, !T %t) -> !T {\nentry:\n%r = stackalloc.!T\nret.!T %r\n}",
+    )
+    .expect("parse float aggregates");
+    let module = from_ir_x86_64(&ir, "take").expect("lower float aggregates");
+    let function = &module.functions["take"];
+    let classes: Vec<_> = function
+        .sig
+        .params
+        .iter()
+        .map(|p| p.aggregate.expect("aggregate marker").class)
+        .collect();
+    assert_eq!(
+        classes,
+        vec![
+            AggregateClass::Eightbytes([EightbyteClass::Sse, EightbyteClass::Integer]),
+            AggregateClass::Eightbytes([EightbyteClass::Sse, EightbyteClass::Integer]),
+            AggregateClass::Memory,
+        ]
+    );
+    assert_eq!(
+        function.sig.ret_aggregate.expect("return aggregate").class,
+        AggregateClass::Memory
     );
 }
 

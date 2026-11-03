@@ -43,11 +43,18 @@ pub enum Signedness {
     Unsigned,
 }
 
-/// Field makeup of an aggregate crossing a function boundary. Backends classify from
-/// this; lowering only produces `Integer` today and rejects the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EightbyteClass {
+    Integer,
+    Sse,
+}
+
+/// Field makeup of an aggregate crossing a function boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AggregateClass {
     Integer,
+    Eightbytes([EightbyteClass; 2]),
+    Memory,
 }
 
 /// What a value of aggregate shape actually is. A [`AggregateShape::Composite`] is a
@@ -90,6 +97,13 @@ impl Aggregate {
     /// Eight-byte words the aggregate occupies in registers or on the stack.
     pub fn words(&self) -> usize {
         self.size.div_ceil(8)
+    }
+
+    pub fn eightbyte_class(&self, word: usize) -> EightbyteClass {
+        match self.class {
+            AggregateClass::Eightbytes(classes) => classes[word],
+            AggregateClass::Integer | AggregateClass::Memory => EightbyteClass::Integer,
+        }
     }
 
     /// Register-sized words the aggregate occupies on a target of this pointer width.

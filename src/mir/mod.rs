@@ -7,13 +7,14 @@
 
 pub use lamina_mir::{
     AddressMode, AddressSpace, Aggregate, AggregateClass, AggregateShape, AsmOperand, AtomicBinOp,
-    Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function, FunctionBuilder, Global,
-    GlobalRelocation, Immediate, Instruction, IntBinOp, IntCmpOp, IntOverflowOp, IntRotOp, IntUnOp,
-    KernelMetadata, Located, MemoryAttrs, MemoryOrdering, MirType, Module, ModuleBuilder, Operand,
-    Parameter, PhysicalReg, Register, RegisterClass, RelocationModel, ScalarType, Signature,
-    Signedness, SourceLoc, SymbolVisibility, TlsModel, VectorLane, VectorOp, VectorType,
-    VirtualReg, VirtualRegAllocator, index_scale_shift, io_intrinsic_result_type, verify_function,
-    verify_function_in_pipeline, verify_module_in_pipeline,
+    Block, CodePlacement, EightbyteClass, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
+    FunctionBuilder, Global, GlobalRelocation, Immediate, Instruction, IntBinOp, IntCmpOp,
+    IntOverflowOp, IntRotOp, IntUnOp, KernelMetadata, Located, MemoryAttrs, MemoryOrdering,
+    MirType, Module, ModuleBuilder, Operand, Parameter, PhysicalReg, Register, RegisterClass,
+    RelocationModel, ScalarType, Signature, Signedness, SourceLoc, SymbolVisibility, TlsModel,
+    VectorLane, VectorOp, VectorType, VirtualReg, VirtualRegAllocator, index_scale_shift,
+    io_intrinsic_result_type, verify_function, verify_function_in_pipeline,
+    verify_module_in_pipeline,
 };
 pub use lamina_mir::{
     asm, block, function, gpu, instruction, loc, module, parallel, register, simd, ssa, types,

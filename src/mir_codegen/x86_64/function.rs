@@ -8,6 +8,7 @@ use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::io_codegen_error;
 use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::{ClobberIndex, FunctionEmissionPlan};
+use lamina_mir::EightbyteClass;
 use lamina_platform::TargetArchitecture;
 
 pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
@@ -343,7 +344,9 @@ pub(super) fn compile_single_function_x86_64(
                     && let Some(slot_off) = stack_slots.get(vreg)
                 {
                     match locations[index] {
-                        ArgLocation::GprWords { .. } | ArgLocation::StackWords { .. } => {}
+                        ArgLocation::GprWords { .. }
+                        | ArgLocation::StackWords { .. }
+                        | ArgLocation::EightbyteWords { .. } => {}
                         ArgLocation::Gpr(gpr) => {
                             let phys_arg = arg_regs[gpr];
                             let destination = reg_alloc
@@ -395,7 +398,9 @@ pub(super) fn compile_single_function_x86_64(
                         return None;
                     }
                     let source = match locations[index] {
-                        ArgLocation::GprWords { .. } | ArgLocation::StackWords { .. } => {
+                        ArgLocation::GprWords { .. }
+                        | ArgLocation::StackWords { .. }
+                        | ArgLocation::EightbyteWords { .. } => {
                             return None;
                         }
                         ArgLocation::Gpr(gpr) => format!("%{}", arg_regs[gpr]),
@@ -693,6 +698,41 @@ pub(super) enum ArgLocation {
         first: usize,
         words: usize,
     },
+    EightbyteWords {
+        places: [WordPlace; 2],
+        words: usize,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum WordPlace {
+    Gpr(usize),
+    Xmm(usize),
+}
+
+impl ArgLocation {
+    pub(super) fn gpr_words(&self) -> usize {
+        match self {
+            Self::Gpr(_) => 1,
+            Self::GprWords { words, .. } => *words,
+            Self::EightbyteWords { places, words } => places[..*words]
+                .iter()
+                .filter(|place| matches!(place, WordPlace::Gpr(_)))
+                .count(),
+            _ => 0,
+        }
+    }
+
+    pub(super) fn xmm_words(&self) -> usize {
+        match self {
+            Self::Xmm(_) => 1,
+            Self::EightbyteWords { places, words } => places[..*words]
+                .iter()
+                .filter(|place| matches!(place, WordPlace::Xmm(_)))
+                .count(),
+            _ => 0,
+        }
+    }
 }
 
 /// One argument as the convention sees it: its scalar type, or the aggregate it is a
@@ -727,8 +767,48 @@ pub(super) fn returns_through_pointer(
     if target_os == TargetOperatingSystem::Windows {
         !windows_aggregate_fits(aggregate)
     } else {
-        aggregate.size as u64 > MAX_REGISTER_AGGREGATE
+        aggregate.size as u64 > MAX_REGISTER_AGGREGATE || aggregate.class == AggregateClass::Memory
     }
+}
+
+fn take_sysv_registers(
+    aggregate: Aggregate,
+    gprs: &mut usize,
+    sses: &mut usize,
+    gpr_count: usize,
+) -> Option<ArgLocation> {
+    if aggregate.class == AggregateClass::Memory || aggregate.size as u64 > MAX_REGISTER_AGGREGATE {
+        return None;
+    }
+    let words = aggregate.words();
+    let sse_words = (0..words)
+        .filter(|word| aggregate.eightbyte_class(*word) == EightbyteClass::Sse)
+        .count();
+    let gpr_words = words - sse_words;
+    if *gprs + gpr_words > gpr_count || *sses + sse_words > SSE_ARGUMENT_COUNT {
+        return None;
+    }
+    if aggregate.class == AggregateClass::Integer {
+        *gprs += words;
+        return Some(ArgLocation::GprWords {
+            first: *gprs - words,
+            words,
+        });
+    }
+    let mut places = [WordPlace::Gpr(0); 2];
+    for (word, place) in places.iter_mut().enumerate().take(words) {
+        *place = match aggregate.eightbyte_class(word) {
+            EightbyteClass::Integer => {
+                *gprs += 1;
+                WordPlace::Gpr(*gprs - 1)
+            }
+            EightbyteClass::Sse => {
+                *sses += 1;
+                WordPlace::Xmm(*sses - 1)
+            }
+        };
+    }
+    Some(ArgLocation::EightbyteWords { places, words })
 }
 
 /// Whether an aggregate argument travels as a pointer to a copy the caller owns.
@@ -781,12 +861,10 @@ pub(super) fn classify_argument_descs_with_sret(
                     stack += 1;
                     ArgLocation::Stack(stack - 1)
                 }
-            } else if words * 8 <= MAX_REGISTER_AGGREGATE as usize && gprs + words <= gpr_count {
-                gprs += words;
-                ArgLocation::GprWords {
-                    first: gprs - words,
-                    words,
-                }
+            } else if let Some(location) =
+                take_sysv_registers(aggregate, &mut gprs, &mut sses, gpr_count)
+            {
+                location
             } else {
                 // An over-aligned aggregate starts on a stack slot of its own alignment,
                 // so the slots before it are left as padding.
@@ -880,6 +958,22 @@ fn home_aggregate_parameters<W: Write>(
             output.rax_value = None;
             continue;
         }
+        if let ArgLocation::EightbyteWords { places, words } = locations[index] {
+            for (word, place) in places[..words].iter().enumerate() {
+                let at = (word as i32) * 8;
+                match place {
+                    WordPlace::Gpr(gpr) => {
+                        writeln!(output, "    movq %{}, {}(%rbp)", arg_regs[*gpr], base + at)
+                            .map_err(io_error)?;
+                    }
+                    WordPlace::Xmm(xmm) => {
+                        writeln!(output, "    movq %xmm{xmm}, {}(%rbp)", base + at)
+                            .map_err(io_error)?;
+                    }
+                }
+            }
+            continue;
+        }
         let sources: Vec<(usize, Option<i32>, &str)> = match locations[index] {
             ArgLocation::Gpr(gpr) => vec![(0, None, arg_regs[gpr])],
             ArgLocation::GprWords { first, words } => (0..words)
@@ -891,7 +985,7 @@ fn home_aggregate_parameters<W: Write>(
             ArgLocation::StackWords { first, words } => (0..words)
                 .map(|word| (word, Some(16 + home + ((first + word) as i32) * 8), "rax"))
                 .collect(),
-            ArgLocation::Xmm(_) => Vec::new(),
+            ArgLocation::Xmm(_) | ArgLocation::EightbyteWords { .. } => Vec::new(),
         };
         for (word, caller, source) in sources {
             if let Some(caller) = caller {

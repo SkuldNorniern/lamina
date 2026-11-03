@@ -2,7 +2,7 @@ use super::variadic::VaArea;
 use super::*;
 use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::{align_up, unsupported_io};
-use lamina_mir::{IntOverflowOp, SourceLoc, TlsModel};
+use lamina_mir::{EightbyteClass, IntOverflowOp, SourceLoc, TlsModel};
 use lamina_platform::PointerWidth;
 
 /// Frame slots are laid out as the stack slots, then the callee-saved registers, then
@@ -53,6 +53,32 @@ fn duplicate_win64_float_arguments(
         }
     }
     Ok(())
+}
+
+fn copy_exact_bytes(
+    writer: &mut impl Write,
+    size: usize,
+    src: &str,
+    dst: &str,
+) -> Result<(), LaminaError> {
+    let mut at = 0;
+    while at < size {
+        let (mov, register, width) = match size - at {
+            8.. => ("movq", "%rdx", 8),
+            4..=7 => ("movl", "%edx", 4),
+            2..=3 => ("movw", "%dx", 2),
+            _ => ("movb", "%dl", 1),
+        };
+        writeln!(writer, "    {mov} {at}(%{src}), {register}")?;
+        writeln!(writer, "    {mov} {register}, {at}(%{dst})")?;
+        at += width;
+    }
+    Ok(())
+}
+
+enum StagedWord<'a> {
+    Gpr(&'a str),
+    Xmm(usize),
 }
 
 fn load_register_arguments<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
@@ -1523,7 +1549,8 @@ pub(super) fn emit_instruction_x86_64(
                         }
                         ArgLocation::Gpr(_)
                         | ArgLocation::Xmm(_)
-                        | ArgLocation::GprWords { .. } => {}
+                        | ArgLocation::GprWords { .. }
+                        | ArgLocation::EightbyteWords { .. } => {}
                     }
                 }
                 let num_stack_args = stack_args.len();
@@ -1644,9 +1671,26 @@ pub(super) fn emit_instruction_x86_64(
 
                 // Aggregate words are staged on the stack so that loading the scalar
                 // arguments cannot clobber an argument register already filled.
-                let mut staged: Vec<&str> = Vec::new();
+                let mut staged: Vec<StagedWord> = Vec::new();
                 for (index, location) in locations.iter().enumerate() {
                     if copy_offsets[index].is_some() {
+                        continue;
+                    }
+                    if let ArgLocation::EightbyteWords { places, words } = location {
+                        for (word, place) in places[..*words].iter().enumerate() {
+                            load_aggregate_word(
+                                &args[index],
+                                word,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                            )?;
+                            writeln!(writer, "    pushq %rax")?;
+                            staged.push(match place {
+                                WordPlace::Gpr(gpr) => StagedWord::Gpr(arg_regs[*gpr]),
+                                WordPlace::Xmm(xmm) => StagedWord::Xmm(*xmm),
+                            });
+                        }
                         continue;
                     }
                     let (first, words) = match location {
@@ -1657,7 +1701,7 @@ pub(super) fn emit_instruction_x86_64(
                     for word in 0..words {
                         load_aggregate_word(&args[index], word, writer, reg_alloc, stack_slots)?;
                         writeln!(writer, "    pushq %rax")?;
-                        staged.push(arg_regs[first + word]);
+                        staged.push(StagedWord::Gpr(arg_regs[first + word]));
                     }
                 }
 
@@ -1671,8 +1715,14 @@ pub(super) fn emit_instruction_x86_64(
                     stack_slots,
                 )?;
 
-                for register in staged.iter().rev() {
-                    writeln!(writer, "    popq %{register}")?;
+                for word in staged.iter().rev() {
+                    match word {
+                        StagedWord::Gpr(register) => writeln!(writer, "    popq %{register}")?,
+                        StagedWord::Xmm(xmm) => {
+                            writeln!(writer, "    popq %r11")?;
+                            writeln!(writer, "    movq %r11, %xmm{xmm}")?;
+                        }
+                    }
                 }
                 for (index, location) in locations.iter().enumerate() {
                     if let ArgLocation::Gpr(gpr) = location
@@ -1702,10 +1752,7 @@ pub(super) fn emit_instruction_x86_64(
                 if target_os != TargetOperatingSystem::Windows
                     && abi_extensions.may_be_variadic(name, args.len())
                 {
-                    let xmm_count = locations
-                        .iter()
-                        .filter(|location| matches!(location, ArgLocation::Xmm(_)))
-                        .count();
+                    let xmm_count: usize = locations.iter().map(ArgLocation::xmm_words).sum();
                     writeln!(writer, "    movl ${xmm_count}, %eax")?;
                 }
                 let mangled_name = abi.mangle_function_name(name);
@@ -1743,9 +1790,24 @@ pub(super) fn emit_instruction_x86_64(
                                 "aggregate result has no frame slot".to_string(),
                             )
                         })?;
-                        writeln!(writer, "    movq %rax, {base}(%rbp)")?;
-                        if aggregate.words() > 1 {
-                            writeln!(writer, "    movq %rdx, {}(%rbp)", base + 8)?;
+                        let mut integer_returns = ["rax", "rdx"].into_iter();
+                        let mut sse_returns = ["xmm0", "xmm1"].into_iter();
+                        for word in 0..aggregate.words() {
+                            let source = match aggregate.eightbyte_class(word) {
+                                EightbyteClass::Integer => integer_returns.next(),
+                                EightbyteClass::Sse => sse_returns.next(),
+                            }
+                            .ok_or_else(|| {
+                                LaminaError::ValidationError(
+                                    "aggregate result needs more return registers than the ABI has"
+                                        .to_string(),
+                                )
+                            })?;
+                            writeln!(
+                                writer,
+                                "    movq %{source}, {}(%rbp)",
+                                base + (word as i32) * 8
+                            )?;
                         }
                         writer.rax_value = None;
                     } else {
@@ -2689,17 +2751,39 @@ pub(super) fn emit_instruction_x86_64(
                         load_operand_to_rax(val, writer, reg_alloc, stack_slots)?;
                         if let Some(offset) = sret_slot {
                             writeln!(writer, "    movq {offset}(%rbp), %rcx")?;
-                            for word in 0..aggregate.words() {
-                                let at = word * 8;
-                                writeln!(writer, "    movq {at}(%rax), %rdx")?;
-                                writeln!(writer, "    movq %rdx, {at}(%rcx)")?;
-                            }
+                            copy_exact_bytes(writer, aggregate.size, "rax", "rcx")?;
                             writeln!(writer, "    movq %rcx, %rax")?;
-                        } else {
+                        } else if aggregate.class == AggregateClass::Integer {
                             if aggregate.words() > 1 {
                                 writeln!(writer, "    movq 8(%rax), %rdx")?;
                             }
                             writeln!(writer, "    movq (%rax), %rax")?;
+                        } else {
+                            writeln!(writer, "    movq %rax, %r11")?;
+                            let mut sse_returns = ["xmm0", "xmm1"].into_iter();
+                            for word in 0..aggregate.words() {
+                                if aggregate.eightbyte_class(word) == EightbyteClass::Sse {
+                                    let xmm = sse_returns.next().ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "aggregate return needs more SSE registers than the ABI has"
+                                                .to_string(),
+                                        )
+                                    })?;
+                                    writeln!(writer, "    movq {}(%r11), %{xmm}", word * 8)?;
+                                }
+                            }
+                            let mut integer_returns = ["rax", "rdx"].into_iter();
+                            for word in 0..aggregate.words() {
+                                if aggregate.eightbyte_class(word) == EightbyteClass::Integer {
+                                    let gpr = integer_returns.next().ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "aggregate return needs more general registers than the ABI has"
+                                                .to_string(),
+                                        )
+                                    })?;
+                                    writeln!(writer, "    movq {}(%r11), %{gpr}", word * 8)?;
+                                }
+                            }
                         }
                         writer.rax_value = None;
                     }
