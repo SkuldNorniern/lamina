@@ -1,0 +1,184 @@
+type !F1 = struct { a: f32 }
+type !F2 = struct { a: f32, b: f32 }
+type !DF = struct { a: f64 }
+type !D2 = struct { a: f64, b: f64 }
+type !FI = struct { a: f32, b: i32 }
+type !F3 = struct { a: f32, b: f32, c: f32 }
+
+fn @one(!F1 %p) -> i64 {
+entry:
+    %ap = getfieldptr.!F1 %p, 0
+    %a = load.f32 %ap
+    %ai = fptoint.f32.i64 %a
+    ret.i64 %ai
+}
+
+fn @pair(!F2 %p) -> i64 {
+entry:
+    %ap = getfieldptr.!F2 %p, 0
+    %bp = getfieldptr.!F2 %p, 1
+    %a = load.f32 %ap
+    %b = load.f32 %bp
+    %s = add.f32 %a, %b
+    %si = fptoint.f32.i64 %s
+    ret.i64 %si
+}
+
+fn @dbl(!DF %p) -> i64 {
+entry:
+    %ap = getfieldptr.!DF %p, 0
+    %a = load.f64 %ap
+    %ai = fptoint.f64.i64 %a
+    ret.i64 %ai
+}
+
+fn @dpair(!D2 %p) -> i64 {
+entry:
+    %ap = getfieldptr.!D2 %p, 0
+    %bp = getfieldptr.!D2 %p, 1
+    %a = load.f64 %ap
+    %b = load.f64 %bp
+    %s = add.f64 %a, %b
+    %si = fptoint.f64.i64 %s
+    ret.i64 %si
+}
+
+fn @fint(!FI %p) -> i64 {
+entry:
+    %ap = getfieldptr.!FI %p, 0
+    %bp = getfieldptr.!FI %p, 1
+    %a = load.f32 %ap
+    %b = load.i32 %bp
+    %ai = fptoint.f32.i64 %a
+    %bi = extend.i32.i64 %b
+    %s = add.i64 %ai, %bi
+    ret.i64 %s
+}
+
+fn @triple(!F3 %p) -> i64 {
+entry:
+    %ap = getfieldptr.!F3 %p, 0
+    %bp = getfieldptr.!F3 %p, 1
+    %cp = getfieldptr.!F3 %p, 2
+    %a = load.f32 %ap
+    %b = load.f32 %bp
+    %c = load.f32 %cp
+    %ab = add.f32 %a, %b
+    %s = add.f32 %ab, %c
+    %si = fptoint.f32.i64 %s
+    ret.i64 %si
+}
+
+fn @mixed(f32 %x, !F2 %p) -> i64 {
+entry:
+    %ap = getfieldptr.!F2 %p, 0
+    %bp = getfieldptr.!F2 %p, 1
+    %a = load.f32 %ap
+    %b = load.f32 %bp
+    %ab = add.f32 %a, %b
+    %s = add.f32 %ab, %x
+    %si = fptoint.f32.i64 %s
+    ret.i64 %si
+}
+
+fn @fifth(i64 %a, i64 %b, i64 %c, i64 %d, !F2 %p) -> i64 {
+entry:
+    %ap = getfieldptr.!F2 %p, 0
+    %bp = getfieldptr.!F2 %p, 1
+    %fa = load.f32 %ap
+    %fb = load.f32 %bp
+    %s = add.f32 %fa, %fb
+    %si = fptoint.f32.i64 %s
+    %r1 = add.i64 %a, %b
+    %r2 = add.i64 %r1, %c
+    %r3 = add.i64 %r2, %d
+    %r4 = add.i64 %r3, %si
+    ret.i64 %r4
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+    %neg = lt.i64 %n, 0
+    %m = sub.i64 0, %n
+    %s = select.i64 %neg, %m, %n
+    %u = bitcast.i64.u64 %s
+    br %neg, minus, digits
+minus:
+    %c = writebyte 45
+    jmp digits
+digits:
+    call @put_u64(%u)
+    %nl = writebyte 10
+    ret.void
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+    %q = div.u64 %n, 10
+    %r = rem.u64 %n, 10
+    %d = add.u64 %r, 48
+    %z = eq.u64 %q, 0
+    br %z, last, more
+more:
+    call @put_u64(%q)
+    jmp last
+last:
+    %w = writebyte %d
+    ret.void
+}
+
+fn @main() -> i64 {
+entry:
+    %f1 = stackalloc.!F1
+    %f1a = getfieldptr.!F1 %f1, 0
+    store.f32 %f1a, 3.5
+    %r1 = call @one(!F1 %f1)
+    call @print_i64(%r1)
+
+    %f2 = stackalloc.!F2
+    %f2a = getfieldptr.!F2 %f2, 0
+    %f2b = getfieldptr.!F2 %f2, 1
+    store.f32 %f2a, 2.0
+    store.f32 %f2b, 5.0
+    %r2 = call @pair(!F2 %f2)
+    call @print_i64(%r2)
+
+    %d1 = stackalloc.!DF
+    %d1a = getfieldptr.!DF %d1, 0
+    store.f64 %d1a, 9.0
+    %r3 = call @dbl(!DF %d1)
+    call @print_i64(%r3)
+
+    %d2 = stackalloc.!D2
+    %d2a = getfieldptr.!D2 %d2, 0
+    %d2b = getfieldptr.!D2 %d2, 1
+    store.f64 %d2a, 1.5
+    store.f64 %d2b, 2.5
+    %r4 = call @dpair(!D2 %d2)
+    call @print_i64(%r4)
+
+    %fi = stackalloc.!FI
+    %fia = getfieldptr.!FI %fi, 0
+    %fib = getfieldptr.!FI %fi, 1
+    store.f32 %fia, 2.0
+    store.i32 %fib, 40
+    %r5 = call @fint(!FI %fi)
+    call @print_i64(%r5)
+
+    %t = stackalloc.!F3
+    %ta = getfieldptr.!F3 %t, 0
+    %tb = getfieldptr.!F3 %t, 1
+    %tc = getfieldptr.!F3 %t, 2
+    store.f32 %ta, 1.0
+    store.f32 %tb, 2.0
+    store.f32 %tc, 3.0
+    %r6 = call @triple(!F3 %t)
+    call @print_i64(%r6)
+
+    %r7 = call @mixed(2.0, !F2 %f2)
+    call @print_i64(%r7)
+
+    %r8 = call @fifth(1, 2, 3, 4, !F2 %f2)
+    call @print_i64(%r8)
+    ret.i64 0
+}

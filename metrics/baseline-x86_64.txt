@@ -13514,3 +13514,127 @@ frame main 64
 frame print_i64 32
 frame print_u64 16
 frame put_u64 32
+
+[win64_float_aggregate_args O0]
+insns 630
+spills 215
+calls 18
+branches 3
+frame dbl 48
+frame dpair 80
+frame fifth 128
+frame fint 80
+frame main 272
+frame mixed 80
+frame one 48
+frame pair 64
+frame print_i64 64
+frame put_u64 48
+frame triple 96
+
+[win64_float_aggregate_args O1]
+insns 564
+spills 68
+calls 18
+branches 3
+frame dbl 16
+frame dpair 48
+frame fifth 48
+frame fint 16
+frame main 96
+frame mixed 48
+frame one 16
+frame pair 32
+frame print_i64 32
+frame put_u64 32
+frame triple 64
+
+[win64_float_aggregate_args O2]
+insns 905
+spills 94
+calls 18
+branches 19
+frame dbl 16
+frame dpair 48
+frame fifth 48
+frame fint 16
+frame main 160
+frame mixed 48
+frame one 16
+frame pair 32
+frame print_i64 32
+frame put_u64 32
+frame triple 64
+
+[win64_float_aggregate_args O3]
+insns 904
+spills 93
+calls 18
+branches 19
+frame dbl 16
+frame dpair 48
+frame fifth 32
+frame fint 16
+frame main 160
+frame mixed 48
+frame one 16
+frame pair 32
+frame print_i64 32
+frame put_u64 32
+frame triple 64
+
+[win64_float_aggregate_returns O0]
+insns 393
+spills 119
+calls 12
+branches 3
+frame main 224
+frame make1 32
+frame make2 48
+frame make3 80
+frame maked1 32
+frame maked2 64
+frame print_i64 64
+frame put_u64 48
+
+[win64_float_aggregate_returns O1]
+insns 367
+spills 47
+calls 12
+branches 3
+frame main 112
+frame make1 16
+frame make2 32
+frame make3 48
+frame maked1 16
+frame maked2 32
+frame print_i64 32
+frame put_u64 32
+
+[win64_float_aggregate_returns O2]
+insns 586
+spills 65
+calls 12
+branches 13
+frame main 144
+frame make1 16
+frame make2 32
+frame make3 48
+frame maked1 16
+frame maked2 32
+frame print_i64 32
+frame put_u64 32
+
+[win64_float_aggregate_returns O3]
+insns 590
+spills 69
+calls 12
+branches 13
+frame main 144
+frame make1 16
+frame make2 32
+frame make3 48
+frame maked1 16
+frame maked2 32
+frame print_i64 32
+frame put_u64 32
