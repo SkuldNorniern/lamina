@@ -1355,10 +1355,74 @@ pub(super) fn lower_instruction<'a>(
                 });
             }
         }
-        IRInst::CallIndirect { .. } => {
-            return Err(FromIRError::UnsupportedAggregate(
-                "a 128-bit argument or result of callptr: an indirect call carries no callee signature to pass a 16-byte aggregate by, so call the function directly".to_string(),
-            ));
+        IRInst::CallIndirect {
+            result,
+            target,
+            args,
+            variadic_fixed,
+            return_type,
+        } => {
+            // Past the fixed parameters the callee reads an unnamed slot, which the
+            // backends place from the aggregate `mark_variadic_wide` records. A named
+            // parameter and a result have no such channel on an indirect call, so
+            // those stay refused.
+            let refuse = || {
+                Err(FromIRError::UnsupportedAggregate(
+                    "a legalized integer pair as a named argument or the result of callptr: an indirect call carries no callee signature to pass an aggregate by, so call the function directly".to_string(),
+                ))
+            };
+            if is_wide_type(return_type, cx.int64_regs) {
+                return refuse();
+            }
+            let fixed = variadic_fixed.unwrap_or(args.len());
+            let mut mir_args = Vec::with_capacity(args.len());
+            let mut arg_types = Vec::with_capacity(args.len());
+            for (index, (arg_ty, value)) in args.iter().enumerate() {
+                let wide = is_wide_type(arg_ty, cx.int64_regs)
+                    || is_wide_value(value, cx.vars, cx.int64_regs);
+                if wide {
+                    if index < fixed {
+                        return refuse();
+                    }
+                    let words = cx.operand_words(value)?;
+                    let address = cx.spill(words);
+                    cx.mark_variadic_wide(&address, "the called pointer")?;
+                    arg_types.push(MirType::Scalar(ScalarType::Ptr));
+                    mir_args.push(address);
+                    continue;
+                }
+                let mut ty = map_ir_type(arg_ty)?;
+                let mut operand = resolve_operand(value, cx.vregs, cx.vars, cx.globals)?;
+                // C promotes a float in the variadic tail to a double, as the direct
+                // path does.
+                if index >= fixed && ty == MirType::Scalar(ScalarType::F32) {
+                    let dst = Register::Virtual(cx.vregs.allocate_fpr());
+                    cx.out.push(Instruction::FloatConvert {
+                        from: MirType::Scalar(ScalarType::F32),
+                        to: MirType::Scalar(ScalarType::F64),
+                        dst: dst.clone(),
+                        src: operand,
+                    });
+                    operand = Operand::Register(dst);
+                    ty = MirType::Scalar(ScalarType::F64);
+                }
+                arg_types.push(ty);
+                mir_args.push(operand);
+            }
+            let ret_ty = match return_type {
+                IRType::Void => None,
+                other => Some(map_ir_type(other)?),
+            };
+            let target = resolve_operand(target, cx.vregs, cx.vars, cx.globals)?;
+            let ret = result.map(|name| resolve_or_alloc(name, cx.vregs, cx.vars));
+            cx.out.push(Instruction::CallIndirect {
+                target,
+                arg_types,
+                args: mir_args,
+                variadic_fixed: *variadic_fixed,
+                ret,
+                ret_ty,
+            });
         }
         IRInst::IntToFloat {
             result,
@@ -1657,11 +1721,33 @@ pub(super) fn lower_instruction<'a>(
                 "{op}.ovf.{ty} on a 32-bit target: the value is held in a register pair and no backend reports the overflow of the pair as a whole"
             )));
         }
-        IRInst::VaArg { .. } => {
-            return Err(FromIRError::NotLegalizable(
-                "va_arg of a 64-bit integer on a 32-bit target: a variadic slot holds one word, and reading the pair is not implemented".to_string(),
-            ));
+        IRInst::VaArg { result, ty, ap } if is_wide_prim(*ty, cx.int64_regs) => {
+            if cx.int64_regs {
+                return Err(FromIRError::NotLegalizable(format!(
+                    "va_arg.{ty}: a 128-bit variadic argument takes four registers, and only pairs are split"
+                )));
+            }
+            let ap = resolve_operand(ap, cx.vregs, cx.vars, cx.globals)?;
+            let slot = cx.vregs.allocate_gpr();
+            cx.reservations.insert(slot, 1);
+            cx.vars
+                .variadic_wide_results
+                .insert(slot, wide_aggregate(cx.int64_regs));
+            cx.out.push(Instruction::VaArg {
+                ty: map_ir_prim(*ty)?,
+                dst: Register::Virtual(slot),
+                ap,
+            });
+            let address = cx.temp();
+            cx.out.push(Instruction::StackAddr {
+                dst: address.clone(),
+                slot,
+            });
+            let words = cx.load_words(address);
+            let pair = cx.result_pair(result);
+            cx.write_pair(pair, words);
         }
+        IRInst::VaArg { .. } => return Ok(false),
         IRInst::AtomicLoad { ty, .. }
         | IRInst::AtomicStore { ty, .. }
         | IRInst::AtomicBinary { ty, .. }

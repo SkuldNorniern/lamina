@@ -256,6 +256,17 @@ impl ModuleInlining {
                 caller.variadic_wide_arguments.insert(fresh, aggregate);
             }
         }
+        let mut wide_results: Vec<(VirtualReg, Aggregate)> = callee
+            .variadic_wide_results
+            .iter()
+            .map(|(reg, aggregate)| (*reg, *aggregate))
+            .collect();
+        wide_results.sort_unstable_by_key(|(reg, _)| *reg);
+        for (reg, aggregate) in wide_results {
+            if let Register::Virtual(fresh) = rename(&Register::Virtual(reg)) {
+                caller.variadic_wide_results.insert(fresh, aggregate);
+            }
+        }
         let id = self.inline_counter.get();
         self.inline_counter.set(id + 1);
         let prefix = format!("__inline_{id}_");

@@ -226,6 +226,12 @@ pub struct Function {
     /// backend without this passes the address where the value belongs.
     pub variadic_wide_arguments: HashMap<VirtualReg, Aggregate>,
 
+    /// Registers a `va_arg` of a legalized integer pair defines. The register names a
+    /// two-word stack reservation the backend writes the value read out of the
+    /// variadic area into, not a register that comes to hold the value. A backend
+    /// without this reads one word where two are owed.
+    pub variadic_wide_results: HashMap<VirtualReg, Aggregate>,
+
     /// Width of data pointers on the target this function is lowered for. Sizes of
     /// pointer-typed values derive from it.
     pub pointer_width: PointerWidth,
@@ -247,6 +253,7 @@ impl Function {
             stack_reservations: HashMap::new(),
             stack_alignments: HashMap::new(),
             variadic_wide_arguments: HashMap::new(),
+            variadic_wide_results: HashMap::new(),
             pointer_width: PointerWidth::Bits64,
             int64_regs: true,
         }
@@ -269,6 +276,15 @@ impl Function {
             Operand::Register(Register::Virtual(vreg)) => {
                 self.variadic_wide_arguments.get(vreg).copied()
             }
+            _ => None,
+        }
+    }
+
+    /// The aggregate a `va_arg` writes into the stack reservation `dst` names, or
+    /// `None` when `dst` is an ordinary destination register.
+    pub fn variadic_wide_result(&self, dst: &Register) -> Option<Aggregate> {
+        match dst {
+            Register::Virtual(vreg) => self.variadic_wide_results.get(vreg).copied(),
             _ => None,
         }
     }

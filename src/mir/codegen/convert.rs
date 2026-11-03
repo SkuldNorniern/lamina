@@ -154,6 +154,8 @@ struct VarBindings<'a> {
     /// Addresses of legalized pairs handed to a call where the callee's declaration
     /// gives no type for them, with the aggregate the callee reads there.
     variadic_wide: HashMap<VirtualReg, Aggregate>,
+    /// Stack reservations a `va_arg` of a legalized pair writes its two words into.
+    variadic_wide_results: HashMap<VirtualReg, Aggregate>,
 }
 
 impl<'a> Deref for VarBindings<'a> {
@@ -1584,6 +1586,7 @@ fn convert_function<'a>(
     mir_func.stack_reservations = reservations;
     mir_func.stack_alignments = alignments;
     mir_func.variadic_wide_arguments = mem::take(&mut var_to_reg.variadic_wide);
+    mir_func.variadic_wide_results = mem::take(&mut var_to_reg.variadic_wide_results);
     libcalls.extend(mem::take(&mut var_to_reg.libcalls));
 
     Ok(mir_func)
