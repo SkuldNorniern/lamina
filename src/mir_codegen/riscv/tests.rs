@@ -1236,3 +1236,53 @@ fn rv32_converts_a_narrow_integer_to_a_float_with_the_word_form() -> Result<(), 
     }
     Ok(())
 }
+
+/// Prologue and epilogue of `name` must move `sp` by the same amount, or the caller's
+/// stack arguments and the save area below them are read at the wrong addresses.
+fn sp_delta(body: &str) -> (i64, i64) {
+    let (mut down, mut up) = (0i64, 0i64);
+    for line in body.lines().map(str::trim) {
+        let Some(rest) = line.strip_prefix("addi sp, sp, ") else {
+            continue;
+        };
+        let value: i64 = rest.parse().unwrap_or(0);
+        if value < 0 {
+            down += value
+        } else {
+            up += value
+        }
+    }
+    (down, up)
+}
+
+#[test]
+fn a_variadic_callee_spills_its_unnamed_registers_below_the_stack_arguments()
+-> Result<(), Box<dyn Error>> {
+    let ir = "fn @pick(i64 %n, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %a = va_arg.i64 %ap\n  va_end %ap\n  ret.i64 %a\n}\n\nfn @main() -> i64 {\nentry:\n  %r = call @pick(9, 1, 2, 3, 4, 5, 6, 7, 8, 9)\n  ret.i64 %r\n}\n";
+    let assembly = emit_aggregate_module(ir, "riscv_va_save_area")?;
+    let body = function_body(&assembly, "pick")?;
+    for bank in 1..8 {
+        assert!(
+            body.contains(&format!("    sd a{bank}, {}(fp)\n", bank * 8)),
+            "a{bank} is not in its save slot: {body}"
+        );
+    }
+    // Seven slots from fp+8 end at fp+64, where the first stack argument begins.
+    assert!(body.contains("    addi t1, fp, 8\n"), "{body}");
+    assert!(body.contains("    addi sp, sp, -64\n"), "{body}");
+    let (down, up) = sp_delta(body);
+    assert_eq!(down + up, 0, "sp is not restored: {body}");
+    Ok(())
+}
+
+#[test]
+fn a_variadic_callee_with_a_full_register_file_reserves_nothing() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @full(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  va_end %ap\n  ret.i64 %x\n}\n";
+    let assembly = emit_aggregate_module(ir, "riscv_va_no_save_area")?;
+    let body = function_body(&assembly, "full")?;
+    assert!(!body.contains("    sd a7, "), "{body}");
+    assert!(body.contains("    addi t1, fp, 0\n"), "{body}");
+    let (down, up) = sp_delta(body);
+    assert_eq!(down + up, 0, "sp is not restored: {body}");
+    Ok(())
+}
