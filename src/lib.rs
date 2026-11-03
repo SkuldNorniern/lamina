@@ -279,6 +279,15 @@
 //!
 //! **Note**: Nightly features are experimental and may change or be removed in future versions.
 //!
+//! ## Stability
+//!
+//! The stable surface for emitting object files is [`api::compile_module_to_object`],
+//! its error type [`api::ObjectError`], and the [`api::Module`] and [`api::Target`]
+//! types in its signature. These follow semantic versioning as this project practises it within the
+//! 0.x series: a 0.x minor release does not remove or change them. Everything else in
+//! this crate, including the assembly-text functions, the `mir`, `mir_codegen` and
+//! `runtime` modules, and the root-level object functions, may change without notice.
+//!
 //! ## Future Roadmap
 //!
 //! - **Additional architectures**: RISC-V, WebAssembly, and more
@@ -287,6 +296,7 @@
 //! - **Standard library**: Common functions and data structures
 //! - **Language bindings**: C, Python, JavaScript, and other language interfaces
 
+pub mod api;
 #[doc(hidden)]
 pub mod cli;
 
@@ -541,6 +551,9 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 
 /// Code generation options for [`compile_module_to_object_with_options`].
 ///
+/// Part of the root-level object API, which is not covered by the stability statement
+/// in the crate docs. New code should use [`api::compile_module_to_object`].
+///
 /// Non-exhaustive: start from [`ObjectOptions::for_target`] and set the fields that
 /// matter, so a field added later does not break the call.
 #[derive(Debug, Clone)]
@@ -572,6 +585,8 @@ impl ObjectOptions {
 }
 
 /// Compiles an IR module straight to relocatable object-file bytes (ELF, Mach-O or COFF).
+///
+/// Prefer [`api::compile_module_to_object`], which returns a typed error.
 ///
 /// Uses [`ObjectOptions::for_target`] at optimization level 1, the CLI default.
 /// Nothing is written to disk.
