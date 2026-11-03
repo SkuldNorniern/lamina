@@ -2707,6 +2707,42 @@ frame put_u64 32
 frame ratios 0
 frame squares 0
 
+[global_function_address O0]
+insns 75
+spills 16
+calls 1
+branches 0
+frame answer 0
+frame fp 0
+frame main 80
+
+[global_function_address O1]
+insns 74
+spills 9
+calls 1
+branches 0
+frame answer 0
+frame fp 0
+frame main 32
+
+[global_function_address O2]
+insns 74
+spills 9
+calls 1
+branches 0
+frame answer 0
+frame fp 0
+frame main 32
+
+[global_function_address O3]
+insns 74
+spills 9
+calls 1
+branches 0
+frame answer 0
+frame fp 0
+frame main 32
+
 [global_pointer_relocation O0]
 insns 60
 spills 16

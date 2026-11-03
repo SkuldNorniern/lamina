@@ -1,0 +1,22 @@
+# A global holding a function's address, called back through a pointer. The
+# address is not known until the linker places the function.
+fn @answer() -> i64 {
+  entry:
+    ret.i64 42
+}
+
+global $fp: ptr = @answer
+
+fn @main() -> i64 {
+  entry:
+    %f = load.ptr $fp
+    %r = callptr.i64 %f()
+    %d1 = div.i64 %r, 10
+    %c1 = add.i64 %d1, 48
+    %w1 = writebyte %c1
+    %m = rem.i64 %r, 10
+    %c2 = add.i64 %m, 48
+    %w2 = writebyte %c2
+    %nl = writebyte 10
+    ret.i64 0
+}
