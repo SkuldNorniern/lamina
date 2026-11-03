@@ -70,16 +70,6 @@ ILP32_UNSUPPORTED = {
             'va_arg_mixed',
         )
     },
-    **{
-        name: 'inline assembly is not implemented by this backend'
-        for name in (
-            'inline_asm_clobber',
-            'inline_asm_loop',
-            'inline_asm_pressure',
-            'inline_asm_rdtsc',
-            'inline_asm_unused',
-        )
-    },
     'checked_arithmetic': 'no backend reports the overflow of an i64 register pair as a whole',
     'thread_local_storage': 'thread-local storage is not implemented by this backend',
     'vector_operations': 'this backend has no vector unit',
@@ -95,13 +85,13 @@ I686_UNSUPPORTED = {
 
 ARMV7_UNSUPPORTED = {
     'load_store_alignment': 'armv7 memory instructions fault on an unaligned address',
+    'inline_asm_rdtsc': 'rdtsc reads the x86 timestamp counter; armv7 reads the cycle counter only from a privileged mode',
     **ILP32_UNSUPPORTED,
 }
 
 S390X_UNSUPPORTED = {
     'inline_asm_rdtsc': 'rdtsc reads the x86 timestamp counter; no s390x equivalent',
     'vector_operations': 'the z vector facility (z13 and later) is not implemented',
-    **FLOAT_AGGREGATE_UNSUPPORTED,
 }
 
 
@@ -120,7 +110,6 @@ RISCV64_UNSUPPORTED = {
     'load_store_alignment': 'the backend issues no unaligned store',
     'thread_local_storage': 'thread-local storage is not implemented for RISC-V',
     'vector_operations': 'vectors need the V extension, which rv64imafd does not carry',
-    **FLOAT_AGGREGATE_UNSUPPORTED,
 }
 
 
