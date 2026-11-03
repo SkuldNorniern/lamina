@@ -44,6 +44,23 @@ pub struct Global {
     /// The thread-local model this symbol is placed under, or `None` for ordinary
     /// static storage.
     pub thread_local: Option<TlsModel>,
+
+    /// Addresses the initializer bytes cannot hold, because a symbol's address is
+    /// not known until link time. Each one covers `size` bytes at `offset`.
+    pub relocations: Vec<GlobalRelocation>,
+}
+
+/// One symbol address inside a global's initializer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalRelocation {
+    /// Byte offset into the initializer.
+    pub offset: usize,
+    /// Symbol whose address is written, before mangling.
+    pub symbol: String,
+    /// Added to that address.
+    pub addend: i64,
+    /// Width of the slot, in bytes.
+    pub size: usize,
 }
 
 impl Global {
@@ -57,6 +74,7 @@ impl Global {
             size: ty.size_bytes(pointer),
             align: ty.alignment(pointer),
             thread_local: None,
+            relocations: Vec::new(),
         }
     }
 

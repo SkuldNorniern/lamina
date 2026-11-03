@@ -44,7 +44,7 @@ pub use instruction::{
     AsmOperand, AtomicBinOp, MemoryOrdering, index_scale_shift, io_intrinsic_result_type,
 };
 pub use loc::{Located, SourceLoc};
-pub use module::{Global, Module, ModuleBuilder, RelocationModel, TlsModel};
+pub use module::{Global, GlobalRelocation, Module, ModuleBuilder, RelocationModel, TlsModel};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 #[cfg(feature = "nightly")]
 pub use simd::{
