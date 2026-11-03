@@ -1,5 +1,5 @@
 use super::interpret_mir_function;
-use crate::mir_codegen::simd_support::tools_available;
+use crate::mir_codegen::simd_support::{skip_test, tools_available};
 use crate::test_support::TempDir;
 use crate::{
     mir::{
@@ -159,6 +159,9 @@ pub(super) fn targets(include_unavailable: bool) -> Vec<Native> {
         global_regalloc: true,
         start: ".text\n.globl _start\n_start:\n call main\n mov %rax, %rdi\n mov $60, %rax\n syscall\n",
     }];
+    if !include_unavailable && !(available("cc") && multilib_32_bit()) {
+        skip_test("i686 native execution needs cc with 32-bit multilib");
+    }
     if include_unavailable || (available("cc") && multilib_32_bit()) {
         targets.push(Native {
             arch: TargetArchitecture::I686,
@@ -203,11 +206,16 @@ pub(super) fn targets(include_unavailable: bool) -> Vec<Native> {
             start: ".text\n.globl _start\n_start:\n bl main\n li 0, 1\n sc\n",
         },
     ] {
-        if include_unavailable
-            || (available("clang")
-                && available("ld.lld-18")
-                && target.emulator.is_some_and(available))
-        {
+        let usable =
+            available("clang") && available("ld.lld-18") && target.emulator.is_some_and(available);
+        if !include_unavailable && !usable {
+            skip_test(&format!(
+                "{} native execution needs clang, ld.lld-18 and {}",
+                target.triple,
+                target.emulator.unwrap_or("an emulator")
+            ));
+        }
+        if include_unavailable || usable {
             targets.push(target);
         }
     }
