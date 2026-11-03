@@ -36,10 +36,10 @@ use crate::{
     },
     mir::{
         AddressMode, AsmOperand, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function,
-        Global, Immediate, Instruction, IntBinOp, IntCmpOp, IntOverflowOp, IntRotOp, IntUnOp,
-        MemoryAttrs, MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType,
-        Signature, SymbolVisibility, TlsModel as MirTlsModel, VectorLane, VectorOp, VectorType,
-        VirtualReg, VirtualRegAllocator,
+        Global, GlobalRelocation, Immediate, Instruction, IntBinOp, IntCmpOp, IntOverflowOp,
+        IntRotOp, IntUnOp, MemoryAttrs, MirType, Module, Operand, Parameter, Register,
+        RegisterClass, ScalarType, Signature, SymbolVisibility, TlsModel as MirTlsModel,
+        VectorLane, VectorOp, VectorType, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{
@@ -616,9 +616,10 @@ pub fn from_ir_for_target(
             )?;
             let mut global = Global::new(*global_name, ty, layout.pointer_width);
             global.align = global.align.max(declared_align(decl.align));
-            if let Some(bytes) = initializer {
+            if let Some(bytes) = initializer.bytes {
                 global = global.with_initializer(bytes);
             }
+            global.relocations = initializer.relocations;
             global
         };
         if decl.exported {
@@ -926,20 +927,49 @@ fn literal_is_negative(literal: &IRLit<'_>) -> bool {
     }
 }
 
+/// A global's bytes, and the symbol addresses those bytes cannot hold.
+struct InitializedGlobal {
+    bytes: Option<Vec<u8>>,
+    relocations: Vec<GlobalRelocation>,
+}
+
 fn global_initializer(
     name: &str,
     ty: MirType,
     value: Option<&GlobalInit<'_>>,
     layout: TargetDataLayout,
     endianness: Endianness,
-) -> Result<Option<Vec<u8>>, FromIRError> {
+) -> Result<InitializedGlobal, FromIRError> {
     let Some(value) = value else {
-        return Ok(None);
+        return Ok(InitializedGlobal {
+            bytes: None,
+            relocations: Vec::new(),
+        });
     };
-    let GlobalInit::Value(IRVal::Constant(literal)) = value else {
-        return Err(FromIRError::UnsupportedGlobal(format!(
-            "@{name} needs a literal initializer"
-        )));
+    let literal = match value {
+        GlobalInit::Value(IRVal::Constant(literal)) => literal,
+        GlobalInit::Value(IRVal::Global(symbol)) => {
+            let size = layout.pointer_width.bytes();
+            if ty.size_bytes(layout.pointer_width) != size {
+                return Err(FromIRError::UnsupportedGlobal(format!(
+                    "@{name} holds the address of @{symbol}, so its type must be ptr, not {ty}"
+                )));
+            }
+            return Ok(InitializedGlobal {
+                bytes: Some(vec![0; size]),
+                relocations: vec![GlobalRelocation {
+                    offset: 0,
+                    symbol: symbol.to_string(),
+                    addend: 0,
+                    size,
+                }],
+            });
+        }
+        _ => {
+            return Err(FromIRError::UnsupportedGlobal(format!(
+                "@{name} needs a literal initializer"
+            )));
+        }
     };
     let bytes = literal_bytes(name, literal, endianness)?;
     if bytes.len() != ty.size_bytes(layout.pointer_width) {
@@ -947,7 +977,10 @@ fn global_initializer(
             "@{name} initializer width does not match its type {ty}"
         )));
     }
-    Ok(Some(bytes))
+    Ok(InitializedGlobal {
+        bytes: Some(bytes),
+        relocations: Vec::new(),
+    })
 }
 
 /// Bytes of a literal in the target's byte order, at the width its own type takes.

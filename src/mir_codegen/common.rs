@@ -14,9 +14,9 @@ use std::{
 use crate::{
     error::LaminaError,
     mir::{
-        CodePlacement, Function, Global, Immediate, Instruction, IntBinOp, MirType,
-        Module as MirModule, Operand, Register, RegisterClass, Signature, SymbolVisibility,
-        VirtualReg,
+        CodePlacement, Function, Global, GlobalRelocation, Immediate, Instruction, IntBinOp,
+        MirType, Module as MirModule, Operand, Register, RegisterClass, Signature,
+        SymbolVisibility, VirtualReg,
     },
     mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
@@ -1079,7 +1079,81 @@ fn emit_global_storage<W: Write>(
             None => (data_section, bss_section),
             Some(_) => (tls_data_section, tls_bss_section),
         };
-        write_global_storage(writer, &mangle(name), global, data_section, bss_section)?;
+        write_global_storage(
+            writer,
+            &mangle(name),
+            global,
+            data_section,
+            bss_section,
+            &mangle,
+        )?;
+    }
+    Ok(())
+}
+
+/// Writes a global whose bytes carry one or more symbol addresses. The literal
+/// bytes are emitted around each relocated slot, and the slot itself becomes a
+/// directive naming the symbol, which the assembler turns into a relocation.
+fn write_relocated_global<W: Write>(
+    writer: &mut W,
+    label: &str,
+    global: &Global,
+    data_section: &str,
+    mangle: &impl Fn(&str) -> String,
+) -> Result<(), LaminaError> {
+    let mut holes: Vec<&GlobalRelocation> = global.relocations.iter().collect();
+    holes.sort_by_key(|r| r.offset);
+    let empty: Vec<u8> = Vec::new();
+    let bytes = global.initializer.as_deref().unwrap_or(&empty);
+
+    writeln!(writer, "{data_section}")?;
+    writeln!(writer, ".p2align {}", global.align.trailing_zeros())?;
+    writeln!(writer, "{label}:")?;
+
+    let mut at = 0usize;
+    for hole in holes {
+        if hole.offset < at {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "{label} has overlapping relocations at byte {}",
+                    hole.offset
+                ),
+            )));
+        }
+        write_byte_run(
+            writer,
+            &bytes[at.min(bytes.len())..hole.offset.min(bytes.len())],
+        )?;
+        let directive = match hole.size {
+            8 => ".quad",
+            4 => ".long",
+            other => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("{label} needs a {other}-byte address, which no directive writes"),
+                )));
+            }
+        };
+        let symbol = mangle(&hole.symbol);
+        match hole.addend {
+            0 => writeln!(writer, "    {directive} {symbol}")?,
+            n if n > 0 => writeln!(writer, "    {directive} {symbol}+{n}")?,
+            n => writeln!(writer, "    {directive} {symbol}-{}", n.unsigned_abs())?,
+        }
+        at = hole.offset + hole.size;
+    }
+    write_byte_run(writer, &bytes[at.min(bytes.len())..])?;
+    if let Some(tail) = global.size.checked_sub(at.max(bytes.len()))
+        && tail > 0
+    {
+        writeln!(writer, "    .zero {tail}")?;
+    }
+    Ok(())
+}
+
+fn write_byte_run<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<(), LaminaError> {
+    for chunk in bytes.chunks(16) {
+        let list: Vec<String> = chunk.iter().map(|b| format!("{b:#04x}")).collect();
+        writeln!(writer, "    .byte {}", list.join(", "))?;
     }
     Ok(())
 }
@@ -1090,9 +1164,15 @@ fn write_global_storage<W: Write>(
     global: &Global,
     data_section: &str,
     bss_section: &str,
+    mangle: &impl Fn(&str) -> String,
 ) -> Result<(), LaminaError> {
     let align_log2 = global.align.trailing_zeros();
     let size = global.size;
+    // A symbol address is zero until the linker fills it, so a global holding one
+    // reads as all-zero here and must not be sent to bss with the rest.
+    if !global.relocations.is_empty() {
+        return write_relocated_global(writer, label, global, data_section, mangle);
+    }
     match global.initializer.as_deref() {
         Some(bytes) if bytes.iter().any(|&b| b != 0) => {
             writeln!(writer, "{data_section}")?;
@@ -1164,6 +1244,7 @@ pub fn emit_macho_thread_local_globals<W: Write>(
             global,
             ".section __DATA,__thread_data,thread_local_regular",
             ".section __DATA,__thread_bss,thread_local_zerofill",
+            &mangle,
         )?;
     }
     Ok(())
