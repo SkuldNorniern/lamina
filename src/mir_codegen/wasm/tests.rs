@@ -1,6 +1,6 @@
 use super::*;
 use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir_x86_64};
-use crate::mir_codegen::{simd_support::tool_available, test_support::PRINT_I64_HELPERS};
+use crate::mir_codegen::{simd_support::tools_available, test_support::PRINT_I64_HELPERS};
 use crate::parser::parse_module;
 use crate::test_support::TempDir;
 use lamina_platform::PointerWidth;
@@ -88,33 +88,8 @@ fn dispatcher_starts_at_non_leading_entry_block() {
     );
 }
 
-const WASM_RUN_PY: &str = r#"import sys, wasmtime
-engine = wasmtime.Engine()
-store = wasmtime.Store(engine)
-module = wasmtime.Module.from_file(engine, sys.argv[1])
-linker = wasmtime.Linker(engine)
-for imp in module.imports:
-    def callback(*args, name=imp.name):
-        if name == 'writebyte':
-            sys.stdout.flush()
-            sys.stdout.buffer.write(bytes([args[0] & 0xff]))
-            sys.stdout.buffer.flush()
-            return 1
-        if name == 'readbyte':
-            data = sys.stdin.buffer.read(1)
-            return data[0] if data else -1
-        return None if name == 'free' else 0
-    linker.define(store, imp.module, imp.name,
-                  wasmtime.Func(store, imp.type, callback))
-instance = linker.instantiate(store, module)
-print('main returned', instance.exports(store)['main'](store))
-"#;
-
-/// Runs `main` under wasmtime and returns what it printed, or `None` when the
-/// runner is not available. uv fetches wasmtime on demand, which only the Linux
-/// leg of CI is set up for.
 fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String> {
-    if !cfg!(target_os = "linux") || !tool_available("uv") {
+    if !tools_available(&["wasmtime"]) {
         return None;
     }
     let source = format!("{source}\n{PRINT_I64_HELPERS}");
@@ -128,22 +103,18 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
         &mir,
         &mut wat,
         TargetArchitecture::Wasm32,
-        TargetOperatingSystem::Unknown,
+        TargetOperatingSystem::Wasi,
         PointerWidth::Bits64,
     )
     .expect("WASM codegen should succeed");
     let guard = TempDir::new(&format!("lamina-wasm-{test_name}"));
-    let dir = guard.path();
-    let wat_path = dir.join("module.wat");
-    let run_path = dir.join("run.py");
+    let wat_path = guard.path().join("module.wat");
     fs::write(&wat_path, wat).expect("write wat");
-    fs::write(&run_path, WASM_RUN_PY).expect("write runner");
-    let output = Command::new("uv")
-        .args(["run", "--with", "wasmtime", "python"])
-        .arg(&run_path)
+    let output = Command::new("wasmtime")
+        .args(["run", "--invoke", "main"])
         .arg(&wat_path)
         .output()
-        .expect("run uv");
+        .expect("run wasmtime");
     assert!(
         output.status.success(),
         "wasm run failed: {}",
@@ -165,7 +136,7 @@ fn distinct_stack_slots_in_one_frame_do_not_alias() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "11\nmain returned 0\n");
+    assert_eq!(stdout, "11\n0\n");
 }
 
 #[test]
@@ -177,7 +148,7 @@ fn recursive_invocations_keep_their_own_stack_slots() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "main returned 6\n");
+    assert_eq!(stdout, "6\n");
 }
 
 #[test]
@@ -189,7 +160,7 @@ fn stack_frames_are_released_on_every_return() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "main returned 6000\n");
+    assert_eq!(stdout, "6000\n");
 }
 
 #[test]
@@ -201,7 +172,7 @@ fn signed_byte_compares_on_loaded_operands_read_the_sign() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "1\n1\n0\n1\n1\n1\nmain returned 0\n");
+    assert_eq!(stdout, "1\n1\n0\n1\n1\n1\n0\n");
 }
 
 #[test]
@@ -213,7 +184,7 @@ fn narrow_compares_normalize_operands_at_their_width() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "1\n1\n1\n0\n1\n1\n0\nmain returned 0\n");
+    assert_eq!(stdout, "1\n1\n1\n0\n1\n1\n0\n0\n");
 }
 
 #[test]
@@ -225,7 +196,7 @@ fn narrow_arguments_keep_their_declared_signedness_across_calls() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "0\n1\nmain returned 0\n");
+    assert_eq!(stdout, "0\n1\n0\n");
 }
 
 #[test]
@@ -238,7 +209,7 @@ fn entry_block_runs_first_after_block_reordering() {
         ) else {
             return;
         };
-        assert_eq!(stdout, "main returned 9\n", "opt level {opt_level}");
+        assert_eq!(stdout, "9\n", "opt level {opt_level}");
     }
 }
 
@@ -251,7 +222,7 @@ fn tail_call_with_caller_frame_argument_reads_caller_storage() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "main returned 106\n");
+    assert_eq!(stdout, "106\n");
 }
 
 #[test]
@@ -263,7 +234,7 @@ fn optimized_tail_calls_run_in_constant_stack() {
     ) else {
         return;
     };
-    assert_eq!(stdout, "main returned 42\n");
+    assert_eq!(stdout, "42\n");
 }
 
 fn emit_wat(source: &str, arch: TargetArchitecture) -> String {
@@ -380,7 +351,7 @@ fn wasi_writes_without_a_console_import() {
     assert!(!wat.contains("\"console\""), "{wat}");
     assert!(wat.contains("(func (export \"_start\")"), "{wat}");
 
-    if !tool_available("wasmtime") {
+    if !tools_available(&["wasmtime"]) {
         return;
     }
     let guard = TempDir::new("lamina-wasi");
@@ -453,7 +424,7 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
         assert!(!wat.contains(&signed.replace("_s", "_u")), "{ty}: {wat}");
     }
 
-    if !tool_available("wasmtime") {
+    if !tools_available(&["wasmtime"]) {
         return;
     }
     let source = format!(
@@ -560,7 +531,7 @@ fn wasm32_keeps_env_helpers() {
 
 #[test]
 fn wasi_writebyte_reaches_stdout() {
-    if !tool_available("wasmtime") {
+    if !tools_available(&["wasmtime"]) {
         return;
     }
     let wat = emit_wasi(
@@ -596,7 +567,7 @@ fn wasi_memcpy_and_memset_fill_the_module_memory() {
     assert!(declared_names(&wat).contains("memcpy"), "{wat}");
     assert!(declared_names(&wat).contains("memset"), "{wat}");
 
-    if !tool_available("wasmtime") {
+    if !tools_available(&["wasmtime"]) {
         return;
     }
     let guard = TempDir::new("lamina-wasi-mem");
@@ -615,7 +586,7 @@ fn wasi_memcpy_and_memset_fill_the_module_memory() {
 
 #[test]
 fn wasi_io_outcomes_reach_stdout_as_their_low_byte() {
-    if !tool_available("wasmtime") {
+    if !tools_available(&["wasmtime"]) {
         return;
     }
     let reads = "fn @main() -> i64 {\nentry:\n  %p = stackalloc.[4 x i8]\n  %r = read %p, 1\n  %w = writebyte %r\n  ret.i64 0\n}\n";

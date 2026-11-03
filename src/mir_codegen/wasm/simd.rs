@@ -188,10 +188,11 @@ mod tests {
     use lamina_platform::PointerWidth;
     use std::{array, fs, process::Command};
 
+    const MISMATCH_FN: &str = "(func $mismatch (param $out i32) (param $expected i32) (result i32)\n  (local $k i32) (local $bad i32)\n  (loop $next\n    (if (i32.ne (i32.load8_u (i32.add (local.get $out) (local.get $k))) (i32.load8_u (i32.add (local.get $expected) (local.get $k))))\n      (then (local.set $bad (i32.add (local.get $bad) (i32.const 1)))))\n    (local.set $k (i32.add (local.get $k) (i32.const 1)))\n    (br_if $next (i32.lt_u (local.get $k) (i32.const 18))))\n  (local.get $bad))\n";
+
     #[test]
     fn wasm_executes_every_supported_pair() {
-        if !tool_available("uv") {
-            eprintln!("skipping wasm execution: uv not installed");
+        if !tools_available(&["wasmtime"]) {
             return;
         }
 
@@ -303,11 +304,14 @@ mod tests {
                 }
                 module.add_function(f);
                 let result = expected(c.op, c.lane, &c.a, &b, c.index, PointerWidth::Bits64);
-                data.extend(c.a);
-                data.extend(c.b);
                 let mut guarded = [165; 18];
                 guarded[1..1 + result.len()].copy_from_slice(&result);
-                data.extend(guarded);
+                let mut block = [0u8; 128];
+                block[1..17].copy_from_slice(&c.a);
+                block[33..49].copy_from_slice(&c.b);
+                block[64..82].copy_from_slice(&[165; 18]);
+                block[96..114].copy_from_slice(&guarded);
+                data.extend(block);
             }
             let mut wat =
                 emit(&module, Backend::Wasm, RegallocStrategy::Incremental, true).expect("emit");
@@ -316,35 +320,32 @@ mod tests {
             for name in module.functions.keys() {
                 wat.push_str(&format!("(export \"{name}\" (func ${name}))\n"));
             }
-            wat.push(')');
+            wat.push_str(MISMATCH_FN);
+            wat.push_str("(func (export \"check\") (result i32)\n  (local $bad i32)\n");
+            for i in 0..cases.len() {
+                wat.push_str(&format!(
+                    "  (memory.init $rows (i32.const 0) (i32.const {}) (i32.const 128))\n  (call $simd_{i} (i64.const 0) (i64.const 32) (i64.const 64))\n  (local.set $bad (i32.add (local.get $bad) (call $mismatch (i32.const 64) (i32.const 96))))\n",
+                    i * 128
+                ));
+            }
+            wat.push_str("  (local.get $bad))\n");
+            wat.push_str("(data $rows \"");
+            for byte in &data {
+                wat.push_str(&format!("\\{byte:02x}"));
+            }
+            wat.push_str("\")\n)");
             fs::write(dir.join("simd.wat"), wat).expect("write wat");
-            fs::write(dir.join("data"), data).expect("write data");
-            fs::write(dir.join("run.py"), r#"
-import pathlib, wasmtime
-p = pathlib.Path(__file__).parent
-engine = wasmtime.Engine()
-wasm = wasmtime.wat2wasm((p/'simd.wat').read_text())
-(p/'simd.wasm').write_bytes(wasm)
-module = wasmtime.Module(engine, (p/'simd.wasm').read_bytes())
-store = wasmtime.Store(engine)
-imports = [wasmtime.Func(store, i.type, lambda *args: 0 if len(args) else 0) for i in module.imports]
-instance = wasmtime.Instance(store, module, imports)
-exports = instance.exports(store)
-memory = exports['memory']
-data = (p/'data').read_bytes()
-for i in range(len(data)//50):
-    row = data[i*50:(i+1)*50]
-    memory.write(store, b'\x00'+row[:16]+b'\x00', 0)
-    memory.write(store, b'\x00'+row[16:32]+b'\x00', 32)
-    memory.write(store, bytes([165])*18, 64)
-    name = f'simd_{i}'
-    exports[name](store, 0, 32, 64)
-    got = bytes(memory.read(store,64,82))
-    assert got == row[32:], (i, name, got.hex(), row[32:].hex())
-"#).expect("write runner");
-            run(Command::new("uv")
-                .args(["run", "--with", "wasmtime", "python"])
-                .arg(dir.join("run.py")));
+            let output = Command::new("wasmtime")
+                .args(["run", "--invoke", "check"])
+                .arg(dir.join("simd.wat"))
+                .output()
+                .expect("run wasmtime");
+            assert!(output.status.success(), "{output:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                "0\n",
+                "imm {imm}: some lanes did not match the expected result or guard bytes"
+            );
         }
     }
 

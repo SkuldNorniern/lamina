@@ -3,7 +3,7 @@ use crate::mir::{
     Block, FloatBinOp, FloatUnOp, Function, Immediate, Instruction, MirType, Module, Operand,
     Parameter, Register, Signature, VirtualReg,
 };
-use crate::mir_codegen::simd_support::tool_available;
+use crate::mir_codegen::simd_support::{objdump_tool, tools_available};
 use crate::test_support::TempDir;
 use lamina_mir::ScalarType;
 use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
@@ -112,7 +112,7 @@ fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
             "{triple}: {}",
             String::from_utf8_lossy(&result.stderr)
         );
-        let disassembly = Command::new("llvm-objdump-18")
+        let disassembly = Command::new(objdump_tool().expect("cross_assembler_ready found one"))
             .arg("-d")
             .arg(object)
             .output()?;
@@ -134,8 +134,7 @@ fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn float_unary_wasm_output_validates() -> Result<(), Box<dyn Error>> {
-    // uv fetches wasmtime on demand, which only the Linux leg of CI is set up for.
-    if !cfg!(target_os = "linux") || !tool_available("uv") {
+    if !tools_available(&["wasmtime"]) {
         return Ok(());
     }
     let module = unary_module(false);
@@ -151,9 +150,13 @@ fn float_unary_wasm_output_validates() -> Result<(), Box<dyn Error>> {
         )?;
         let source = dir.join("unary.wat");
         fs::write(&source, assembly)?;
-        let result = Command::new("uv").args(["run", "--with", "wasmtime", "python", "-c",
-            "import sys, wasmtime; wasmtime.Module(wasmtime.Engine(), wasmtime.wat2wasm(open(sys.argv[1]).read()))"])
-            .arg(source).output()?;
+        let compiled = dir.join(format!("unary-{arch:?}.cwasm"));
+        let result = Command::new("wasmtime")
+            .arg("compile")
+            .arg(&source)
+            .arg("-o")
+            .arg(&compiled)
+            .output()?;
         assert!(
             result.status.success(),
             "{arch:?}: {}",
