@@ -124,6 +124,12 @@ impl A64RegAlloc {
         pool
     }
 
+    /// The caller-saved members of the global pool. A call destroys each of these, so a
+    /// value live across one may not be planned into them.
+    pub fn caller_saved_in_global_pool() -> &'static [&'static str] {
+        MAP_GPRS
+    }
+
     /// The callee-saved registers a plan hands out, in register-number order.
     pub fn callee_saved_in_plan(
         plan: &HashMap<VirtualReg, Allocation<&'static str>>,

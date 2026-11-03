@@ -19,7 +19,7 @@ use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::unsupported_io;
 use crate::mir_codegen::common::{
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
+    ClobberIndex, CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, emit_macho_thread_local_globals, emit_static_global_data,
     emit_symbol_visibility, integer_conversion, macho_tlv_descriptor, self_tail_arguments,
     self_tail_schedule,
@@ -52,7 +52,7 @@ use crate::{
 };
 
 use lamina_codegen::{
-    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
+    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LiveInterval,
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
 };
 use lamina_codegen::{os_uses_coff, os_uses_elf, os_uses_macho};
@@ -476,8 +476,8 @@ fn compile_single_function_aarch64_with(
             )
         });
     // A tail call leaves through its own epilogue and inline asm picks physical
-    // registers without consulting the allocator, so neither may hold a planned value
-    // in a callee-saved register.
+    // registers without consulting the allocator, so neither may hold a planned value in
+    // a callee-saved register, and neither gets a plan at all once the function calls.
     let allows_callee_saved = !func
         .blocks
         .iter()
@@ -488,35 +488,58 @@ fn compile_single_function_aarch64_with(
                 MirInst::TailCall { .. } | MirInst::InlineAsm { .. }
             )
         });
-    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
-        if settings.regalloc != RegallocStrategy::Incremental && !makes_calls {
-            let pool = A64RegAlloc::gpr_pool_for_global_allocation(allows_callee_saved);
-            let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
-                .into_iter()
-                .filter(|i| {
-                    i.vreg.class == RegisterClass::Gpr
-                        && !func.stack_reservations.contains_key(&i.vreg)
-                })
-                .collect();
-            let mut plan = match settings.regalloc {
-                RegallocStrategy::LinearScanGlobal => {
-                    LinearScanAllocator::allocate(&intervals, pool.as_slice())
+    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> = if settings.regalloc
+        != RegallocStrategy::Incremental
+        && (allows_callee_saved || !makes_calls)
+    {
+        // A call destroys every caller-saved register, so a value whose interval
+        // covers one may only live in a callee-saved register; everything else keeps
+        // the x13-x15 pool.
+        let mut call_clobbers: ClobberIndex<&'static str> = ClobberIndex::default();
+        for (index, inst) in func
+            .blocks
+            .iter()
+            .flat_map(|b| b.instructions.iter())
+            .enumerate()
+        {
+            if matches!(
+                &inst.instr,
+                MirInst::Call { .. }
+                    | MirInst::CallIndirect { .. }
+                    | MirInst::ThreadLocalAddr { .. }
+            ) {
+                for reg in A64RegAlloc::caller_saved_in_global_pool() {
+                    call_clobbers.mark(reg, index);
                 }
-                RegallocStrategy::GraphColorGlobal => {
-                    GraphColorAllocator::allocate(&intervals, pool.as_slice())
-                }
-                RegallocStrategy::Incremental => {
-                    return Err(CodegenError::InvalidCodegenOptions(
-                        "internal: incremental in global branch".to_string(),
-                    ));
-                }
-            };
-            plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
-            frame.recompute_frame_size_from_slots();
-            Some(plan)
-        } else {
-            None
+            }
+        }
+        let allowed = |interval: &LiveInterval, reg| call_clobbers.is_clear(reg, interval);
+        let pool = A64RegAlloc::gpr_pool_for_global_allocation(allows_callee_saved);
+        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+            .into_iter()
+            .filter(|i| {
+                i.vreg.class == RegisterClass::Gpr && !func.stack_reservations.contains_key(&i.vreg)
+            })
+            .collect();
+        let mut plan = match settings.regalloc {
+            RegallocStrategy::LinearScanGlobal => {
+                LinearScanAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
+            }
+            RegallocStrategy::GraphColorGlobal => {
+                GraphColorAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
+            }
+            RegallocStrategy::Incremental => {
+                return Err(CodegenError::InvalidCodegenOptions(
+                    "internal: incremental in global branch".to_string(),
+                ));
+            }
         };
+        plan = coalesce_dying_inputs(func, &intervals, &plan, allowed);
+        frame.recompute_frame_size_from_slots();
+        Some(plan)
+    } else {
+        None
+    };
 
     let callee_saved: Vec<&'static str> = global_plan
         .as_ref()
