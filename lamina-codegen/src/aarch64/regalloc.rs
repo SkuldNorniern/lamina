@@ -13,14 +13,19 @@ use lamina_mir::{Register, RegisterClass, VirtualReg};
 pub struct A64RegAlloc {
     free_gprs: VecDeque<&'static str>,
     used_gprs: HashSet<&'static str>,
+    global_mappings: HashMap<VirtualReg, &'static str>,
     vreg_to_preg: HashMap<VirtualReg, &'static str>,
     scratch_free: VecDeque<&'static str>,
     scratch_used: HashSet<&'static str>,
 }
 
-// Only use caller-saved registers (x9-x15) until we implement callee-saved save/restore
-// x19-x28 are callee-saved and must be saved/restored in prologue/epilogue if used
 const MAP_GPRS: &[&str] = &["x13", "x14", "x15"];
+
+/// Callee-saved registers a global plan may draw on, once the prologue saves them.
+///
+/// x16 and x17 are the emitter's own scratch, x18 is the platform register on Darwin
+/// and Windows, and x19 and x20 are the address emitter's last-resort temporaries.
+const CALLEE_SAVED_GPRS: &[&str] = &["x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"];
 
 const SCRATCH_GPRS: &[&str] = &["x9", "x10", "x11", "x12"];
 
@@ -46,6 +51,7 @@ impl A64RegAlloc {
         Self {
             free_gprs,
             used_gprs: HashSet::new(),
+            global_mappings: HashMap::new(),
             vreg_to_preg: HashMap::new(),
             scratch_free,
             scratch_used: HashSet::new(),
@@ -58,7 +64,6 @@ impl A64RegAlloc {
         self.free_gprs.push_back("x13");
         self.free_gprs.push_back("x14");
         self.free_gprs.push_back("x15");
-        // Removed x19-x23 - these are callee-saved and need prologue/epilogue save/restore
         self.used_gprs.retain(|r| self.free_gprs.contains(r));
         let free_set: HashSet<&str> = self.free_gprs.iter().copied().collect();
         self.vreg_to_preg.retain(|_, preg| free_set.contains(preg));
@@ -109,24 +114,44 @@ impl A64RegAlloc {
         MirRegisterAllocator::mapped_for_register(self, r)
     }
 
-    pub fn gpr_pool_for_global_allocation() -> Vec<&'static str> {
-        MAP_GPRS.to_vec()
+    /// GPR candidates for global allocation. `callee_saved` widens the pool with
+    /// x21-x28, which the prologue then has to save and the epilogue restore.
+    pub fn gpr_pool_for_global_allocation(callee_saved: bool) -> Vec<&'static str> {
+        let mut pool = MAP_GPRS.to_vec();
+        if callee_saved {
+            pool.extend_from_slice(CALLEE_SAVED_GPRS);
+        }
+        pool
+    }
+
+    /// The callee-saved registers a plan hands out, in register-number order.
+    pub fn callee_saved_in_plan(
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Vec<&'static str> {
+        CALLEE_SAVED_GPRS
+            .iter()
+            .copied()
+            .filter(|reg| {
+                plan.iter().any(|(vreg, alloc)| {
+                    vreg.class == RegisterClass::Gpr
+                        && matches!(alloc, Allocation::Register(phys) if phys == reg)
+                })
+            })
+            .collect()
     }
 
     pub fn from_global_plan(plan: &HashMap<VirtualReg, Allocation<&'static str>>) -> Self {
         let mut s = Self::new();
+        s.free_gprs.clear();
         for (&vreg, alloc) in plan {
             if vreg.class != RegisterClass::Gpr {
                 continue;
             }
             if let Allocation::Register(phys) = alloc
-                && MAP_GPRS.contains(phys)
-                && s.vreg_to_preg.insert(vreg, *phys).is_none()
+                && (MAP_GPRS.contains(phys) || CALLEE_SAVED_GPRS.contains(phys))
             {
+                s.global_mappings.insert(vreg, *phys);
                 s.used_gprs.insert(*phys);
-                if let Some(pos) = s.free_gprs.iter().position(|&p| p == *phys) {
-                    let _ = s.free_gprs.remove(pos);
-                }
             }
         }
         s
@@ -152,11 +177,14 @@ impl MirRegisterAllocator for A64RegAlloc {
     }
 
     fn get_mapping(&self, vreg: &VirtualReg) -> Option<Self::PhysReg> {
+        if let Some(&phys) = self.global_mappings.get(vreg) {
+            return Some(phys);
+        }
         self.vreg_to_preg.get(vreg).copied()
     }
 
     fn ensure_mapping(&mut self, vreg: VirtualReg) -> Option<Self::PhysReg> {
-        if let Some(&phys) = self.vreg_to_preg.get(&vreg) {
+        if let Some(phys) = MirRegisterAllocator::get_mapping(self, &vreg) {
             return Some(phys);
         }
 
@@ -180,7 +208,7 @@ impl MirRegisterAllocator for A64RegAlloc {
 
     fn mapped_for_register(&self, reg: &Register) -> Option<Self::PhysReg> {
         match reg {
-            Register::Virtual(v) => self.vreg_to_preg.get(v).copied(),
+            Register::Virtual(v) => MirRegisterAllocator::get_mapping(self, v),
             Register::Physical(p) => Some(p.name),
         }
     }
@@ -201,5 +229,68 @@ impl MirRegisterAllocator for A64RegAlloc {
 
     fn is_occupied(&self, phys: Self::PhysReg) -> bool {
         self.used_gprs.contains(&phys)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_plan_mappings_survive_and_are_shared() {
+        let first = VirtualReg::gpr(0);
+        let second = VirtualReg::gpr(1);
+        let third = VirtualReg::gpr(2);
+        let plan = HashMap::from([
+            (first, Allocation::Register("x21")),
+            (second, Allocation::Register("x21")),
+            (third, Allocation::Spill(-8)),
+        ]);
+        let mut allocator = A64RegAlloc::from_global_plan(&plan);
+        assert_eq!(allocator.get_mapping_for(&first), Some("x21"));
+        assert_eq!(allocator.get_mapping_for(&second), Some("x21"));
+        assert_eq!(allocator.get_mapping_for(&third), None);
+        assert_eq!(allocator.ensure_mapping(VirtualReg::gpr(9)), None);
+        assert_eq!(allocator.get_mapping_for(&first), Some("x21"));
+    }
+
+    #[test]
+    fn callee_saved_pool_is_opt_in() {
+        let narrow = A64RegAlloc::gpr_pool_for_global_allocation(false);
+        let wide = A64RegAlloc::gpr_pool_for_global_allocation(true);
+        assert_eq!(narrow, vec!["x13", "x14", "x15"]);
+        assert!(wide.starts_with(&["x13", "x14", "x15"]));
+        assert_eq!(wide.len(), 11);
+        for reserved in ["x16", "x17", "x18", "x19", "x20", "x29", "x30"] {
+            assert!(
+                !wide.contains(&reserved),
+                "{reserved} must stay unallocated"
+            );
+        }
+        for scratch in SCRATCH_GPRS {
+            assert!(!wide.contains(scratch));
+        }
+    }
+
+    #[test]
+    fn callee_saved_in_plan_reports_register_order() {
+        let plan = HashMap::from([
+            (VirtualReg::gpr(0), Allocation::Register("x24")),
+            (VirtualReg::gpr(1), Allocation::Register("x21")),
+            (VirtualReg::gpr(2), Allocation::Register("x24")),
+            (VirtualReg::gpr(3), Allocation::Register("x13")),
+            (VirtualReg::gpr(4), Allocation::Spill(-16)),
+        ]);
+        assert_eq!(A64RegAlloc::callee_saved_in_plan(&plan), vec!["x21", "x24"]);
+    }
+
+    #[test]
+    fn local_allocation_stays_on_caller_saved_registers() {
+        let mut allocator = A64RegAlloc::new();
+        let mut seen = Vec::new();
+        for index in 0..3 {
+            seen.push(allocator.ensure_mapping(VirtualReg::gpr(index)).unwrap());
+        }
+        assert_eq!(seen, vec!["x13", "x14", "x15"]);
     }
 }

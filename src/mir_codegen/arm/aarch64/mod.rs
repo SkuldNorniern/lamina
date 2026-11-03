@@ -461,18 +461,6 @@ fn compile_single_function_aarch64_with(
     if unwind {
         writeln!(output, "    .cfi_startproc").map_err(io_error)?;
     }
-    let mut ra_pro = A64RegAlloc::new();
-    writeln!(output, "    stp x29, x30, [sp, #-16]!").map_err(io_error)?;
-    if unwind {
-        writeln!(output, "    .cfi_def_cfa_offset 16").map_err(io_error)?;
-        writeln!(output, "    .cfi_offset 29, -16").map_err(io_error)?;
-        writeln!(output, "    .cfi_offset 30, -8").map_err(io_error)?;
-    }
-    writeln!(output, "    mov x29, sp").map_err(io_error)?;
-    if unwind {
-        writeln!(output, "    .cfi_def_cfa_register 29").map_err(io_error)?;
-    }
-
     let mut frame = FrameMap::from_function(func);
 
     let makes_calls = func
@@ -487,9 +475,22 @@ fn compile_single_function_aarch64_with(
                     | MirInst::ThreadLocalAddr { .. }
             )
         });
+    // A tail call leaves through its own epilogue and inline asm picks physical
+    // registers without consulting the allocator, so neither may hold a planned value
+    // in a callee-saved register.
+    let allows_callee_saved = !func
+        .blocks
+        .iter()
+        .flat_map(|b| b.instructions.iter())
+        .any(|i| {
+            matches!(
+                &i.instr,
+                MirInst::TailCall { .. } | MirInst::InlineAsm { .. }
+            )
+        });
     let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
         if settings.regalloc != RegallocStrategy::Incremental && !makes_calls {
-            let pool = A64RegAlloc::gpr_pool_for_global_allocation();
+            let pool = A64RegAlloc::gpr_pool_for_global_allocation(allows_callee_saved);
             let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
                 .into_iter()
                 .filter(|i| {
@@ -516,6 +517,23 @@ fn compile_single_function_aarch64_with(
         } else {
             None
         };
+
+    let callee_saved: Vec<&'static str> = global_plan
+        .as_ref()
+        .map(A64RegAlloc::callee_saved_in_plan)
+        .unwrap_or_default();
+
+    let mut ra_pro = A64RegAlloc::new();
+    writeln!(output, "    stp x29, x30, [sp, #-16]!").map_err(io_error)?;
+    if unwind {
+        writeln!(output, "    .cfi_def_cfa_offset 16").map_err(io_error)?;
+        writeln!(output, "    .cfi_offset 29, -16").map_err(io_error)?;
+        writeln!(output, "    .cfi_offset 30, -8").map_err(io_error)?;
+    }
+    writeln!(output, "    mov x29, sp").map_err(io_error)?;
+    if unwind {
+        writeln!(output, "    .cfi_def_cfa_register 29").map_err(io_error)?;
+    }
 
     let has_many_vars = func
         .blocks
@@ -547,6 +565,10 @@ fn compile_single_function_aarch64_with(
         Some(_) => adjusted_frame_size + variadic::SAVE_AREA_BYTES,
         None => adjusted_frame_size,
     };
+    let callee_saved_bytes = (callee_saved.len() * 8).next_multiple_of(16) as i32;
+    let callee_saved_base =
+        (!callee_saved.is_empty()).then(|| -adjusted_frame_size - callee_saved_bytes);
+    let adjusted_frame_size = adjusted_frame_size + callee_saved_bytes;
 
     frame.frame_size = adjusted_frame_size;
     let page_size = TargetArchitecture::Aarch64.stack_page_size() as u64;
@@ -561,6 +583,21 @@ fn compile_single_function_aarch64_with(
     }
     if let Some(offset) = sret_slot {
         emit_frame_slot_store(&mut output, "x8", offset).map_err(lamina_to_codegen_error)?;
+    }
+    if let Some(base) = callee_saved_base {
+        emit_callee_saved(&mut output, &callee_saved, base, true)
+            .map_err(lamina_to_codegen_error)?;
+        if unwind {
+            for (index, reg) in callee_saved.iter().enumerate() {
+                writeln!(
+                    output,
+                    "    .cfi_offset {}, {}",
+                    reg.trim_start_matches('x'),
+                    base + index as i32 * 8 - 16
+                )
+                .map_err(io_error)?;
+            }
+        }
     }
 
     let param_kinds: Vec<ArgKind> = func
@@ -852,6 +889,16 @@ fn compile_single_function_aarch64_with(
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     if unwind {
         writeln!(output, "    .cfi_remember_state").map_err(io_error)?;
+    }
+    if let Some(base) = callee_saved_base {
+        emit_callee_saved(&mut output, &callee_saved, base, false)
+            .map_err(lamina_to_codegen_error)?;
+        if unwind {
+            for reg in &callee_saved {
+                writeln!(output, "    .cfi_restore {}", reg.trim_start_matches('x'))
+                    .map_err(io_error)?;
+            }
+        }
     }
     if adjusted_frame_size > 0 {
         emit_sp_adjust(&mut output, "add", adjusted_frame_size as u64)
@@ -2359,6 +2406,59 @@ fn emit_sp_adjust<W: Write>(w: &mut W, op: &str, amount: u64) -> Result<(), Lami
 
 /// Stores a register into a frame slot, going through a scratch when the offset is
 /// past the reach of `stur`.
+/// Saves or restores the callee-saved registers a global plan handed out, in the area
+/// reserved for them at `base` from the frame pointer. Adjacent pairs go through
+/// `stp`/`ldp` pairs, anchored on x29 while the offsets stay in their reach and on a
+/// scratch copy of the area address otherwise.
+fn emit_callee_saved<W: Write>(
+    w: &mut W,
+    regs: &[&'static str],
+    base: i32,
+    save: bool,
+) -> Result<(), LaminaError> {
+    let pair = if save { "stp" } else { "ldp" };
+    let last = base + (regs.len() as i32 - 1) * 8;
+    let mut index = 0;
+    if (-512..=504).contains(&base) && (-512..=504).contains(&last) {
+        while index + 1 < regs.len() {
+            let offset = base + index as i32 * 8;
+            writeln!(
+                w,
+                "    {pair} {}, {}, [x29, #{offset}]",
+                regs[index],
+                regs[index + 1]
+            )?;
+            index += 2;
+        }
+        if index < regs.len() {
+            let offset = base + index as i32 * 8;
+            if save {
+                emit_frame_slot_store(w, regs[index], offset)?;
+            } else {
+                emit_frame_slot_load(w, regs[index], offset)?;
+            }
+        }
+        return Ok(());
+    }
+
+    emit_frame_slot_address(w, "x16", base)?;
+    while index + 1 < regs.len() {
+        writeln!(
+            w,
+            "    {pair} {}, {}, [x16, #{}]",
+            regs[index],
+            regs[index + 1],
+            index * 8
+        )?;
+        index += 2;
+    }
+    if index < regs.len() {
+        let single = if save { "str" } else { "ldr" };
+        writeln!(w, "    {single} {}, [x16, #{}]", regs[index], index * 8)?;
+    }
+    Ok(())
+}
+
 fn emit_frame_slot_store<W: Write>(
     w: &mut W,
     source: &str,
