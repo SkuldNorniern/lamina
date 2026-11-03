@@ -1,4 +1,5 @@
 use crate::cli::{compile::compile as run_compiler, options::parse_args_from};
+use crate::mir_codegen::simd_support::{objdump_tool, skip_test};
 use std::{error::Error, fs, path::Path, process::Command};
 
 pub(crate) fn compile(
@@ -18,8 +19,7 @@ pub(crate) fn compile(
     run_compiler(parse_args_from(args)?)
 }
 
-/// Whether the host clang accepts `args` and llvm-objdump-18 exists. Hosts without the
-/// cross target skip the assembly tests instead of failing them.
+/// Whether the host clang accepts `args` and an objdump is installed.
 pub(crate) fn cross_assembler_ready(dir: &Path, args: &[&str]) -> bool {
     let source = dir.join("lamina-probe.s");
     let object = dir.join("lamina-probe.o");
@@ -34,9 +34,14 @@ pub(crate) fn cross_assembler_ready(dir: &Path, args: &[&str]) -> bool {
         .arg(&object)
         .output();
     if !matches!(&assembled, Ok(out) if out.status.success()) {
+        skip_test(&format!("clang cannot assemble for {}", args.join(" ")));
         return false;
     }
-    matches!(Command::new("llvm-objdump-18").arg("--version").output(), Ok(out) if out.status.success())
+    if objdump_tool().is_none() {
+        skip_test("llvm-objdump-18 or llvm-objdump not installed");
+        return false;
+    }
+    true
 }
 
 /// Decimal printing written in Lamina, so a test needs no libc. Append it to a module and

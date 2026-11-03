@@ -9,7 +9,12 @@ use crate::{
     mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
 };
 use lamina_platform::{PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
-use std::{fs, process::Command, process::Stdio};
+use std::{
+    env, fs,
+    io::{self, Write},
+    process::{Command, Stdio},
+    thread,
+};
 
 pub const LANES: [VectorLane; 6] = [
     VectorLane::I8,
@@ -352,13 +357,35 @@ pub fn tool_available(name: &str) -> bool {
 }
 
 pub fn tools_available(names: &[&str]) -> bool {
-    for name in names {
-        if !tool_available(name) {
-            eprintln!("skipping test: {name} unavailable");
-            return false;
-        }
+    let missing: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| !tool_available(name))
+        .collect();
+    if missing.is_empty() {
+        return true;
     }
-    true
+    skip_test(&format!("{} not installed", missing.join(", ")));
+    false
+}
+
+pub fn objdump_tool() -> Option<&'static str> {
+    ["llvm-objdump-18", "llvm-objdump"]
+        .into_iter()
+        .find(|tool| tool_available(tool))
+}
+
+pub fn skip_test(reason: &str) {
+    let test = thread::current()
+        .name()
+        .unwrap_or("unnamed test")
+        .to_owned();
+    let message = format!("{test} skipped: {reason}");
+    assert!(
+        env::var_os("LAMINA_REQUIRE_TOOLS").is_none_or(|value| value != "1"),
+        "{message} (LAMINA_REQUIRE_TOOLS=1)"
+    );
+    let _ = writeln!(io::stderr(), "{message}");
 }
 
 pub fn run(command: &mut Command) {
@@ -552,7 +579,11 @@ pub fn native(
     mnemonic: impl Fn(VectorOp, VectorLane, usize) -> String,
     pointer_width: PointerWidth,
 ) {
-    if !tools_available(&["clang", "llvm-objdump-18"]) {
+    let Some(objdump) = objdump_tool() else {
+        skip_test("llvm-objdump-18 or llvm-objdump not installed");
+        return;
+    };
+    if !tools_available(&["clang"]) {
         return;
     }
     let guard = TempDir::new(&format!("lamina-{backend:?}"));
@@ -635,7 +666,7 @@ pub fn native(
             .arg(dir.join("simd.s"))
             .arg("-o")
             .arg(dir.join("simd.o")));
-        let output = Command::new("llvm-objdump-18")
+        let output = Command::new(objdump)
             .arg("-d")
             .arg(dir.join("simd.o"))
             .output()

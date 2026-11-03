@@ -1,4 +1,5 @@
 use super::interpret_mir_function;
+use crate::mir_codegen::simd_support::tools_available;
 use crate::test_support::TempDir;
 use crate::{
     mir::{
@@ -299,7 +300,7 @@ pub(super) fn run(
 }
 
 fn check_wasm(module: &Module, directory: &Path, traps: bool) -> TestResult {
-    if !available("wat2wasm") || !available("node") {
+    if !tools_available(&["wat2wasm", "node"]) {
         return Ok(());
     }
     let mut bytes = Vec::new();

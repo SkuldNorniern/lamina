@@ -788,7 +788,10 @@ mod emission_tests {
     use crate::test_support::TempDir;
     use lamina_platform::PointerWidth;
 
-    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use crate::mir_codegen::{
+        simd_support::{skip_test, tools_available},
+        test_support::compile,
+    };
     use std::{error::Error, fs, process::Command};
 
     #[test]
@@ -823,7 +826,7 @@ mod emission_tests {
         }
         let targets = Command::new("clang").arg("--print-targets").output()?;
         if !String::from_utf8_lossy(&targets.stdout).contains("amdgcn") {
-            eprintln!("skipping AMDGPU assembly: clang lacks amdgcn target");
+            skip_test("clang lacks the amdgcn target");
             return Ok(());
         }
         let guard = TempDir::new("lamina-amdgpu-asm");
