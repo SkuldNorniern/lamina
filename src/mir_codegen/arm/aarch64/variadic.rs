@@ -22,6 +22,13 @@ const VR_SAVE_BYTES: i32 = GP_REGISTERS * VR_SLOT_BYTES;
 pub(super) const SAVE_AREA_BYTES: i32 = GR_SAVE_BYTES + VR_SAVE_BYTES;
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct WindowsArea {
+    start: Option<i32>,
+    save: i32,
+    first: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct Aapcs64Area {
     stack: i32,
     save: i32,
@@ -32,7 +39,31 @@ pub(super) struct Aapcs64Area {
 #[derive(Clone, Copy, Debug)]
 pub(super) enum VaArea {
     Darwin { start: i32 },
+    Windows(WindowsArea),
     Aapcs64(Aapcs64Area),
+}
+
+/// General-purpose registers the named parameters in `places` consume.
+fn named_gp_words(places: &[ArgPlace]) -> usize {
+    places
+        .iter()
+        .map(|place| match place {
+            ArgPlace::Gpr { words, .. } => *words,
+            ArgPlace::Fpr { .. } | ArgPlace::Homogeneous { .. } | ArgPlace::Stack { .. } => 0,
+        })
+        .sum()
+}
+
+/// Bytes a Windows variadic callee needs for the general register save area: one slot
+/// for every argument register the named parameters left unused.
+pub(super) fn windows_save_bytes(places: &[ArgPlace]) -> i32 {
+    GR_SLOT_BYTES * ARGUMENT_REGISTERS.saturating_sub(named_gp_words(places)) as i32
+}
+
+/// Bytes the frame record occupies so that the Windows save area ends exactly where
+/// the incoming stack arguments begin, keeping the whole run contiguous.
+pub(super) fn windows_frame_record_bytes(places: &[ArgPlace]) -> i32 {
+    (FRAME_RECORD_BYTES + windows_save_bytes(places) + 15) & !15
 }
 
 impl VaArea {
@@ -40,14 +71,35 @@ impl VaArea {
         Self::Darwin { start }
     }
 
+    /// `record` is the frame record size, which is also the offset of the first
+    /// incoming stack argument from the frame pointer; `named_stack` is the space the
+    /// named parameters already took there.
+    pub(super) fn windows(record: i32, named_stack: i32, places: &[ArgPlace]) -> Self {
+        let save_bytes = windows_save_bytes(places);
+        let save = record - save_bytes;
+        let start = if named_stack > 0 {
+            None
+        } else if save_bytes > 0 {
+            Some(save)
+        } else {
+            Some(record)
+        };
+        Self::Windows(WindowsArea {
+            start,
+            save,
+            first: named_gp_words(places).min(ARGUMENT_REGISTERS) as i32,
+        })
+    }
+
+    pub(super) fn frame_record_bytes(&self) -> i32 {
+        match self {
+            Self::Windows(area) => area.save + GR_SLOT_BYTES * (GP_REGISTERS - area.first),
+            Self::Darwin { .. } | Self::Aapcs64(_) => FRAME_RECORD_BYTES,
+        }
+    }
+
     pub(super) fn aapcs64(save: i32, stack: i32, places: &[ArgPlace]) -> Self {
-        let gp_words: usize = places
-            .iter()
-            .map(|place| match place {
-                ArgPlace::Gpr { words, .. } => *words,
-                ArgPlace::Fpr { .. } | ArgPlace::Homogeneous { .. } | ArgPlace::Stack { .. } => 0,
-            })
-            .sum();
+        let gp_words = named_gp_words(places);
         let fp_regs: usize = places
             .iter()
             .map(|place| match place {
@@ -66,8 +118,10 @@ impl VaArea {
 }
 
 pub(super) fn spill_save_area<W: Write>(w: &mut W, area: &VaArea) -> Result<(), LaminaError> {
-    let VaArea::Aapcs64(area) = *area else {
-        return Ok(());
+    let area = match *area {
+        VaArea::Aapcs64(area) => area,
+        VaArea::Windows(area) => return spill_windows_save_area(w, &area),
+        VaArea::Darwin { .. } => return Ok(()),
     };
     emit_frame_slot_address(w, "x16", area.save)?;
     for index in 0..GP_REGISTERS {
@@ -78,6 +132,21 @@ pub(super) fn spill_save_area<W: Write>(w: &mut W, area: &VaArea) -> Result<(), 
             w,
             "    str q{index}, [x16, #{}]",
             GR_SAVE_BYTES + VR_SLOT_BYTES * index
+        )?;
+    }
+    Ok(())
+}
+
+fn spill_windows_save_area<W: Write>(w: &mut W, area: &WindowsArea) -> Result<(), LaminaError> {
+    if area.first >= GP_REGISTERS {
+        return Ok(());
+    }
+    emit_frame_slot_address(w, "x16", area.save)?;
+    for index in area.first..GP_REGISTERS {
+        writeln!(
+            w,
+            "    str x{index}, [x16, #{}]",
+            GR_SLOT_BYTES * (index - area.first)
         )?;
     }
     Ok(())
@@ -108,9 +177,9 @@ pub(super) fn emit<W: Write>(
     area: Option<VaArea>,
     label_prefix: &str,
 ) -> Result<(), LaminaError> {
-    if !os_uses_macho(target_os) && !os_uses_elf(target_os) {
+    if !os_uses_macho(target_os) && !os_uses_elf(target_os) && !os_uses_coff(target_os) {
         return Err(unsupported(format!(
-            "variadic argument `{inst}` is not yet supported by the AArch64 backend on {target_os:?}; it is implemented for Darwin and ELF targets"
+            "variadic argument `{inst}` is not yet supported by the AArch64 backend on {target_os:?}; it is implemented for Darwin, ELF and COFF targets"
         )));
     }
     let Some(area) = area else {
@@ -119,12 +188,22 @@ pub(super) fn emit<W: Write>(
         ));
     };
     match area {
-        VaArea::Darwin { start } => emit_darwin(inst, w, frame, ra, start),
+        VaArea::Darwin { start } => emit_pointer_list(inst, w, frame, ra, start),
+        VaArea::Windows(area) => {
+            let Some(start) = area.start else {
+                return Err(unsupported(format!(
+                    "variadic argument `{inst}`: a Windows AArch64 variadic function whose named parameters reach the stack is not supported"
+                )));
+            };
+            emit_pointer_list(inst, w, frame, ra, start)
+        }
         VaArea::Aapcs64(area) => emit_aapcs64(inst, w, frame, ra, &area, label_prefix),
     }
 }
 
-fn emit_darwin<W: Write>(
+/// Darwin and Windows both hand out a plain pointer that walks one eight-byte slot at
+/// a time; they differ only in where that walk starts and what it crosses.
+fn emit_pointer_list<W: Write>(
     inst: &MirInst,
     w: &mut W,
     frame: &FrameMap,
@@ -263,7 +342,7 @@ mod tests {
     fn aapcs(places: &[ArgPlace]) -> Aapcs64Area {
         match VaArea::aapcs64(-400, 32, places) {
             VaArea::Aapcs64(area) => area,
-            VaArea::Darwin { .. } => panic!("expected the AAPCS64 area"),
+            VaArea::Darwin { .. } | VaArea::Windows(_) => panic!("expected the AAPCS64 area"),
         }
     }
 
@@ -315,6 +394,106 @@ mod tests {
         assert_eq!(text.matches("    str q").count(), 8, "{text}");
         assert!(text.contains("    str q7, [x16, #176]\n"), "{text}");
         Ok(())
+    }
+
+    fn windows(record: i32, named_stack: i32, places: &[ArgPlace]) -> WindowsArea {
+        match VaArea::windows(record, named_stack, places) {
+            VaArea::Windows(area) => area,
+            VaArea::Darwin { .. } | VaArea::Aapcs64(_) => panic!("expected the Windows area"),
+        }
+    }
+
+    fn one_named_word() -> [ArgPlace; 1] {
+        [ArgPlace::Gpr { first: 0, words: 1 }]
+    }
+
+    #[test]
+    fn the_windows_save_area_ends_where_the_stack_arguments_begin() {
+        let places = one_named_word();
+        let record = windows_frame_record_bytes(&places);
+        let area = windows(record, 0, &places);
+        assert_eq!((record, windows_save_bytes(&places)), (80, 56));
+        assert_eq!(area.save + windows_save_bytes(&places), record);
+        assert_eq!(area.start, Some(24));
+    }
+
+    #[test]
+    fn every_count_of_named_words_keeps_the_save_area_adjacent() {
+        for named in 0..=ARGUMENT_REGISTERS {
+            let places: Vec<ArgPlace> = (0..named)
+                .map(|first| ArgPlace::Gpr { first, words: 1 })
+                .collect();
+            let record = windows_frame_record_bytes(&places);
+            let area = windows(record, 0, &places);
+            assert_eq!(record % 16, 0, "{named}");
+            assert_eq!(area.save + windows_save_bytes(&places), record, "{named}");
+            assert_eq!(
+                VaArea::windows(record, 0, &places).frame_record_bytes(),
+                record
+            );
+        }
+    }
+
+    #[test]
+    fn a_fully_named_register_file_starts_the_walk_at_the_stack_arguments() {
+        let places: Vec<ArgPlace> = (0..ARGUMENT_REGISTERS)
+            .map(|first| ArgPlace::Gpr { first, words: 1 })
+            .collect();
+        let record = windows_frame_record_bytes(&places);
+        assert_eq!((record, windows_save_bytes(&places)), (16, 0));
+        assert_eq!(windows(record, 0, &places).start, Some(16));
+    }
+
+    #[test]
+    fn named_parameters_on_the_stack_leave_the_walk_undefined() {
+        let places = [ArgPlace::Stack {
+            offset: 0,
+            bytes: 8,
+        }];
+        assert_eq!(windows(80, 8, &places).start, None);
+    }
+
+    #[test]
+    fn a_named_float_leaves_every_general_register_to_va_arg() {
+        let places = [ArgPlace::Fpr { index: 0 }];
+        assert_eq!(windows_save_bytes(&places), 64);
+        assert_eq!(
+            windows(windows_frame_record_bytes(&places), 0, &places).first,
+            0
+        );
+    }
+
+    #[test]
+    fn windows_spills_only_the_unnamed_registers() -> Result<(), LaminaError> {
+        let places = one_named_word();
+        let area = VaArea::windows(windows_frame_record_bytes(&places), 0, &places);
+        let mut output = Vec::new();
+        spill_save_area(&mut output, &area)?;
+        let text = String::from_utf8_lossy(&output);
+        assert!(text.starts_with("    add x16, x29, #24\n"), "{text}");
+        assert_eq!(text.matches("    str x").count(), 7, "{text}");
+        assert!(text.contains("    str x1, [x16, #0]\n"), "{text}");
+        assert!(text.contains("    str x7, [x16, #48]\n"), "{text}");
+        assert!(!text.contains("    str q"), "{text}");
+        Ok(())
+    }
+
+    #[test]
+    fn only_the_types_the_pointer_walk_can_place_are_accepted() {
+        for ty in [
+            ScalarType::I8,
+            ScalarType::I16,
+            ScalarType::I32,
+            ScalarType::I64,
+            ScalarType::Ptr,
+        ] {
+            assert_eq!(va_arg_is_float(&MirType::Scalar(ty)).ok(), Some(false));
+        }
+        assert_eq!(
+            va_arg_is_float(&MirType::Scalar(ScalarType::F64)).ok(),
+            Some(true)
+        );
+        assert!(va_arg_is_float(&MirType::Scalar(ScalarType::F32)).is_err());
     }
 
     #[test]

@@ -107,6 +107,9 @@ enum ArgPlace {
 
 const ARGUMENT_REGISTERS: usize = 8;
 
+/// Saved frame pointer and link register, which the prologue pushes before the frame.
+pub(super) const FRAME_RECORD_BYTES: i32 = 16;
+
 fn passed_in_memory(aggregate: Aggregate) -> bool {
     aggregate.size as u64 > MAX_REGISTER_AGGREGATE && aggregate.homogeneous_members().is_none()
 }
@@ -181,6 +184,7 @@ fn classify_aarch64_arguments(
     fixed: Option<usize>,
 ) -> Vec<ArgPlace> {
     let darwin = os_uses_macho(target_os);
+    let coff = os_uses_coff(target_os);
     let mut gprs = 0usize;
     let mut fprs = 0;
     let mut stack = 0;
@@ -209,13 +213,17 @@ fn classify_aarch64_arguments(
     for (index, kind) in kinds.iter().enumerate() {
         // Darwin hands a variadic callee its arguments on the stack, whichever
         // registers are still free.
-        let variadic = darwin && fixed.is_some_and(|fixed| index >= fixed);
+        let unnamed = fixed.is_some_and(|fixed| index >= fixed);
+        let variadic = darwin && unnamed;
         let packed = darwin && !variadic;
         if variadic {
             places.push(on_stack(&mut stack, kind, packed));
             continue;
         }
-        if kind.float {
+        // Windows hands a variadic callee its floats in general registers; it has no
+        // vector save area for va_arg to read.
+        let as_integer = coff && unnamed;
+        if kind.float && !as_integer {
             if fprs < ARGUMENT_REGISTERS {
                 places.push(ArgPlace::Fpr { index: fprs });
                 fprs += 1;
@@ -224,7 +232,11 @@ fn classify_aarch64_arguments(
             }
             continue;
         }
-        if let Some((member, count)) = kind.aggregate.and_then(|a| a.homogeneous_members()) {
+        if let Some((member, count)) = kind
+            .aggregate
+            .filter(|_| !as_integer)
+            .and_then(|a| a.homogeneous_members())
+        {
             if fprs + count <= ARGUMENT_REGISTERS {
                 places.push(ArgPlace::Homogeneous {
                     first: fprs,
@@ -560,10 +572,26 @@ fn compile_single_function_aarch64_with(
         .map(A64RegAlloc::callee_saved_in_plan)
         .unwrap_or_default();
 
+    let param_kinds: Vec<ArgKind> = func
+        .sig
+        .params
+        .iter()
+        .map(|p| ArgKind::of(p.ty, p.aggregate, func.pointer_width))
+        .collect();
+    let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
+    // Windows keeps va_list a plain pointer, so the general register save area has to
+    // sit directly under the incoming stack arguments. Growing the frame record is
+    // what puts it there, above the frame and below the caller's stack arguments.
+    let frame_record = if func.sig.variadic && os_uses_coff(target_os) {
+        variadic::windows_frame_record_bytes(&param_places)
+    } else {
+        FRAME_RECORD_BYTES
+    };
+
     let mut ra_pro = A64RegAlloc::new();
-    writeln!(output, "    stp x29, x30, [sp, #-16]!").map_err(io_error)?;
+    writeln!(output, "    stp x29, x30, [sp, #-{frame_record}]!").map_err(io_error)?;
     if unwind {
-        writeln!(output, "    .cfi_def_cfa_offset 16").map_err(io_error)?;
+        writeln!(output, "    .cfi_def_cfa_offset {frame_record}").map_err(io_error)?;
         writeln!(output, "    .cfi_offset 29, -16").map_err(io_error)?;
         writeln!(output, "    .cfi_offset 30, -8").map_err(io_error)?;
     }
@@ -637,18 +665,16 @@ fn compile_single_function_aarch64_with(
         }
     }
 
-    let param_kinds: Vec<ArgKind> = func
-        .sig
-        .params
-        .iter()
-        .map(|p| ArgKind::of(p.ty, p.aggregate, func.pointer_width))
-        .collect();
-    let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
     let va_area = func.sig.variadic.then(|| {
-        let stack_start = (16 + aarch64_stack_bytes(&param_places).next_multiple_of(8)) as i32;
+        let named_stack = aarch64_stack_bytes(&param_places).next_multiple_of(8) as i32;
         match va_save {
-            Some(save) => variadic::VaArea::aapcs64(save, stack_start, &param_places),
-            None => variadic::VaArea::darwin(stack_start),
+            Some(save) => {
+                variadic::VaArea::aapcs64(save, FRAME_RECORD_BYTES + named_stack, &param_places)
+            }
+            None if os_uses_coff(target_os) => {
+                variadic::VaArea::windows(frame_record, named_stack, &param_places)
+            }
+            None => variadic::VaArea::darwin(FRAME_RECORD_BYTES + named_stack),
         }
     });
     if let Some(area) = &va_area {
@@ -711,9 +737,12 @@ fn compile_single_function_aarch64_with(
                 }
                 ArgPlace::Stack { offset, .. } if kind.by_reference => {
                     let pointer = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
-                    writeln!(output, "    ldr {pointer}, [x29, #{}]", 16 + offset).map_err(
-                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
-                    )?;
+                    writeln!(
+                        output,
+                        "    ldr {pointer}, [x29, #{}]",
+                        frame_record + offset as i32
+                    )
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                     copy_through_pointer(
                         &mut output,
                         pointer,
@@ -741,7 +770,7 @@ fn compile_single_function_aarch64_with(
                     let val_reg = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
                     let words = bytes.div_ceil(8).max(1);
                     for word in 0..words {
-                        let caller_offset = 16 + offset + word * 8;
+                        let caller_offset = frame_record as usize + offset + word * 8;
                         let width = (bytes - word * 8).min(8);
                         load_argument_bytes(&mut output, val_reg, "x29", caller_offset, width)
                             .map_err(|e| {
@@ -941,7 +970,7 @@ fn compile_single_function_aarch64_with(
         emit_sp_adjust(&mut output, "add", adjusted_frame_size as u64)
             .map_err(lamina_to_codegen_error)?;
     }
-    writeln!(output, "    ldp x29, x30, [sp], #16").map_err(io_error)?;
+    writeln!(output, "    ldp x29, x30, [sp], #{frame_record}").map_err(io_error)?;
     if unwind {
         writeln!(output, "    .cfi_def_cfa sp, 0").map_err(io_error)?;
         writeln!(output, "    .cfi_restore 29").map_err(io_error)?;
@@ -2134,6 +2163,8 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::TailCall { name, args } => {
+                let frame_record =
+                    va_area.map_or(FRAME_RECORD_BYTES, |area| area.frame_record_bytes());
                 let kinds = signatures.arguments(name, args);
                 let places = classify_aarch64_arguments(
                     &kinds,
@@ -2175,7 +2206,13 @@ fn emit_block<W: Write>(
                         ArgPlace::Stack { offset, bytes } => {
                             let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
                             emit_materialize_operand(w, argument, scratch, frame, ra)?;
-                            store_argument_bytes(w, scratch, "x29", 16 + offset, bytes)?;
+                            store_argument_bytes(
+                                w,
+                                scratch,
+                                "x29",
+                                frame_record as usize + offset,
+                                bytes,
+                            )?;
                             ra.free_scratch(scratch);
                         }
                     }
@@ -2190,7 +2227,7 @@ fn emit_block<W: Write>(
                 if frame.frame_size > 0 {
                     emit_sp_adjust(w, "add", frame.frame_size as u64)?;
                 }
-                writeln!(w, "    ldp x29, x30, [sp], #16")?;
+                writeln!(w, "    ldp x29, x30, [sp], #{frame_record}")?;
                 if unwind {
                     writeln!(w, "    .cfi_def_cfa sp, 0")?;
                     writeln!(w, "    .cfi_restore 29")?;
