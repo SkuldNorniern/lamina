@@ -141,9 +141,9 @@ pub fn classify_aggregate(
     if !is_aggregate(ty) {
         return Ok(None);
     }
-    if !integer_fields_only(ty) {
+    if !integer_fields_only(ty) && !layout.float_aggregates {
         return Err(FromIRError::UnsupportedAggregate(format!(
-            "{what} has a float field; only integer aggregates cross a boundary so far"
+            "{what} has a float field, which this target's backend does not place yet"
         )));
     }
     let size = sizeof_type(ty, layout).ok_or(FromIRError::UnsupportedType)?;
