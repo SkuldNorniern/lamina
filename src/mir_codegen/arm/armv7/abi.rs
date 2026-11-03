@@ -284,12 +284,13 @@ impl Signatures {
         }
     }
 
-    /// The ARM run-time ABI hands the compiler runtime helpers their arguments and
-    /// results in core registers whatever variant the rest of the program uses, so
-    /// `__aeabi_d2lz` reads its double from r0:r1 and not from d0. Reserved `__` names
-    /// the module does not define itself are those helpers.
+    /// The ARM run-time ABI fixes its own helpers to the base standard whatever
+    /// variant the rest of the program uses, so `__aeabi_d2lz` reads its double from
+    /// r0:r1 and not from d0. The compiler runtime helpers named the other way,
+    /// `__fixdfdi` and the rest, carry no such rule: lamina compiles those for this
+    /// target itself, with this module's own variant, so a call to one follows it.
     pub(crate) fn uses_base_standard(&self, callee: &str) -> bool {
-        callee.starts_with("__") && !self.defined.contains(callee)
+        callee.starts_with("__aeabi_") && !self.defined.contains(callee)
     }
 
     pub(crate) fn fixed_arguments(&self, callee: &str) -> Option<usize> {
