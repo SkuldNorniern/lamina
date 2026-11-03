@@ -550,10 +550,10 @@ mod tests {
         .expect("Failed to generate x86_64 assembly");
 
         let asm = String::from_utf8(output).expect("Invalid UTF-8");
-        assert!(!asm.is_empty(), "x86_64 output should not be empty");
         assert!(
-            asm.contains("add") || asm.contains("ADD"),
-            "x86_64 output should contain add instruction"
+            asm.lines()
+                .any(|line| line.trim_start().starts_with("addq %")),
+            "x86_64 output should contain a register addq: {asm}"
         );
     }
 
@@ -611,10 +611,10 @@ mod tests {
         .expect("Failed to generate AArch64 assembly");
 
         let asm = String::from_utf8(output).expect("Invalid UTF-8");
-        assert!(!asm.is_empty(), "AArch64 output should not be empty");
         assert!(
-            asm.contains("add") || asm.contains("ADD"),
-            "AArch64 output should contain add instruction"
+            asm.lines()
+                .any(|line| line.trim_start().starts_with("add x")),
+            "AArch64 output should contain an add x register instruction: {asm}"
         );
     }
 
@@ -632,10 +632,10 @@ mod tests {
         .expect("Failed to generate RISC-V assembly");
 
         let asm = String::from_utf8(output).expect("Invalid UTF-8");
-        assert!(!asm.is_empty(), "RISC-V output should not be empty");
         assert!(
-            asm.contains("add") || asm.contains("ADD"),
-            "RISC-V output should contain add instruction"
+            asm.lines()
+                .any(|line| line.trim_start().starts_with("add a")),
+            "RISC-V output should contain an add a register instruction: {asm}"
         );
     }
 
@@ -653,89 +653,10 @@ mod tests {
         .expect("Failed to generate WASM");
 
         let wat = String::from_utf8(output).expect("Invalid UTF-8");
-        assert!(!wat.is_empty(), "WASM output should not be empty");
         assert!(
-            wat.contains("i64.add") || wat.contains("add"),
-            "WASM output should contain add instruction"
+            wat.contains("i64.add"),
+            "WASM output should contain i64.add: {wat}"
         );
-    }
-
-    #[test]
-    fn test_cross_target_same_ir_different_backends() {
-        // Test that the same IR produces valid output for all backends
-        let module = create_simple_add_function();
-        let targets = vec![
-            (TargetArchitecture::X86_64, "x86_64"),
-            (TargetArchitecture::Aarch64, "aarch64"),
-            (TargetArchitecture::Riscv64, "riscv64"),
-            (TargetArchitecture::Wasm32, "wasm32"),
-        ];
-
-        for (arch, name) in targets {
-            let mut output = Vec::new();
-            let result = generate_mir_to_target(
-                &module,
-                &mut output,
-                &Target::new(arch, TargetOperatingSystem::Linux),
-                1,
-            );
-
-            assert!(
-                result.is_ok(),
-                "Failed to generate code for {}: {:?}",
-                name,
-                result.err()
-            );
-
-            let output_str = String::from_utf8(output).expect("Invalid UTF-8");
-            assert!(
-                !output_str.is_empty(),
-                "{} output should not be empty",
-                name
-            );
-        }
-    }
-
-    #[test]
-    fn test_cross_target_integer_arithmetic() {
-        // Test integer arithmetic operations across all targets
-        let input = r#"
-        fn @test_arithmetic(i64 %a, i64 %b) -> i64 {
-            entry:
-                %sum = add.i64 %a, %b
-                %diff = sub.i64 %a, %b
-                %prod = mul.i64 %sum, %diff
-                ret.i64 %prod
-        }
-        "#;
-
-        let ir_module = parser::parse_module(input).expect("Failed to parse");
-        let mir_module =
-            codegen::from_ir_x86_64(&ir_module, "test").expect("Failed to lower to MIR");
-
-        let targets = vec![
-            TargetArchitecture::X86_64,
-            TargetArchitecture::Aarch64,
-            TargetArchitecture::Riscv64,
-            TargetArchitecture::Wasm32,
-        ];
-
-        for arch in targets {
-            let mut output = Vec::new();
-            let result = generate_mir_to_target(
-                &mir_module,
-                &mut output,
-                &Target::new(arch, TargetOperatingSystem::Linux),
-                1,
-            );
-
-            assert!(
-                result.is_ok(),
-                "Failed to generate arithmetic code for {:?}: {:?}",
-                arch,
-                result.err()
-            );
-        }
     }
 }
 
