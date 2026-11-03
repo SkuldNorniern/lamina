@@ -37,7 +37,7 @@ pub use instruction::{
 pub use instruction::{AtomicBinOp, MemoryOrdering};
 #[cfg(feature = "nightly")]
 pub use module::ModuleAnnotation;
-pub use module::{GlobalDeclaration, GlobalInit, Module, TlsModel, TypeDeclaration};
+pub use module::{GlobalDeclaration, GlobalInit, InitElement, Module, TlsModel, TypeDeclaration};
 pub use owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
 pub use types::{
     Identifier, Literal, PrimitiveType, StructField, Type, Value, VectorShiftForm,

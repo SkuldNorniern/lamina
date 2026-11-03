@@ -181,11 +181,33 @@ pub struct TypeDeclaration<'a> {
 pub enum GlobalInit<'a> {
     /// One value, for a global of primitive type.
     Value(Value<'a>),
-    /// One literal per element, for a global of array type. Elements left out are zero.
-    List(Vec<Literal<'a>>),
+    /// One element per slot, for a global of array or struct type. Slots left out
+    /// are zero.
+    List(Vec<InitElement<'a>>),
     /// The address of a function. Not a `Value`, because nothing else in the IR
     /// names a function as a value; `funcaddr` takes a bare identifier too.
     Function(Identifier<'a>),
+}
+
+/// One slot of an element list. A symbol's address is not a `Literal`, because its
+/// value is not known until the linker places it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InitElement<'a> {
+    Literal(Literal<'a>),
+    /// The address of a global.
+    Global(Identifier<'a>),
+    /// The address of a function.
+    Function(Identifier<'a>),
+}
+
+impl fmt::Display for InitElement<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InitElement::Literal(literal) => write!(f, "{literal}"),
+            InitElement::Global(name) => write!(f, "${name}"),
+            InitElement::Function(name) => write!(f, "@{name}"),
+        }
+    }
 }
 
 impl fmt::Display for GlobalInit<'_> {

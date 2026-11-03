@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::{
     LaminaError,
     ir::{
-        GlobalDeclaration, GlobalInit, Identifier, Literal, PrimitiveType, TlsModel, Type,
-        TypeDeclaration, Value, types::resolve_type_names,
+        GlobalDeclaration, GlobalInit, Identifier, InitElement, Literal, PrimitiveType, TlsModel,
+        Type, TypeDeclaration, Value, types::resolve_type_names,
     },
     parser::{
         functions::{parse_alignment_argument, unknown_annotation_hint},
@@ -140,7 +140,7 @@ fn parse_tls_model_argument(state: &mut ParserState<'_>) -> Result<TlsModel, Lam
 fn parse_initializer_list<'a>(
     state: &mut ParserState<'a>,
     ty: &Type<'a>,
-) -> Result<Vec<Literal<'a>>, LaminaError> {
+) -> Result<Vec<InitElement<'a>>, LaminaError> {
     let (open, close, uniform, hints, capacity) = match ty {
         Type::Array { element_type, size } => (
             '[',
@@ -179,11 +179,22 @@ fn parse_initializer_list<'a>(
         if elements.len() >= capacity {
             return Err(state.error(format!("{capacity} elements fit here, this is one more")));
         }
-        let value = parse_value_with_type_hint(state, hint)?;
-        let Value::Constant(literal) = value else {
-            return Err(state.error("An element list takes literals only"));
+        state.skip_whitespace_and_comments();
+        let element = if state.current_char() == Some('@') {
+            state.advance();
+            InitElement::Function(state.parse_identifier_str()?)
+        } else {
+            match parse_value_with_type_hint(state, hint)? {
+                Value::Constant(literal) => InitElement::Literal(literal),
+                Value::Global(name) => InitElement::Global(name),
+                Value::Variable(_) => {
+                    return Err(state.error(
+                        "An element list takes literals and symbol addresses, not a register",
+                    ));
+                }
+            }
         };
-        elements.push(literal);
+        elements.push(element);
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(close) {
             state.advance();
