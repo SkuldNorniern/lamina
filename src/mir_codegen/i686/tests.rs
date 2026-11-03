@@ -405,4 +405,30 @@ mod variadic_wide_argument_tests {
         assert!(assembly.contains("    movl %eax, 4(%esp)"), "{assembly}");
         assert!(assembly.contains("    movl %eax, 8(%esp)"), "{assembly}");
     }
+
+    const WIDE_VA_ARG: &str = "fn @read(i32 %n, ...) -> i64 {\nentry:\n  %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  va_end %ap\n  ret.i64 %x\n}\n";
+
+    #[test]
+    fn va_start_points_past_the_named_parameters() {
+        let assembly = emit(WIDE_VA_ARG);
+        assert!(assembly.contains("    leal 12(%ebp), %eax"), "{assembly}");
+    }
+
+    #[test]
+    fn va_arg_of_a_pair_reads_two_packed_words_and_steps_by_eight() {
+        let assembly = emit(WIDE_VA_ARG);
+        assert!(assembly.contains("    movl (%edx), %eax"), "{assembly}");
+        assert!(assembly.contains("    movl 4(%edx), %eax"), "{assembly}");
+        assert!(assembly.contains("    addl $8, %edx"), "{assembly}");
+    }
+
+    #[test]
+    fn va_arg_of_a_word_steps_by_four() {
+        let assembly = emit(
+            "fn @read(i32 %n, ...) -> i32 {\nentry:\n  %ap = stackalloc.valist\n  \
+             va_start %ap\n  %x = va_arg.i32 %ap\n  va_end %ap\n  ret.i32 %x\n}\n",
+        );
+        assert!(assembly.contains("    addl $4, %edx"), "{assembly}");
+        assert!(!assembly.contains("    addl $8, %edx"), "{assembly}");
+    }
 }

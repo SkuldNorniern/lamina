@@ -295,3 +295,63 @@ fn a_named_wide_parameter_of_a_variadic_callee_travels_as_its_value() {
         "{assembly}"
     );
 }
+
+const WIDE_VA_ARG_AFTER_A_WORD: &str = "fn @read(i32 %n, ...) -> i64 {\nentry:\n  \
+     %ap = stackalloc.valist\n  va_start %ap\n  %x = va_arg.i64 %ap\n  \
+     va_end %ap\n  ret.i64 %x\n}\n";
+
+#[test]
+fn a_variadic_callee_saves_the_core_argument_registers_below_the_stack_arguments() {
+    let assembly = compile(WIDE_VA_ARG_AFTER_A_WORD);
+    assert!(
+        assembly.contains("    push {r0, r1, r2, r3}\n"),
+        "{assembly}"
+    );
+    assert!(
+        assembly.contains("    .cfi_def_cfa_offset 120\n"),
+        "{assembly}"
+    );
+}
+
+#[test]
+fn va_start_points_past_the_named_parameters_in_the_save_area() {
+    let assembly = compile(WIDE_VA_ARG_AFTER_A_WORD);
+    assert!(assembly.contains(", r10, #108\n"), "{assembly}");
+}
+
+#[test]
+fn va_arg_of_a_pair_rounds_the_cursor_up_to_eight_and_steps_by_eight() {
+    let assembly = compile(WIDE_VA_ARG_AFTER_A_WORD);
+    let rounds = assembly
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("bic r") && line.ends_with("#7"))
+        .count();
+    assert_eq!(rounds, 1, "{assembly}");
+    assert!(assembly.contains(", #8\n"), "{assembly}");
+}
+
+#[test]
+fn va_arg_of_a_word_does_not_round_the_cursor() {
+    let assembly = compile(
+        "fn @read(i32 %n, ...) -> i32 {\nentry:\n  %ap = stackalloc.valist\n  \
+         va_start %ap\n  %x = va_arg.i32 %ap\n  va_end %ap\n  ret.i32 %x\n}\n",
+    );
+    assert!(
+        !assembly
+            .lines()
+            .map(str::trim)
+            .any(|line| line.starts_with("bic r") && line.ends_with("#7")),
+        "{assembly}"
+    );
+}
+
+#[test]
+fn a_non_variadic_function_saves_no_core_argument_registers() {
+    let assembly = compile("fn @id(i32 %n) -> i32 {\nentry:\n  ret.i32 %n\n}\n");
+    assert!(!assembly.contains("push {r0, r1, r2, r3}"), "{assembly}");
+    assert!(
+        assembly.contains("    .cfi_def_cfa_offset 104\n"),
+        "{assembly}"
+    );
+}
