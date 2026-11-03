@@ -14,7 +14,7 @@ const Particle = struct {
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const steps = arg(i64, args, 1, 20000000);
+    const steps = arg(i64, args, 1, 200000000);
     var p = Particle{ .x = 0, .y = 0, .vx = arg(i64, args, 2, 3), .vy = arg(i64, args, 3, 5) };
     var flips: i64 = 0;
 

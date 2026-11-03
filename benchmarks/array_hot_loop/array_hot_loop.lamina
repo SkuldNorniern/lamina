@@ -4,12 +4,12 @@
 @export
 fn @main() -> i64 {
   entry:
-    %arr = stackalloc.[256 x i64]
+    %arr = stackalloc.[4096 x i64]
     %i = add.i64 0, 0
     jmp fill_head
 
   fill_head:
-    %fill_more = lt.i64 %i, 256
+    %fill_more = lt.i64 %i, 4096
     br %fill_more, fill_body, fill_done
 
   fill_body:
@@ -26,7 +26,7 @@ fn @main() -> i64 {
     jmp pass_head
 
   pass_head:
-    %pass_more = lt.i64 %pass, 60000
+    %pass_more = lt.i64 %pass, 150000
     br %pass_more, pass_body, pass_done
 
   pass_body:
@@ -34,7 +34,7 @@ fn @main() -> i64 {
     jmp scan_head
 
   scan_head:
-    %scan_more = lt.i64 %k, 256
+    %scan_more = lt.i64 %k, 4096
     br %scan_more, scan_body, scan_done
 
   scan_body:

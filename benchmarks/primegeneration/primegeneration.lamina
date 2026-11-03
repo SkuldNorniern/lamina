@@ -101,8 +101,8 @@ fn @main() -> i64 {
     %count_10000 = call @count_primes(10000)
     call @print_i64(%count_10000)
 
-    %count_1000000 = call @count_primes(1000000)
-    call @print_i64(%count_1000000)
+    %count_2000000 = call @count_primes(2000000)
+    call @print_i64(%count_2000000)
 
     # Print footer marker
     call @print_i64(987654321)

@@ -2,9 +2,9 @@ package main
 
 import "fmt"
 
-const N_ROWS = 256
-const K_DIM = 256
-const N_COLS = 256
+const N_ROWS = 512
+const K_DIM = 512
+const N_COLS = 512
 
 func mix(x int64) int64 {
 	a := (x*1103515245 + 12345) & 2147483647

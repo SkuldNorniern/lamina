@@ -8,8 +8,8 @@ static __attribute__((noinline)) int64_t arg(int argc, char **argv, int i, int64
 }
 
 int main(int argc, char **argv) {
-    int64_t n = arg(argc, argv, 1, 256);
-    int64_t passes = arg(argc, argv, 2, 60000);
+    int64_t n = arg(argc, argv, 1, 4096);
+    int64_t passes = arg(argc, argv, 2, 150000);
     uint64_t *arr = malloc((size_t)n * sizeof *arr);
     if (!arr) return 1;
 

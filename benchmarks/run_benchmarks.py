@@ -57,12 +57,12 @@ BOOT_SEED = 1
 # sizes, and the hashed element generator keeps the k-loop from closing.
 NATIVE_ARGS = {
     "2Dmatmul": [],
-    "fibonacci": ["10", "20", "30", "35", "200000"],
-    "primegeneration": ["100", "1000", "10000", "1000000"],
-    "int_arith": ["10000000", "12345"],
-    "array_hot_loop": ["256", "60000"],
-    "struct_particles": ["20000000", "3", "5"],
-    "factorial": ["10", "12", "15", "18", "4000000"],
+    "fibonacci": ["10", "20", "30", "35", "12000000"],
+    "primegeneration": ["100", "1000", "10000", "2000000"],
+    "int_arith": ["100000000", "12345"],
+    "array_hot_loop": ["4096", "150000"],
+    "struct_particles": ["200000000", "3", "5"],
+    "factorial": ["10", "12", "15", "18", "50000000"],
 }
 
 # A toolchain that rewrites a loop into a closed form makes its timing measure

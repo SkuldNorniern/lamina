@@ -23,7 +23,7 @@ fn fibonacci_iterative(n: u64) -> u64 {
 
 fn main() {
     let (n1, n2, n3, n4) = (arg(1, 10), arg(2, 20), arg(3, 30), arg(4, 35));
-    let sweep_count = arg(5, 200000);
+    let sweep_count = arg(5, 12000000);
 
     println!("123456789");
     println!("{}", fibonacci_iterative(n1));

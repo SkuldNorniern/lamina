@@ -35,8 +35,8 @@ fn @main() -> i64 {
     store.i64 %cp, 0
     store.i64 %tp, 0
     store.i64 %sc, 7
-    %r1 = call @accumulate(%cp, %tp, 9000000)
-    %r2 = call @accumulate(%cp, %tp, 6000000)
+    %r1 = call @accumulate(%cp, %tp, 216000000)
+    %r2 = call @accumulate(%cp, %tp, 144000000)
     %count = load.i64 %cp
     %total = load.i64 %tp
     %scale = load.i64 %sc

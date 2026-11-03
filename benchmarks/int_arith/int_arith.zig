@@ -7,7 +7,7 @@ noinline fn arg(comptime T: type, args: []const [:0]const u8, i: usize, fallback
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const iters = arg(u64, args, 1, 10000000);
+    const iters = arg(u64, args, 1, 100000000);
     var x = arg(u64, args, 2, 12345);
     var y: u64 = 0;
     var z: u64 = 0;

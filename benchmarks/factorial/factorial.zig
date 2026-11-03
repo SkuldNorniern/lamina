@@ -21,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
     const n2 = arg(u64, args, 2, 12);
     const n3 = arg(u64, args, 3, 15);
     const n4 = arg(u64, args, 4, 18);
-    const sweep_count = arg(u64, args, 5, 4000000);
+    const sweep_count = arg(u64, args, 5, 50000000);
 
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);

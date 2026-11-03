@@ -24,7 +24,7 @@ static int64_t count_primes(int64_t limit) {
 }
 
 int main(int argc, char **argv) {
-    static const int64_t defaults[4] = {100, 1000, 10000, 1000000};
+    static const int64_t defaults[4] = {100, 1000, 10000, 2000000};
     printf("123456789\n");
     for (int i = 1; i <= 4; i++)
         printf("%lld\n", (long long)count_primes(arg(argc, argv, i, defaults[i - 1])));

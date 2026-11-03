@@ -13,7 +13,7 @@ struct Particle {
 }
 
 fn main() {
-    let steps = arg(1, 20000000);
+    let steps = arg(1, 200000000);
     let mut p = Particle { x: 0, y: 0, vx: arg(2, 3), vy: arg(3, 5) };
     let mut flips: i64 = 0;
     for _ in 0..steps {

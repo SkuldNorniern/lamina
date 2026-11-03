@@ -1,8 +1,8 @@
 const std = @import("std");
 
-const N_ROWS: u64 = 256;
-const K_DIM: u64 = 256;
-const N_COLS: u64 = 256;
+const N_ROWS: u64 = 512;
+const K_DIM: u64 = 512;
+const N_COLS: u64 = 512;
 
 fn mix(x: u64) u64 {
     const a = ((x *% 1103515245) +% 12345) & 2147483647;

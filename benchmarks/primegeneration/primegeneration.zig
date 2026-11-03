@@ -27,7 +27,7 @@ fn countPrimes(limit: i64) i64 {
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const defaults = [4]i64{ 100, 1000, 10000, 1000000 };
+    const defaults = [4]i64{ 100, 1000, 10000, 2000000 };
 
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);

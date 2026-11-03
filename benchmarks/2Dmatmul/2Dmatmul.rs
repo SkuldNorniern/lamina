@@ -1,6 +1,6 @@
-const N_ROWS: i64 = 256;
-const K_DIM: i64 = 256;
-const N_COLS: i64 = 256;
+const N_ROWS: i64 = 512;
+const K_DIM: i64 = 512;
+const N_COLS: i64 = 512;
 
 fn mix(x: i64) -> i64 {
     let a = x.wrapping_mul(1103515245).wrapping_add(12345) & 2147483647;

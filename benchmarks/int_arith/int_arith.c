@@ -8,7 +8,7 @@ static __attribute__((noinline)) int64_t arg(int argc, char **argv, int i, int64
 }
 
 int main(int argc, char **argv) {
-    int64_t iters = arg(argc, argv, 1, 10000000);
+    int64_t iters = arg(argc, argv, 1, 100000000);
     uint64_t x = (uint64_t)arg(argc, argv, 2, 12345);
     uint64_t y = 0, z = 0;
     for (int64_t i = 0; i < iters; i++) {

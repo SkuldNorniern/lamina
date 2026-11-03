@@ -70,7 +70,7 @@ fn @main() -> i64 {
     jmp sweep_head
 
   sweep_head:
-    %sweep_more = lt.i64 %sweep, 200000
+    %sweep_more = lt.i64 %sweep, 12000000
     br %sweep_more, sweep_body, sweep_done
 
   sweep_body:
@@ -81,7 +81,8 @@ fn @main() -> i64 {
     jmp sweep_head
 
   sweep_done:
-    call @print_i64(%acc)
+    %accu = bitcast.i64.u64 %acc
+    call @print_u64(%accu)
 
     # Print footer marker
     call @print_i64(987654321)

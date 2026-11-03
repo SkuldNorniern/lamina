@@ -31,7 +31,7 @@ func factorial_iterative(n int) int64 {
 
 func main() {
 	n1, n2, n3, n4 := int(arg(1, 10)), int(arg(2, 12)), int(arg(3, 15)), int(arg(4, 18))
-	sweepCount := arg(5, 4000000)
+	sweepCount := arg(5, 50000000)
 
 	fmt.Println(123456789)
 	fmt.Println(factorial_iterative(n1))

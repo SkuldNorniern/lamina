@@ -34,7 +34,7 @@ func fibonacciIterative(n uint64) uint64 {
 
 func main() {
 	n1, n2, n3, n4 := uint64(arg(1, 10)), uint64(arg(2, 20)), uint64(arg(3, 30)), uint64(arg(4, 35))
-	sweepCount := arg(5, 200000)
+	sweepCount := arg(5, 12000000)
 
 	fmt.Println(123456789)
 	fmt.Println(fibonacciIterative(n1))

@@ -7,8 +7,8 @@ noinline fn arg(comptime T: type, args: []const [:0]const u8, i: usize, fallback
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const n = arg(usize, args, 1, 256);
-    const passes = arg(u64, args, 2, 60000);
+    const n = arg(usize, args, 1, 4096);
+    const passes = arg(u64, args, 2, 150000);
 
     const arr = try init.gpa.alloc(u64, n);
     defer init.gpa.free(arr);

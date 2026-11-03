@@ -30,7 +30,7 @@ fn count_primes(limit: i64) -> i64 {
 }
 
 fn main() {
-    let defaults = [100, 1000, 10000, 1000000];
+    let defaults = [100, 1000, 10000, 2000000];
     println!("123456789");
     for i in 1..=4 {
         println!("{}", count_primes(arg(i, defaults[i - 1])));

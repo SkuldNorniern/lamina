@@ -6,7 +6,7 @@ fn arg(i: usize, fallback: u64) -> u64 {
 }
 
 fn main() {
-    let iters = arg(1, 10000000);
+    let iters = arg(1, 100000000);
     let mut x = arg(2, 12345);
     let mut y: u64 = 0;
     let mut z: u64 = 0;

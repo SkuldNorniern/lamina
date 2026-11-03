@@ -19,7 +19,7 @@ fn @main() -> i64 {
     jmp step_head
 
   step_head:
-    %more = lt.i64 %i, 20000000
+    %more = lt.i64 %i, 200000000
     br %more, step_body, step_done
 
   step_body:

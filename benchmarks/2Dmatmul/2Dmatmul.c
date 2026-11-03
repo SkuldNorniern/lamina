@@ -1,9 +1,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define N_ROWS 256
-#define K_DIM 256
-#define N_COLS 256
+#define N_ROWS 512
+#define K_DIM 512
+#define N_COLS 512
 
 static int64_t mix(int64_t x) {
     int64_t a = (x * 1103515245 + 12345) & 2147483647;

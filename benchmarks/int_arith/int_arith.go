@@ -19,7 +19,7 @@ func arg(i int, fallback int64) int64 {
 }
 
 func main() {
-	iters := arg(1, 10000000)
+	iters := arg(1, 100000000)
 	x := uint64(arg(2, 12345))
 	var y, z uint64
 	for i := int64(0); i < iters; i++ {

@@ -22,7 +22,7 @@ static uint64_t fibonacci_iterative(uint64_t n) {
 int main(int argc, char **argv) {
     uint64_t n1 = arg(argc, argv, 1, 10), n2 = arg(argc, argv, 2, 20);
     uint64_t n3 = arg(argc, argv, 3, 30), n4 = arg(argc, argv, 4, 35);
-    int64_t sweep_count = arg(argc, argv, 5, 200000);
+    int64_t sweep_count = arg(argc, argv, 5, 12000000);
 
     printf("123456789\n");
     printf("%llu\n", (unsigned long long)fibonacci_iterative(n1));

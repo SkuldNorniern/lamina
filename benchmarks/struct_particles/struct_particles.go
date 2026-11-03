@@ -23,7 +23,7 @@ type particle struct {
 }
 
 func main() {
-	steps := arg(1, 20000000)
+	steps := arg(1, 200000000)
 	p := particle{0, 0, arg(2, 3), arg(3, 5)}
 	var flips int64
 	for i := int64(0); i < steps; i++ {

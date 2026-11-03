@@ -18,7 +18,7 @@ fn factorial_iterative(n: u32) -> i64 {
 
 fn main() {
     let (n1, n2, n3, n4) = (arg(1, 10) as u32, arg(2, 12) as u32, arg(3, 15) as u32, arg(4, 18) as u32);
-    let sweep_count = arg(5, 4000000);
+    let sweep_count = arg(5, 50000000);
 
     println!("123456789");
     println!("{}", factorial_iterative(n1));

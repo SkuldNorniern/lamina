@@ -19,8 +19,8 @@ func arg(i int, fallback int64) int64 {
 }
 
 func main() {
-	n := arg(1, 256)
-	passes := arg(2, 60000)
+	n := arg(1, 4096)
+	passes := arg(2, 150000)
 	arr := make([]uint64, n)
 	for i := range arr {
 		arr[i] = uint64(i)*7 + 3

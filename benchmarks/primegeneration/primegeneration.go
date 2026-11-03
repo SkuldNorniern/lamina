@@ -47,7 +47,7 @@ func countPrimes(limit int64) int64 {
 }
 
 func main() {
-	defaults := [4]int64{100, 1000, 10000, 1000000}
+	defaults := [4]int64{100, 1000, 10000, 2000000}
 	fmt.Println(123456789)
 	for i := 1; i <= 4; i++ {
 		fmt.Println(countPrimes(arg(i, defaults[i-1])))

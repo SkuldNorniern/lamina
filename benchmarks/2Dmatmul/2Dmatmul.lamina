@@ -100,9 +100,9 @@ fn @matmul_2d(i64 %n_rows, i64 %k_dim, i64 %n_cols) -> i64 {
 @export
 fn @main() -> i64 {
   entry:
-    %n_rows = add.i64 256, 0
-    %k_dim = add.i64 256, 0
-    %n_cols = add.i64 256, 0
+    %n_rows = add.i64 512, 0
+    %k_dim = add.i64 512, 0
+    %n_cols = add.i64 512, 0
 
     %header = add.i64 123456789, 0
     call @print_i64(%header)

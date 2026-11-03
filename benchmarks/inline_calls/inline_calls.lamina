@@ -25,7 +25,7 @@ fn @main() -> i64 {
     jmp loop_head
 
   loop_head:
-    %more = lt.i64 %i, 20000000
+    %more = lt.i64 %i, 80000000
     br %more, loop_body, loop_done
 
   loop_body:

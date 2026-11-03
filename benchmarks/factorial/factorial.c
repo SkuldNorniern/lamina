@@ -18,7 +18,7 @@ static long long factorial_iterative(int n) {
 int main(int argc, char **argv) {
     const int n1 = (int)arg(argc, argv, 1, 10), n2 = (int)arg(argc, argv, 2, 12);
     const int n3 = (int)arg(argc, argv, 3, 15), n4 = (int)arg(argc, argv, 4, 18);
-    const int64_t sweep_count = arg(argc, argv, 5, 4000000);
+    const int64_t sweep_count = arg(argc, argv, 5, 50000000);
 
     printf("123456789\n");
     printf("%lld\n", factorial_iterative(n1));
