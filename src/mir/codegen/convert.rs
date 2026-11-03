@@ -26,7 +26,7 @@ use crate::{
             AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst,
             OverflowOp as IROverflow, UnaryOp as IRUnary,
         },
-        module::GlobalInit,
+        module::{GlobalInit, InitElement},
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
             VectorShiftForm, align_of_type, classify_vector_shift, resolve_type_names, sizeof_type,
@@ -557,7 +557,7 @@ pub fn from_ir_for_target(
         let mut global = if is_aggregate(&resolved) {
             let size = sizeof_type(&resolved, layout).ok_or(FromIRError::UnsupportedType)? as usize;
             let align = (align_of_type(&resolved, layout) as usize).max(declared_align(decl.align));
-            let bytes = aggregate_global_bytes(
+            let aggregate = aggregate_global_bytes(
                 global_name,
                 &resolved,
                 size,
@@ -571,9 +571,10 @@ pub fn from_ir_for_target(
                 layout.pointer_width,
             )
             .with_layout(size, align);
-            if let Some(bytes) = bytes {
+            if let Some(bytes) = aggregate.bytes {
                 global = global.with_initializer(bytes);
             }
+            global.relocations = aggregate.relocations;
             global
         } else {
             if matches!(resolved, IRType::Primitive(IRPrim::I128 | IRPrim::U128)) {
@@ -614,16 +615,6 @@ pub fn from_ir_for_target(
                 layout,
                 endianness,
             )?;
-            for hole in &initializer.relocations {
-                let known = ir.functions.contains_key(hole.symbol.as_str())
-                    || ir.global_declarations.contains_key(hole.symbol.as_str());
-                if !known {
-                    return Err(FromIRError::UnsupportedGlobal(format!(
-                        "@{global_name} holds the address of {}, which this module neither defines nor declares",
-                        hole.symbol
-                    )));
-                }
-            }
             let mut global = Global::new(*global_name, ty, layout.pointer_width);
             global.align = global.align.max(declared_align(decl.align));
             if let Some(bytes) = initializer.bytes {
@@ -632,6 +623,16 @@ pub fn from_ir_for_target(
             global.relocations = initializer.relocations;
             global
         };
+        for hole in &global.relocations {
+            let known = ir.functions.contains_key(hole.symbol.as_str())
+                || ir.global_declarations.contains_key(hole.symbol.as_str());
+            if !known {
+                return Err(FromIRError::UnsupportedGlobal(format!(
+                    "@{global_name} holds the address of {}, which this module neither defines nor declares",
+                    hole.symbol
+                )));
+            }
+        }
         if decl.exported {
             global = global.exported();
         }
@@ -741,10 +742,10 @@ fn element_list_bytes(
     name: &str,
     ty: &IRType<'_>,
     size: usize,
-    elements: &[IRLit<'_>],
+    elements: &[InitElement<'_>],
     layout: TargetDataLayout,
     endianness: Endianness,
-) -> Result<Vec<u8>, FromIRError> {
+) -> Result<(Vec<u8>, Vec<GlobalRelocation>), FromIRError> {
     // (offset, width) of every slot the list can fill, in order. An array keeps its
     // stride instead of one entry per element, so a long array costs nothing here.
     let slots: Slots = match ty {
@@ -788,8 +789,26 @@ fn element_list_bytes(
         .map_or(0, |(at, width)| at + width)
         .min(size);
     let mut bytes = vec![0u8; filled];
-    for (index, literal) in elements.iter().enumerate() {
+    let mut relocations = Vec::new();
+    for (index, element) in elements.iter().enumerate() {
         let (at, width) = slots.get(index).ok_or(FromIRError::UnsupportedType)?;
+        let literal = match element {
+            InitElement::Literal(literal) => literal,
+            InitElement::Global(symbol) | InitElement::Function(symbol) => {
+                if width != layout.pointer_width.bytes() {
+                    return Err(FromIRError::UnsupportedGlobal(format!(
+                        "@{name} element {index} holds the address of {symbol}, so its slot must be ptr-wide, not {width} bytes"
+                    )));
+                }
+                relocations.push(GlobalRelocation {
+                    offset: at,
+                    symbol: symbol.to_string(),
+                    addend: 0,
+                    size: width,
+                });
+                continue;
+            }
+        };
         let encoded = literal_bytes(name, literal, endianness)?;
         if encoded.len() != width {
             return Err(FromIRError::UnsupportedGlobal(format!(
@@ -799,7 +818,7 @@ fn element_list_bytes(
         }
         bytes[at..at + width].copy_from_slice(&encoded);
     }
-    Ok(bytes)
+    Ok((bytes, relocations))
 }
 
 /// Bytes for an aggregate global. Only a string literal in a byte array carries data
@@ -811,12 +830,20 @@ fn aggregate_global_bytes(
     value: Option<&GlobalInit<'_>>,
     layout: TargetDataLayout,
     endianness: Endianness,
-) -> Result<Option<Vec<u8>>, FromIRError> {
+) -> Result<InitializedGlobal, FromIRError> {
     let Some(value) = value else {
-        return Ok(None);
+        return Ok(InitializedGlobal {
+            bytes: None,
+            relocations: Vec::new(),
+        });
     };
     if let GlobalInit::List(elements) = value {
-        return element_list_bytes(name, ty, size, elements, layout, endianness).map(Some);
+        let (bytes, relocations) =
+            element_list_bytes(name, ty, size, elements, layout, endianness)?;
+        return Ok(InitializedGlobal {
+            bytes: Some(bytes),
+            relocations,
+        });
     }
     let GlobalInit::Value(IRVal::Constant(IRLit::String(text))) = value else {
         return Err(FromIRError::UnsupportedGlobal(format!(
@@ -843,7 +870,10 @@ fn aggregate_global_bytes(
         )));
     }
     bytes.resize(size, 0);
-    Ok(Some(bytes))
+    Ok(InitializedGlobal {
+        bytes: Some(bytes),
+        relocations: Vec::new(),
+    })
 }
 
 /// Bytes a string literal stands for, escapes resolved. The parser keeps the literal
