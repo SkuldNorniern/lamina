@@ -528,16 +528,31 @@ mod emission_tests {
     fn ptx_scaffolding_rejects_unsupported_operations_without_partial_output()
     -> Result<(), Box<dyn Error>> {
         use crate::{mir::codegen::from_ir_x86_64, mir_codegen::ptx, parser::parse_module};
-        for source in [
-            "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
-            "@kernel fn @bad(i64 %a) -> void {\nentry:\n%x = shl.i64 %a, %a\nret.void\n}",
-            "@kernel fn @bad(f32 %a) -> void {\nentry:\nret.void\n}",
-            "@kernel fn @bad() -> void {\nentry:\n%p = stackalloc.i64\nret.void\n}",
+        for (source, construct) in [
+            (
+                "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
+                "unsupported PTX integer operation",
+            ),
+            (
+                "@kernel fn @bad(i64 %a) -> void {\nentry:\n%x = shl.i64 %a, %a\nret.void\n}",
+                "PTX shifts require a matching immediate count",
+            ),
+            (
+                "@kernel fn @bad(f32 %a) -> void {\nentry:\nret.void\n}",
+                "PTX values require i32, i64, or global pointers",
+            ),
+            (
+                "@kernel fn @bad() -> void {\nentry:\n%p = stackalloc.i64\nret.void\n}",
+                "unsupported PTX instruction",
+            ),
         ] {
             let ir = parse_module(source)?;
             let mir = from_ir_x86_64(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
             let mut output = Vec::new();
-            assert!(ptx::emit(&mir, &mut output).is_err());
+            let Err(error) = ptx::emit(&mir, &mut output) else {
+                panic!("{source} was accepted");
+            };
+            assert!(error.to_string().contains(construct), "{error}");
             assert!(output.is_empty());
         }
         Ok(())
