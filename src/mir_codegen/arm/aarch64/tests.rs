@@ -181,6 +181,47 @@ fn mach_o_targets_call_underscored_libc_symbols() -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
+/// Scan straight-line assembly and report a caller-saved pool register that is read
+/// after a call without having been written since: that value did not survive the call.
+#[cfg(test)]
+fn caller_saved_read_back_after_a_call(asm: &str) -> Option<String> {
+    const STORES: &[&str] = &[
+        "str", "stur", "stp", "stnp", "strb", "strh", "sturb", "sturh",
+    ];
+    const READ_ONLY: &[&str] = &["cmp", "cmn", "tst", "ret", "cbz", "cbnz", "tbz", "tbnz"];
+    let mut written: HashSet<&str> = HashSet::new();
+    let mut called = false;
+    for line in asm.lines() {
+        let line = line.trim();
+        let Some((mnemonic, operands)) = line.split_once(char::is_whitespace) else {
+            continue;
+        };
+        if mnemonic == "bl" || mnemonic == "blr" {
+            written.clear();
+            called = true;
+            continue;
+        }
+        let operands: Vec<&str> = operands
+            .split(',')
+            .map(|operand| operand.trim().trim_matches(['[', ']', '!']))
+            .collect();
+        let defines = !STORES.contains(&mnemonic)
+            && !READ_ONLY.contains(&mnemonic)
+            && !mnemonic.starts_with('b');
+        for (index, operand) in operands.iter().enumerate() {
+            if !matches!(*operand, "x13" | "x14" | "x15") {
+                continue;
+            }
+            if defines && index == 0 {
+                written.insert(operand);
+            } else if called && !written.contains(operand) {
+                return Some(format!("{operand} is read back by `{line}`"));
+            }
+        }
+    }
+    None
+}
+
 #[test]
 fn global_allocation_keeps_values_out_of_caller_saved_pool_across_calls()
 -> Result<(), Box<dyn Error>> {
@@ -209,8 +250,8 @@ fn global_allocation_keeps_values_out_of_caller_saved_pool_across_calls()
         let (_, main) = assembly.split_once("\nmain:\n").ok_or("missing main")?;
         let main = main.split_once(".Lret_main:").ok_or("missing epilogue")?.0;
         assert!(main.contains("bl id"), "{assembly}");
-        for reg in ["x13", "x14", "x15"] {
-            assert!(!main.contains(reg), "{regalloc:?} uses {reg}: {assembly}");
+        if let Some(reason) = caller_saved_read_back_after_a_call(main) {
+            panic!("{regalloc:?}: {reason}: {assembly}");
         }
     }
     Ok(())
@@ -1313,6 +1354,111 @@ fn tail_calls_stay_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
                 !asm.contains(&format!("x{index},")) && !asm.contains(&format!("x{index}]")),
                 "x{index} survives no tail call: {asm}"
             );
+        }
+    }
+    Ok(())
+}
+
+/// Single block: twelve values defined, a call, then every value used again.
+#[cfg(test)]
+fn function_with_values_live_across_a_call() -> Function {
+    use crate::mir::{Block, Parameter};
+    let x = Register::Virtual(VirtualReg::gpr(0));
+    let mut func = Function::new(
+        Signature::new("across")
+            .with_params(vec![Parameter::new(
+                x.clone(),
+                MirType::Scalar(ScalarType::I64),
+            )])
+            .with_return(MirType::Scalar(ScalarType::I64)),
+    );
+    let mut block = Block::new("entry");
+    let mut live = Vec::new();
+    for id in 1..=12 {
+        let dst = Register::Virtual(VirtualReg::gpr(id));
+        block.push(MirInst::IntBinary {
+            op: IntBinOp::Mul,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: dst.clone(),
+            lhs: Operand::Register(x.clone()),
+            rhs: Operand::Immediate(Immediate::I64(i64::from(id) * 2 + 1)),
+        });
+        live.push(dst);
+    }
+    block.push(MirInst::Call {
+        name: "g".into(),
+        args: vec![Operand::Immediate(Immediate::I64(1))],
+        ret: Some(Register::Virtual(VirtualReg::gpr(50))),
+    });
+    let mut acc = Operand::Register(Register::Virtual(VirtualReg::gpr(50)));
+    for (step, reg) in live.iter().enumerate() {
+        let dst = Register::Virtual(VirtualReg::gpr(100 + step as u32));
+        block.push(MirInst::IntBinary {
+            op: IntBinOp::Xor,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: dst.clone(),
+            lhs: acc,
+            rhs: Operand::Register(reg.clone()),
+        });
+        acc = Operand::Register(dst);
+    }
+    block.push(MirInst::Ret { value: Some(acc) });
+    func.add_block(block);
+    func
+}
+
+#[cfg(test)]
+fn compile_across(regalloc: RegallocStrategy) -> Result<String, Box<dyn Error>> {
+    let settings = MirCodegenSettings {
+        regalloc,
+        ..Default::default()
+    };
+    Ok(String::from_utf8(
+        compile_single_function_aarch64(
+            "across",
+            &function_with_values_live_across_a_call(),
+            TargetOperatingSystem::Linux,
+            &settings,
+            &AggregateSignatures::empty(PointerWidth::Bits64),
+        )
+        .map_err(|error| error.to_string())?,
+    )?)
+}
+
+#[test]
+fn a_calling_function_still_draws_on_callee_saved_registers() -> Result<(), Box<dyn Error>> {
+    for regalloc in [
+        RegallocStrategy::LinearScanGlobal,
+        RegallocStrategy::GraphColorGlobal,
+    ] {
+        let asm = compile_across(regalloc)?;
+        assert!(asm.contains("    bl g"), "{asm}");
+        let (prologue, rest) = asm.split_once(".L_across.entry:").ok_or("missing entry")?;
+        let epilogue = rest
+            .split_once(".Lret_across:")
+            .ok_or("missing epilogue")?
+            .1;
+        let used: Vec<usize> = (21..=28)
+            .filter(|index| rest.contains(&format!("x{index},")))
+            .collect();
+        assert!(!used.is_empty(), "{regalloc:?} planned nothing: {asm}");
+        for index in used {
+            assert!(prologue.contains(&format!("x{index},")), "{asm}");
+            assert!(epilogue.contains(&format!("x{index},")), "{asm}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn no_caller_saved_register_is_read_back_after_a_call() -> Result<(), Box<dyn Error>> {
+    for regalloc in [
+        RegallocStrategy::LinearScanGlobal,
+        RegallocStrategy::GraphColorGlobal,
+    ] {
+        let asm = compile_across(regalloc)?;
+        if let Some(reason) = caller_saved_read_back_after_a_call(&asm) {
+            panic!("{regalloc:?}: {reason}: {asm}");
         }
     }
     Ok(())
