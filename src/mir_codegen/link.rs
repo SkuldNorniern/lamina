@@ -1053,7 +1053,9 @@ fn weld_supports(target_arch: TargetArchitecture, target_os: TargetOperatingSyst
                 | TargetOperatingSystem::MacOS
         ) | (
             TargetArchitecture::Aarch64,
-            TargetOperatingSystem::MacOS | TargetOperatingSystem::Windows
+            TargetOperatingSystem::Linux
+                | TargetOperatingSystem::MacOS
+                | TargetOperatingSystem::Windows
         ) | (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux)
     )
 }
