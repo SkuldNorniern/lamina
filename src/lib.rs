@@ -301,6 +301,7 @@
 pub mod api;
 #[doc(hidden)]
 pub mod cli;
+pub mod debug_info;
 
 pub mod mir_codegen;
 pub mod target; // Re-exports from lamina-platform for backward compatibility

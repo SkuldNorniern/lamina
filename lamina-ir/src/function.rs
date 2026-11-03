@@ -609,7 +609,7 @@ impl<'a> BasicBlock<'a> {
 /// let func = &module.functions["add"];
 /// // func contains the complete function definition
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Function<'a> {
     /// The function name (without the `@` prefix)
     pub name: Identifier<'a>,
@@ -624,6 +624,20 @@ pub struct Function<'a> {
     pub basic_blocks: HashMap<Label<'a>, BasicBlock<'a>>,
     /// Label of the first block to execute when the function is called
     pub entry_block: Label<'a>,
+    /// Position of the `fn` keyword in the source. Debug info only.
+    pub decl_loc: Option<SourceLoc>,
+}
+
+/// The position is metadata, as it is for an instruction: two functions that differ
+/// only in where they were written are the same function.
+impl PartialEq for Function<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.signature == other.signature
+            && self.annotations == other.annotations
+            && self.basic_blocks == other.basic_blocks
+            && self.entry_block == other.entry_block
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1230,6 +1244,7 @@ mod tests {
             annotations: vec![FunctionAnnotation::Inline, FunctionAnnotation::Export],
             basic_blocks: blocks,
             entry_block: "entry",
+            decl_loc: None,
         };
 
         // Match actual output - no indentation for instructions
@@ -1289,6 +1304,7 @@ mod tests {
             annotations: vec![],
             basic_blocks: blocks,
             entry_block: "entry",
+            decl_loc: None,
         };
 
         // Match actual output - no indentation for instructions
@@ -1332,6 +1348,7 @@ mod tests {
             annotations: vec![],
             basic_blocks: blocks,
             entry_block: entry,
+            decl_loc: None,
         }
     }
 

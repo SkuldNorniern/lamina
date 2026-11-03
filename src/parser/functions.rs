@@ -168,6 +168,8 @@ fn conflicts(a: &FunctionAnnotation, b: &FunctionAnnotation) -> bool {
 /// Parses a function definition.
 pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>, LaminaError> {
     let annotations = parse_annotations(state)?;
+    state.skip_whitespace_and_comments();
+    let decl_loc = state.source_loc();
     state.consume_keyword("fn")?;
     let name = state.parse_function_identifier()?;
     let signature = parse_fn_signature(state)?;
@@ -182,6 +184,7 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
             annotations,
             basic_blocks: HashMap::new(),
             entry_block: "",
+            decl_loc,
         });
     }
 
@@ -227,6 +230,7 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
         annotations,
         basic_blocks,
         entry_block,
+        decl_loc,
     })
 }
 

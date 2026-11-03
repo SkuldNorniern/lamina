@@ -192,6 +192,26 @@ fn allocate_in_class(class: RegisterClass, vreg_alloc: &mut VirtualRegAllocator)
     }
 }
 
+/// The source name of each virtual register exactly one IR value is bound to. A register
+/// two names share is left out: a debugger told either name would be reporting a value the
+/// other may hold.
+fn source_value_names(bindings: &VarBindings<'_>) -> HashMap<VirtualReg, String> {
+    let mut names: HashMap<VirtualReg, Option<&str>> = HashMap::new();
+    for (name, reg) in &bindings.regs {
+        let Register::Virtual(vreg) = reg else {
+            continue;
+        };
+        names
+            .entry(*vreg)
+            .and_modify(|held| *held = None)
+            .or_insert(Some(name));
+    }
+    names
+        .into_iter()
+        .filter_map(|(vreg, name)| name.map(|name| (vreg, name.to_string())))
+        .collect()
+}
+
 /// Resolve an IR value to a MIR operand, allocating a fresh binding on first encounter.
 fn resolve_operand<'a>(
     v: &IRVal<'a>,
@@ -1209,6 +1229,7 @@ fn convert_function<'a>(
         _ => None,
     });
     mir_sig.variadic = f.signature.variadic;
+    mir_sig.decl = f.decl_loc;
     if f.annotations.contains(&FunctionAnnotation::Kernel) {
         mir_sig.kernel = Some(Default::default());
     }
@@ -1281,7 +1302,8 @@ fn convert_function<'a>(
             register_types.insert(addr.clone(), MirType::Scalar(ScalarType::Ptr));
             mir_sig.params.push(
                 Parameter::new(Register::Virtual(slot), MirType::Scalar(ScalarType::Ptr))
-                    .with_aggregate(aggregate),
+                    .with_aggregate(aggregate)
+                    .with_name(param.name),
             );
             aggregate_prelude.push(Instruction::StackAddr {
                 dst: addr.clone(),
@@ -1309,9 +1331,11 @@ fn convert_function<'a>(
         };
         let mir_ty = map_ir_type(&param.ty)?;
         register_types.insert(v.clone(), mir_ty);
-        mir_sig
-            .params
-            .push(Parameter::new(v.clone(), mir_ty).with_signedness(signedness_of(&param.ty)));
+        mir_sig.params.push(
+            Parameter::new(v.clone(), mir_ty)
+                .with_signedness(signedness_of(&param.ty))
+                .with_name(param.name),
+        );
         var_to_reg.insert(param.name, v);
     }
 
@@ -1583,6 +1607,7 @@ fn convert_function<'a>(
             .splice(0..0, prelude.into_iter().map(Located::from));
     }
 
+    mir_func.value_names = source_value_names(&var_to_reg);
     mir_func.stack_reservations = reservations;
     mir_func.stack_alignments = alignments;
     mir_func.variadic_wide_arguments = mem::take(&mut var_to_reg.variadic_wide);

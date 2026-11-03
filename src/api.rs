@@ -14,6 +14,7 @@
 //! change without notice.
 
 use crate::ObjectOptions;
+use crate::debug_info;
 pub use crate::ir::module::Module;
 use crate::mir::TransformPipeline;
 use crate::mir::codegen::from_ir_for_target;
@@ -163,10 +164,21 @@ pub fn compile_module_to_object_with(
     let text = String::from_utf8(text)
         .map_err(|e| ObjectError::Codegen(format!("generated assembly is not UTF-8: {e}")))?;
 
+    let mut object_write_options = ObjectWriteOptions::default();
+    if build.debug_lines && debug_info::emits_elf(target.operating_system) {
+        object_write_options.emit_minimal_dwarf_sections = true;
+    }
+    debug_info::apply(
+        &mut object_write_options,
+        target.operating_system,
+        build.debug_lines,
+        &mir_module,
+    );
+
     let mut assembler = Ras::with_object_write_options(
         target.architecture,
         target.operating_system,
-        ObjectWriteOptions::default(),
+        object_write_options,
     )
     .map_err(|e| ObjectError::Assembly(e.to_string()))?;
     assembler

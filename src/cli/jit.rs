@@ -285,7 +285,7 @@ pub fn handle_jit_compilation(
                     assembler_backend,
                     &options.assembler_flags,
                     options.verbose,
-                    options.ras_object_write_options(target.operating_system),
+                    options.ras_object_write_options(target.operating_system, &mir_mod),
                 )?;
 
                 if assemble_result.needs_linking {
@@ -299,7 +299,7 @@ pub fn handle_jit_compilation(
                         assembler_backend,
                         &options.assembler_flags,
                         options.verbose,
-                        &options.ras_object_write_options(target.operating_system),
+                        &options.ras_object_write_options(target.operating_system, &mir_mod),
                     )?;
                     link_with_runtime(
                         &assemble_result.output_path,

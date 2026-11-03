@@ -2,7 +2,7 @@
 //!
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
-use lamina_platform::PointerWidth;
+use lamina_platform::{PointerWidth, SourceLoc};
 
 use crate::{
     block::Block,
@@ -30,6 +30,10 @@ pub struct Parameter {
     /// Set when the parameter is an aggregate passed by value. `reg` then names the
     /// frame slot holding the callee's copy, and `ty` is the pointer to it.
     pub aggregate: Option<Aggregate>,
+
+    /// The name the parameter had in the source, without its sigil. Debug info only;
+    /// `None` where the frontend supplied none.
+    pub name: Option<String>,
 }
 
 impl Parameter {
@@ -41,6 +45,7 @@ impl Parameter {
             ty,
             signedness: Signedness::Signed,
             aggregate: None,
+            name: None,
         }
     }
 
@@ -51,6 +56,11 @@ impl Parameter {
 
     pub fn with_aggregate(mut self, aggregate: Aggregate) -> Self {
         self.aggregate = Some(aggregate);
+        self
+    }
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
         self
     }
 }
@@ -134,6 +144,9 @@ pub struct Signature {
     /// Set by a trailing `...` on an `@extern` declaration. A call to one follows the
     /// variadic side of the platform convention.
     pub variadic: bool,
+
+    /// Where the function was declared in the source. Debug info only.
+    pub decl: Option<SourceLoc>,
 }
 
 impl Signature {
@@ -157,6 +170,7 @@ impl Signature {
             align: None,
             naked: false,
             variadic: false,
+            decl: None,
         }
     }
 
@@ -184,6 +198,11 @@ impl Signature {
 
     pub fn with_return_aggregate(mut self, aggregate: Aggregate) -> Self {
         self.ret_aggregate = Some(aggregate);
+        self
+    }
+
+    pub fn with_decl(mut self, decl: Option<SourceLoc>) -> Self {
+        self.decl = decl;
         self
     }
 
@@ -240,6 +259,10 @@ pub struct Function {
     /// Sets the register type of an I/O intrinsic's result, which is an i64 wherever
     /// registers are 64 bits.
     pub int64_regs: bool,
+
+    /// The source name of each virtual register the frontend named, without its sigil.
+    /// Debug info only; a register a pass invented is absent.
+    pub value_names: HashMap<VirtualReg, String>,
 }
 
 impl Function {
@@ -256,6 +279,7 @@ impl Function {
             variadic_wide_results: HashMap::new(),
             pointer_width: PointerWidth::Bits64,
             int64_regs: true,
+            value_names: HashMap::new(),
         }
     }
 

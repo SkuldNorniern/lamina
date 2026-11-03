@@ -314,7 +314,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         assembler_backend,
         &options.assembler_flags,
         options.verbose,
-        options.ras_object_write_options(target.operating_system),
+        options.ras_object_write_options(target.operating_system, &mir_mod),
     )
     .map_err(|e| format!("Assembly failed: {e}"))?;
 
@@ -353,7 +353,7 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
             assembler_backend,
             &options.assembler_flags,
             options.verbose,
-            &options.ras_object_write_options(target.operating_system),
+            &options.ras_object_write_options(target.operating_system, &mir_mod),
         )
         .map_err(|e| format!("Compiler runtime build failed: {e}"))?;
         link_with_runtime(

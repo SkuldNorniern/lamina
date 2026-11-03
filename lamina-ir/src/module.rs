@@ -1336,6 +1336,7 @@ mod tests {
             annotations: vec![],
             basic_blocks: func_blocks,
             entry_block: "entry",
+            decl_loc: None,
         };
         module.functions.insert("add_one", func);
 

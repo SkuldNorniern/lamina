@@ -2,10 +2,12 @@
 
 use std::{env::args, error::Error, fmt, path::PathBuf, process::exit, str::FromStr};
 
+use crate::debug_info;
 use crate::mir_codegen::{
     MirCodegenSettings, RegallocStrategy, amdgpu::AmdGpuTarget, assemble::AssemblerBackend,
     link::LinkerBackend,
 };
+use lamina_mir::Module as MirModule;
 use lamina_platform::{
     ArchVariant, Target, TargetArchitecture, TargetOperatingSystem, X86CpuLevel, host_arch_list,
     target_alias_list,
@@ -71,21 +73,18 @@ pub struct CompileOptions {
 }
 
 impl CompileOptions {
-    pub fn ras_object_write_options(&self, target_os: TargetOperatingSystem) -> ObjectWriteOptions {
+    pub fn ras_object_write_options(
+        &self,
+        target_os: TargetOperatingSystem,
+        module: &MirModule,
+    ) -> ObjectWriteOptions {
         let mut o = ObjectWriteOptions::default();
-        let elfish = matches!(
-            target_os,
-            TargetOperatingSystem::Linux
-                | TargetOperatingSystem::FreeBSD
-                | TargetOperatingSystem::OpenBSD
-                | TargetOperatingSystem::NetBSD
-                | TargetOperatingSystem::DragonFly
-                | TargetOperatingSystem::Redox
-        );
-        if self.mir_codegen_settings.emit_asm_debug_lines && elfish {
+        let debug = self.mir_codegen_settings.emit_asm_debug_lines;
+        if debug && debug_info::emits_elf(target_os) {
             o.emit_minimal_dwarf_sections = true;
             o.dwarf_decl_file_name = self.mir_codegen_settings.debug_file_tag.clone();
         }
+        debug_info::apply(&mut o, target_os, debug, module);
         o
     }
 }

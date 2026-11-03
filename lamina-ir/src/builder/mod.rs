@@ -213,6 +213,7 @@ impl<'a> IRBuilder<'a> {
                     annotations: function.annotations.clone(),
                     basic_blocks,
                     entry_block,
+                    decl_loc: None,
                 },
             );
         }
