@@ -183,12 +183,16 @@ pub enum GlobalInit<'a> {
     Value(Value<'a>),
     /// One literal per element, for a global of array type. Elements left out are zero.
     List(Vec<Literal<'a>>),
+    /// The address of a function. Not a `Value`, because nothing else in the IR
+    /// names a function as a value; `funcaddr` takes a bare identifier too.
+    Function(Identifier<'a>),
 }
 
 impl fmt::Display for GlobalInit<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GlobalInit::Value(value) => write!(f, "{value}"),
+            GlobalInit::Function(name) => write!(f, "@{name}"),
             GlobalInit::List(elements) => {
                 let elements: Vec<String> = elements.iter().map(ToString::to_string).collect();
                 write!(f, "[{}]", elements.join(", "))

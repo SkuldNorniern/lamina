@@ -91,6 +91,9 @@ pub fn parse_global_declaration<'a>(
         if state.current_char() == Some('[') || state.current_char() == Some('{') {
             let resolved = resolve_type_names(&ty, types).unwrap_or_else(|| ty.clone());
             Some(GlobalInit::List(parse_initializer_list(state, &resolved)?))
+        } else if state.current_char() == Some('@') {
+            state.advance();
+            Some(GlobalInit::Function(state.parse_identifier_str()?))
         } else {
             Some(GlobalInit::Value(parse_value_with_type_hint(state, &ty)?))
         }
