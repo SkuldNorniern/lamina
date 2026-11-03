@@ -2051,3 +2051,98 @@ fn float_struct_laid_out_for_sysv_is_refused_by_name_on_windows() {
     assert!(error.to_string().contains("@take"), "{error}");
     assert!(output.is_empty(), "wrote code before refusing");
 }
+
+const GLOBAL_LINKAGE_ELF_SOURCE: &str = "@weak global $weak_g: i64 = 1\n@hidden global $hidden_g: i64 = 2\n@protected global $protected_g: i64 = 3\n@internal global $internal_g: i64 = 4\n@private global $private_g: i64 = 5\n@export @hidden global $exported_g: i64 = 6\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n";
+const GLOBAL_LINKAGE_MACHO_SOURCE: &str = "@weak global $weak_g: i64 = 1\n@hidden global $hidden_g: i64 = 2\n@internal global $internal_g: i64 = 3\n@private global $private_g: i64 = 4\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n";
+
+fn x86_64_global_linkage_for(source: &str, os: TargetOperatingSystem) -> Result<String, String> {
+    let ir = parse_module(source).unwrap();
+    let mir = from_ir_x86_64(&ir, "global_linkage").unwrap();
+    let mut output = Vec::new();
+    generate_mir_x86_64(&mir, &mut output, os).map_err(|error| error.to_string())?;
+    Ok(String::from_utf8(output).unwrap())
+}
+
+#[test]
+fn elf_global_visibility_and_weak_use_the_function_directives() {
+    let text = x86_64_global_linkage_for(GLOBAL_LINKAGE_ELF_SOURCE, TargetOperatingSystem::Linux)
+        .expect("emit elf globals");
+    for line in [
+        ".weak weak_g",
+        ".hidden hidden_g",
+        ".protected protected_g",
+        ".internal internal_g",
+        ".local private_g",
+        ".hidden exported_g",
+        ".globl weak_g",
+        ".globl hidden_g",
+        ".globl protected_g",
+        ".globl exported_g",
+    ] {
+        assert!(text.lines().any(|l| l == line), "missing {line}: {text}");
+    }
+    for line in [".globl internal_g", ".globl private_g"] {
+        assert!(
+            !text.lines().any(|l| l == line),
+            "unexpected {line}: {text}"
+        );
+    }
+}
+
+#[test]
+fn macho_hidden_global_is_private_extern_and_weak_is_weak_definition() {
+    let text = x86_64_global_linkage_for(GLOBAL_LINKAGE_MACHO_SOURCE, TargetOperatingSystem::MacOS)
+        .expect("emit macho globals");
+    for line in [
+        ".weak_definition _weak_g",
+        ".globl _weak_g",
+        ".private_extern _hidden_g",
+        ".globl _hidden_g",
+        ".private_extern _internal_g",
+        ".private_extern _private_g",
+    ] {
+        assert!(text.lines().any(|l| l == line), "missing {line}: {text}");
+    }
+    for line in [
+        ".globl _internal_g",
+        ".globl _private_g",
+        ".hidden",
+        ".protected",
+    ] {
+        assert!(!text.contains(line), "unexpected {line}: {text}");
+    }
+}
+
+#[test]
+fn macho_refuses_protected_global_by_name() {
+    let error = x86_64_global_linkage_for(
+        "@protected global $prot: i64 = 1\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n",
+        TargetOperatingSystem::MacOS,
+    )
+    .expect_err("protected global on Mach-O");
+    assert!(
+        error.contains("@protected on global 'prot' is not supported for MacOS"),
+        "{error}"
+    );
+}
+
+#[test]
+fn coff_refuses_weak_and_visibility_globals_by_name() {
+    for (annotation, global, construct) in [
+        ("@weak", "w", "@weak"),
+        ("@hidden", "h", "@hidden"),
+        ("@internal", "i", "@internal"),
+    ] {
+        let source = format!(
+            "{annotation} global ${global}: i64 = 1\nfn @main() -> i64 {{\nentry:\n    ret.i64 0\n}}\n"
+        );
+        let error = x86_64_global_linkage_for(&source, TargetOperatingSystem::Windows)
+            .expect_err("refused on COFF");
+        assert!(
+            error.contains(&format!(
+                "{construct} on global '{global}' is not supported for Windows"
+            )),
+            "{error}"
+        );
+    }
+}

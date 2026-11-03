@@ -3,8 +3,8 @@ pub mod util;
 
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::lamina_to_codegen_error;
-use crate::mir_codegen::common::reject_function_placement;
 use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
+use crate::mir_codegen::common::{reject_function_placement, reject_global_linkage};
 use crate::mir_codegen::common::{
     reject_thread_local_globals, unsupported_inline_asm, unsupported_overflow_flag,
     unsupported_thread_local,
@@ -386,6 +386,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 ) -> Result<(), LaminaError> {
     reject_function_placement(module, "WASM")?;
     reject_thread_local_globals(module, "WASM")?;
+    reject_global_linkage(module, "WASM")?;
     let arch = match memory {
         Memory::I32 => TargetArchitecture::Wasm32,
         Memory::I64 => TargetArchitecture::Wasm64,

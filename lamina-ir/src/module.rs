@@ -258,6 +258,8 @@ impl fmt::Display for GlobalInit<'_> {
 ///     },
 ///     initializer: Some(GlobalInit::Value(Value::Constant(Literal::String("Hello, World!")))),
 ///     exported: false,
+///     visibility: None,
+///     weak: false,
 ///     align: None,
 ///     thread_local: None,
 /// };
@@ -272,11 +274,36 @@ pub struct GlobalDeclaration<'a> {
     pub initializer: Option<GlobalInit<'a>>,
     /// Whether the global is visible to other modules (declared with `@export`)
     pub exported: bool,
+    /// The symbol visibility declared with `@internal`, `@private`, `@hidden` or
+    /// `@protected`, or `None` for default visibility.
+    pub visibility: Option<GlobalVisibility>,
+    /// Whether the global is a weak definition (declared with `@weak`).
+    pub weak: bool,
     /// Minimum alignment in bytes (declared with `@align(n)`)
     pub align: Option<u32>,
     /// The thread-local model this global is placed under (declared with
     /// `@thread_local`), or `None` for ordinary static storage.
     pub thread_local: Option<TlsModel>,
+}
+
+/// Symbol visibility of a global, named after the function annotation it mirrors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GlobalVisibility {
+    Internal,
+    Private,
+    Hidden,
+    Protected,
+}
+
+impl fmt::Display for GlobalVisibility {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GlobalVisibility::Internal => write!(f, "@internal"),
+            GlobalVisibility::Private => write!(f, "@private"),
+            GlobalVisibility::Hidden => write!(f, "@hidden"),
+            GlobalVisibility::Protected => write!(f, "@protected"),
+        }
+    }
 }
 
 /// A complete Lamina IR module (file).
@@ -962,6 +989,12 @@ impl fmt::Display for GlobalDeclaration<'_> {
         if self.exported {
             write!(f, "@export ")?;
         }
+        if self.weak {
+            write!(f, "@weak ")?;
+        }
+        if let Some(visibility) = self.visibility {
+            write!(f, "{visibility} ")?;
+        }
         write!(f, "global ${}: {}", self.name, self.ty)?;
         if let Some(init) = &self.initializer {
             write!(f, " = {init}")?;
@@ -983,6 +1016,12 @@ fn write_global(
     }
     if decl.exported {
         write!(f, "@export ")?;
+    }
+    if decl.weak {
+        write!(f, "@weak ")?;
+    }
+    if let Some(visibility) = decl.visibility {
+        write!(f, "{visibility} ")?;
     }
     write!(f, "global ${}: {}", decl.name, decl.ty)?;
     match &decl.initializer {
@@ -1128,6 +1167,8 @@ mod tests {
             ty: Type::Primitive(PrimitiveType::I32),
             initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(0)))),
             exported: false,
+            visibility: None,
+            weak: false,
             align: None,
             thread_local: None,
         };
@@ -1141,6 +1182,8 @@ mod tests {
             },
             initializer: None,
             exported: false,
+            visibility: None,
+            weak: false,
             align: None,
             thread_local: None,
         };
@@ -1157,6 +1200,8 @@ mod tests {
             },
             initializer: None,
             exported: true,
+            visibility: None,
+            weak: false,
             align: Some(64),
             thread_local: None,
         };
@@ -1194,6 +1239,8 @@ mod tests {
                         ty: Type::Primitive(PrimitiveType::I32),
                         initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(1)))),
                         exported: false,
+                        visibility: None,
+                        weak: false,
                         align: None,
                         thread_local: None,
                     },
@@ -1244,6 +1291,8 @@ mod tests {
                 ty: Type::Primitive(PrimitiveType::F32),
                 initializer: Some(GlobalInit::Value(Value::Constant(Literal::F32(PI)))),
                 exported: false,
+                visibility: None,
+                weak: false,
                 align: None,
                 thread_local: None,
             },

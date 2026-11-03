@@ -556,6 +556,75 @@ mod tests {
     }
 
     #[test]
+    fn global_weak_and_visibility_annotations_set_their_fields() {
+        use crate::ir::GlobalVisibility;
+        let module = parse_module(
+            "@weak global $w: i64 = 1\n@hidden global $h: i64 = 2\n@protected global $p: i64 = 3\n@internal global $i: i64 = 4\n@private global $q: i64 = 5\n@weak @hidden global $wh: i64 = 6",
+        )
+        .expect("Parsing failed");
+        let decl = |name: &str| &module.global_declarations[name];
+        assert!(decl("w").weak);
+        assert_eq!(decl("w").visibility, None);
+        assert!(!decl("h").weak);
+        assert_eq!(decl("h").visibility, Some(GlobalVisibility::Hidden));
+        assert_eq!(decl("p").visibility, Some(GlobalVisibility::Protected));
+        assert_eq!(decl("i").visibility, Some(GlobalVisibility::Internal));
+        assert_eq!(decl("q").visibility, Some(GlobalVisibility::Private));
+        assert!(decl("wh").weak);
+        assert_eq!(decl("wh").visibility, Some(GlobalVisibility::Hidden));
+    }
+
+    #[test]
+    fn export_with_hidden_or_protected_is_accepted() {
+        let module = parse_module(
+            "@export @hidden global $g: i64 = 1\n@export @protected global $h: i64 = 2",
+        )
+        .expect("Parsing failed");
+        assert!(module.global_declarations["g"].exported);
+        assert!(module.global_declarations["h"].exported);
+    }
+
+    #[test]
+    fn conflicting_global_linkage_refusals_name_the_global() {
+        let error = |source: &str| match parse_module(source) {
+            Ok(_) => panic!("accepted: {source}"),
+            Err(error) => error.to_string(),
+        };
+        let cases = [
+            (
+                "@export @private global $secret: i64 = 1",
+                "@export and @private",
+            ),
+            (
+                "@private @export global $secret: i64 = 1",
+                "@export and @private",
+            ),
+            (
+                "@export @internal global $secret: i64 = 1",
+                "@export and @internal",
+            ),
+            (
+                "@weak @private global $secret: i64 = 1",
+                "@weak and @private",
+            ),
+            (
+                "@hidden @protected global $secret: i64 = 1",
+                "@hidden and @protected",
+            ),
+        ];
+        for (source, pair) in cases {
+            let message = error(source);
+            assert!(message.contains("global $secret"), "{message}");
+            assert!(message.contains(pair), "{message}");
+        }
+        let duplicate = error("@hidden @hidden global $secret: i64 = 1");
+        assert!(
+            duplicate.contains("Duplicate annotation: @hidden"),
+            "{duplicate}"
+        );
+    }
+
+    #[test]
     fn instruction_operand_literal_must_fit_its_stated_type() {
         let error = |source: &str| match parse_module(source) {
             Err(e) => e.to_string(),

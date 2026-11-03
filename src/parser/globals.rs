@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use crate::{
     LaminaError,
     ir::{
-        GlobalDeclaration, GlobalInit, Identifier, InitElement, Literal, PrimitiveType, SymbolRef,
-        TlsModel, Type, TypeDeclaration, Value, types::resolve_type_names,
+        GlobalDeclaration, GlobalInit, GlobalVisibility, Identifier, InitElement, Literal,
+        PrimitiveType, SymbolRef, TlsModel, Type, TypeDeclaration, Value,
+        types::resolve_type_names,
     },
     parser::{
         functions::{parse_alignment_argument, unknown_annotation_hint},
@@ -16,7 +17,16 @@ use crate::{
     },
 };
 
-const GLOBAL_ANNOTATION_NAMES: &[&str] = &["export", "align", "thread_local"];
+const GLOBAL_ANNOTATION_NAMES: &[&str] = &[
+    "export",
+    "align",
+    "thread_local",
+    "weak",
+    "internal",
+    "private",
+    "hidden",
+    "protected",
+];
 
 /// The annotations written before a `global`.
 #[derive(Debug, Default)]
@@ -24,6 +34,8 @@ pub struct GlobalAnnotations {
     pub exported: bool,
     pub align: Option<u32>,
     pub thread_local: Option<TlsModel>,
+    pub weak: bool,
+    pub visibilities: Vec<GlobalVisibility>,
 }
 
 /// Parses the `@name` annotations that precede a `global`, in any order.
@@ -57,6 +69,24 @@ pub fn parse_global_annotations(
                 }
                 annotations.thread_local = Some(parse_tls_model_argument(state)?);
             }
+            "weak" => {
+                if annotations.weak {
+                    return Err(state.error("Duplicate annotation: @weak"));
+                }
+                annotations.weak = true;
+            }
+            "internal" | "private" | "hidden" | "protected" => {
+                let visibility = match name {
+                    "internal" => GlobalVisibility::Internal,
+                    "private" => GlobalVisibility::Private,
+                    "hidden" => GlobalVisibility::Hidden,
+                    _ => GlobalVisibility::Protected,
+                };
+                if annotations.visibilities.contains(&visibility) {
+                    return Err(state.error(format!("Duplicate annotation: @{name}")));
+                }
+                annotations.visibilities.push(visibility);
+            }
             _ => {
                 let hint = unknown_annotation_hint(name, GLOBAL_ANNOTATION_NAMES);
                 return Err(state.error(format!(
@@ -78,9 +108,31 @@ pub fn parse_global_declaration<'a>(
         exported,
         align,
         thread_local,
+        weak,
+        visibilities,
     } = annotations;
     state.consume_keyword("global")?;
     let name = state.parse_global_identifier()?;
+    let visibility = visibilities.first().copied();
+    if let [first, second, ..] = visibilities.as_slice() {
+        return Err(state.error(format!(
+            "Conflicting annotations on global ${name}: {first} and {second} cannot be used together"
+        )));
+    }
+    if let Some(local) =
+        visibility.filter(|v| matches!(v, GlobalVisibility::Internal | GlobalVisibility::Private))
+    {
+        if exported {
+            return Err(state.error(format!(
+                "Conflicting annotations on global ${name}: @export and {local} cannot be used together"
+            )));
+        }
+        if weak {
+            return Err(state.error(format!(
+                "Conflicting annotations on global ${name}: @weak and {local} cannot be used together"
+            )));
+        }
+    }
     state.expect_char(':')?;
     let ty = parse_type(state)?;
 
@@ -105,6 +157,8 @@ pub fn parse_global_declaration<'a>(
         ty,
         initializer,
         exported,
+        visibility,
+        weak,
         align,
         thread_local,
     })

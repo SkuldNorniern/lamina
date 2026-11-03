@@ -889,14 +889,65 @@ fn visibility_directive(
     })
 }
 
-/// Emits the symbol-visibility and weak-linkage directives for every function annotated
-/// with one.
+fn check_global_linkage(
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+) -> Result<(), LaminaError> {
+    let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    for name in names {
+        let global = &module.globals[name];
+        let construct = match (global.visibility, global.weak) {
+            (None, false) => continue,
+            (_, true) => "@weak".to_string(),
+            (Some(visibility), false) => visibility_annotation(visibility).to_string(),
+        };
+        let reason = if os_uses_elf_visibility(target_os) {
+            None
+        } else if os_uses_macho(target_os) {
+            match (global.visibility, global.weak, global.thread_local) {
+                (Some(SymbolVisibility::Protected), _, _) => Some(
+                    "Mach-O has no protected visibility; use @hidden for a symbol that is not exported",
+                ),
+                (_, true, Some(_)) => Some(
+                    "the thread-local descriptor that Mach-O emits for it cannot be a weak definition",
+                ),
+                _ => None,
+            }
+        } else {
+            Some(
+                "only ELF and Mach-O targets express symbol visibility and weak binding for globals",
+            )
+        };
+        if let Some(reason) = reason {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "{construct} on global '{name}' is not supported for {target_os:?}: {reason}"
+                ),
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn visibility_annotation(visibility: SymbolVisibility) -> &'static str {
+    match visibility {
+        SymbolVisibility::Internal => "@internal",
+        SymbolVisibility::Private => "@private",
+        SymbolVisibility::Hidden => "@hidden",
+        SymbolVisibility::Protected => "@protected",
+    }
+}
+
+/// Emits the symbol-visibility and weak-linkage directives for every function and global
+/// annotated with one.
 pub fn emit_symbol_visibility<W: Write>(
     writer: &mut W,
     module: &MirModule,
     target_os: TargetOperatingSystem,
     mangle: impl Fn(&str) -> String,
 ) -> Result<(), LaminaError> {
+    check_global_linkage(module, target_os)?;
     let mut names: Vec<(&str, SymbolVisibility)> = module
         .functions
         .iter()
@@ -905,6 +956,17 @@ pub fn emit_symbol_visibility<W: Write>(
         .collect();
     names.sort_unstable_by(|a, b| a.0.cmp(b.0));
     for (name, visibility) in names {
+        if let Some(directive) = visibility_directive(visibility, target_os) {
+            writeln!(writer, "{directive} {}", mangle(name))?;
+        }
+    }
+    let mut globals: Vec<(&str, SymbolVisibility)> = module
+        .globals
+        .iter()
+        .filter_map(|(name, global)| global.visibility.map(|v| (name.as_str(), v)))
+        .collect();
+    globals.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    for (name, visibility) in globals {
         if let Some(directive) = visibility_directive(visibility, target_os) {
             writeln!(writer, "{directive} {}", mangle(name))?;
         }
@@ -924,12 +986,22 @@ pub fn emit_symbol_visibility<W: Write>(
     for name in weak {
         writeln!(writer, "{directive} {}", mangle(name))?;
     }
+    let mut weak_globals: Vec<&str> = module
+        .globals
+        .iter()
+        .filter(|(_, global)| global.weak)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    weak_globals.sort_unstable();
+    for name in weak_globals {
+        writeln!(writer, "{directive} {}", mangle(name))?;
+    }
     Ok(())
 }
 
 /// Emit `.globl` for `main`, every exported function, and every function whose visibility
 /// is `hidden` or `protected`, which stay linkable from other objects. Other functions stay
-/// local.
+/// local. Globals that are exported, weak, or `hidden` or `protected` are linkable too.
 pub fn emit_global_directives<W: Write>(
     writer: &mut W,
     module: &MirModule,
@@ -957,7 +1029,14 @@ pub fn emit_global_directives<W: Write>(
             module
                 .globals
                 .iter()
-                .filter(|(_, global)| global.exported)
+                .filter(|(_, global)| {
+                    global.exported
+                        || global.weak
+                        || matches!(
+                            global.visibility,
+                            Some(SymbolVisibility::Hidden | SymbolVisibility::Protected)
+                        )
+                })
                 .map(|(name, _)| name.as_str()),
         )
         .collect();
@@ -977,6 +1056,23 @@ pub fn reject_module_globals(module: &MirModule, backend: &str) -> Result<(), La
     Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
         format!("{backend} does not yet support global variables"),
     )))
+}
+
+/// Rejects `@weak` and visibility on globals for backends whose global emission ignores them.
+pub fn reject_global_linkage(module: &MirModule, backend: &str) -> Result<(), LaminaError> {
+    let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    for name in names {
+        let global = &module.globals[name];
+        if global.weak || global.visibility.is_some() {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "{backend} does not yet support @weak or symbol visibility (global '{name}')"
+                ),
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Rejects `@weak`, `@section` and `@align` functions for backends that do not emit them.

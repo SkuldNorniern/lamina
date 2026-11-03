@@ -26,7 +26,7 @@ use crate::{
             AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst,
             OverflowOp as IROverflow, UnaryOp as IRUnary,
         },
-        module::{GlobalInit, InitElement},
+        module::{GlobalInit, GlobalVisibility, InitElement},
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
             VectorShiftForm, align_of_type, classify_vector_shift, resolve_type_names, sizeof_type,
@@ -601,6 +601,8 @@ pub fn from_ir_for_target(
                 if decl.exported {
                     global = global.exported();
                 }
+                global.visibility = decl.visibility.map(global_symbol_visibility);
+                global.weak = decl.weak;
                 if let Some(model) = decl.thread_local {
                     global = global.thread_local(model);
                 }
@@ -636,6 +638,8 @@ pub fn from_ir_for_target(
         if decl.exported {
             global = global.exported();
         }
+        global.visibility = decl.visibility.map(global_symbol_visibility);
+        global.weak = decl.weak;
         if let Some(model) = decl.thread_local {
             global = global.thread_local(model);
         }
@@ -1124,6 +1128,15 @@ impl<'a> GlobalAddresses<'a> {
                 },
             })
             .collect()
+    }
+}
+
+fn global_symbol_visibility(visibility: GlobalVisibility) -> SymbolVisibility {
+    match visibility {
+        GlobalVisibility::Internal => SymbolVisibility::Internal,
+        GlobalVisibility::Private => SymbolVisibility::Private,
+        GlobalVisibility::Hidden => SymbolVisibility::Hidden,
+        GlobalVisibility::Protected => SymbolVisibility::Protected,
     }
 }
 

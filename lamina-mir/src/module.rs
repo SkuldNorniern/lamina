@@ -7,7 +7,7 @@ use lamina_platform::PointerWidth;
 pub use lamina_platform::TlsModel;
 
 use crate::{
-    function::Function,
+    function::{Function, SymbolVisibility},
     types::MirType,
     verify::{function_errors, verify_module_in_pipeline},
 };
@@ -33,6 +33,12 @@ pub struct Global {
 
     /// Whether the symbol is visible to other modules
     pub exported: bool,
+
+    /// Symbol visibility requested by `@internal`, `@private`, `@hidden` or `@protected`
+    pub visibility: Option<SymbolVisibility>,
+
+    /// Whether the symbol is a weak definition
+    pub weak: bool,
 
     /// Bytes the symbol occupies. Larger than `ty` for an aggregate, whose element
     /// type is all MIR can name.
@@ -71,6 +77,8 @@ impl Global {
             mutable: true,
             initializer: None,
             exported: false,
+            visibility: None,
+            weak: false,
             size: ty.size_bytes(pointer),
             align: ty.alignment(pointer),
             thread_local: None,
