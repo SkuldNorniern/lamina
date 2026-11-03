@@ -437,9 +437,10 @@ fn store_incoming_arguments<W: Write>(
     Ok(())
 }
 
-/// Rewrites a narrow integer in `reg` to its canonical form: `i1` as 0 or 1, and a
-/// narrower integer sign-extended whatever its declared signedness, which the
-/// unsigned consumers undo before use.
+/// Rewrites a narrow integer in `reg` to its canonical form: `i1` as its low byte
+/// zero-extended, the width every other backend wraps a boolean at, and a narrower
+/// integer sign-extended whatever its declared signedness, which the unsigned
+/// consumers undo before use.
 fn extend_in_place<W: Write>(
     writer: &mut W,
     reg: &str,
@@ -448,7 +449,8 @@ fn extend_in_place<W: Write>(
 ) -> Result<(), LaminaError> {
     match ty {
         MirType::Scalar(ScalarType::I1) => {
-            writeln!(writer, "    andl $1, {reg}")?;
+            let low = byte_reg(reg)?;
+            writeln!(writer, "    movzbl {low}, {reg}")?;
         }
         MirType::Scalar(ScalarType::I8) => {
             let low = byte_reg(reg)?;
@@ -710,7 +712,6 @@ fn emit_instruction<W: Write>(
                 }
                 MirType::Scalar(ScalarType::I1) => {
                     writeln!(writer, "    movzbl {address}, {EAX}")?;
-                    writeln!(writer, "    andl $1, {EAX}")?;
                     store_register(EAX, dst, writer, slots)?;
                 }
                 MirType::Scalar(ScalarType::I8) => {
@@ -915,15 +916,21 @@ fn emit_instruction<W: Write>(
             rhs,
         } => {
             let single = is_single(ty);
+            // An unordered compare sets ZF, PF and CF alike, so `below` and
+            // `below or equal` are true for NaN and cannot carry an ordered `lt`
+            // or `le`. Those are taken as the reverse `gt` and `ge`, which are
+            // false there, by putting the operands on the x87 stack the other way
+            // round.
+            let reversed = matches!(op, FloatCmpOp::Lt | FloatCmpOp::Le);
+            let (bottom, top) = if reversed { (lhs, rhs) } else { (rhs, lhs) };
             // fucomip compares st(0) with st(1) and reports in the integer flags, so
-            // the right operand goes on first and the comparison reads as unsigned.
-            push_float(rhs, writer, slots, single)?;
-            push_float(lhs, writer, slots, single)?;
+            // the operand it is compared against goes on first.
+            push_float(bottom, writer, slots, single)?;
+            push_float(top, writer, slots, single)?;
             writeln!(writer, "    fucomip %st(1), %st")?;
             writeln!(writer, "    fstp %st(0)")?;
             let low = byte_reg(EAX)?;
-            // An unordered compare sets ZF, PF and CF, so equality must also rule
-            // parity out and inequality must let it through.
+            // Equality must also rule parity out and inequality must let it through.
             match op {
                 FloatCmpOp::Eq => {
                     writeln!(writer, "    sete {low}")?;
@@ -935,10 +942,8 @@ fn emit_instruction<W: Write>(
                     writeln!(writer, "    setp {}", byte_reg(ECX)?)?;
                     writeln!(writer, "    orb {}, {low}", byte_reg(ECX)?)?;
                 }
-                FloatCmpOp::Gt => writeln!(writer, "    seta {low}")?,
-                FloatCmpOp::Ge => writeln!(writer, "    setae {low}")?,
-                FloatCmpOp::Lt => writeln!(writer, "    setb {low}")?,
-                FloatCmpOp::Le => writeln!(writer, "    setbe {low}")?,
+                FloatCmpOp::Gt | FloatCmpOp::Lt => writeln!(writer, "    seta {low}")?,
+                FloatCmpOp::Ge | FloatCmpOp::Le => writeln!(writer, "    setae {low}")?,
             }
             writeln!(writer, "    movzbl {low}, {EAX}")?;
             store_register(EAX, dst, writer, slots)?;
