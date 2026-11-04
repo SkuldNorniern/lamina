@@ -1921,10 +1921,7 @@ fn coff_section_attribute_places_code_in_the_named_section() {
         "@section(\".text.custom\")\nfn @placed(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\n",
     )
     .unwrap();
-    assert!(
-        asm.contains("    .section .text.custom,\"ax\",@progbits\n"),
-        "{asm}"
-    );
+    assert!(asm.contains("    .section .text.custom,\"xr\"\n"), "{asm}");
 }
 
 #[test]
