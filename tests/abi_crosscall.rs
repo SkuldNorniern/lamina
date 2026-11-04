@@ -174,6 +174,17 @@ fn have(tool: &str) -> bool {
 /// `gcc-15-aarch64-linux-gnu` conflicts with `gcc-multilib` on Ubuntu 26, so the
 /// job that tests i686 cannot also host the aarch64 cross compiler. The cross
 /// half runs in a job of its own, which sets `LAMINA_REQUIRE_CROSS_TOOLS`.
+/// The emulator to run a cross binary with. Debian shipped `qemu-<arch>-static`
+/// for years; on Ubuntu 26 `qemu-user-static` is virtual and the dynamic
+/// `qemu-<arch>` is what installs. Either runs a statically linked binary.
+fn emulator(name: &'static str) -> Option<&'static str> {
+    if have(name) {
+        return Some(name);
+    }
+    let plain = name.strip_suffix("-static")?;
+    have(plain).then_some(plain)
+}
+
 fn skip(reason: &str) -> bool {
     let required = env::var_os("LAMINA_REQUIRE_CROSS_TOOLS").is_some_and(|value| value == "1");
     assert!(!required, "{reason} (LAMINA_REQUIRE_CROSS_TOOLS=1)");
@@ -244,14 +255,15 @@ fn aarch64_agrees_with_gcc_on_packed_aggregate_arguments() {
     if !have("aarch64-linux-gnu-gcc") && skip("aarch64-linux-gnu-gcc is not installed") {
         return;
     }
-    if !have("qemu-aarch64-static") && skip("qemu-aarch64-static is not installed") {
+    let Some(runner) = emulator("qemu-aarch64-static") else {
+        skip("no qemu-aarch64 is installed");
         return;
-    }
+    };
     cross_call(
         "lamina-crosscall-aarch64",
         "aarch64_linux",
         "aarch64-linux-gnu-gcc",
         &["-static"],
-        Some("qemu-aarch64-static"),
+        Some(runner),
     );
 }
