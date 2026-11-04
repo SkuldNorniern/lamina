@@ -349,7 +349,13 @@ def execution_argv(executable_path, target=None):
         return [spec['emulator'], executable_path]
     return [spec['emulator'], '-L', spec['sysroot'], executable_path]
 
-def run_program(argv, cwd, stdin_input=None):
+def run_timeout(target):
+    """Seconds a built program gets. Benchmarks are sized so the fastest native
+    compiler lands near 200ms on x86_64; an emulator costs one to two orders, and
+    a 32-bit target splits every i64 operation into a register pair."""
+    return 60 if target is None else 900
+
+def run_program(argv, cwd, stdin_input=None, timeout=60):
     """Run a program and return (success, stdout, stderr, exit_code)."""
     stdin_arg = {'input': stdin_input} if stdin_input is not None else {'stdin': subprocess.DEVNULL}
     try:
@@ -358,7 +364,7 @@ def run_program(argv, cwd, stdin_input=None):
             capture_output=True,
             text=True,
             cwd=cwd,
-            timeout=60,
+            timeout=timeout,
             errors='replace',
             **stdin_arg,
         )
@@ -431,7 +437,9 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
         return run_raw_output(argv, project_root)
 
     stdin_input = stdin_inputs.get(test_path.name)
-    _, stdout, stderr, exit_code = run_program(argv, project_root, stdin_input)
+    _, stdout, stderr, exit_code = run_program(
+        argv, project_root, stdin_input, run_timeout(target)
+    )
 
     if is_crash(exit_code):
         record_crash(executable_path, exit_code)
