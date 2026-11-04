@@ -543,14 +543,23 @@ fn build_unix_linker_args(
     let mut args = Vec::new();
 
     args.extend(build_arch_emulation_flags(target_arch, target_os));
-    args.extend(build_dynamic_linker_arg(target));
+    let dynamic_linker = build_dynamic_linker_arg(target);
+    // gcc and clang ask for PT_GNU_EH_FRAME in every dynamic executable. Without it
+    // the unwinder in libgcc finds no FDE, not even for C frames.
+    if !dynamic_linker.is_empty() {
+        args.push("--eh-frame-hdr".to_string());
+    }
+    args.extend(dynamic_linker);
     args.extend(build_crt_args(target, true)?);
     args.push(input_path.to_string_lossy().to_string());
     args.extend(object_args(runtime_objects));
     args.extend(build_crt_args(target, false)?);
     args.extend(build_entry_point_arg(target_os));
-    args.extend(build_library_args(target)?);
+    // User objects go ahead of libc, as gcc orders them. glibc on aarch64 defines
+    // __stack_chk_guard in ld.so, which libc.so adds as needed, so only for a
+    // reference made before it.
     args.extend(additional_flags.iter().cloned());
+    args.extend(build_library_args(target)?);
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
 
@@ -1478,6 +1487,58 @@ mod tests {
             build_dynamic_linker_arg(&musl),
             ["--dynamic-linker", "/lib/ld-musl-s390x.so.1"]
         );
+    }
+
+    #[test]
+    fn a_dynamic_executable_asks_for_an_eh_frame_header() {
+        if cfg!(target_os = "freebsd") {
+            return;
+        }
+        let args = |target: &Target| {
+            build_unix_linker_args(Path::new("module.o"), Path::new("module"), target, &[], &[])
+                .expect("link arguments")
+        };
+        // Off a FreeBSD host the link takes no host C runtime, so needs no compiler.
+        let freebsd = args(&Target::new(
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::FreeBSD,
+        ));
+        assert!(freebsd.iter().any(|a| a == "--eh-frame-hdr"), "{freebsd:?}");
+        // gcc leaves it out of a static link, and ld64 has no such option.
+        let freestanding = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+            .with_environment(TargetEnvironment::Freestanding)
+            .expect("every architecture accepts a freestanding environment");
+        let macos = Target::new(TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS);
+        for target in [freestanding, macos] {
+            let args = args(&target);
+            assert!(!args.iter().any(|a| a == "--eh-frame-hdr"), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn user_objects_link_ahead_of_the_c_library() {
+        let mut targets = vec![Target::new(
+            TargetArchitecture::Aarch64,
+            TargetOperatingSystem::MacOS,
+        )];
+        // A glibc link needs the host compiler's C runtime objects.
+        if cfg!(target_os = "linux") {
+            targets.push(Target::detect_host().expect("linux host is a target"));
+        }
+        for target in targets {
+            let args = build_unix_linker_args(
+                Path::new("module.o"),
+                Path::new("module"),
+                &target,
+                &[],
+                &["user.o".to_string()],
+            )
+            .expect("link arguments");
+            let user = args.iter().position(|a| a == "user.o");
+            let libc = args.iter().position(|a| a == "-lc" || a == "-lSystem");
+            assert!(user.is_some() && libc.is_some(), "{args:?}");
+            assert!(user < libc, "{args:?}");
+        }
     }
 
     #[test]
