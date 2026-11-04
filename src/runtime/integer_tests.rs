@@ -254,6 +254,20 @@ fn emit(
     Ok(String::from_utf8(bytes)?)
 }
 
+/// Whether the run died on a trap. Natively that is the host signal; under
+/// user-mode qemu the guest's signal does not become the host process's, and
+/// qemu reports it on stderr before writing a guest core, which can outlast the
+/// timeout. Either is evidence the program trapped.
+fn trapped(output: &process::Output) -> bool {
+    if matches!(output.status.signal(), Some(4 | 5 | 8)) {
+        return true;
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    ["4", "5", "8"]
+        .iter()
+        .any(|n| stderr.contains(&format!("uncaught target signal {n}")))
+}
+
 pub(super) fn run(
     module: &Module,
     target: &Native,
@@ -558,7 +572,7 @@ fn invalid_division_traps_in_interpreter_and_native_execution() -> TestResult {
                                     run(&module, target, RegallocStrategy::Incremental, directory)?;
                                 let signal = output.status.signal();
                                 assert!(
-                                    matches!(signal, Some(4 | 5 | 8)),
+                                    trapped(&output),
                                     "{} {ty} {op} {lhs} {rhs} constants={constants} optimize={optimize}: {output:?}",
                                     target.triple
                                 );
