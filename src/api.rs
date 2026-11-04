@@ -165,7 +165,7 @@ pub fn compile_module_to_object_with(
         .map_err(|e| ObjectError::Codegen(format!("generated assembly is not UTF-8: {e}")))?;
 
     let mut object_write_options = ObjectWriteOptions::default();
-    if build.debug_lines && debug_info::emits_elf(target.operating_system) {
+    if build.debug_lines && debug_info::emits_dwarf(target.operating_system) {
         object_write_options.emit_minimal_dwarf_sections = true;
     }
     debug_info::apply(

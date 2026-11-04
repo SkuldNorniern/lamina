@@ -80,7 +80,7 @@ impl CompileOptions {
     ) -> ObjectWriteOptions {
         let mut o = ObjectWriteOptions::default();
         let debug = self.mir_codegen_settings.emit_asm_debug_lines;
-        if debug && debug_info::emits_elf(target_os) {
+        if debug && debug_info::emits_dwarf(target_os) {
             o.emit_minimal_dwarf_sections = true;
             o.dwarf_decl_file_name = self.mir_codegen_settings.debug_file_tag.clone();
         }
@@ -165,7 +165,7 @@ pub fn usage_text() -> String {
         "  --jit                   Compile and execute using runtime compilation (JIT)",
         "  --sandbox               Enable sandbox for secure execution (requires --jit)",
         "  -j, --jobs <n>          Number of parallel compilation threads (default: max - 2)",
-        "  -g                      Emit assembler .file/.loc directives, with ras or with gas; with ras, also minimal ELF DWARF",
+        "  -g                      Emit assembler .file/.loc directives, with ras or with gas; with ras, also minimal DWARF in ELF and Mach-O objects",
         "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O1+ where the backend implements it, incremental otherwise)",
         "  -h, --help              Display this help message",
         "  --version               Print the compiler version and exit",

@@ -21,8 +21,8 @@ use ras::{
     Subprogram,
 };
 
-/// Whether the object this target writes carries ELF symbol types and DWARF sections.
-pub fn emits_elf(target_os: TargetOperatingSystem) -> bool {
+/// Whether the object this target writes carries DWARF sections.
+pub fn emits_dwarf(target_os: TargetOperatingSystem) -> bool {
     matches!(
         target_os,
         TargetOperatingSystem::Linux
@@ -31,7 +31,17 @@ pub fn emits_elf(target_os: TargetOperatingSystem) -> bool {
             | TargetOperatingSystem::NetBSD
             | TargetOperatingSystem::DragonFly
             | TargetOperatingSystem::Redox
+            | TargetOperatingSystem::MacOS
     )
+}
+
+/// Mach-O labels a function's code with its name under a leading underscore, which the
+/// debugger must not show and the assembler must be asked for by.
+fn object_symbol(target_os: TargetOperatingSystem, name: &str) -> String {
+    match target_os {
+        TargetOperatingSystem::MacOS => format!("_{name}"),
+        _ => name.to_string(),
+    }
 }
 
 /// Fill in what the assembler needs to describe this module's functions. Symbol types
@@ -43,12 +53,15 @@ pub fn apply(
     debug: bool,
     module: &MirModule,
 ) {
-    if !emits_elf(target_os) {
+    if !emits_dwarf(target_os) {
         return;
     }
-    options.function_symbols = function_symbols(module);
+    options.function_symbols = function_symbols(module)
+        .iter()
+        .map(|name| object_symbol(target_os, name))
+        .collect();
     if debug {
-        options.debug_info = Some(describe(module));
+        options.debug_info = Some(describe(target_os, module));
     }
 }
 
@@ -65,13 +78,14 @@ pub fn function_symbols(module: &MirModule) -> Vec<String> {
     names
 }
 
-pub fn describe(module: &MirModule) -> DebugInfoRequest {
+pub fn describe(target_os: TargetOperatingSystem, module: &MirModule) -> DebugInfoRequest {
     let mut subprograms: Vec<Subprogram> = module
         .functions
         .iter()
         .filter(|(name, func)| !module.is_external(name) && !func.blocks.is_empty())
         .map(|(name, func)| Subprogram {
             name: name.clone(),
+            symbol: Some(object_symbol(target_os, name)).filter(|symbol| symbol != name),
             external: is_linkable(module, name, func.sig.visibility),
             decl: func.sig.decl.map(|loc| DeclSite {
                 file: loc.file.get(),
@@ -175,7 +189,7 @@ fn @main() -> i64 {
         let target = Target::from_str("x86_64_linux").expect("target");
         let module = parse_module(SOURCE).expect("parse");
         let mir = from_ir_for_target(&module, "module", target.data_layout()).expect("lower");
-        describe(&mir)
+        describe(TargetOperatingSystem::Linux, &mir)
     }
 
     fn subprogram(request: &DebugInfoRequest, name: &str) -> Subprogram {
@@ -237,13 +251,42 @@ fn @main() -> i64 {
     }
 
     #[test]
-    fn a_target_without_elf_objects_is_described_to_no_one() {
+    fn a_target_whose_object_carries_no_dwarf_is_described_to_no_one() {
         let target = Target::from_str("x86_64_linux").expect("target");
         let module = parse_module(SOURCE).expect("parse");
         let mir = from_ir_for_target(&module, "module", target.data_layout()).expect("lower");
         let mut options = ObjectWriteOptions::default();
-        apply(&mut options, TargetOperatingSystem::MacOS, true, &mir);
+        apply(&mut options, TargetOperatingSystem::Windows, true, &mir);
         assert!(options.function_symbols.is_empty());
         assert!(options.debug_info.is_none());
+    }
+
+    /// Mach-O labels a function's code with a leading underscore and a debugger must
+    /// not show it, so the assembler is asked for one name and tells the debugger the
+    /// other.
+    #[test]
+    fn a_mach_o_subprogram_keeps_its_source_name_and_names_its_underscored_symbol() {
+        let target = Target::from_str("x86_64_macos").expect("target");
+        let module = parse_module(SOURCE).expect("parse");
+        let mir = from_ir_for_target(&module, "module", target.data_layout()).expect("lower");
+        let mut options = ObjectWriteOptions::default();
+        apply(&mut options, TargetOperatingSystem::MacOS, true, &mir);
+
+        assert_eq!(options.function_symbols, vec!["_main", "_scale", "_widen"]);
+        let request = options.debug_info.expect("a described module");
+        let main = subprogram(&request, "main");
+        assert_eq!(main.symbol.as_deref(), Some("_main"));
+        assert!(
+            request
+                .subprograms
+                .iter()
+                .all(|sub| !sub.name.starts_with('_'))
+        );
+    }
+
+    #[test]
+    fn an_elf_subprogram_names_no_separate_symbol() {
+        let request = described();
+        assert!(request.subprograms.iter().all(|sub| sub.symbol.is_none()));
     }
 }
