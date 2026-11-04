@@ -188,6 +188,13 @@ pub struct LinearScanAllocator;
 
 impl LinearScanAllocator {
     /// Compute interval hulls from instruction operands and control-flow liveness.
+    ///
+    /// Positions are handed out by walking `function.blocks` in storage order and
+    /// counting instructions. Backends compare `start` and `end` against positions they
+    /// number the same way — the clobber ranges that keep a value out of a caller-saved
+    /// register across a call are built like this — so the two numberings are one index
+    /// space and changing the order here without changing every backend that shares it
+    /// silently assigns a live value to a clobbered register.
     pub fn compute_intervals(function: &Function) -> Vec<LiveInterval> {
         let mut intervals: HashMap<VirtualReg, LiveInterval> = HashMap::new();
         let mut positions = Vec::new();
