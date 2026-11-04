@@ -656,7 +656,13 @@ pub unsafe fn execute_jit_function(
         .iter()
         .all(|p| matches!(p.ty, MirType::Scalar(ScalarType::I64)));
 
-    let returns_i64 = matches!(sig.ret_ty.as_ref(), Some(MirType::Scalar(ScalarType::I64)));
+    // The encoders hand back a narrow integer sign-extended to the whole register.
+    let returns_i64 = matches!(
+        sig.ret_ty.as_ref(),
+        Some(MirType::Scalar(
+            ScalarType::I64 | ScalarType::I32 | ScalarType::I16 | ScalarType::I8 | ScalarType::I1
+        ))
+    );
     let returns_void = sig.ret_ty.is_none();
 
     if !all_i64 {

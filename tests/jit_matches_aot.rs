@@ -138,7 +138,10 @@ fn outputs(tag: &str, program: &str) -> (String, String) {
     )
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(
+    all(target_os = "linux", target_arch = "x86_64"),
+    all(target_os = "macos", target_arch = "aarch64")
+))]
 #[test]
 fn jit_and_aot_agree_on_wide_division() {
     let (aot, jit) = outputs("div", WIDE_DIVISION);
@@ -146,7 +149,10 @@ fn jit_and_aot_agree_on_wide_division() {
     assert!(!aot.trim().is_empty());
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(
+    all(target_os = "linux", target_arch = "x86_64"),
+    all(target_os = "macos", target_arch = "aarch64")
+))]
 #[test]
 fn jit_and_aot_agree_on_float_to_wide_corners() {
     let (aot, jit) = outputs("corners", FLOAT_CORNERS);
@@ -167,4 +173,18 @@ fn jit_and_aot_agree_on_float_to_wide_corners() {
             "0"
         ]
     );
+}
+
+#[cfg(any(
+    all(target_os = "linux", target_arch = "x86_64"),
+    all(target_os = "macos", target_arch = "aarch64")
+))]
+#[test]
+fn jit_and_aot_agree_when_main_returns_i32() {
+    let (aot, jit) = outputs(
+        "narrow_main",
+        "fn @main() -> i32 {\nentry:\n  call @print_i64(7)\n  ret.i32 0\n}\n",
+    );
+    assert_eq!(aot, jit);
+    assert_eq!(aot, "7\n");
 }
