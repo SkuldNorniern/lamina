@@ -457,7 +457,8 @@ mod tests {
     #[test]
     fn the_record_names_the_function_and_its_unwind_info() {
         let text = body(&frameful(64));
-        assert!(text.contains(".section .pdata,\"a\"\n"), "{text}");
+        assert!(text.contains(".section .xdata,\"adr\"\n"), "{text}");
+        assert!(text.contains(".section .pdata,\"adr\"\n"), "{text}");
         assert!(text.contains("    .long fn\n"), "{text}");
         assert!(text.contains("    .long .Lxunwind_end_fn\n"), "{text}");
         assert!(text.contains("    .long .Lxunwind_info_fn\n"), "{text}");
