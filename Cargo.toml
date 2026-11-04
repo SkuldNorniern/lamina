@@ -64,3 +64,11 @@ nightly = [
     "lamina-codegen/nightly",
 ]
 
+# lamina owns these as path members while `ras` depends on them from crates.io.
+# Without this the two sources are distinct crates of the same version and their
+# types do not unify. A consumer of published `lamina` is unaffected: cargo ignores
+# a dependency's patch section.
+[patch.crates-io]
+lamina-platform = { path = "lamina-platform" }
+lamina-mir = { path = "lamina-mir" }
+lamina-codegen = { path = "lamina-codegen" }
