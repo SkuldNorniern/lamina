@@ -204,7 +204,7 @@ def cross_toolchain_problem(target):
     if hosts and (platform.system(), platform.machine()) not in hosts:
         return f"{target} runs only on " + " or ".join(sorted(f"{s} {m}" for s, m in hosts))
     missing = []
-    for tool in (spec['compiler'], spec['emulator']):
+    for tool in (spec['compiler'], emulator_command(spec)):
         if tool is not None and shutil.which(tool) is None:
             missing.append(tool)
     crt1 = spec.get('crt1')
@@ -338,16 +338,32 @@ def load_expected_output(test_path, byteorder=sys.byteorder):
 
     return expected_values
 
+def emulator_command(spec):
+    """The user-mode emulator to run a cross binary with, or None.
+
+    Debian packaged the `qemu-<arch>-static` binaries separately for years; on
+    Ubuntu 26 `qemu-user-static` became a virtual package and the dynamic
+    `qemu-<arch>` is what gets installed. Either runs our binaries, so take
+    whichever is present.
+    """
+    name = spec['emulator']
+    if name is None or shutil.which(name):
+        return name
+    plain = name.removesuffix('-static')
+    return plain if shutil.which(plain) else name
+
+
 def execution_argv(executable_path, target=None):
     """Command line that runs a built program on the host or under a cross emulator."""
     if target is None:
         return [executable_path]
     spec = CROSS_TARGETS[target]
-    if spec['emulator'] is None:
+    emulator = emulator_command(spec)
+    if emulator is None:
         return [executable_path]
     if spec['sysroot'] is None:
-        return [spec['emulator'], executable_path]
-    return [spec['emulator'], '-L', spec['sysroot'], executable_path]
+        return [emulator, executable_path]
+    return [emulator, '-L', spec['sysroot'], executable_path]
 
 def run_timeout(target):
     """Seconds a built program gets. Benchmarks are sized so the fastest native
