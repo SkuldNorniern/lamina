@@ -5,7 +5,7 @@ use crate::mir::{
     VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
-use lamina_mir::Located;
+use lamina_mir::{Located, SymbolVisibility};
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
@@ -57,6 +57,7 @@ impl ModuleInlining {
             .validate_in_pipeline()
             .map_err(|errors| TransformError::VerificationFailed { errors })?;
         let mut count = 0;
+        let mut expanded: HashSet<String> = HashSet::new();
         loop {
             let mut sites = Vec::new();
             let mut names: Vec<_> = module.functions.keys().cloned().collect();
@@ -113,6 +114,7 @@ impl ModuleInlining {
                 break;
             }
             let callee = module.functions[&callee_name].clone();
+            expanded.insert(callee_name.clone());
             let caller = module
                 .functions
                 .get_mut(&caller_name)
@@ -120,10 +122,61 @@ impl ModuleInlining {
             self.expand(caller, block_index, index, &callee)?;
             count += 1;
         }
+        Self::drop_unreferenced(module, &expanded);
         module
             .validate_in_pipeline()
             .map_err(|errors| TransformError::VerificationFailed { errors })?;
         Ok(count)
+    }
+
+    /// Drop a function the inliner expanded that nothing names any more. The call it
+    /// replaced was the last reference, so leaving the body in the module emits it a
+    /// second time with no caller. Only a symbol the linker cannot see from outside is
+    /// eligible, and any inline assembly in the module names symbols this cannot read,
+    /// so none is removed then.
+    fn drop_unreferenced(module: &mut Module, expanded: &HashSet<String>) {
+        if expanded.is_empty() {
+            return;
+        }
+        let mut referenced: HashSet<String> = HashSet::new();
+        for function in module.functions.values() {
+            for instruction in function.blocks.iter().flat_map(|b| &b.instructions) {
+                match &instruction.instr {
+                    Instruction::Call { name, .. } | Instruction::TailCall { name, .. } => {
+                        referenced.insert(name.clone());
+                    }
+                    Instruction::SymbolAddress { symbol, .. }
+                    | Instruction::ThreadLocalAddr { symbol, .. } => {
+                        referenced.insert(symbol.clone());
+                    }
+                    Instruction::InlineAsm { .. } => return,
+                    _ => {}
+                }
+            }
+        }
+        for global in module.globals.values() {
+            for relocation in &global.relocations {
+                referenced.insert(relocation.symbol.clone());
+            }
+        }
+        for name in expanded {
+            if name == "main"
+                || referenced.contains(name)
+                || module.is_exported(name)
+                || module.is_external(name)
+            {
+                continue;
+            }
+            let linkable = module.functions.get(name).is_some_and(|f| {
+                matches!(
+                    f.sig.visibility,
+                    Some(SymbolVisibility::Hidden | SymbolVisibility::Protected)
+                ) || f.sig.weak
+            });
+            if !linkable {
+                module.functions.remove(name);
+            }
+        }
     }
 
     fn callee_size_limit(function: &Function) -> usize {
@@ -910,6 +963,21 @@ mod inline_hint_tests {
         let (count, module) = inline_count(&source);
         assert_eq!(count, 0);
         assert!(main_has_call(&module));
+    }
+
+    #[test]
+    fn a_fully_inlined_private_callee_leaves_the_module() {
+        let source = main_source(&chain_callee("@inline ", 40));
+        let (_, module) = inline_count(&source);
+        assert!(module.get_function("big").is_none());
+    }
+
+    #[test]
+    fn an_exported_callee_stays_after_its_calls_are_inlined() {
+        let source = main_source(&chain_callee("@inline @export ", 40));
+        let (_, module) = inline_count(&source);
+        assert!(!main_has_call(&module));
+        assert!(module.get_function("big").is_some());
     }
 
     #[test]
