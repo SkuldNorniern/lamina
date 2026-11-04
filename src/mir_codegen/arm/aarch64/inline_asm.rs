@@ -9,10 +9,10 @@
 
 use super::*;
 use crate::mir::AsmOperand;
+use crate::mir_codegen::inline_asm::{
+    Binding, GPR_CLASS, RegisterFacts, expand_template, output_register, result_is_bool, spell_bare,
+};
 use lamina_platform::PointerWidth;
-
-/// The register class accepted in place of a named general register.
-const GPR_CLASS: &str = "reg";
 
 const GPRS: [&str; 31] = [
     "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14",
@@ -33,11 +33,12 @@ const REG_CLASS_POOL: [&str; 26] = [
     "x15", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 ];
 
-/// The physical register bound to one operand, and how the template spells it.
-pub(super) struct Binding {
-    phys: &'static str,
-    spelled: String,
-}
+const FACTS: RegisterFacts = RegisterFacts {
+    operand: operand_register,
+    clobber: clobber_register,
+    spell: spell_bare,
+    pool: &REG_CLASS_POOL,
+};
 
 /// Index of a general register (`x` or `w` spelling) or a vector register (`d` or `v`
 /// spelling), and whether it is a vector register.
@@ -95,136 +96,28 @@ fn named_register(name: &str) -> Result<(bool, &'static str), LaminaError> {
     Ok((fp, canonical(fp, index)))
 }
 
-fn location(operand: &AsmOperand) -> &str {
-    match operand {
-        AsmOperand::Input { location, .. } | AsmOperand::Output { location } => location,
+/// Resolves a register an operand names. A vector register may be named only as a
+/// clobber: the emitter stages an operand through a general register.
+fn operand_register(name: &str) -> Result<&'static str, LaminaError> {
+    let (fp, phys) = named_register(name)?;
+    if fp {
+        return Err(LaminaError::ValidationError(format!(
+            "register '{name}' is a vector register; AArch64 inline asm operands must be \
+             general registers"
+        )));
     }
+    Ok(phys)
 }
 
-/// Binds every operand to a general register. Named operands keep their spelling; `reg`
-/// operands take the first pool register that no named operand or clobber uses.
+fn clobber_register(name: &str) -> Result<Option<&'static str>, LaminaError> {
+    named_register(name).map(|(_, phys)| Some(phys))
+}
+
 pub(super) fn bind(
     operands: &[AsmOperand],
     clobbers: &[String],
 ) -> Result<Vec<Binding>, LaminaError> {
-    let mut taken: Vec<&'static str> = Vec::new();
-    let mut bindings: Vec<Option<Binding>> = Vec::with_capacity(operands.len());
-    for operand in operands {
-        let name = location(operand);
-        if name == GPR_CLASS {
-            bindings.push(None);
-            continue;
-        }
-        let (fp, phys) = named_register(name)?;
-        if fp {
-            return Err(LaminaError::ValidationError(format!(
-                "register '{name}' is a vector register; AArch64 inline asm operands must be \
-                 general registers"
-            )));
-        }
-        if taken.contains(&phys) {
-            return Err(LaminaError::ValidationError(format!(
-                "register '{name}' is used by two inline asm operands"
-            )));
-        }
-        taken.push(phys);
-        bindings.push(Some(Binding {
-            phys,
-            spelled: name.to_owned(),
-        }));
-    }
-    for clobber in clobbers {
-        if matches!(clobber.as_str(), "memory" | "flags") {
-            continue;
-        }
-        let (_, phys) = named_register(clobber)?;
-        if !taken.contains(&phys) {
-            taken.push(phys);
-        }
-    }
-    let mut resolved = Vec::with_capacity(bindings.len());
-    for binding in bindings {
-        if let Some(binding) = binding {
-            resolved.push(binding);
-            continue;
-        }
-        let phys = REG_CLASS_POOL
-            .iter()
-            .copied()
-            .find(|candidate| !taken.contains(candidate))
-            .ok_or_else(|| {
-                LaminaError::ValidationError(
-                    "no free register for an inline asm 'reg' operand".to_owned(),
-                )
-            })?;
-        taken.push(phys);
-        resolved.push(Binding {
-            phys,
-            spelled: phys.to_owned(),
-        });
-    }
-    Ok(resolved)
-}
-
-/// The canonical names of the registers a clobber list names, in the order given.
-fn clobbered_registers(clobbers: &[String]) -> Result<Vec<&'static str>, LaminaError> {
-    let mut regs = Vec::new();
-    for clobber in clobbers {
-        if matches!(clobber.as_str(), "memory" | "flags") {
-            continue;
-        }
-        let (_, phys) = named_register(clobber)?;
-        if !regs.contains(&phys) {
-            regs.push(phys);
-        }
-    }
-    Ok(regs)
-}
-
-/// Replaces `$n` with the spelling of operand `n` and `$$` with `$`, and decodes the
-/// escapes `\n`, `\t`, `\\` and `\"`. Everything else is passed through untouched.
-fn expand_template(template: &str, bindings: &[Binding]) -> Result<String, LaminaError> {
-    let mut out = String::with_capacity(template.len());
-    let mut chars = template.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '$' => {
-                if chars.peek() == Some(&'$') {
-                    chars.next();
-                    out.push('$');
-                    continue;
-                }
-                let mut digits = String::new();
-                while let Some(d) = chars.peek().copied().filter(char::is_ascii_digit) {
-                    digits.push(d);
-                    chars.next();
-                }
-                let index: usize = digits.parse().map_err(|_| {
-                    LaminaError::ValidationError("malformed `$` in inline asm template".to_owned())
-                })?;
-                let binding = bindings.get(index).ok_or_else(|| {
-                    LaminaError::ValidationError(format!(
-                        "inline asm template uses ${index}, but the instruction has {} operand(s)",
-                        bindings.len()
-                    ))
-                })?;
-                out.push_str(&binding.spelled);
-            }
-            '\\' => match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('\\') => out.push('\\'),
-                Some('"') => out.push('"'),
-                Some(other) => {
-                    out.push('\\');
-                    out.push(other);
-                }
-                None => out.push('\\'),
-            },
-            other => out.push(other),
-        }
-    }
-    Ok(out)
+    FACTS.bind(operands, clobbers)
 }
 
 /// The registers pushed around the template: every callee-saved register it touches, and
@@ -263,22 +156,10 @@ pub(super) fn emit<W: Write>(
     };
     let bindings = bind(operands, clobbers)?;
     let text = expand_template(template, &bindings)?;
-    let clobbered = clobbered_registers(clobbers)?;
+    let clobbered = FACTS.clobbered_registers(clobbers)?;
 
     let output = match result {
-        Some(_) => {
-            let output = operands
-                .iter()
-                .zip(&bindings)
-                .find(|(operand, _)| matches!(operand, AsmOperand::Output { .. }))
-                .map(|(_, binding)| binding.phys)
-                .ok_or_else(|| {
-                    LaminaError::ValidationError(
-                        "asm.T instruction has no out(...) operand".to_owned(),
-                    )
-                })?;
-            Some(output)
-        }
+        Some(_) => Some(output_register(operands, &bindings)?),
         None => None,
     };
 
@@ -310,7 +191,7 @@ pub(super) fn emit<W: Write>(
 
     if let (Some(output), Some((_, ty))) = (output, result) {
         writeln!(w, "    mov x16, {output}")?;
-        if matches!(ty, MirType::Scalar(ScalarType::I1)) {
+        if result_is_bool(ty) {
             writeln!(w, "    and x16, x16, #1")?;
         } else {
             extend_integer(w, "x16", ty, true, pointer_width)?;
@@ -414,7 +295,11 @@ mod tests {
 
     #[test]
     fn aarch64_inline_asm_accepts_vector_register_clobbers() {
-        assert!(clobbered_registers(&["d8".to_owned(), "v15".to_owned()]).is_ok());
+        assert!(
+            FACTS
+                .clobbered_registers(&["d8".to_owned(), "v15".to_owned()])
+                .is_ok()
+        );
     }
 
     #[test]

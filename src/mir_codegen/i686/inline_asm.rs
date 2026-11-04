@@ -11,14 +11,15 @@
 //! bracketed with a push and a pop; `%esp` and `%ebp` are refused.
 
 use super::operand::{EAX, Slots, load_operand, store_register, unsupported};
+use crate::mir_codegen::inline_asm::{
+    Binding, GPR_CLASS, RegisterFacts, expand_template, output_register, result_is_bool,
+    spell_percent,
+};
 use crate::{
     error::LaminaError,
-    mir::{AsmOperand, Instruction as MirInst, MirType, ScalarType},
+    mir::{AsmOperand, Instruction as MirInst},
 };
 use std::io::Write;
-
-/// The register class accepted in place of a named register.
-const GPR_CLASS: &str = "reg";
 
 /// Every spelling an operand or clobber may use, with the 32-bit register it names and
 /// the width in bytes the spelling accesses. `%esi` and `%edi` have no byte form in
@@ -52,11 +53,12 @@ const CALLEE_SAVED: [&str; 3] = ["ebx", "esi", "edi"];
 /// emitter moves values through come first, since they need no save around the template.
 const REG_CLASS_POOL: [&str; 6] = ["eax", "ecx", "edx", "ebx", "esi", "edi"];
 
-/// The physical register bound to one operand, and how the template spells it.
-pub(super) struct Binding {
-    phys: &'static str,
-    spelled: String,
-}
+const FACTS: RegisterFacts = RegisterFacts {
+    operand: named_register,
+    clobber: clobber_register,
+    spell: spell_percent,
+    pool: &REG_CLASS_POOL,
+};
 
 fn unknown_register(name: &str) -> LaminaError {
     let names: Vec<&str> = NAMES.iter().map(|(spelling, _, _)| *spelling).collect();
@@ -83,131 +85,15 @@ fn named_register(name: &str) -> Result<&'static str, LaminaError> {
         .ok_or_else(|| unknown_register(name))
 }
 
-fn location(operand: &AsmOperand) -> &str {
-    match operand {
-        AsmOperand::Input { location, .. } | AsmOperand::Output { location } => location,
-    }
+fn clobber_register(name: &str) -> Result<Option<&'static str>, LaminaError> {
+    named_register(name).map(Some)
 }
 
-/// Binds every operand to a physical register. Named operands keep their spelling, so a
-/// template asking for `al` writes one byte and a template asking for `eax` writes four;
-/// `reg` operands take the first pool register that no named operand or clobber uses.
 pub(super) fn bind(
     operands: &[AsmOperand],
     clobbers: &[String],
 ) -> Result<Vec<Binding>, LaminaError> {
-    let mut taken: Vec<&'static str> = Vec::new();
-    let mut bindings: Vec<Option<Binding>> = Vec::with_capacity(operands.len());
-    for operand in operands {
-        let name = location(operand);
-        if name == GPR_CLASS {
-            bindings.push(None);
-            continue;
-        }
-        let phys = named_register(name)?;
-        if taken.contains(&phys) {
-            return Err(LaminaError::ValidationError(format!(
-                "register '{name}' is used by two inline asm operands"
-            )));
-        }
-        taken.push(phys);
-        bindings.push(Some(Binding {
-            phys,
-            spelled: format!("%{name}"),
-        }));
-    }
-    for clobber in clobbers {
-        if matches!(clobber.as_str(), "memory" | "flags") {
-            continue;
-        }
-        let phys = named_register(clobber)?;
-        if !taken.contains(&phys) {
-            taken.push(phys);
-        }
-    }
-    let mut resolved = Vec::with_capacity(bindings.len());
-    for binding in bindings {
-        if let Some(binding) = binding {
-            resolved.push(binding);
-            continue;
-        }
-        let phys = REG_CLASS_POOL
-            .iter()
-            .copied()
-            .find(|candidate| !taken.contains(candidate))
-            .ok_or_else(|| {
-                LaminaError::ValidationError(
-                    "no free register for an inline asm 'reg' operand".to_owned(),
-                )
-            })?;
-        taken.push(phys);
-        resolved.push(Binding {
-            phys,
-            spelled: format!("%{phys}"),
-        });
-    }
-    Ok(resolved)
-}
-
-/// The canonical names of the registers a clobber list names, in the order given.
-fn clobbered_registers(clobbers: &[String]) -> Result<Vec<&'static str>, LaminaError> {
-    let mut regs = Vec::new();
-    for clobber in clobbers {
-        if matches!(clobber.as_str(), "memory" | "flags") {
-            continue;
-        }
-        let phys = named_register(clobber)?;
-        if !regs.contains(&phys) {
-            regs.push(phys);
-        }
-    }
-    Ok(regs)
-}
-
-/// Replaces `$n` with the spelling of operand `n` and `$$` with `$`, and decodes the
-/// escapes `\n`, `\t`, `\\` and `\"`. Everything else is passed through untouched.
-fn expand_template(template: &str, bindings: &[Binding]) -> Result<String, LaminaError> {
-    let mut out = String::with_capacity(template.len());
-    let mut chars = template.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '$' => {
-                if chars.peek() == Some(&'$') {
-                    chars.next();
-                    out.push('$');
-                    continue;
-                }
-                let mut digits = String::new();
-                while let Some(d) = chars.peek().copied().filter(char::is_ascii_digit) {
-                    digits.push(d);
-                    chars.next();
-                }
-                let index: usize = digits.parse().map_err(|_| {
-                    LaminaError::ValidationError("malformed `$` in inline asm template".to_owned())
-                })?;
-                let binding = bindings.get(index).ok_or_else(|| {
-                    LaminaError::ValidationError(format!(
-                        "inline asm template uses ${index}, but the instruction has {} operand(s)",
-                        bindings.len()
-                    ))
-                })?;
-                out.push_str(&binding.spelled);
-            }
-            '\\' => match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('\\') => out.push('\\'),
-                Some('"') => out.push('"'),
-                Some(other) => {
-                    out.push('\\');
-                    out.push(other);
-                }
-                None => out.push('\\'),
-            },
-            other => out.push(other),
-        }
-    }
-    Ok(out)
+    FACTS.bind(operands, clobbers)
 }
 
 /// The callee-saved registers the template touches, in the order they are pushed.
@@ -219,12 +105,6 @@ fn saved_registers(touched: &[&'static str]) -> Vec<&'static str> {
         }
     }
     saved
-}
-
-/// How a result narrower than a word is widened into its slot, matching the canonical
-/// form the rest of the backend keeps: `i1` zero-extended, the rest signed.
-fn signed_result(ty: &MirType) -> bool {
-    !matches!(ty, MirType::Scalar(ScalarType::I1))
 }
 
 pub(super) fn emit<W: Write>(
@@ -250,7 +130,7 @@ pub(super) fn emit<W: Write>(
     let bindings = bind(operands, clobbers)?;
     let text = expand_template(template, &bindings)?;
     let mut touched: Vec<&'static str> = bindings.iter().map(|binding| binding.phys).collect();
-    touched.extend(clobbered_registers(clobbers)?);
+    touched.extend(FACTS.clobbered_registers(clobbers)?);
     let saved = saved_registers(&touched);
 
     for phys in &saved {
@@ -270,18 +150,7 @@ pub(super) fn emit<W: Write>(
     }
 
     let output = match result {
-        Some(_) => Some(
-            operands
-                .iter()
-                .zip(&bindings)
-                .find(|(operand, _)| matches!(operand, AsmOperand::Output { .. }))
-                .map(|(_, binding)| binding.phys)
-                .ok_or_else(|| {
-                    LaminaError::ValidationError(
-                        "asm.T instruction has no out(...) operand".to_owned(),
-                    )
-                })?,
-        ),
+        Some(_) => Some(output_register(operands, &bindings)?),
         None => None,
     };
     if let Some(output) = output
@@ -295,14 +164,14 @@ pub(super) fn emit<W: Write>(
     let Some((dst, ty)) = result else {
         return Ok(());
     };
-    super::extend_in_place(writer, EAX, ty, signed_result(ty))?;
+    super::extend_in_place(writer, EAX, ty, !result_is_bool(ty))?;
     store_register(EAX, dst, writer, slots)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{Operand, Register, VirtualReg};
+    use crate::mir::{MirType, Operand, Register, ScalarType, VirtualReg};
     use std::collections::HashMap;
 
     fn out(location: &str) -> AsmOperand {

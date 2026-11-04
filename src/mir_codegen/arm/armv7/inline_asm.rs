@@ -14,15 +14,15 @@
 //! no way to spell; an `i64` result is refused rather than truncated into one register.
 
 use super::operand::{ADDR, ENTRY_SP, FP, materialize, store_result, unsupported};
+use crate::mir_codegen::inline_asm::{
+    Binding, GPR_CLASS, RegisterFacts, expand_template, output_register, result_is_bool, spell_bare,
+};
 use crate::{
     error::LaminaError,
     mir::{AsmOperand, Instruction as MirInst, MirType, ScalarType},
 };
 use lamina_codegen::aarch64::FrameMap;
 use std::io::Write;
-
-/// The register class accepted in place of a named register.
-const GPR_CLASS: &str = "reg";
 
 /// Core registers an operand or a clobber may name.
 const CORE: [&str; 10] = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9"];
@@ -51,11 +51,12 @@ const RESERVED: [(&str, &str); 6] = [
 /// Registers a `reg` operand may be given, in the order they are tried.
 const REG_CLASS_POOL: [&str; 10] = CORE;
 
-/// The physical register bound to one operand, and how the template spells it.
-pub(super) struct Binding {
-    phys: &'static str,
-    spelled: String,
-}
+const FACTS: RegisterFacts = RegisterFacts {
+    operand: operand_register,
+    clobber: clobber_register,
+    spell: spell_bare,
+    pool: &REG_CLASS_POOL,
+};
 
 /// A VFP register name, accepted as a clobber. `d8` through `d15` are callee-saved and
 /// the prologue pushes them; the rest hold no value between instructions.
@@ -125,116 +126,11 @@ fn clobber_register(name: &str) -> Result<Option<&'static str>, LaminaError> {
         .ok_or_else(|| unknown_register(name))
 }
 
-fn location(operand: &AsmOperand) -> &str {
-    match operand {
-        AsmOperand::Input { location, .. } | AsmOperand::Output { location } => location,
-    }
-}
-
-/// Binds every operand to a core register. Named operands keep their spelling; `reg`
-/// operands take the first pool register that no named operand or clobber uses.
 pub(super) fn bind(
     operands: &[AsmOperand],
     clobbers: &[String],
 ) -> Result<Vec<Binding>, LaminaError> {
-    let mut taken: Vec<&'static str> = Vec::new();
-    let mut bindings: Vec<Option<Binding>> = Vec::with_capacity(operands.len());
-    for operand in operands {
-        let name = location(operand);
-        if name == GPR_CLASS {
-            bindings.push(None);
-            continue;
-        }
-        let phys = operand_register(name)?;
-        if taken.contains(&phys) {
-            return Err(LaminaError::ValidationError(format!(
-                "register '{name}' is used by two inline asm operands"
-            )));
-        }
-        taken.push(phys);
-        bindings.push(Some(Binding {
-            phys,
-            spelled: phys.to_owned(),
-        }));
-    }
-    for clobber in clobbers {
-        if matches!(clobber.as_str(), "memory" | "flags") {
-            continue;
-        }
-        if let Some(phys) = clobber_register(clobber)?
-            && !taken.contains(&phys)
-        {
-            taken.push(phys);
-        }
-    }
-    let mut resolved = Vec::with_capacity(bindings.len());
-    for binding in bindings {
-        if let Some(binding) = binding {
-            resolved.push(binding);
-            continue;
-        }
-        let phys = REG_CLASS_POOL
-            .iter()
-            .copied()
-            .find(|candidate| !taken.contains(candidate))
-            .ok_or_else(|| {
-                LaminaError::ValidationError(
-                    "no free register for an inline asm 'reg' operand".to_owned(),
-                )
-            })?;
-        taken.push(phys);
-        resolved.push(Binding {
-            phys,
-            spelled: phys.to_owned(),
-        });
-    }
-    Ok(resolved)
-}
-
-/// Replaces `$n` with the spelling of operand `n` and `$$` with `$`, and decodes the
-/// escapes `\n`, `\t`, `\\` and `\"`. Everything else is passed through untouched.
-fn expand_template(template: &str, bindings: &[Binding]) -> Result<String, LaminaError> {
-    let mut out = String::with_capacity(template.len());
-    let mut chars = template.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '$' => {
-                if chars.peek() == Some(&'$') {
-                    chars.next();
-                    out.push('$');
-                    continue;
-                }
-                let mut digits = String::new();
-                while let Some(d) = chars.peek().copied().filter(char::is_ascii_digit) {
-                    digits.push(d);
-                    chars.next();
-                }
-                let index: usize = digits.parse().map_err(|_| {
-                    LaminaError::ValidationError("malformed `$` in inline asm template".to_owned())
-                })?;
-                let binding = bindings.get(index).ok_or_else(|| {
-                    LaminaError::ValidationError(format!(
-                        "inline asm template uses ${index}, but the instruction has {} operand(s)",
-                        bindings.len()
-                    ))
-                })?;
-                out.push_str(&binding.spelled);
-            }
-            '\\' => match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('\\') => out.push('\\'),
-                Some('"') => out.push('"'),
-                Some(other) => {
-                    out.push('\\');
-                    out.push(other);
-                }
-                None => out.push('\\'),
-            },
-            other => out.push(other),
-        }
-    }
-    Ok(out)
+    FACTS.bind(operands, clobbers)
 }
 
 /// Refuses a result the backend cannot read out of one core register, naming the pair
@@ -301,15 +197,8 @@ pub(super) fn emit<W: Write>(
     let Some((dst, ty)) = result else {
         return Ok(());
     };
-    let output = operands
-        .iter()
-        .zip(&bindings)
-        .find(|(operand, _)| matches!(operand, AsmOperand::Output { .. }))
-        .map(|(_, binding)| binding.phys)
-        .ok_or_else(|| {
-            LaminaError::ValidationError("asm.T instruction has no out(...) operand".to_owned())
-        })?;
-    if matches!(ty, MirType::Scalar(ScalarType::I1)) {
+    let output = output_register(operands, &bindings)?;
+    if result_is_bool(ty) {
         writeln!(w, "    and {output}, {output}, #1")?;
     } else {
         super::operand::extend_integer(w, output, ty, true)?;

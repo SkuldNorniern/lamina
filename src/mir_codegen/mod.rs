@@ -10,6 +10,7 @@ pub mod capability;
 pub mod common;
 mod gpu;
 pub mod i686;
+pub(crate) mod inline_asm;
 pub mod limits;
 pub mod link;
 pub mod loongarch64;
