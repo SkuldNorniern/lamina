@@ -83,6 +83,18 @@ pub(super) fn module_returning(mut block: Block, ret: MirType) -> Module {
     module
 }
 
+/// The emulator binary to run this target's output with, or `None` when neither
+/// spelling is installed. Debian shipped the `qemu-<arch>-static` builds for
+/// years; on Ubuntu 26 `qemu-user-static` is a virtual package and the dynamic
+/// `qemu-<arch>` is what lands. Both run a statically linked binary.
+pub(super) fn emulator_binary(name: &'static str) -> Option<&'static str> {
+    if available(name) {
+        return Some(name);
+    }
+    let plain = name.strip_suffix("-static")?;
+    available(plain).then_some(plain)
+}
+
 pub(super) fn available(tool: &str) -> bool {
     Command::new(tool)
         .arg("--version")
@@ -206,8 +218,9 @@ pub(super) fn targets(include_unavailable: bool) -> Vec<Native> {
             start: ".text\n.globl _start\n_start:\n bl main\n li 0, 1\n sc\n",
         },
     ] {
-        let usable =
-            available("clang") && available("ld.lld-18") && target.emulator.is_some_and(available);
+        let usable = available("clang")
+            && available("ld.lld-18")
+            && target.emulator.and_then(emulator_binary).is_some();
         if !include_unavailable && !usable {
             skip_test(&format!(
                 "{} native execution needs clang, ld.lld-18 and {}",
@@ -301,7 +314,7 @@ pub(super) fn run(
         command.arg("10");
         command
     };
-    if let Some(emulator) = target.emulator {
+    if let Some(emulator) = target.emulator.and_then(emulator_binary) {
         command.arg(emulator);
     }
     Ok(command.current_dir(directory).arg(binary).output()?)

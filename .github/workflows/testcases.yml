@@ -32,7 +32,7 @@ jobs:
           sudo apt-get install -y \
             gcc-multilib libc6-dev-i386 \
             lld-18 llvm-18
-          sudo apt-get install -y qemu-user-static || sudo apt-get install -y qemu-user-binfmt
+          sudo apt-get install -y qemu-user-static || sudo apt-get install -y qemu-user || sudo apt-get install -y qemu-user-binfmt
       # The wasm backend tests run their output under the wasmtime CLI. Without
       # it they skip, and the backend goes untested while the job stays green.
       - name: Install wasmtime
@@ -113,7 +113,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-s390x-linux-gnu
-          sudo apt-get install -y qemu-user-static || sudo apt-get install -y qemu-user-binfmt
+          sudo apt-get install -y qemu-user-static || sudo apt-get install -y qemu-user || sudo apt-get install -y qemu-user-binfmt
       - name: Run testcases (aarch64 linux)
         if: runner.os == 'Linux'
         run: python3 run_tests.py --target aarch64_linux
