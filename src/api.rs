@@ -18,7 +18,6 @@ use crate::debug_info;
 pub use crate::ir::module::Module;
 use crate::mir::TransformPipeline;
 use crate::mir::codegen::from_ir_for_target;
-use crate::mir::transform::vector_unit_for;
 use crate::mir_codegen::generate_mir_to_target_with_settings;
 pub use crate::target::Target;
 #[cfg(feature = "ssa-round-trip")]
@@ -142,9 +141,10 @@ pub fn compile_module_to_object_with(
     let mut mir_module = from_ir_for_target(module, "module", target.data_layout())
         .map_err(|e| ObjectError::Lowering(e.to_string()))?;
 
-    TransformPipeline::default_for_opt_level_on(
+    TransformPipeline::for_target(
         build.opt_level,
-        vector_unit_for(target.architecture, options.settings.x86_cpu_level()),
+        target.architecture,
+        options.settings.x86_cpu_level(),
     )
     .apply_to_module(&mut mir_module)
     .map_err(|e| ObjectError::Lowering(format!("MIR optimization failed: {e}")))?;

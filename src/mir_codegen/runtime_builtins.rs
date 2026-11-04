@@ -15,10 +15,7 @@
 
 use crate::{
     error::LaminaError,
-    mir::{
-        Instruction, Module, TransformPipeline, codegen::from_ir_for_target,
-        transform::vector_unit_for,
-    },
+    mir::{Instruction, Module, TransformPipeline, codegen::from_ir_for_target},
     mir_codegen::{
         MirCodegenSettings,
         assemble::{
@@ -345,14 +342,13 @@ fn lower(
         LaminaError::ValidationError(format!("compiler runtime {stem} failed to lower: {e}"))
     })?;
     if opt_level > 0 {
-        TransformPipeline::default_for_opt_level_on(
-            opt_level,
-            vector_unit_for(target.architecture, settings.x86_cpu_level()),
-        )
-        .apply_to_module(&mut module)
-        .map_err(|e| {
-            LaminaError::ValidationError(format!("compiler runtime {stem} failed to optimize: {e}"))
-        })?;
+        TransformPipeline::for_target(opt_level, target.architecture, settings.x86_cpu_level())
+            .apply_to_module(&mut module)
+            .map_err(|e| {
+                LaminaError::ValidationError(format!(
+                    "compiler runtime {stem} failed to optimize: {e}"
+                ))
+            })?;
     }
     Ok(module)
 }

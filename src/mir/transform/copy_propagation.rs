@@ -1,8 +1,7 @@
 //! Copy propagation transform for MIR.
 
 use crate::mir::{
-    AddressMode, AsmOperand, Block, Function, Immediate, Instruction, IntBinOp, MirType, Operand,
-    Register,
+    AddressMode, AsmOperand, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use lamina_platform::PointerWidth;
@@ -296,7 +295,9 @@ impl CopyPropagation {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, ScalarType, VirtualReg, transform::test_utils::get_block};
+    use crate::mir::{
+        FunctionBuilder, MirType, ScalarType, VirtualReg, transform::test_utils::get_block,
+    };
 
     fn convert_then_use(from: ScalarType, to: ScalarType) -> Function {
         let reg = |id| Register::Virtual(VirtualReg::gpr(id));

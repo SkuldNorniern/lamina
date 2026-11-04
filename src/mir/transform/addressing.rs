@@ -13,6 +13,7 @@ use crate::mir::{
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use lamina_mir::Located;
+use lamina_platform::PointerWidth;
 
 /// Canonicalizes address formation patterns into BaseIndexScale addressing.
 #[derive(Default)]
@@ -43,12 +44,13 @@ impl Transform for AddressingCanonicalization {
 impl AddressingCanonicalization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
+        let pointer = func.pointer_width;
 
         for block in &mut func.blocks {
             for i in 0..block.instructions.len() {
                 let new_addr_mode = match &block.instructions[i].instr {
                     Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
-                        canonical_address(addr, i, &block.instructions)
+                        canonical_address(addr, i, &block.instructions, pointer)
                     }
                     _ => None,
                 };
@@ -75,6 +77,7 @@ fn canonical_address(
     addr: &AddressMode,
     at: usize,
     instructions: &[Located],
+    pointer: PointerWidth,
 ) -> Option<AddressMode> {
     let AddressMode::BaseOffset {
         base,
@@ -85,7 +88,22 @@ fn canonical_address(
         return None;
     };
     let offset = i8::try_from(*offset).ok()?;
-    let formed = last_definition(instructions, base, at)?;
+    let mut formed = last_definition(instructions, base, at)?;
+    // The address may reach the access through integer to pointer conversion.
+    if let Instruction::IntConvert {
+        from,
+        to,
+        src: Operand::Register(source),
+        ..
+    } = &instructions[formed].instr
+        && from.size_bytes(pointer) == 8
+        && to.size_bytes(pointer) == 8
+    {
+        formed = last_definition(instructions, source, formed)?;
+        if redefined_between(instructions, source, formed + 1, at) {
+            return None;
+        }
+    }
     let Instruction::IntBinary {
         op: IntBinOp::Add,
         lhs,
@@ -166,6 +184,91 @@ mod tests {
         FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg,
         transform::test_utils::get_block, verify_function_in_pipeline,
     };
+
+    fn through_convert(redefine_source: bool) -> Function {
+        let reg = |id| Register::Virtual(VirtualReg::gpr(id));
+        let word = MirType::Scalar(ScalarType::I64);
+        let mut builder = FunctionBuilder::new("through")
+            .returns(word)
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Shl,
+                ty: word,
+                dst: reg(2),
+                lhs: Operand::Register(reg(1)),
+                rhs: Operand::Immediate(Immediate::I64(3)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: word,
+                dst: reg(3),
+                lhs: Operand::Register(reg(0)),
+                rhs: Operand::Register(reg(2)),
+            })
+            .instr(Instruction::IntConvert {
+                from: word,
+                to: MirType::Scalar(ScalarType::Ptr),
+                signed: false,
+                dst: reg(4),
+                src: Operand::Register(reg(3)),
+            });
+        if redefine_source {
+            builder = builder.instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: word,
+                dst: reg(0),
+                lhs: Operand::Register(reg(0)),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            });
+        }
+        builder
+            .instr(Instruction::Load {
+                ty: word,
+                dst: reg(5),
+                addr: AddressMode::BaseOffset {
+                    base: reg(4),
+                    offset: 0,
+                    address_space: Default::default(),
+                },
+                attrs: MemoryAttrs::default(),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(reg(5))),
+            })
+            .build()
+    }
+
+    fn loaded_address(func: &Function) -> AddressMode {
+        let block = get_block(func, "entry");
+        block
+            .instructions
+            .iter()
+            .find_map(|inst| match &inst.instr {
+                Instruction::Load { addr, .. } => Some(addr.clone()),
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn address_is_found_through_pointer_conversion() {
+        let mut func = through_convert(false);
+        assert!(AddressingCanonicalization.apply(&mut func).unwrap());
+        assert!(matches!(
+            loaded_address(&func),
+            AddressMode::BaseIndexScale { scale: 8, .. }
+        ));
+    }
+
+    #[test]
+    fn redefined_base_after_conversion_keeps_the_address() {
+        let mut func = through_convert(true);
+        AddressingCanonicalization.apply(&mut func).unwrap();
+        assert!(matches!(
+            loaded_address(&func),
+            AddressMode::BaseOffset { .. }
+        ));
+    }
 
     #[test]
     fn test_addressing_empty_function() {

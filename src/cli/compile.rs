@@ -3,7 +3,6 @@ use super::{
     jit::handle_jit_compilation,
     options::{CompileOptions, toolchain_backends},
 };
-use crate::mir::transform::vector_unit_for;
 use crate::{
     mir::{TransformPipeline, codegen::from_ir_for_target},
     mir_codegen::{
@@ -149,12 +148,10 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
         .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
         if options.opt_level > 0 {
-            let pipeline = TransformPipeline::default_for_opt_level_on(
+            let pipeline = TransformPipeline::for_target(
                 options.opt_level,
-                vector_unit_for(
-                    target_for_extensions.architecture,
-                    options.mir_codegen_settings.x86_cpu_level(),
-                ),
+                target_for_extensions.architecture,
+                options.mir_codegen_settings.x86_cpu_level(),
             );
             let transform_stats = pipeline
                 .apply_to_module(&mut mir_mod)
@@ -215,12 +212,10 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
     .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
     if options.opt_level > 0 {
-        let pipeline = TransformPipeline::default_for_opt_level_on(
+        let pipeline = TransformPipeline::for_target(
             options.opt_level,
-            vector_unit_for(
-                target.architecture,
-                options.mir_codegen_settings.x86_cpu_level(),
-            ),
+            target.architecture,
+            options.mir_codegen_settings.x86_cpu_level(),
         );
         let transform_stats = pipeline
             .apply_to_module(&mut mir_mod)

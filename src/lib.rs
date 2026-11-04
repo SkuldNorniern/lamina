@@ -494,7 +494,6 @@ use lamina_codegen::{is_assembly_emission_supported, supported_assembly_targets_
 use lamina_mir::ssa::round_trip_module;
 use lamina_platform::Target;
 use mir::TransformPipeline;
-use mir::transform::vector_unit_for;
 use mir_codegen::settings::{MirCodegenSettings, RegallocStrategy};
 pub use mir_codegen::{generate_mir_to_target, generate_mir_to_target_with_settings};
 use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
@@ -634,9 +633,10 @@ pub fn compile_module_to_object_with_options(
 
     let mut mir_module = mir::codegen::from_ir_for_target(module, "module", target.data_layout())?;
     if options.opt_level > 0 {
-        TransformPipeline::default_for_opt_level_on(
+        TransformPipeline::for_target(
             options.opt_level,
-            vector_unit_for(target.architecture, options.settings.x86_cpu_level()),
+            target.architecture,
+            options.settings.x86_cpu_level(),
         )
         .apply_to_module(&mut mir_module)
         .map_err(|e| LaminaError::ValidationError(format!("MIR optimization failed: {e}")))?;

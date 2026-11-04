@@ -448,6 +448,19 @@ impl TransformPipeline {
         Self::default_for_opt_level(opt_level)
     }
 
+    /// The pipeline for one target. AArch64 reads an indexed address in the load itself.
+    /// Only backends tested with these addresses at optimization levels get them.
+    pub fn for_target(opt_level: u8, target: TargetArchitecture, level: X86CpuLevel) -> Self {
+        let mut pipeline =
+            Self::default_for_opt_level_on(opt_level, vector_unit_for(target, level));
+        if opt_level >= 2 && target == TargetArchitecture::Aarch64 {
+            pipeline = pipeline
+                .add_transform(AddressingCanonicalization)
+                .add_transform(DeadCodeElimination);
+        }
+        pipeline
+    }
+
     /// Runs each pass over one function once, in the order they were added. Repeating
     /// the list until nothing changes costs about half again as much and changed no
     /// output across the testcases, so the order the pipeline is built in is what

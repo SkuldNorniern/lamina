@@ -2,7 +2,6 @@
 
 use crate::cli::host_cpu::check_host_runs_level;
 use crate::cli::options::{CompileOptions, toolchain_backends};
-use crate::mir::transform::vector_unit_for;
 
 use crate::{
     mir::{Module, TransformPipeline, codegen::from_ir_for_target},
@@ -114,12 +113,10 @@ pub fn handle_jit_compilation(
     }
 
     if options.opt_level > 0 {
-        let pipeline = TransformPipeline::default_for_opt_level_on(
+        let pipeline = TransformPipeline::for_target(
             options.opt_level,
-            vector_unit_for(
-                target.architecture,
-                options.mir_codegen_settings.x86_cpu_level(),
-            ),
+            target.architecture,
+            options.mir_codegen_settings.x86_cpu_level(),
         );
         let transform_stats = pipeline
             .apply_to_module(&mut mir_mod)
