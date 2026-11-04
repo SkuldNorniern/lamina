@@ -13,6 +13,7 @@ mod simd;
 mod util;
 mod variadic;
 
+use crate::mir::Block;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::arm::{float_condition, int_condition, invert_condition};
@@ -881,6 +882,7 @@ fn compile_single_function_aarch64_with(
     }
 
     let plan = FunctionEmissionPlan::new(func);
+    let multiply_adds = multiply_adds(func, func.pointer_width);
     if plan
         .order
         .first()
@@ -934,6 +936,66 @@ fn compile_single_function_aarch64_with(
                     if func.entry != next {
                         writeln!(output, "    b {block_prefix}{}", func.entry)?;
                     }
+                } else if multiply_adds.contains(&(index, position))
+                    && multiply_add_operands_ready(block, position, ra)
+                {
+                    if let (
+                        MirInst::IntBinary {
+                            dst: product,
+                            lhs: Operand::Register(a),
+                            rhs: Operand::Register(b),
+                            ..
+                        },
+                        MirInst::IntBinary { dst, lhs, rhs, .. },
+                    ) = (&inst.instr, &block.instructions[position + 1].instr)
+                    {
+                        emit_source_loc(output, settings, inst.loc)?;
+                        let addend = match (lhs, rhs) {
+                            (Operand::Register(r), other) if r == product => other,
+                            (other, _) => other,
+                        };
+                        let mut scratches = Vec::new();
+                        let mut operands = Vec::with_capacity(3);
+                        for operand in [
+                            Operand::Register(a.clone()),
+                            Operand::Register(b.clone()),
+                            addend.clone(),
+                        ] {
+                            operands.push(match operand_in_register(&operand, ra) {
+                                Some(preg) => x_alias(preg),
+                                None => {
+                                    let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                                    scratches.push(s);
+                                    emit_materialize_operand(output, &operand, s, &frame, ra)?;
+                                    x_alias(s)
+                                }
+                            });
+                        }
+                        let held = dest_in_register(dst, ra);
+                        let target = match held {
+                            Some(preg) => preg,
+                            None => {
+                                let s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                                scratches.push(s);
+                                s
+                            }
+                        };
+                        writeln!(
+                            output,
+                            "    madd {}, {}, {}, {}",
+                            x_alias(target),
+                            operands[0],
+                            operands[1],
+                            operands[2]
+                        )?;
+                        if held.is_none() {
+                            store_result(output, dst, &x_alias(target), &frame, ra)?;
+                        }
+                        for scratch in scratches {
+                            ra.free_scratch(scratch);
+                        }
+                    }
+                    position += 1;
                 } else if plan.comparisons.contains(&(index, position)) {
                     if let (
                         MirInst::IntCmp {
@@ -3036,6 +3098,71 @@ fn materialize_address<W: Write>(
         }
     }
     Ok(())
+}
+
+/// Whether `madd` has its register inputs in hand. Without an allocation plan it would
+/// need a scratch for each of its four registers and more to reach far slots.
+fn multiply_add_operands_ready(block: &Block, position: usize, ra: &A64RegAlloc) -> bool {
+    let inputs = block.instructions[position..=position + 1]
+        .iter()
+        .flat_map(|inst| inst.use_regs());
+    let product = block.instructions[position].def_reg();
+    inputs
+        .filter(|register| Some(*register) != product)
+        .all(|register| match register {
+            Register::Virtual(v) => ra.get_mapping_for(v).is_some(),
+            Register::Physical(_) => false,
+        })
+}
+
+/// A whole-word multiply whose only use is the add right after it, by block and position.
+/// `madd` does both, and the product never needs a register of its own.
+fn multiply_adds(func: &Function, pointer_width: PointerWidth) -> HashSet<(usize, usize)> {
+    let mut reads: HashMap<&Register, usize> = HashMap::new();
+    let mut writes: HashMap<&Register, usize> = HashMap::new();
+    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+        for register in inst.use_regs() {
+            *reads.entry(register).or_default() += 1;
+        }
+        if let Some(register) = inst.def_reg() {
+            *writes.entry(register).or_default() += 1;
+        }
+    }
+    let mut found = HashSet::new();
+    for (index, block) in func.blocks.iter().enumerate() {
+        for (position, pair) in block.instructions.windows(2).enumerate() {
+            let (
+                MirInst::IntBinary {
+                    op: IntBinOp::Mul,
+                    ty,
+                    dst: product @ Register::Virtual(_),
+                    lhs: Operand::Register(_),
+                    rhs: Operand::Register(_),
+                },
+                MirInst::IntBinary {
+                    op: IntBinOp::Add,
+                    ty: add_ty,
+                    lhs,
+                    rhs,
+                    ..
+                },
+            ) = (&pair[0].instr, &pair[1].instr)
+            else {
+                continue;
+            };
+            let is_product =
+                |operand: &Operand| matches!(operand, Operand::Register(r) if r == product);
+            if ty == add_ty
+                && ty.size_bytes(pointer_width) == 8
+                && is_product(lhs) != is_product(rhs)
+                && reads.get(product) == Some(&1)
+                && writes.get(product) == Some(&1)
+            {
+                found.insert((index, position));
+            }
+        }
+    }
+    found
 }
 
 /// Whether this division has a reciprocal: not by -1, 0 or 1, which other paths handle,

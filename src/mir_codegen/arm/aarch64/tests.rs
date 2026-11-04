@@ -2026,3 +2026,93 @@ fn index_scale_unlike_access_size_goes_through_add() -> Result<(), Box<dyn Error
     assert!(asm.contains("lsl "), "{asm}");
     Ok(())
 }
+
+fn multiply_add_asm_with(
+    use_product_again: bool,
+    regalloc: RegallocStrategy,
+) -> Result<String, Box<dyn Error>> {
+    use crate::mir::{Block, Parameter};
+    let reg = |id| Register::Virtual(VirtualReg::gpr(id));
+    let word = MirType::Scalar(ScalarType::I64);
+    let mut func = Function::new(
+        Signature::new("fused")
+            .with_params(vec![
+                Parameter::new(reg(0), word),
+                Parameter::new(reg(1), word),
+                Parameter::new(reg(2), word),
+            ])
+            .with_return(word),
+    );
+    let mut entry = Block::new("entry");
+    entry.push(MirInst::IntBinary {
+        op: IntBinOp::Mul,
+        ty: word,
+        dst: reg(3),
+        lhs: Operand::Register(reg(0)),
+        rhs: Operand::Register(reg(1)),
+    });
+    entry.push(MirInst::IntBinary {
+        op: IntBinOp::Add,
+        ty: word,
+        dst: reg(4),
+        lhs: Operand::Register(reg(2)),
+        rhs: Operand::Register(reg(3)),
+    });
+    entry.push(MirInst::IntBinary {
+        op: IntBinOp::Add,
+        ty: word,
+        dst: reg(5),
+        lhs: Operand::Register(reg(4)),
+        rhs: if use_product_again {
+            Operand::Register(reg(3))
+        } else {
+            Operand::Immediate(Immediate::I64(1))
+        },
+    });
+    entry.push(MirInst::Ret {
+        value: Some(Operand::Register(reg(5))),
+    });
+    func.add_block(entry);
+    let settings = MirCodegenSettings {
+        regalloc,
+        ..Default::default()
+    };
+    Ok(String::from_utf8(
+        compile_single_function_aarch64(
+            "fused",
+            &func,
+            TargetOperatingSystem::Linux,
+            &settings,
+            &AggregateSignatures::empty(PointerWidth::Bits64),
+        )
+        .map_err(|error| error.to_string())?,
+    )?)
+}
+
+fn multiply_add_asm(use_product_again: bool) -> Result<String, Box<dyn Error>> {
+    multiply_add_asm_with(use_product_again, RegallocStrategy::LinearScanGlobal)
+}
+
+#[test]
+fn multiply_then_add_without_a_plan_stays_apart() -> Result<(), Box<dyn Error>> {
+    let asm = multiply_add_asm_with(false, RegallocStrategy::Incremental)?;
+    assert!(!asm.contains("madd "), "{asm}");
+    assert!(asm.contains("mul "), "{asm}");
+    Ok(())
+}
+
+#[test]
+fn multiply_then_add_becomes_madd() -> Result<(), Box<dyn Error>> {
+    let asm = multiply_add_asm(false)?;
+    assert!(asm.contains("madd "), "{asm}");
+    assert!(!asm.contains("mul "), "{asm}");
+    Ok(())
+}
+
+#[test]
+fn product_used_again_keeps_its_multiply() -> Result<(), Box<dyn Error>> {
+    let asm = multiply_add_asm(true)?;
+    assert!(!asm.contains("madd "), "{asm}");
+    assert!(asm.contains("mul "), "{asm}");
+    Ok(())
+}
