@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "lamina"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "lamina-codegen",
  "lamina-ir",
@@ -16,7 +16,7 @@ dependencies = [
 
 [[package]]
 name = "lamina-codegen"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "lamina-mir",
  "lamina-platform",
@@ -24,25 +24,25 @@ dependencies = [
 
 [[package]]
 name = "lamina-ir"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "lamina-platform",
 ]
 
 [[package]]
 name = "lamina-mir"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "lamina-platform",
 ]
 
 [[package]]
 name = "lamina-platform"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "lamina-ras"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "lamina-codegen",
  "lamina-mir",

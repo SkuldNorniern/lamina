@@ -1,6 +1,6 @@
 [package]
 name = "lamina-c"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Eira <eira@nornity.com>"]
@@ -13,9 +13,9 @@ publish = false
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-lamina = { path = "..", version = "0.2.0", features = ["encoder"] }
-lamina-ir = { path = "../lamina-ir", version = "0.2.0" }
-lamina-platform = { path = "../lamina-platform", version = "0.2.0" }
+lamina = { path = "..", version = "0.2.1", features = ["encoder"] }
+lamina-ir = { path = "../lamina-ir", version = "0.2.1" }
+lamina-platform = { path = "../lamina-platform", version = "0.2.1" }
 
 [workspace]
 

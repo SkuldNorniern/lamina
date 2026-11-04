@@ -1,6 +1,6 @@
 [package]
 name = "lamina-mir"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Eira <eira@nornity.com>"]
@@ -11,7 +11,7 @@ categories = ["compilers", "development-tools"]
 repository = "https://github.com/SkuldNorniern/lamina"
 
 [dependencies]
-lamina-platform = { path = "../lamina-platform", version = "0.2.0" }
+lamina-platform = { path = "../lamina-platform", version = "0.2.1" }
 
 [features]
 default = []
