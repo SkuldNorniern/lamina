@@ -40,7 +40,7 @@ name = "weld"
 path = "src/bin/weld.rs"
 
 [dependencies]
-ras = { package = "lamina-ras", version = "0.2.4", features = ["encoder"] }
+ras = { package = "lamina-ras", version = "0.2.5", features = ["encoder"] }
 weld = { package = "lamina-weld", version = "0.2.3" }
 lamina-ir = { path = "lamina-ir", version = "0.2.1" }
 lamina-platform = { path = "lamina-platform", version = "0.2.1" }
