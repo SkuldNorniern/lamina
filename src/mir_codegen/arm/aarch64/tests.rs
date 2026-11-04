@@ -434,6 +434,28 @@ fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn
 }
 
 #[test]
+fn elf_external_function_addresses_load_through_the_got() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir_x86_64(&module, "got").expect("lower funcaddr module");
+    let mut linux = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut linux,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
+    let linux = String::from_utf8(linux)?;
+    assert!(linux.contains(", :got:printf\n"), "{linux}");
+    assert!(linux.contains(", :got_lo12:printf]\n"), "{linux}");
+    assert!(!linux.contains(":lo12:printf"), "{linux}");
+    assert!(linux.contains(", :lo12:twice\n"), "{linux}");
+    assert!(!linux.contains(":got:twice"), "{linux}");
+    Ok(())
+}
+
+#[test]
 fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register()
 -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};

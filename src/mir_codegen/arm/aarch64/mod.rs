@@ -401,6 +401,8 @@ struct AggregateSignatures {
     returns: HashMap<String, Aggregate>,
     float_returns: HashMap<String, MirType>,
     variadic: HashSet<String>,
+    /// Functions the module declares but does not define.
+    external: HashSet<String>,
 }
 
 impl AggregateSignatures {
@@ -412,6 +414,7 @@ impl AggregateSignatures {
             returns: HashMap::new(),
             float_returns: HashMap::new(),
             variadic: HashSet::new(),
+            external: HashSet::new(),
         }
     }
 
@@ -451,6 +454,7 @@ impl AggregateSignatures {
                 .filter(|(_, func)| func.sig.variadic)
                 .map(|(name, _)| name.clone())
                 .collect(),
+            external: module.external_functions.clone(),
         }
     }
 
@@ -488,6 +492,10 @@ impl AggregateSignatures {
 
     fn float_result(&self, callee: &str) -> Option<MirType> {
         self.float_returns.get(callee).copied()
+    }
+
+    fn is_external(&self, name: &str) -> bool {
+        self.external.contains(name)
     }
 }
 
@@ -1348,6 +1356,11 @@ fn emit_block<W: Write>(
                 if os_uses_macho(abi.target_os()) {
                     writeln!(w, "    adrp {scratch}, {label}@PAGE")?;
                     writeln!(w, "    add {scratch}, {scratch}, {label}@PAGEOFF")?;
+                } else if os_uses_elf(abi.target_os()) && signatures.is_external(symbol) {
+                    // A PIE link refuses a PC-relative reference to a symbol that may
+                    // come from a shared library.
+                    writeln!(w, "    adrp {scratch}, :got:{label}")?;
+                    writeln!(w, "    ldr {scratch}, [{scratch}, :got_lo12:{label}]")?;
                 } else {
                     writeln!(w, "    adrp {scratch}, {label}")?;
                     writeln!(w, "    add {scratch}, {scratch}, :lo12:{label}")?;
