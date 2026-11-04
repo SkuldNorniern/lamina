@@ -34,6 +34,20 @@ jobs:
             gdb lldb-18 wine \
             lld-18 llvm-18
           sudo apt-get install -y qemu-user-static || sudo apt-get install -y qemu-user || sudo apt-get install -y qemu-user-binfmt
+          # Its own call: apt aborts a whole transaction over one conflict, which
+          # once hid five unrelated packages failing to install.
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+      # LAMINA_REQUIRE_TOOLS turns a missing tool into a failure, so list what is
+      # actually here before running anything. A gap then shows in one run.
+      - name: Report tool availability
+        if: runner.os == 'Linux'
+        run: |
+          for tool in aarch64-linux-gnu-gcc as cc clang gcc gdb ld ld.lld-18 \
+                      lldb lldb-18 lld-link-18 llvm-dwarfdump-18 llvm-pdbutil-18 \
+                      prlimit wasmtime wine x86_64-w64-mingw32-gcc \
+                      qemu-aarch64-static qemu-aarch64; do
+            printf '%-26s %s\n' "$tool" "$(command -v $tool || echo MISSING)"
+          done
       # The wasm backend tests run their output under the wasmtime CLI. Without
       # it they skip, and the backend goes untested while the job stays green.
       - name: Install wasmtime
