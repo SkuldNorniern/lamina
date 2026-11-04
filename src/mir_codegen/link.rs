@@ -627,6 +627,32 @@ fn build_clang_windows_linker_args(
     Ok(args)
 }
 
+/// Link the static C runtime as cl does by default, and leave the entry point to
+/// mainCRTStartup, which sets up the CRT and TLS before it calls `main`. The CRT also
+/// supplies memset, memcpy and memmove, and `_tls_index`.
+fn build_msvc_linker_args(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    runtime_objects: &[PathBuf],
+    additional_flags: &[String],
+) -> Result<Vec<String>, LaminaError> {
+    let mut args = vec!["/nologo".to_string()];
+    args.push("/subsystem:console".to_string());
+    args.extend(build_msvc_library_paths(target_arch)?);
+    args.extend(build_msvc_toolchain_library_paths(target_arch)?);
+    args.extend(additional_flags.iter().cloned());
+    args.push(input_path.to_string_lossy().to_string());
+    args.extend(object_args(runtime_objects));
+    args.push(format!("/OUT:{}", output_path.display()));
+    args.push("libcmt.lib".to_string());
+    args.push("libvcruntime.lib".to_string());
+    args.push("libucrt.lib".to_string());
+    args.push("legacy_stdio_definitions.lib".to_string());
+    args.push("kernel32.lib".to_string());
+    Ok(args)
+}
+
 /// Extra objects named on the link line, ahead of any library. Our own compiler
 /// runtime must define a symbol before an archive gets the chance to.
 fn object_args(objects: &[PathBuf]) -> Vec<String> {
@@ -903,18 +929,13 @@ fn link_object(
                         .to_string(),
                 )
             })?;
-            let mut args = vec!["/nologo".to_string()];
-            args.push("/subsystem:console".to_string());
-            args.push("/entry:main".to_string());
-            args.extend(build_msvc_library_paths(target_arch)?);
-            args.extend(build_msvc_toolchain_library_paths(target_arch)?);
-            args.extend(additional_flags.iter().cloned());
-            args.push(input_path.to_string_lossy().to_string());
-            args.extend(object_args(runtime_objects));
-            args.push(format!("/OUT:{}", output_path.display()));
-            args.push("ucrt.lib".to_string());
-            args.push("legacy_stdio_definitions.lib".to_string());
-            args.push("kernel32.lib".to_string());
+            let args = build_msvc_linker_args(
+                input_path,
+                output_path,
+                target_arch,
+                runtime_objects,
+                additional_flags,
+            )?;
             return run_linker(&link_cmd, args, verbose);
         }
         LinkerBackend::Custom(name) => {
