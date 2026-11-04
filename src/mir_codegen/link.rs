@@ -543,7 +543,13 @@ fn build_unix_linker_args(
     let mut args = Vec::new();
 
     args.extend(build_arch_emulation_flags(target_arch, target_os));
-    args.extend(build_dynamic_linker_arg(target));
+    let dynamic_linker = build_dynamic_linker_arg(target);
+    // gcc and clang ask for PT_GNU_EH_FRAME in every dynamic executable. Without it
+    // the unwinder in libgcc finds no FDE, not even for C frames.
+    if !dynamic_linker.is_empty() {
+        args.push("--eh-frame-hdr".to_string());
+    }
+    args.extend(dynamic_linker);
     args.extend(build_crt_args(target, true)?);
     args.push(input_path.to_string_lossy().to_string());
     args.extend(object_args(runtime_objects));
