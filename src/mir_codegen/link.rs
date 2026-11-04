@@ -1,7 +1,8 @@
 //! Linking backends for creating final executables or binaries.
 //!
 //! Supports multiple linkers:
-//! - **Weld**: Lamina's own linker, run as a sibling binary. The default.
+//! - **Weld**: Lamina's own linker, installed beside `lamina` and run as a sibling
+//!   binary. The default.
 //! - GNU ld (binutils)
 //! - LLVM lld
 //! - Mold (faster alternative)
@@ -15,10 +16,14 @@ use lamina_platform::{
     Libc, OutputArtifact, Target, TargetArchitecture, TargetEnvironment, TargetOperatingSystem,
 };
 use std::{
-    env, fs, io,
+    env,
+    ffi::OsString,
+    fs, io,
     path::{Path, PathBuf},
     process::Command,
+    sync::OnceLock,
 };
+use weld::VERSION as REQUIRED_WELD;
 
 fn detect_compiler() -> Option<&'static str> {
     if Command::new("gcc").arg("--version").output().is_ok() {
@@ -968,15 +973,67 @@ enum WeldRun {
     Failed(String),
 }
 
+/// Numeric release fields of a version string, so `0.2.10` orders after `0.2.9`.
+/// Reads the last whitespace-separated field, as `weld --version` prints `weld X.Y.Z`.
+fn version_fields(text: &str) -> Option<(u32, u32, u32)> {
+    let mut fields = text
+        .split_whitespace()
+        .next_back()?
+        .split(['.', '-', '+'])
+        .map_while(|field| field.parse().ok());
+    Some((
+        fields.next()?,
+        fields.next().unwrap_or(0),
+        fields.next().unwrap_or(0),
+    ))
+}
+
+/// What the resolved weld answers `--version` with, or `None` if it does not answer.
+fn reported_weld_version(cmd: &str) -> Option<String> {
+    let output = Command::new(cmd).arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let line = text.lines().next()?.trim().to_string();
+    (!line.is_empty()).then_some(line)
+}
+
+/// Refuse a weld older than the one lamina was built against, naming both versions
+/// and the binary that answered. A newer weld is accepted: linking against a weld
+/// ahead of the bundled one is the supported way to pick up a linker fix early. A
+/// weld that reports no version it understands is left to its own diagnostics.
+fn weld_version_skew(cmd: &str) -> Option<String> {
+    let reported = reported_weld_version(cmd)?;
+    let found = version_fields(&reported)?;
+    let required = version_fields(REQUIRED_WELD)?;
+    (found < required).then(|| {
+        let (major, minor, patch) = found;
+        format!(
+            "weld {major}.{minor}.{patch} at {cmd} is older than the weld {REQUIRED_WELD} lamina needs, so it rejects objects this compiler emits; run `cargo install lamina` to put a matching weld beside the compiler, or `cargo install lamina-weld` to update the one on PATH"
+        )
+    })
+}
+
+fn checked_weld_version_skew(cmd: &str) -> Option<String> {
+    static SKEW: OnceLock<Option<String>> = OnceLock::new();
+    SKEW.get_or_init(|| weld_version_skew(cmd)).clone()
+}
+
 fn run_weld(args: &[String], verbose: bool) -> WeldRun {
     let cmd = resolve_toolchain_command("weld");
+    if let Some(skew) = checked_weld_version_skew(&cmd) {
+        return WeldRun::Failed(skew);
+    }
     if verbose {
         println!("[VERBOSE] Linking with {cmd}: {args:?}");
     }
     let output = match Command::new(&cmd).args(args).output() {
         Ok(output) => output,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return WeldRun::Failed("weld is not installed beside lamina or on PATH".to_string());
+            return WeldRun::Failed(format!(
+                "weld is not installed beside lamina or on PATH; lamina needs weld {REQUIRED_WELD} or newer, which `cargo install lamina` places beside the compiler"
+            ));
         }
         Err(e) => return WeldRun::Failed(format!("failed to run weld: {e}")),
     };
@@ -993,8 +1050,17 @@ fn run_weld(args: &[String], verbose: bool) -> WeldRun {
 }
 
 /// Find a toolchain binary beside the current executable, falling back to PATH.
-/// Test binaries live in `deps/`, so that directory's parent is checked too.
+/// The sibling is preferred because it ships with this lamina and so matches it,
+/// so `LAMINA_WELD` is how a deliberately newer one is named. Test binaries live
+/// in `deps/`, so that directory's parent is checked too.
 fn resolve_toolchain_command(name: &str) -> String {
+    toolchain_command(name, env::var_os(format!("LAMINA_{}", name.to_uppercase())))
+}
+
+fn toolchain_command(name: &str, named: Option<OsString>) -> String {
+    if let Some(named) = named.filter(|named| !named.is_empty()) {
+        return named.to_string_lossy().to_string();
+    }
     let suffix = if cfg!(windows) { ".exe" } else { "" };
     if let Ok(current_exe) = env::current_exe()
         && let Some(dir) = current_exe.parent()
@@ -1035,7 +1101,8 @@ fn run_linker(cmd: &str, args: Vec<String>, verbose: bool) -> Result<(), LaminaE
     Ok(())
 }
 
-/// The linker used when none is named: weld, linked in-process, so no host tool is needed.
+/// The linker used when none is named: weld, which is installed beside `lamina`, so
+/// no host tool is needed.
 pub fn detect_linker_backend(
     _target_arch: TargetArchitecture,
     _target_os: TargetOperatingSystem,
@@ -1218,6 +1285,77 @@ mod tests {
         }
         let (arch, os) = (TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux);
         assert!(weld_gap(arch, os).is_some(), "{arch:?} {os:?}");
+    }
+
+    #[test]
+    fn a_named_toolchain_binary_wins_over_the_shipped_one() {
+        assert_eq!(
+            toolchain_command("weld", Some(OsString::from("/opt/newer/weld"))),
+            "/opt/newer/weld"
+        );
+        let shipped = toolchain_command("weld", None);
+        assert_eq!(toolchain_command("weld", Some(OsString::new())), shipped);
+        assert!(
+            shipped.ends_with("weld") || shipped.ends_with("weld.exe"),
+            "{shipped}"
+        );
+    }
+
+    #[test]
+    fn version_fields_order_by_number_not_by_text() {
+        assert_eq!(version_fields("weld 0.2.3"), Some((0, 2, 3)));
+        assert_eq!(version_fields("0.2.10"), Some((0, 2, 10)));
+        assert_eq!(version_fields("weld 1.0"), Some((1, 0, 0)));
+        assert_eq!(version_fields("weld 0.3.0-rc1"), Some((0, 3, 0)));
+        assert!(version_fields("0.2.10") > version_fields("0.2.9"));
+        assert_eq!(version_fields("weld"), None);
+    }
+
+    #[test]
+    fn the_shipped_weld_meets_the_version_lamina_needs() {
+        let cmd = resolve_toolchain_command("weld");
+        assert!(
+            weld_version_skew(&cmd).is_none(),
+            "the weld beside lamina must not be older than {REQUIRED_WELD}"
+        );
+        assert!(version_fields(REQUIRED_WELD).is_some(), "{REQUIRED_WELD}");
+    }
+
+    #[test]
+    fn an_older_weld_is_named_with_both_versions() {
+        let dir = TempDir::new("lamina-weld-skew");
+        let fake = dir.path().join("weld");
+        if cfg!(windows) {
+            return;
+        }
+        fs::write(&fake, "#!/bin/sh\necho 'weld 0.0.1'\n").expect("write stub weld");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).expect("make executable");
+        }
+        let cmd = fake.to_string_lossy().to_string();
+        let message = weld_version_skew(&cmd).expect("0.0.1 is older than anything lamina ships");
+        assert!(message.contains("weld 0.0.1"), "{message}");
+        assert!(message.contains(REQUIRED_WELD), "{message}");
+        assert!(message.contains(&cmd), "{message}");
+        assert!(message.contains("cargo install lamina"), "{message}");
+    }
+
+    #[test]
+    fn a_newer_weld_is_accepted() {
+        let dir = TempDir::new("lamina-weld-newer");
+        let fake = dir.path().join("weld");
+        if cfg!(windows) {
+            return;
+        }
+        fs::write(&fake, "#!/bin/sh\necho 'weld 99.0.0'\n").expect("write stub weld");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).expect("make executable");
+        }
+        assert!(weld_version_skew(&fake.to_string_lossy()).is_none());
     }
 
     #[test]
