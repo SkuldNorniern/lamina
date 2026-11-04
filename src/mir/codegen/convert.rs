@@ -41,6 +41,7 @@ use crate::{
         Register, RegisterClass, ScalarType, Signature, SymbolVisibility, TlsModel as MirTlsModel,
         VectorLane, VectorOp, VectorType, VirtualReg, VirtualRegAllocator,
         codegen::{
+            abi_claim,
             error::FromIRError,
             mapping::{
                 classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, map_ir_vector,
@@ -1257,9 +1258,11 @@ fn convert_function<'a>(
         other => {
             let resolved = resolve_type_names(other, &module.type_declarations)
                 .ok_or(FromIRError::UnsupportedType)?;
-            if let Some(aggregate) =
-                classify_aggregate(&resolved, &format!("return of @{name}"), layout, int64_regs)?
-            {
+            let classified =
+                classify_aggregate(&resolved, &format!("return of @{name}"), layout, int64_regs)?;
+            abi_claim::verify_sret(f.signature.sret, classified, other, name)?;
+            mir_sig.sret_claimed = f.signature.sret;
+            if let Some(aggregate) = classified {
                 mir_sig = mir_sig
                     .with_return(MirType::Scalar(ScalarType::Ptr))
                     .with_return_aggregate(aggregate);
@@ -1287,12 +1290,10 @@ fn convert_function<'a>(
     for param in &f.signature.params {
         let resolved = resolve_type_names(&param.ty, &module.type_declarations)
             .ok_or(FromIRError::UnsupportedType)?;
-        if let Some(aggregate) = classify_aggregate(
-            &resolved,
-            &format!("%{} of @{name}", param.name),
-            layout,
-            int64_regs,
-        )? {
+        let what = format!("%{} of @{name}", param.name);
+        let classified = classify_aggregate(&resolved, &what, layout, int64_regs)?;
+        let byval = abi_claim::verify_byval(&param.annotations, classified, &param.ty, &what)?;
+        if let Some(aggregate) = classified {
             let slot = vreg_alloc.allocate_gpr();
             let words = aggregate.words();
             if words > 1 {
@@ -1303,7 +1304,8 @@ fn convert_function<'a>(
             mir_sig.params.push(
                 Parameter::new(Register::Virtual(slot), MirType::Scalar(ScalarType::Ptr))
                     .with_aggregate(aggregate)
-                    .with_name(param.name),
+                    .with_name(param.name)
+                    .with_byval_claim(byval),
             );
             aggregate_prelude.push(Instruction::StackAddr {
                 dst: addr.clone(),

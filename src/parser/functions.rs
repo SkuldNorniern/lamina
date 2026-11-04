@@ -8,6 +8,7 @@ use crate::{
     },
     parser::{instructions::parse_instruction, state::ParserState, types::parse_type},
 };
+use lamina_ir::function::VariableAnnotation;
 use std::collections::{HashMap, HashSet};
 
 /// Parses the `(n)` of an `@align(n)` annotation. `n` must be a power of two that fits u32.
@@ -295,12 +296,29 @@ pub fn parse_fn_signature<'a>(
     let (params, variadic) = parse_param_list(state)?;
     state.expect_char(')')?;
     state.consume_keyword("->")?;
+    let sret = consume_return_marker(state)?;
     let return_type = parse_type(state)?;
     Ok(FunctionSignature {
         params,
         return_type,
         variadic,
+        sret,
     })
+}
+
+/// Consumes a `sret` marker sitting between `->` and the return type.
+fn consume_return_marker(state: &mut ParserState<'_>) -> Result<bool, LaminaError> {
+    state.skip_whitespace_and_comments();
+    let saved = state.position();
+    if !matches!(state.current_char(), Some(c) if c.is_ascii_alphabetic() || c == '_') {
+        return Ok(false);
+    }
+    let word = state.parse_identifier_str()?;
+    if word != "sret" {
+        state.set_position(saved);
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 /// Parses a parameter list, and whether it ends in `...`.
@@ -326,6 +344,7 @@ pub fn parse_param_list<'a>(
         }
 
         let param_ty = parse_type(state)?;
+        let annotations = parse_param_annotations(state)?;
         let param_name = state.parse_value_identifier()?;
 
         if !param_names.insert(param_name) {
@@ -335,7 +354,7 @@ pub fn parse_param_list<'a>(
         params.push(FunctionParameter {
             name: param_name,
             ty: param_ty,
-            annotations: vec![],
+            annotations,
         });
 
         state.skip_whitespace_and_comments();
@@ -345,6 +364,58 @@ pub fn parse_param_list<'a>(
         state.expect_char(',')?;
     }
     Ok((params, false))
+}
+
+const PARAM_ANNOTATIONS: &[&str] = &["byval"];
+
+/// Parses the attributes a parameter carries between its type and its name.
+fn parse_param_annotations(
+    state: &mut ParserState<'_>,
+) -> Result<Vec<VariableAnnotation>, LaminaError> {
+    let mut annotations = Vec::new();
+    loop {
+        state.skip_whitespace_and_comments();
+        if !matches!(state.current_char(), Some(c) if c.is_ascii_alphabetic() || c == '_') {
+            return Ok(annotations);
+        }
+        let name = state.parse_identifier_str()?;
+        let annotation = match name {
+            "byval" => {
+                state.expect_char('(')?;
+                let size = state.parse_integer()?;
+                state.expect_char(',')?;
+                let align = state.parse_integer()?;
+                state.expect_char(')')?;
+                let size = u64::try_from(size).ok().filter(|size| *size > 0);
+                let align = u64::try_from(align)
+                    .ok()
+                    .filter(|align| align.is_power_of_two());
+                match (size, align) {
+                    (Some(size), Some(align)) => VariableAnnotation::ByVal { size, align },
+                    _ => {
+                        return Err(state.error(
+                            "Invalid byval arguments\n  Hint: Write byval(size, align) with a positive size and a power-of-two alignment, e.g. byval(16, 8)",
+                        ));
+                    }
+                }
+            }
+            _ => {
+                let suggestions = super::suggest_alternatives(name, PARAM_ANNOTATIONS);
+                let hint = if suggestions.is_empty() {
+                    "Valid parameter attributes are: byval(size, align)".to_string()
+                } else {
+                    format!("Did you mean {}?", suggestions.join(" or "))
+                };
+                return Err(state.error(format!(
+                    "Unknown parameter attribute: {name}\n  Hint: {hint}"
+                )));
+            }
+        };
+        if annotations.contains(&annotation) {
+            return Err(state.error(format!("Duplicate parameter attribute: {name}")));
+        }
+        annotations.push(annotation);
+    }
 }
 
 fn at_location_directive(state: &ParserState<'_>) -> bool {

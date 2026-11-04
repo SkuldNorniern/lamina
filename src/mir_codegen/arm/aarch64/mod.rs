@@ -112,6 +112,42 @@ const ARGUMENT_REGISTERS: usize = 8;
 /// Saved frame pointer and link register, which the prologue pushes before the frame.
 pub(super) const FRAME_RECORD_BYTES: i32 = 16;
 
+/// Checks the `sret` and `byval` attributes this function states against where AAPCS64
+/// actually places the values. Honouring a claim the placement contradicts would turn a
+/// frontend's wrong classification into a wrong call.
+fn verify_abi_claims(
+    func: &Function,
+    kinds: &[ArgKind],
+    places: &[ArgPlace],
+    target_os: TargetOperatingSystem,
+) -> Result<(), CodegenError> {
+    let name = &func.sig.name;
+    if func.sig.sret_claimed && !func.sig.ret_aggregate.is_some_and(passed_in_memory) {
+        return Err(CodegenError::InvalidCodegenOptions(format!(
+            "@{name} states sret on its return, but aarch64_{target_os} returns that type in registers, not through a hidden pointer"
+        )));
+    }
+    for (index, param) in func.sig.params.iter().enumerate() {
+        if !param.byval_claimed {
+            continue;
+        }
+        let param_name = param.name.clone().unwrap_or_else(|| index.to_string());
+        let by_reference = kinds.get(index).is_some_and(|kind| kind.by_reference);
+        let placed = match places.get(index) {
+            Some(ArgPlace::Stack { .. }) if !by_reference => continue,
+            Some(ArgPlace::Stack { .. }) => "a pointer to a copy the caller owns, on the stack",
+            Some(_) if by_reference => "a pointer to a copy the caller owns, in a register",
+            Some(ArgPlace::Homogeneous { .. }) => "floating-point registers",
+            Some(_) => "registers",
+            None => "nowhere",
+        };
+        return Err(CodegenError::InvalidCodegenOptions(format!(
+            "%{param_name} of @{name} states byval, but aarch64_{target_os} passes it in {placed}"
+        )));
+    }
+    Ok(())
+}
+
 fn passed_in_memory(aggregate: Aggregate) -> bool {
     aggregate.size as u64 > MAX_REGISTER_AGGREGATE && aggregate.homogeneous_members().is_none()
 }
@@ -581,6 +617,7 @@ fn compile_single_function_aarch64_with(
         .map(|p| ArgKind::of(p.ty, p.aggregate, func.pointer_width))
         .collect();
     let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
+    verify_abi_claims(func, &param_kinds, &param_places, target_os)?;
     // Windows keeps va_list a plain pointer, so the general register save area has to
     // sit directly under the incoming stack arguments. Growing the frame record is
     // what puts it there, above the frame and below the caller's stack arguments.

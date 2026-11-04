@@ -36,6 +36,7 @@
 //!     ],
 //!     return_type: Type::Primitive(PrimitiveType::I32),
 //!     variadic: false,
+//!     sret: false,
 //! };
 //! ```
 //!
@@ -456,6 +457,13 @@ pub enum VariableAnnotation {
     ///
     /// Unused parameters may be optimized away or may indicate API compatibility.
     Unused,
+
+    /// The front end states that this parameter is a copy passed on the stack with
+    /// this size and alignment.
+    ///
+    /// This is a claim about the target's C ABI, not a request. Lowering classifies
+    /// the type itself and refuses, naming both placements, when the two disagree.
+    ByVal { size: u64, align: u64 },
 }
 
 /// A function parameter with its name, type, and attributes.
@@ -506,6 +514,7 @@ pub struct FunctionParameter<'a> {
 ///     ],
 ///     return_type: Type::Primitive(PrimitiveType::I32),
 ///     variadic: false,
+///     sret: false,
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -516,6 +525,12 @@ pub struct FunctionSignature<'a> {
     pub return_type: Type<'a>, // Type::Void if it doesn't return
     /// Set by a trailing `...`, which only an `@extern` declaration may carry.
     pub variadic: bool,
+    /// Set by `sret` in the return-type position: the front end states that this
+    /// function returns its result through a hidden pointer parameter.
+    ///
+    /// This is a claim about the target's C ABI, not a request. Lowering classifies
+    /// the return itself and refuses, naming both placements, when the two disagree.
+    pub sret: bool,
 }
 
 /// A basic block within a function.
@@ -1032,6 +1047,7 @@ impl fmt::Display for VariableAnnotation {
             VariableAnnotation::Sensitive => write!(f, "sensitive"),
             VariableAnnotation::Register(reg) => write!(f, "register({reg})"),
             VariableAnnotation::Unused => write!(f, "unused"),
+            VariableAnnotation::ByVal { size, align } => write!(f, "byval({size}, {align})"),
         }
     }
 }
@@ -1064,6 +1080,9 @@ impl fmt::Display for FunctionSignature<'_> {
         }
         if self.variadic {
             write!(f, "...")?;
+        }
+        if self.sret {
+            return write!(f, ") -> sret {}", self.return_type);
         }
         write!(f, ") -> {}", self.return_type)
     }
@@ -1142,6 +1161,7 @@ mod tests {
             params: vec![],
             return_type: Type::Void,
             variadic: false,
+            sret: false,
         };
         assert_eq!(format!("{}", sig1), "() -> void");
 
@@ -1154,6 +1174,7 @@ mod tests {
             }],
             return_type: Type::Primitive(PrimitiveType::F32),
             variadic: false,
+            sret: false,
         };
         assert_eq!(format!("{}", sig2), "(f32 %input) -> f32");
 
@@ -1173,6 +1194,7 @@ mod tests {
             ],
             return_type: Type::Named("ResultType"),
             variadic: false,
+            sret: false,
         };
         assert_eq!(format!("{}", sig3), "(i32 %a, !MyType %b) -> !ResultType");
     }
@@ -1215,6 +1237,7 @@ mod tests {
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
             variadic: false,
+            sret: false,
         };
 
         let mut blocks = HashMap::new();
@@ -1263,6 +1286,7 @@ mod tests {
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
             variadic: false,
+            sret: false,
         };
 
         let mut blocks = HashMap::new();
@@ -1344,6 +1368,7 @@ mod tests {
                 params,
                 return_type,
                 variadic: false,
+                sret: false,
             },
             annotations: vec![],
             basic_blocks: blocks,

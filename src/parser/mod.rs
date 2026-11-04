@@ -3186,6 +3186,45 @@ mod surface_tests {
     }
 
     #[test]
+    fn abi_placement_attributes_round_trip() {
+        round_trip(
+            "type !Big = struct { a: i64, b: i64, c: i64 }\n\
+             type !Quad = struct { a: i64, b: i64, c: i64, d: i64 }\n\
+             \n\
+             fn @make() -> sret !Quad {\n\
+             entry:\n  \
+             %q = stackalloc.!Quad\n  \
+             ret.!Quad %q\n\
+             }\n\
+             \n\
+             fn @take(!Big byval(24, 8) %p) -> i64 {\n\
+             entry:\n  \
+             ret.i64 0\n\
+             }\n",
+        );
+    }
+
+    #[test]
+    fn abi_placement_attributes_reject_malformed_spellings() {
+        rejects(
+            "fn @f(i64 byvalue(8, 8) %p) -> i64 {\nentry:\n  ret.i64 %p\n}\n",
+            "Unknown parameter attribute: byvalue",
+        );
+        rejects(
+            "fn @f(i64 byval(8, 6) %p) -> i64 {\nentry:\n  ret.i64 %p\n}\n",
+            "Invalid byval arguments",
+        );
+        rejects(
+            "fn @f(i64 byval(0, 8) %p) -> i64 {\nentry:\n  ret.i64 %p\n}\n",
+            "Invalid byval arguments",
+        );
+        rejects(
+            "fn @f(i64 byval(8, 8) byval(8, 8) %p) -> i64 {\nentry:\n  ret.i64 %p\n}\n",
+            "Duplicate parameter attribute: byval",
+        );
+    }
+
+    #[test]
     fn bit_intrinsics_round_trip() {
         round_trip(
             "fn @f(i64 %x, i64 %n, u8 %b, u32 %w) -> i64 {\n\

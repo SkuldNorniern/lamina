@@ -1694,3 +1694,71 @@ fn a_128_bit_argument_in_the_variadic_tail_is_refused_by_name() {
     assert!(message.contains("@printf"), "{message}");
     assert!(message.contains("variadic tail"), "{message}");
 }
+
+fn abi_claim_error(source: &str) -> String {
+    let ir = parse_module(source).expect("parse abi claim source");
+    match from_ir_x86_64(&ir, "claims") {
+        Err(FromIRError::AbiClaimMismatch(reason)) => reason,
+        Err(other) => panic!("expected an ABI claim mismatch, got {other}"),
+        Ok(_) => panic!("expected the stated placement to be refused"),
+    }
+}
+
+#[test]
+fn agreeing_abi_claims_reach_the_mir_signature() {
+    let ir = parse_module(
+        "type !Big = struct { a: i64, b: i64, c: i64 }\n\
+         type !Quad = struct { a: i64, b: i64, c: i64, d: i64 }\n\
+         fn @take(!Big byval(24, 8) %p, !Big %q) -> sret !Quad {\n\
+         entry:\n%r = stackalloc.!Quad\nret.!Quad %r\n}",
+    )
+    .expect("parse agreeing claims");
+    let module = from_ir_x86_64(&ir, "claims").expect("lower agreeing claims");
+    let sig = &module.functions["take"].sig;
+    assert!(sig.sret_claimed);
+    assert_eq!(
+        sig.params
+            .iter()
+            .map(|param| param.byval_claimed)
+            .collect::<Vec<_>>(),
+        vec![true, false]
+    );
+}
+
+#[test]
+fn a_byval_size_that_disagrees_with_the_layout_is_refused() {
+    assert_eq!(
+        abi_claim_error(
+            "type !Big = struct { a: i64, b: i64, c: i64 }\n\
+             fn @take(!Big byval(16, 8) %p) -> i64 {\nentry:\nret.i64 0\n}"
+        ),
+        "%p of @take states byval(16, 8), but Lamina classifies !Big as byval(24, 8)"
+    );
+}
+
+#[test]
+fn a_byval_alignment_that_disagrees_with_the_layout_is_refused() {
+    assert_eq!(
+        abi_claim_error(
+            "type !Big = struct { a: i64, b: i64, c: i64 }\n\
+             fn @take(!Big byval(24, 16) %p) -> i64 {\nentry:\nret.i64 0\n}"
+        ),
+        "%p of @take states byval(24, 16), but Lamina classifies !Big as byval(24, 8)"
+    );
+}
+
+#[test]
+fn byval_on_a_scalar_is_refused() {
+    assert_eq!(
+        abi_claim_error("fn @take(i64 byval(8, 8) %p) -> i64 {\nentry:\nret.i64 %p\n}"),
+        "%p of @take states byval(8, 8), but Lamina classifies i64 as a scalar, which is passed in a register and never as a by-value copy"
+    );
+}
+
+#[test]
+fn sret_on_a_scalar_return_is_refused() {
+    assert_eq!(
+        abi_claim_error("fn @f() -> sret i64 {\nentry:\nret.i64 1\n}"),
+        "return of @f states sret, but Lamina classifies i64 as a scalar, which is returned in a register and not through a hidden pointer"
+    );
+}

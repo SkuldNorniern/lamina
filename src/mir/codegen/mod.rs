@@ -9,6 +9,7 @@
 //! - Variable binding and register assignment
 //! - Control flow graph construction
 
+mod abi_claim;
 mod convert;
 mod error;
 mod mapping;

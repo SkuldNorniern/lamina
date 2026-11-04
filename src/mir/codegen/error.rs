@@ -45,6 +45,8 @@ pub enum FromIRError {
     UnsupportedAlignment(String),
     /// A value wider than a register cannot be split into registers of this target.
     NotLegalizable(String),
+    /// A stated `sret` or `byval` attribute disagrees with how the value is placed.
+    AbiClaimMismatch(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -83,6 +85,9 @@ impl fmt::Display for FromIRError {
             }
             FromIRError::NotLegalizable(reason) => {
                 write!(f, "cannot be lowered to register pairs: {reason}")
+            }
+            FromIRError::AbiClaimMismatch(reason) => {
+                write!(f, "stated ABI placement disagrees: {reason}")
             }
             FromIRError::UnsupportedGlobal(reason) => {
                 write!(f, "global not yet supported: {reason}")

@@ -34,6 +34,11 @@ pub struct Parameter {
     /// The name the parameter had in the source, without its sigil. Debug info only;
     /// `None` where the frontend supplied none.
     pub name: Option<String>,
+
+    /// Set by a `byval` attribute the frontend stated and lowering verified against its
+    /// own classification. A backend that does not place this parameter as a by-value
+    /// stack copy must refuse rather than place it some other way.
+    pub byval_claimed: bool,
 }
 
 impl Parameter {
@@ -46,6 +51,7 @@ impl Parameter {
             signedness: Signedness::Signed,
             aggregate: None,
             name: None,
+            byval_claimed: false,
         }
     }
 
@@ -61,6 +67,11 @@ impl Parameter {
 
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
+        self
+    }
+
+    pub fn with_byval_claim(mut self, claimed: bool) -> Self {
+        self.byval_claimed = claimed;
         self
     }
 }
@@ -108,6 +119,11 @@ pub struct Signature {
     /// Set when the function returns an aggregate by value. `ret_ty` is then the pointer
     /// to it, and a call's result register names the caller's slot for the copy.
     pub ret_aggregate: Option<Aggregate>,
+
+    /// Set by a `sret` marker the frontend stated. A backend that does not return this
+    /// function's result through a hidden pointer must refuse rather than return it
+    /// some other way.
+    pub sret_claimed: bool,
 
     pub kernel: Option<KernelMetadata>,
 
@@ -158,6 +174,7 @@ impl Signature {
             ret_ty: None,
             ret_signedness: Signedness::Signed,
             ret_aggregate: None,
+            sret_claimed: false,
             kernel: None,
             no_inline: false,
             inline_hint: false,

@@ -1,5 +1,7 @@
 //! MIR-based code generation for multiple target architectures.
 
+#[cfg(test)]
+mod abi_claim_tests;
 pub mod amdgpu;
 #[cfg(feature = "nightly")]
 pub mod arx64;
@@ -164,6 +166,44 @@ fn riscv_target(variant: ArchVariant) -> RiscVTarget {
         .map_or_else(|| RiscVTarget::general(Xlen::Rv64), RiscVTarget::from_isa)
 }
 
+/// Backends that check a stated `sret` or `byval` against where they actually place
+/// the value. Every other backend refuses the attribute by name, because honouring it
+/// unchecked would turn a frontend's wrong classification into a wrong program.
+const ABI_CLAIM_BACKENDS: [TargetArchitecture; 2] =
+    [TargetArchitecture::X86_64, TargetArchitecture::Aarch64];
+
+fn refuse_unverifiable_abi_claims(
+    module: &Module,
+    arch: TargetArchitecture,
+    os: TargetOperatingSystem,
+) -> Result<(), LaminaError> {
+    if ABI_CLAIM_BACKENDS.contains(&arch) {
+        return Ok(());
+    }
+    let refuse = |what: String| {
+        Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "{what}, and the {arch}_{os} backend does not check stated argument placement; remove the attribute or build for x86_64 or aarch64"
+            ),
+        )))
+    };
+    for (name, function) in &module.functions {
+        if function.sig.sret_claimed {
+            return refuse(format!("@{name} states sret on its return"));
+        }
+        for param in &function.sig.params {
+            if param.byval_claimed {
+                let named = param
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| "a parameter".to_string());
+                return refuse(format!("@{name} states byval on %{named}"));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn not_implemented(arch: TargetArchitecture, os: TargetOperatingSystem) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
         "{arch} code generation is not implemented: target {arch}_{os} produces no output"
@@ -265,6 +305,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             }
         }
     }
+
+    refuse_unverifiable_abi_claims(module, target_arch, target_os)?;
 
     match target_arch {
         TargetArchitecture::Nvptx64 if target_os == TargetOperatingSystem::Cuda => {

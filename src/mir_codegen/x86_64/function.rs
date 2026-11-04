@@ -251,6 +251,7 @@ pub(super) fn compile_single_function_x86_64(
         .sig
         .ret_aggregate
         .filter(|aggregate| returns_through_pointer(*aggregate, target_os));
+    verify_abi_claims(func, sret.is_some(), target_os)?;
     let sret_slot = sret.map(|_| X86Frame::calculate_stack_offset(total_slots + saved_regs.len()));
     let va_base = total_slots + saved_regs.len() + usize::from(sret.is_some());
     let va_area = if !func.sig.variadic {
@@ -852,6 +853,62 @@ fn take_sysv_registers(
         };
     }
     Some(ArgLocation::EightbyteWords { places, words })
+}
+
+/// Checks the `sret` and `byval` attributes this function states against where this
+/// backend actually places the values. Honouring a claim the placement contradicts
+/// would turn a frontend's wrong classification into a wrong call.
+fn verify_abi_claims(
+    func: &Function,
+    sret: bool,
+    target_os: TargetOperatingSystem,
+) -> Result<(), CodegenError> {
+    let name = &func.sig.name;
+    if func.sig.sret_claimed && !sret {
+        return Err(CodegenError::InvalidCodegenOptions(format!(
+            "@{name} states sret on its return, but x86_64_{target_os} returns that type in registers, not through a hidden pointer"
+        )));
+    }
+    if !func.sig.params.iter().any(|p| p.byval_claimed) {
+        return Ok(());
+    }
+    let descs: Vec<ArgDesc> = func
+        .sig
+        .params
+        .iter()
+        .map(|p| ArgDesc {
+            ty: p.ty,
+            aggregate: p.aggregate,
+        })
+        .collect();
+    let locations = classify_argument_descs_with_sret(&descs, target_os, sret);
+    for (index, param) in func.sig.params.iter().enumerate() {
+        if !param.byval_claimed {
+            continue;
+        }
+        let param_name = param.name.clone().unwrap_or_else(|| index.to_string());
+        let by_reference = param
+            .aggregate
+            .is_some_and(|a| passed_by_reference(a, target_os));
+        let placed = match locations.get(index) {
+            Some(ArgLocation::Stack(_) | ArgLocation::StackWords { .. }) if !by_reference => {
+                "a by-value stack copy"
+            }
+            Some(ArgLocation::Stack(_) | ArgLocation::StackWords { .. }) => {
+                "a pointer to a copy the caller owns, on the stack"
+            }
+            Some(_) if by_reference => "a pointer to a copy the caller owns, in a register",
+            Some(_) => "registers",
+            None => "nowhere",
+        };
+        if placed == "a by-value stack copy" {
+            continue;
+        }
+        return Err(CodegenError::InvalidCodegenOptions(format!(
+            "%{param_name} of @{name} states byval, but x86_64_{target_os} passes it in {placed}"
+        )));
+    }
+    Ok(())
 }
 
 /// Whether an aggregate argument travels as a pointer to a copy the caller owns.
