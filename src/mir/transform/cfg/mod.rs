@@ -319,7 +319,6 @@ impl CfgSimplify {
         }
 
         func.blocks.retain(|b| !to_remove.contains(&b.label));
-        func.blocks.sort_by_key(|b| b.label.clone());
 
         Ok(changed)
     }
