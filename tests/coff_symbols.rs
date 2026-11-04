@@ -69,6 +69,21 @@ fn coff_symbols(object: &[u8]) -> Vec<Option<CoffSymbol>> {
     out
 }
 
+/// The weak external's default definition. ras names it after the weak symbol
+/// and the object's first strong external, which is its business to pin; what
+/// matters here is that one exists and the auxiliary record points at it.
+fn find_default<'a>(symbols: &'a [Option<CoffSymbol>], weak: &str) -> (usize, &'a CoffSymbol) {
+    let prefix = format!(".weak.{weak}");
+    symbols
+        .iter()
+        .enumerate()
+        .find_map(|(i, s)| match s {
+            Some(s) if s.name.starts_with(&prefix) => Some((i, s)),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("default definition for weak {weak} in COFF symbol table"))
+}
+
 fn find<'a>(symbols: &'a [Option<CoffSymbol>], name: &str) -> (usize, &'a CoffSymbol) {
     symbols
         .iter()
@@ -113,8 +128,11 @@ fn weak_function_is_a_coff_weak_external_with_its_auxiliary_record() {
     let object = windows_object(WEAK_WHICH);
     let symbols = coff_symbols(&object);
 
-    let (default_index, default) = find(&symbols, ".weak.which");
-    assert_eq!(default.class, IMAGE_SYM_CLASS_STATIC);
+    let (default_index, default) = find_default(&symbols, "which");
+    assert_eq!(
+        default.class, IMAGE_SYM_CLASS_EXTERNAL,
+        "link.exe takes only an external default"
+    );
     assert!(
         default.section > 0,
         "the default definition is defined here"
