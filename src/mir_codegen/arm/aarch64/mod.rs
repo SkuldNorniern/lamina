@@ -301,7 +301,11 @@ fn classify_aarch64_arguments(
         } else {
             kind.aggregate.map_or(1, |a| a.words())
         };
-        if honors_alignment && !kind.by_reference && kind.aggregate.is_some_and(|a| a.align >= 16) {
+        if honors_alignment
+            && !darwin
+            && !kind.by_reference
+            && kind.aggregate.is_some_and(|a| a.align >= 16)
+        {
             gprs = gprs.next_multiple_of(2);
         }
         if gprs + words <= ARGUMENT_REGISTERS {
