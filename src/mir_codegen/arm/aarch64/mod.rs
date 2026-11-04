@@ -5,6 +5,7 @@
 
 mod atomic;
 mod bit;
+mod div;
 mod imm;
 mod inline_asm;
 mod overflow;
@@ -1360,6 +1361,70 @@ fn emit_block<W: Write>(
                 extend_integer(w, &value, ty, true, pointer_width)?;
                 store_result(w, dst, &value, frame, ra)?;
                 ra.free_scratch(scratch);
+            }
+            MirInst::IntBinary {
+                op: op @ (IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::UDiv | IntBinOp::URem),
+                lhs: Operand::Register(numerator),
+                rhs: Operand::Immediate(divisor),
+                dst,
+                ty,
+            } if ty.size_bytes(pointer_width) == 8
+                && has_reciprocal(*op, imm_to_u64(divisor) as i64) =>
+            {
+                let divisor = imm_to_u64(divisor) as i64;
+                let mut n_scratch = None;
+                let n = match numerator {
+                    Register::Virtual(v) if ra.get_mapping_for(v).is_some() => {
+                        ra.get_mapping_for(v).map(x_alias).unwrap_or_default()
+                    }
+                    _ => {
+                        let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        n_scratch = Some(scratch);
+                        load_reg_to(w, numerator, scratch, frame, ra)?;
+                        x_alias(scratch)
+                    }
+                };
+                let quotient = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let q = x_alias(quotient);
+                let helper = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let m = x_alias(helper);
+                if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) {
+                    let (multiplier, shift) = div::signed_reciprocal(divisor);
+                    emit_mov_imm64(w, &m, multiplier as u64)?;
+                    writeln!(w, "    smulh {q}, {n}, {m}")?;
+                    if divisor > 0 && multiplier < 0 {
+                        writeln!(w, "    add {q}, {q}, {n}")?;
+                    } else if divisor < 0 && multiplier > 0 {
+                        writeln!(w, "    sub {q}, {q}, {n}")?;
+                    }
+                    if shift > 0 {
+                        writeln!(w, "    asr {q}, {q}, #{shift}")?;
+                    }
+                    writeln!(w, "    add {q}, {q}, {q}, lsr #63")?;
+                } else {
+                    let (multiplier, add, shift) = div::unsigned_reciprocal(divisor as u64);
+                    emit_mov_imm64(w, &m, multiplier)?;
+                    writeln!(w, "    umulh {q}, {n}, {m}")?;
+                    if add {
+                        writeln!(w, "    sub {m}, {n}, {q}")?;
+                        writeln!(w, "    add {q}, {q}, {m}, lsr #1")?;
+                        if shift > 1 {
+                            writeln!(w, "    lsr {q}, {q}, #{}", shift - 1)?;
+                        }
+                    } else if shift > 0 {
+                        writeln!(w, "    lsr {q}, {q}, #{shift}")?;
+                    }
+                }
+                if matches!(op, IntBinOp::SRem | IntBinOp::URem) {
+                    emit_mov_imm64(w, &m, divisor as u64)?;
+                    writeln!(w, "    msub {q}, {q}, {m}, {n}")?;
+                }
+                store_result(w, dst, &q, frame, ra)?;
+                ra.free_scratch(helper);
+                ra.free_scratch(quotient);
+                if let Some(scratch) = n_scratch {
+                    ra.free_scratch(scratch);
+                }
             }
             MirInst::IntBinary {
                 op,
@@ -2971,6 +3036,15 @@ fn materialize_address<W: Write>(
         }
     }
     Ok(())
+}
+
+/// Whether this division has a reciprocal: not by -1, 0 or 1, which other paths handle,
+/// and not by the values the constants cannot reach.
+fn has_reciprocal(op: IntBinOp, divisor: i64) -> bool {
+    match op {
+        IntBinOp::SDiv | IntBinOp::SRem => !matches!(divisor, -1..=1 | i64::MIN),
+        _ => divisor >= 2,
+    }
 }
 
 /// The bracketed address a load or store of `size` bytes takes, using registers the

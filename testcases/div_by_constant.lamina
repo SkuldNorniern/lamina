@@ -1,0 +1,1024 @@
+# Division and remainder by constants, signed and unsigned, against computed answers.
+
+@noinline
+fn @sd0(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 2
+  %r = rem.i64 %a, 2
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd1(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 3
+  %r = rem.i64 %a, 3
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd2(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, -3
+  %r = rem.i64 %a, -3
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd3(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 5
+  %r = rem.i64 %a, 5
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd4(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 7
+  %r = rem.i64 %a, 7
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd5(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 10
+  %r = rem.i64 %a, 10
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd6(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, -10
+  %r = rem.i64 %a, -10
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd7(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 90
+  %r = rem.i64 %a, 90
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd8(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 100
+  %r = rem.i64 %a, 100
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd9(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 641
+  %r = rem.i64 %a, 641
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd10(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 1000
+  %r = rem.i64 %a, 1000
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd11(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 4096
+  %r = rem.i64 %a, 4096
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd12(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, -4096
+  %r = rem.i64 %a, -4096
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd13(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 4294967297
+  %r = rem.i64 %a, 4294967297
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @sd14(i64 %a) -> i64 {
+entry:
+  %q = div.i64 %a, 9223372036854775807
+  %r = rem.i64 %a, 9223372036854775807
+  %m = mul.i64 %q, 31
+  %s = add.i64 %m, %r
+  ret.i64 %s
+}
+
+@noinline
+fn @ud0(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 2
+  %r = rem.u64 %a, 2
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud1(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 3
+  %r = rem.u64 %a, 3
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud2(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 5
+  %r = rem.u64 %a, 5
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud3(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 7
+  %r = rem.u64 %a, 7
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud4(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 10
+  %r = rem.u64 %a, 10
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud5(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 90
+  %r = rem.u64 %a, 90
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud6(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 641
+  %r = rem.u64 %a, 641
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud7(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 4096
+  %r = rem.u64 %a, 4096
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud8(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 4294967297
+  %r = rem.u64 %a, 4294967297
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+@noinline
+fn @ud9(u64 %a) -> i64 {
+entry:
+  %q = div.u64 %a, 9223372036854775807
+  %r = rem.u64 %a, 9223372036854775807
+  %m = mul.u64 %q, 31
+  %s = add.u64 %m, %r
+  %w = bitcast.u64.i64 %s
+  ret.i64 %w
+}
+
+fn @main() -> i64 {
+entry:
+  %s0 = call @sd0(0)
+  call @print_i64(%s0)
+  %s1 = call @sd1(0)
+  call @print_i64(%s1)
+  %s2 = call @sd2(0)
+  call @print_i64(%s2)
+  %s3 = call @sd3(0)
+  call @print_i64(%s3)
+  %s4 = call @sd4(0)
+  call @print_i64(%s4)
+  %s5 = call @sd5(0)
+  call @print_i64(%s5)
+  %s6 = call @sd6(0)
+  call @print_i64(%s6)
+  %s7 = call @sd7(0)
+  call @print_i64(%s7)
+  %s8 = call @sd8(0)
+  call @print_i64(%s8)
+  %s9 = call @sd9(0)
+  call @print_i64(%s9)
+  %s10 = call @sd10(0)
+  call @print_i64(%s10)
+  %s11 = call @sd11(0)
+  call @print_i64(%s11)
+  %s12 = call @sd12(0)
+  call @print_i64(%s12)
+  %s13 = call @sd13(0)
+  call @print_i64(%s13)
+  %s14 = call @sd14(0)
+  call @print_i64(%s14)
+  %c15 = bitcast.i64.u64 0
+  %u15 = call @ud0(%c15)
+  call @print_i64(%u15)
+  %c16 = bitcast.i64.u64 0
+  %u16 = call @ud1(%c16)
+  call @print_i64(%u16)
+  %c17 = bitcast.i64.u64 0
+  %u17 = call @ud2(%c17)
+  call @print_i64(%u17)
+  %c18 = bitcast.i64.u64 0
+  %u18 = call @ud3(%c18)
+  call @print_i64(%u18)
+  %c19 = bitcast.i64.u64 0
+  %u19 = call @ud4(%c19)
+  call @print_i64(%u19)
+  %c20 = bitcast.i64.u64 0
+  %u20 = call @ud5(%c20)
+  call @print_i64(%u20)
+  %c21 = bitcast.i64.u64 0
+  %u21 = call @ud6(%c21)
+  call @print_i64(%u21)
+  %c22 = bitcast.i64.u64 0
+  %u22 = call @ud7(%c22)
+  call @print_i64(%u22)
+  %c23 = bitcast.i64.u64 0
+  %u23 = call @ud8(%c23)
+  call @print_i64(%u23)
+  %c24 = bitcast.i64.u64 0
+  %u24 = call @ud9(%c24)
+  call @print_i64(%u24)
+  %s25 = call @sd0(1)
+  call @print_i64(%s25)
+  %s26 = call @sd1(1)
+  call @print_i64(%s26)
+  %s27 = call @sd2(1)
+  call @print_i64(%s27)
+  %s28 = call @sd3(1)
+  call @print_i64(%s28)
+  %s29 = call @sd4(1)
+  call @print_i64(%s29)
+  %s30 = call @sd5(1)
+  call @print_i64(%s30)
+  %s31 = call @sd6(1)
+  call @print_i64(%s31)
+  %s32 = call @sd7(1)
+  call @print_i64(%s32)
+  %s33 = call @sd8(1)
+  call @print_i64(%s33)
+  %s34 = call @sd9(1)
+  call @print_i64(%s34)
+  %s35 = call @sd10(1)
+  call @print_i64(%s35)
+  %s36 = call @sd11(1)
+  call @print_i64(%s36)
+  %s37 = call @sd12(1)
+  call @print_i64(%s37)
+  %s38 = call @sd13(1)
+  call @print_i64(%s38)
+  %s39 = call @sd14(1)
+  call @print_i64(%s39)
+  %c40 = bitcast.i64.u64 1
+  %u40 = call @ud0(%c40)
+  call @print_i64(%u40)
+  %c41 = bitcast.i64.u64 1
+  %u41 = call @ud1(%c41)
+  call @print_i64(%u41)
+  %c42 = bitcast.i64.u64 1
+  %u42 = call @ud2(%c42)
+  call @print_i64(%u42)
+  %c43 = bitcast.i64.u64 1
+  %u43 = call @ud3(%c43)
+  call @print_i64(%u43)
+  %c44 = bitcast.i64.u64 1
+  %u44 = call @ud4(%c44)
+  call @print_i64(%u44)
+  %c45 = bitcast.i64.u64 1
+  %u45 = call @ud5(%c45)
+  call @print_i64(%u45)
+  %c46 = bitcast.i64.u64 1
+  %u46 = call @ud6(%c46)
+  call @print_i64(%u46)
+  %c47 = bitcast.i64.u64 1
+  %u47 = call @ud7(%c47)
+  call @print_i64(%u47)
+  %c48 = bitcast.i64.u64 1
+  %u48 = call @ud8(%c48)
+  call @print_i64(%u48)
+  %c49 = bitcast.i64.u64 1
+  %u49 = call @ud9(%c49)
+  call @print_i64(%u49)
+  %s50 = call @sd0(-1)
+  call @print_i64(%s50)
+  %s51 = call @sd1(-1)
+  call @print_i64(%s51)
+  %s52 = call @sd2(-1)
+  call @print_i64(%s52)
+  %s53 = call @sd3(-1)
+  call @print_i64(%s53)
+  %s54 = call @sd4(-1)
+  call @print_i64(%s54)
+  %s55 = call @sd5(-1)
+  call @print_i64(%s55)
+  %s56 = call @sd6(-1)
+  call @print_i64(%s56)
+  %s57 = call @sd7(-1)
+  call @print_i64(%s57)
+  %s58 = call @sd8(-1)
+  call @print_i64(%s58)
+  %s59 = call @sd9(-1)
+  call @print_i64(%s59)
+  %s60 = call @sd10(-1)
+  call @print_i64(%s60)
+  %s61 = call @sd11(-1)
+  call @print_i64(%s61)
+  %s62 = call @sd12(-1)
+  call @print_i64(%s62)
+  %s63 = call @sd13(-1)
+  call @print_i64(%s63)
+  %s64 = call @sd14(-1)
+  call @print_i64(%s64)
+  %c65 = bitcast.i64.u64 -1
+  %u65 = call @ud0(%c65)
+  call @print_i64(%u65)
+  %c66 = bitcast.i64.u64 -1
+  %u66 = call @ud1(%c66)
+  call @print_i64(%u66)
+  %c67 = bitcast.i64.u64 -1
+  %u67 = call @ud2(%c67)
+  call @print_i64(%u67)
+  %c68 = bitcast.i64.u64 -1
+  %u68 = call @ud3(%c68)
+  call @print_i64(%u68)
+  %c69 = bitcast.i64.u64 -1
+  %u69 = call @ud4(%c69)
+  call @print_i64(%u69)
+  %c70 = bitcast.i64.u64 -1
+  %u70 = call @ud5(%c70)
+  call @print_i64(%u70)
+  %c71 = bitcast.i64.u64 -1
+  %u71 = call @ud6(%c71)
+  call @print_i64(%u71)
+  %c72 = bitcast.i64.u64 -1
+  %u72 = call @ud7(%c72)
+  call @print_i64(%u72)
+  %c73 = bitcast.i64.u64 -1
+  %u73 = call @ud8(%c73)
+  call @print_i64(%u73)
+  %c74 = bitcast.i64.u64 -1
+  %u74 = call @ud9(%c74)
+  call @print_i64(%u74)
+  %s75 = call @sd0(7)
+  call @print_i64(%s75)
+  %s76 = call @sd1(7)
+  call @print_i64(%s76)
+  %s77 = call @sd2(7)
+  call @print_i64(%s77)
+  %s78 = call @sd3(7)
+  call @print_i64(%s78)
+  %s79 = call @sd4(7)
+  call @print_i64(%s79)
+  %s80 = call @sd5(7)
+  call @print_i64(%s80)
+  %s81 = call @sd6(7)
+  call @print_i64(%s81)
+  %s82 = call @sd7(7)
+  call @print_i64(%s82)
+  %s83 = call @sd8(7)
+  call @print_i64(%s83)
+  %s84 = call @sd9(7)
+  call @print_i64(%s84)
+  %s85 = call @sd10(7)
+  call @print_i64(%s85)
+  %s86 = call @sd11(7)
+  call @print_i64(%s86)
+  %s87 = call @sd12(7)
+  call @print_i64(%s87)
+  %s88 = call @sd13(7)
+  call @print_i64(%s88)
+  %s89 = call @sd14(7)
+  call @print_i64(%s89)
+  %c90 = bitcast.i64.u64 7
+  %u90 = call @ud0(%c90)
+  call @print_i64(%u90)
+  %c91 = bitcast.i64.u64 7
+  %u91 = call @ud1(%c91)
+  call @print_i64(%u91)
+  %c92 = bitcast.i64.u64 7
+  %u92 = call @ud2(%c92)
+  call @print_i64(%u92)
+  %c93 = bitcast.i64.u64 7
+  %u93 = call @ud3(%c93)
+  call @print_i64(%u93)
+  %c94 = bitcast.i64.u64 7
+  %u94 = call @ud4(%c94)
+  call @print_i64(%u94)
+  %c95 = bitcast.i64.u64 7
+  %u95 = call @ud5(%c95)
+  call @print_i64(%u95)
+  %c96 = bitcast.i64.u64 7
+  %u96 = call @ud6(%c96)
+  call @print_i64(%u96)
+  %c97 = bitcast.i64.u64 7
+  %u97 = call @ud7(%c97)
+  call @print_i64(%u97)
+  %c98 = bitcast.i64.u64 7
+  %u98 = call @ud8(%c98)
+  call @print_i64(%u98)
+  %c99 = bitcast.i64.u64 7
+  %u99 = call @ud9(%c99)
+  call @print_i64(%u99)
+  %s100 = call @sd0(-7)
+  call @print_i64(%s100)
+  %s101 = call @sd1(-7)
+  call @print_i64(%s101)
+  %s102 = call @sd2(-7)
+  call @print_i64(%s102)
+  %s103 = call @sd3(-7)
+  call @print_i64(%s103)
+  %s104 = call @sd4(-7)
+  call @print_i64(%s104)
+  %s105 = call @sd5(-7)
+  call @print_i64(%s105)
+  %s106 = call @sd6(-7)
+  call @print_i64(%s106)
+  %s107 = call @sd7(-7)
+  call @print_i64(%s107)
+  %s108 = call @sd8(-7)
+  call @print_i64(%s108)
+  %s109 = call @sd9(-7)
+  call @print_i64(%s109)
+  %s110 = call @sd10(-7)
+  call @print_i64(%s110)
+  %s111 = call @sd11(-7)
+  call @print_i64(%s111)
+  %s112 = call @sd12(-7)
+  call @print_i64(%s112)
+  %s113 = call @sd13(-7)
+  call @print_i64(%s113)
+  %s114 = call @sd14(-7)
+  call @print_i64(%s114)
+  %c115 = bitcast.i64.u64 -7
+  %u115 = call @ud0(%c115)
+  call @print_i64(%u115)
+  %c116 = bitcast.i64.u64 -7
+  %u116 = call @ud1(%c116)
+  call @print_i64(%u116)
+  %c117 = bitcast.i64.u64 -7
+  %u117 = call @ud2(%c117)
+  call @print_i64(%u117)
+  %c118 = bitcast.i64.u64 -7
+  %u118 = call @ud3(%c118)
+  call @print_i64(%u118)
+  %c119 = bitcast.i64.u64 -7
+  %u119 = call @ud4(%c119)
+  call @print_i64(%u119)
+  %c120 = bitcast.i64.u64 -7
+  %u120 = call @ud5(%c120)
+  call @print_i64(%u120)
+  %c121 = bitcast.i64.u64 -7
+  %u121 = call @ud6(%c121)
+  call @print_i64(%u121)
+  %c122 = bitcast.i64.u64 -7
+  %u122 = call @ud7(%c122)
+  call @print_i64(%u122)
+  %c123 = bitcast.i64.u64 -7
+  %u123 = call @ud8(%c123)
+  call @print_i64(%u123)
+  %c124 = bitcast.i64.u64 -7
+  %u124 = call @ud9(%c124)
+  call @print_i64(%u124)
+  %s125 = call @sd0(100)
+  call @print_i64(%s125)
+  %s126 = call @sd1(100)
+  call @print_i64(%s126)
+  %s127 = call @sd2(100)
+  call @print_i64(%s127)
+  %s128 = call @sd3(100)
+  call @print_i64(%s128)
+  %s129 = call @sd4(100)
+  call @print_i64(%s129)
+  %s130 = call @sd5(100)
+  call @print_i64(%s130)
+  %s131 = call @sd6(100)
+  call @print_i64(%s131)
+  %s132 = call @sd7(100)
+  call @print_i64(%s132)
+  %s133 = call @sd8(100)
+  call @print_i64(%s133)
+  %s134 = call @sd9(100)
+  call @print_i64(%s134)
+  %s135 = call @sd10(100)
+  call @print_i64(%s135)
+  %s136 = call @sd11(100)
+  call @print_i64(%s136)
+  %s137 = call @sd12(100)
+  call @print_i64(%s137)
+  %s138 = call @sd13(100)
+  call @print_i64(%s138)
+  %s139 = call @sd14(100)
+  call @print_i64(%s139)
+  %c140 = bitcast.i64.u64 100
+  %u140 = call @ud0(%c140)
+  call @print_i64(%u140)
+  %c141 = bitcast.i64.u64 100
+  %u141 = call @ud1(%c141)
+  call @print_i64(%u141)
+  %c142 = bitcast.i64.u64 100
+  %u142 = call @ud2(%c142)
+  call @print_i64(%u142)
+  %c143 = bitcast.i64.u64 100
+  %u143 = call @ud3(%c143)
+  call @print_i64(%u143)
+  %c144 = bitcast.i64.u64 100
+  %u144 = call @ud4(%c144)
+  call @print_i64(%u144)
+  %c145 = bitcast.i64.u64 100
+  %u145 = call @ud5(%c145)
+  call @print_i64(%u145)
+  %c146 = bitcast.i64.u64 100
+  %u146 = call @ud6(%c146)
+  call @print_i64(%u146)
+  %c147 = bitcast.i64.u64 100
+  %u147 = call @ud7(%c147)
+  call @print_i64(%u147)
+  %c148 = bitcast.i64.u64 100
+  %u148 = call @ud8(%c148)
+  call @print_i64(%u148)
+  %c149 = bitcast.i64.u64 100
+  %u149 = call @ud9(%c149)
+  call @print_i64(%u149)
+  %s150 = call @sd0(-100)
+  call @print_i64(%s150)
+  %s151 = call @sd1(-100)
+  call @print_i64(%s151)
+  %s152 = call @sd2(-100)
+  call @print_i64(%s152)
+  %s153 = call @sd3(-100)
+  call @print_i64(%s153)
+  %s154 = call @sd4(-100)
+  call @print_i64(%s154)
+  %s155 = call @sd5(-100)
+  call @print_i64(%s155)
+  %s156 = call @sd6(-100)
+  call @print_i64(%s156)
+  %s157 = call @sd7(-100)
+  call @print_i64(%s157)
+  %s158 = call @sd8(-100)
+  call @print_i64(%s158)
+  %s159 = call @sd9(-100)
+  call @print_i64(%s159)
+  %s160 = call @sd10(-100)
+  call @print_i64(%s160)
+  %s161 = call @sd11(-100)
+  call @print_i64(%s161)
+  %s162 = call @sd12(-100)
+  call @print_i64(%s162)
+  %s163 = call @sd13(-100)
+  call @print_i64(%s163)
+  %s164 = call @sd14(-100)
+  call @print_i64(%s164)
+  %c165 = bitcast.i64.u64 -100
+  %u165 = call @ud0(%c165)
+  call @print_i64(%u165)
+  %c166 = bitcast.i64.u64 -100
+  %u166 = call @ud1(%c166)
+  call @print_i64(%u166)
+  %c167 = bitcast.i64.u64 -100
+  %u167 = call @ud2(%c167)
+  call @print_i64(%u167)
+  %c168 = bitcast.i64.u64 -100
+  %u168 = call @ud3(%c168)
+  call @print_i64(%u168)
+  %c169 = bitcast.i64.u64 -100
+  %u169 = call @ud4(%c169)
+  call @print_i64(%u169)
+  %c170 = bitcast.i64.u64 -100
+  %u170 = call @ud5(%c170)
+  call @print_i64(%u170)
+  %c171 = bitcast.i64.u64 -100
+  %u171 = call @ud6(%c171)
+  call @print_i64(%u171)
+  %c172 = bitcast.i64.u64 -100
+  %u172 = call @ud7(%c172)
+  call @print_i64(%u172)
+  %c173 = bitcast.i64.u64 -100
+  %u173 = call @ud8(%c173)
+  call @print_i64(%u173)
+  %c174 = bitcast.i64.u64 -100
+  %u174 = call @ud9(%c174)
+  call @print_i64(%u174)
+  %s175 = call @sd0(2147483648)
+  call @print_i64(%s175)
+  %s176 = call @sd1(2147483648)
+  call @print_i64(%s176)
+  %s177 = call @sd2(2147483648)
+  call @print_i64(%s177)
+  %s178 = call @sd3(2147483648)
+  call @print_i64(%s178)
+  %s179 = call @sd4(2147483648)
+  call @print_i64(%s179)
+  %s180 = call @sd5(2147483648)
+  call @print_i64(%s180)
+  %s181 = call @sd6(2147483648)
+  call @print_i64(%s181)
+  %s182 = call @sd7(2147483648)
+  call @print_i64(%s182)
+  %s183 = call @sd8(2147483648)
+  call @print_i64(%s183)
+  %s184 = call @sd9(2147483648)
+  call @print_i64(%s184)
+  %s185 = call @sd10(2147483648)
+  call @print_i64(%s185)
+  %s186 = call @sd11(2147483648)
+  call @print_i64(%s186)
+  %s187 = call @sd12(2147483648)
+  call @print_i64(%s187)
+  %s188 = call @sd13(2147483648)
+  call @print_i64(%s188)
+  %s189 = call @sd14(2147483648)
+  call @print_i64(%s189)
+  %c190 = bitcast.i64.u64 2147483648
+  %u190 = call @ud0(%c190)
+  call @print_i64(%u190)
+  %c191 = bitcast.i64.u64 2147483648
+  %u191 = call @ud1(%c191)
+  call @print_i64(%u191)
+  %c192 = bitcast.i64.u64 2147483648
+  %u192 = call @ud2(%c192)
+  call @print_i64(%u192)
+  %c193 = bitcast.i64.u64 2147483648
+  %u193 = call @ud3(%c193)
+  call @print_i64(%u193)
+  %c194 = bitcast.i64.u64 2147483648
+  %u194 = call @ud4(%c194)
+  call @print_i64(%u194)
+  %c195 = bitcast.i64.u64 2147483648
+  %u195 = call @ud5(%c195)
+  call @print_i64(%u195)
+  %c196 = bitcast.i64.u64 2147483648
+  %u196 = call @ud6(%c196)
+  call @print_i64(%u196)
+  %c197 = bitcast.i64.u64 2147483648
+  %u197 = call @ud7(%c197)
+  call @print_i64(%u197)
+  %c198 = bitcast.i64.u64 2147483648
+  %u198 = call @ud8(%c198)
+  call @print_i64(%u198)
+  %c199 = bitcast.i64.u64 2147483648
+  %u199 = call @ud9(%c199)
+  call @print_i64(%u199)
+  %s200 = call @sd0(9007199254740993)
+  call @print_i64(%s200)
+  %s201 = call @sd1(9007199254740993)
+  call @print_i64(%s201)
+  %s202 = call @sd2(9007199254740993)
+  call @print_i64(%s202)
+  %s203 = call @sd3(9007199254740993)
+  call @print_i64(%s203)
+  %s204 = call @sd4(9007199254740993)
+  call @print_i64(%s204)
+  %s205 = call @sd5(9007199254740993)
+  call @print_i64(%s205)
+  %s206 = call @sd6(9007199254740993)
+  call @print_i64(%s206)
+  %s207 = call @sd7(9007199254740993)
+  call @print_i64(%s207)
+  %s208 = call @sd8(9007199254740993)
+  call @print_i64(%s208)
+  %s209 = call @sd9(9007199254740993)
+  call @print_i64(%s209)
+  %s210 = call @sd10(9007199254740993)
+  call @print_i64(%s210)
+  %s211 = call @sd11(9007199254740993)
+  call @print_i64(%s211)
+  %s212 = call @sd12(9007199254740993)
+  call @print_i64(%s212)
+  %s213 = call @sd13(9007199254740993)
+  call @print_i64(%s213)
+  %s214 = call @sd14(9007199254740993)
+  call @print_i64(%s214)
+  %c215 = bitcast.i64.u64 9007199254740993
+  %u215 = call @ud0(%c215)
+  call @print_i64(%u215)
+  %c216 = bitcast.i64.u64 9007199254740993
+  %u216 = call @ud1(%c216)
+  call @print_i64(%u216)
+  %c217 = bitcast.i64.u64 9007199254740993
+  %u217 = call @ud2(%c217)
+  call @print_i64(%u217)
+  %c218 = bitcast.i64.u64 9007199254740993
+  %u218 = call @ud3(%c218)
+  call @print_i64(%u218)
+  %c219 = bitcast.i64.u64 9007199254740993
+  %u219 = call @ud4(%c219)
+  call @print_i64(%u219)
+  %c220 = bitcast.i64.u64 9007199254740993
+  %u220 = call @ud5(%c220)
+  call @print_i64(%u220)
+  %c221 = bitcast.i64.u64 9007199254740993
+  %u221 = call @ud6(%c221)
+  call @print_i64(%u221)
+  %c222 = bitcast.i64.u64 9007199254740993
+  %u222 = call @ud7(%c222)
+  call @print_i64(%u222)
+  %c223 = bitcast.i64.u64 9007199254740993
+  %u223 = call @ud8(%c223)
+  call @print_i64(%u223)
+  %c224 = bitcast.i64.u64 9007199254740993
+  %u224 = call @ud9(%c224)
+  call @print_i64(%u224)
+  %s225 = call @sd0(9223372036854775807)
+  call @print_i64(%s225)
+  %s226 = call @sd1(9223372036854775807)
+  call @print_i64(%s226)
+  %s227 = call @sd2(9223372036854775807)
+  call @print_i64(%s227)
+  %s228 = call @sd3(9223372036854775807)
+  call @print_i64(%s228)
+  %s229 = call @sd4(9223372036854775807)
+  call @print_i64(%s229)
+  %s230 = call @sd5(9223372036854775807)
+  call @print_i64(%s230)
+  %s231 = call @sd6(9223372036854775807)
+  call @print_i64(%s231)
+  %s232 = call @sd7(9223372036854775807)
+  call @print_i64(%s232)
+  %s233 = call @sd8(9223372036854775807)
+  call @print_i64(%s233)
+  %s234 = call @sd9(9223372036854775807)
+  call @print_i64(%s234)
+  %s235 = call @sd10(9223372036854775807)
+  call @print_i64(%s235)
+  %s236 = call @sd11(9223372036854775807)
+  call @print_i64(%s236)
+  %s237 = call @sd12(9223372036854775807)
+  call @print_i64(%s237)
+  %s238 = call @sd13(9223372036854775807)
+  call @print_i64(%s238)
+  %s239 = call @sd14(9223372036854775807)
+  call @print_i64(%s239)
+  %c240 = bitcast.i64.u64 9223372036854775807
+  %u240 = call @ud0(%c240)
+  call @print_i64(%u240)
+  %c241 = bitcast.i64.u64 9223372036854775807
+  %u241 = call @ud1(%c241)
+  call @print_i64(%u241)
+  %c242 = bitcast.i64.u64 9223372036854775807
+  %u242 = call @ud2(%c242)
+  call @print_i64(%u242)
+  %c243 = bitcast.i64.u64 9223372036854775807
+  %u243 = call @ud3(%c243)
+  call @print_i64(%u243)
+  %c244 = bitcast.i64.u64 9223372036854775807
+  %u244 = call @ud4(%c244)
+  call @print_i64(%u244)
+  %c245 = bitcast.i64.u64 9223372036854775807
+  %u245 = call @ud5(%c245)
+  call @print_i64(%u245)
+  %c246 = bitcast.i64.u64 9223372036854775807
+  %u246 = call @ud6(%c246)
+  call @print_i64(%u246)
+  %c247 = bitcast.i64.u64 9223372036854775807
+  %u247 = call @ud7(%c247)
+  call @print_i64(%u247)
+  %c248 = bitcast.i64.u64 9223372036854775807
+  %u248 = call @ud8(%c248)
+  call @print_i64(%u248)
+  %c249 = bitcast.i64.u64 9223372036854775807
+  %u249 = call @ud9(%c249)
+  call @print_i64(%u249)
+  %s250 = call @sd0(-9223372036854775808)
+  call @print_i64(%s250)
+  %s251 = call @sd1(-9223372036854775808)
+  call @print_i64(%s251)
+  %s252 = call @sd2(-9223372036854775808)
+  call @print_i64(%s252)
+  %s253 = call @sd3(-9223372036854775808)
+  call @print_i64(%s253)
+  %s254 = call @sd4(-9223372036854775808)
+  call @print_i64(%s254)
+  %s255 = call @sd5(-9223372036854775808)
+  call @print_i64(%s255)
+  %s256 = call @sd6(-9223372036854775808)
+  call @print_i64(%s256)
+  %s257 = call @sd7(-9223372036854775808)
+  call @print_i64(%s257)
+  %s258 = call @sd8(-9223372036854775808)
+  call @print_i64(%s258)
+  %s259 = call @sd9(-9223372036854775808)
+  call @print_i64(%s259)
+  %s260 = call @sd10(-9223372036854775808)
+  call @print_i64(%s260)
+  %s261 = call @sd11(-9223372036854775808)
+  call @print_i64(%s261)
+  %s262 = call @sd12(-9223372036854775808)
+  call @print_i64(%s262)
+  %s263 = call @sd13(-9223372036854775808)
+  call @print_i64(%s263)
+  %s264 = call @sd14(-9223372036854775808)
+  call @print_i64(%s264)
+  %c265 = bitcast.i64.u64 -9223372036854775808
+  %u265 = call @ud0(%c265)
+  call @print_i64(%u265)
+  %c266 = bitcast.i64.u64 -9223372036854775808
+  %u266 = call @ud1(%c266)
+  call @print_i64(%u266)
+  %c267 = bitcast.i64.u64 -9223372036854775808
+  %u267 = call @ud2(%c267)
+  call @print_i64(%u267)
+  %c268 = bitcast.i64.u64 -9223372036854775808
+  %u268 = call @ud3(%c268)
+  call @print_i64(%u268)
+  %c269 = bitcast.i64.u64 -9223372036854775808
+  %u269 = call @ud4(%c269)
+  call @print_i64(%u269)
+  %c270 = bitcast.i64.u64 -9223372036854775808
+  %u270 = call @ud5(%c270)
+  call @print_i64(%u270)
+  %c271 = bitcast.i64.u64 -9223372036854775808
+  %u271 = call @ud6(%c271)
+  call @print_i64(%u271)
+  %c272 = bitcast.i64.u64 -9223372036854775808
+  %u272 = call @ud7(%c272)
+  call @print_i64(%u272)
+  %c273 = bitcast.i64.u64 -9223372036854775808
+  %u273 = call @ud8(%c273)
+  call @print_i64(%u273)
+  %c274 = bitcast.i64.u64 -9223372036854775808
+  %u274 = call @ud9(%c274)
+  call @print_i64(%u274)
+  %s275 = call @sd0(-9223372036854775807)
+  call @print_i64(%s275)
+  %s276 = call @sd1(-9223372036854775807)
+  call @print_i64(%s276)
+  %s277 = call @sd2(-9223372036854775807)
+  call @print_i64(%s277)
+  %s278 = call @sd3(-9223372036854775807)
+  call @print_i64(%s278)
+  %s279 = call @sd4(-9223372036854775807)
+  call @print_i64(%s279)
+  %s280 = call @sd5(-9223372036854775807)
+  call @print_i64(%s280)
+  %s281 = call @sd6(-9223372036854775807)
+  call @print_i64(%s281)
+  %s282 = call @sd7(-9223372036854775807)
+  call @print_i64(%s282)
+  %s283 = call @sd8(-9223372036854775807)
+  call @print_i64(%s283)
+  %s284 = call @sd9(-9223372036854775807)
+  call @print_i64(%s284)
+  %s285 = call @sd10(-9223372036854775807)
+  call @print_i64(%s285)
+  %s286 = call @sd11(-9223372036854775807)
+  call @print_i64(%s286)
+  %s287 = call @sd12(-9223372036854775807)
+  call @print_i64(%s287)
+  %s288 = call @sd13(-9223372036854775807)
+  call @print_i64(%s288)
+  %s289 = call @sd14(-9223372036854775807)
+  call @print_i64(%s289)
+  %c290 = bitcast.i64.u64 -9223372036854775807
+  %u290 = call @ud0(%c290)
+  call @print_i64(%u290)
+  %c291 = bitcast.i64.u64 -9223372036854775807
+  %u291 = call @ud1(%c291)
+  call @print_i64(%u291)
+  %c292 = bitcast.i64.u64 -9223372036854775807
+  %u292 = call @ud2(%c292)
+  call @print_i64(%u292)
+  %c293 = bitcast.i64.u64 -9223372036854775807
+  %u293 = call @ud3(%c293)
+  call @print_i64(%u293)
+  %c294 = bitcast.i64.u64 -9223372036854775807
+  %u294 = call @ud4(%c294)
+  call @print_i64(%u294)
+  %c295 = bitcast.i64.u64 -9223372036854775807
+  %u295 = call @ud5(%c295)
+  call @print_i64(%u295)
+  %c296 = bitcast.i64.u64 -9223372036854775807
+  %u296 = call @ud6(%c296)
+  call @print_i64(%u296)
+  %c297 = bitcast.i64.u64 -9223372036854775807
+  %u297 = call @ud7(%c297)
+  call @print_i64(%u297)
+  %c298 = bitcast.i64.u64 -9223372036854775807
+  %u298 = call @ud8(%c298)
+  call @print_i64(%u298)
+  %c299 = bitcast.i64.u64 -9223372036854775807
+  %u299 = call @ud9(%c299)
+  call @print_i64(%u299)
+  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
