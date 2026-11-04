@@ -203,8 +203,24 @@ statement about the backend, but it is the measurement that exists.
 
 ### Prerequisites
 - The Rust version named by `rust-version` in `Cargo.toml`, on edition 2024
-- Clang/GCC for linking generated assembly
 - macOS, Linux, or Windows
+- Clang/GCC only if you ask for one: `-c gnu` or `-c clang`. The default toolchain
+  assembles with `ras` and links with `weld`, both of which come with the compiler.
+
+### Installation
+
+```bash
+cargo install lamina
+```
+
+That installs two binaries: `lamina` and `weld`, the linker lamina uses by default.
+Nothing else has to be installed for the default toolchain, and `weld` doubles as a
+standalone `ld` replacement.
+
+`lamina` looks for `weld` beside itself first and only then on `PATH`, so the copy it
+was built against wins over any other. Set `LAMINA_WELD` to a path to link with a
+different one. A weld older than the one lamina was built against is refused by name,
+rather than left to fail later at a relocation it does not understand.
 
 
 ### Available Targets
