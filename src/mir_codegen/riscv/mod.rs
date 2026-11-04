@@ -1078,16 +1078,17 @@ fn classify_riscv_arguments(
             gprs = gprs.next_multiple_of(2);
             stack = stack.next_multiple_of(2);
         }
+        if let Some(aggregate) = kind.aggregate
+            && !kind.by_reference(pointer)
+            && let Some((first, second, next_gpr, next_fpr)) =
+                flat_slots(aggregate, gprs, fprs, banks)
+        {
+            places.push(RiscVArgPlace::Flat { first, second });
+            gprs = next_gpr;
+            fprs = next_fpr;
+            continue;
+        }
         match kind.aggregate {
-            Some(aggregate)
-                if !kind.by_reference(pointer)
-                    && let Some((first, second, next_gpr, next_fpr)) =
-                        flat_slots(aggregate, gprs, fprs, banks) =>
-            {
-                places.push(RiscVArgPlace::Flat { first, second });
-                gprs = next_gpr;
-                fprs = next_fpr;
-            }
             Some(aggregate) if !kind.by_reference(pointer) => {
                 let words = aggregate.words_of(pointer);
                 if gprs + words <= banks {
