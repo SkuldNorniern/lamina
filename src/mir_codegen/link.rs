@@ -1271,6 +1271,29 @@ mod tests {
     }
 
     #[test]
+    fn build_msvc_linker_args_links_crt_and_names_no_entry() {
+        let args = build_msvc_linker_args(
+            Path::new("module.o"),
+            Path::new("module.exe"),
+            TargetArchitecture::X86_64,
+            &[],
+            &[],
+        )
+        .expect("x86_64 Windows should be supported");
+
+        assert!(
+            !args
+                .iter()
+                .any(|a| a.to_ascii_lowercase().starts_with("/entry")),
+            "{args:?}"
+        );
+        for lib in ["libcmt.lib", "libvcruntime.lib", "libucrt.lib"] {
+            assert!(args.iter().any(|a| a == lib), "missing {lib}: {args:?}");
+        }
+        assert!(!args.iter().any(|a| a == "ucrt.lib"), "{args:?}");
+    }
+
+    #[test]
     fn msvc_rejected_for_linux_target() {
         let error = validate_linker_backend_for_target(
             LinkerBackend::Msvc,
