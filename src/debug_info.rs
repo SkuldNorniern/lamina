@@ -35,6 +35,12 @@ pub fn emits_dwarf(target_os: TargetOperatingSystem) -> bool {
     )
 }
 
+/// Whether the object this target writes carries CodeView debug sections, which the
+/// linker gathers into a PDB.
+pub fn emits_codeview(target_os: TargetOperatingSystem) -> bool {
+    target_os == TargetOperatingSystem::Windows
+}
+
 /// Mach-O labels a function's code with its name under a leading underscore, which the
 /// debugger must not show and the assembler must be asked for by.
 fn object_symbol(target_os: TargetOperatingSystem, name: &str) -> String {
@@ -44,16 +50,18 @@ fn object_symbol(target_os: TargetOperatingSystem, name: &str) -> String {
     }
 }
 
-/// Fill in what the assembler needs to describe this module's functions. Symbol types
-/// and sizes go in whether or not debug info was asked for; the DWARF goes in only
-/// under `-g`, so a build without it is unchanged.
+/// Fill in what the assembler needs to describe this module's functions. On a DWARF
+/// target the symbol types and sizes go in whether or not debug info was asked for,
+/// and the DWARF only under `-g`. COFF takes a symbol's type from its section and has
+/// no symbol size, so there the whole request is `-g` only and a build without it is
+/// byte-identical.
 pub fn apply(
     options: &mut ObjectWriteOptions,
     target_os: TargetOperatingSystem,
     debug: bool,
     module: &MirModule,
 ) {
-    if !emits_dwarf(target_os) {
+    if !emits_dwarf(target_os) && !(debug && emits_codeview(target_os)) {
         return;
     }
     options.function_symbols = function_symbols(module)
@@ -251,14 +259,35 @@ fn @main() -> i64 {
     }
 
     #[test]
-    fn a_target_whose_object_carries_no_dwarf_is_described_to_no_one() {
+    fn a_target_whose_object_carries_no_debug_info_is_described_to_no_one() {
         let target = Target::from_str("x86_64_linux").expect("target");
         let module = parse_module(SOURCE).expect("parse");
         let mir = from_ir_for_target(&module, "module", target.data_layout()).expect("lower");
         let mut options = ObjectWriteOptions::default();
-        apply(&mut options, TargetOperatingSystem::Windows, true, &mir);
+        apply(&mut options, TargetOperatingSystem::Orbis, true, &mir);
         assert!(options.function_symbols.is_empty());
         assert!(options.debug_info.is_none());
+    }
+
+    /// COFF takes a symbol's type from its section and has no symbol size, so there is
+    /// nothing for the assembler to fill in unless CodeView was asked for.
+    #[test]
+    fn a_windows_build_is_described_only_under_g() {
+        let target = Target::from_str("x86_64_windows").expect("target");
+        let module = parse_module(SOURCE).expect("parse");
+        let mir = from_ir_for_target(&module, "module", target.data_layout()).expect("lower");
+
+        let mut plain = ObjectWriteOptions::default();
+        apply(&mut plain, TargetOperatingSystem::Windows, false, &mir);
+        assert!(plain.function_symbols.is_empty());
+        assert!(plain.debug_info.is_none());
+
+        let mut debug = ObjectWriteOptions::default();
+        apply(&mut debug, TargetOperatingSystem::Windows, true, &mir);
+        assert_eq!(debug.function_symbols, vec!["main", "scale", "widen"]);
+        let request = debug.debug_info.expect("a request");
+        // COFF spells a function's symbol exactly as the source named it.
+        assert!(request.subprograms.iter().all(|sub| sub.symbol.is_none()));
     }
 
     /// Mach-O labels a function's code with a leading underscore and a debugger must

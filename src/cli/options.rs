@@ -84,6 +84,9 @@ impl CompileOptions {
             o.emit_minimal_dwarf_sections = true;
             o.dwarf_decl_file_name = self.mir_codegen_settings.debug_file_tag.clone();
         }
+        if debug && debug_info::emits_codeview(target_os) {
+            o.debug_object_name = self.input_file.with_extension("obj").display().to_string();
+        }
         debug_info::apply(&mut o, target_os, debug, module);
         o
     }
