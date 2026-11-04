@@ -6,7 +6,7 @@ rust-version = "1.88"
 authors = ["Eira <eira@nornity.com>"]
 description = "Stable C API for the Lamina compiler"
 license = "Apache-2.0"
-repository = "https://github.com/SkuldNorniern/lamina"
+repository = "https://github.com/Project-Lamina/lamina"
 publish = false
 
 [lib]

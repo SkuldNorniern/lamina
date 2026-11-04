@@ -8,7 +8,7 @@ description = "Lamina Intermediate Representation — high-level typed IR for th
 license = "Apache-2.0"
 keywords = ["compiler", "IR", "typed-ir"]
 categories = ["compilers", "development-tools"]
-repository = "https://github.com/SkuldNorniern/lamina"
+repository = "https://github.com/Project-Lamina/lamina"
 
 [dependencies]
 lamina-platform = { path = "../lamina-platform", version = "0.2.1" }
