@@ -28,6 +28,8 @@ target/
 
 # .NET/C# specific
 bin/
+# ...but src/bin holds cargo bin targets, which must be tracked and published.
+!src/bin/
 obj/
 *.dll
 *.exe
