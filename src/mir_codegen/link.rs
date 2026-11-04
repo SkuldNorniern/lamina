@@ -1487,6 +1487,32 @@ mod tests {
     }
 
     #[test]
+    fn a_dynamic_executable_asks_for_an_eh_frame_header() {
+        if cfg!(target_os = "freebsd") {
+            return;
+        }
+        let args = |target: &Target| {
+            build_unix_linker_args(Path::new("module.o"), Path::new("module"), target, &[], &[])
+                .expect("link arguments")
+        };
+        // Off a FreeBSD host the link takes no host C runtime, so needs no compiler.
+        let freebsd = args(&Target::new(
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::FreeBSD,
+        ));
+        assert!(freebsd.iter().any(|a| a == "--eh-frame-hdr"), "{freebsd:?}");
+        // gcc leaves it out of a static link, and ld64 has no such option.
+        let freestanding = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+            .with_environment(TargetEnvironment::Freestanding)
+            .expect("every architecture accepts a freestanding environment");
+        let macos = Target::new(TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS);
+        for target in [freestanding, macos] {
+            let args = args(&target);
+            assert!(!args.iter().any(|a| a == "--eh-frame-hdr"), "{args:?}");
+        }
+    }
+
+    #[test]
     fn a_freestanding_target_links_no_libc_and_no_compiler_runtime() {
         let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
             .with_environment(TargetEnvironment::Freestanding)
