@@ -154,7 +154,13 @@ pub fn classify_aggregate(
         )));
     }
     let class = if integer_only {
-        AggregateClass::Integer
+        if layout.float_aggregates == FloatAggregateAbi::SysV
+            && has_unaligned_field(ty, what, layout)?
+        {
+            AggregateClass::Memory
+        } else {
+            AggregateClass::Integer
+        }
     } else {
         match layout.float_aggregates {
             FloatAggregateAbi::Refused => {
@@ -175,6 +181,20 @@ pub fn classify_aggregate(
         class,
         shape: AggregateShape::Composite,
     }))
+}
+
+/// System V AMD64 psABI 3.2.3, classification of aggregates, rule 1: an object that
+/// contains unaligned fields has class MEMORY. A packed struct whose fields are all
+/// integers reaches that rule and nothing else, so the check cannot live in the
+/// eightbyte walk alone.
+fn has_unaligned_field(
+    ty: &IRType<'_>,
+    what: &str,
+    layout: TargetDataLayout,
+) -> Result<bool, FromIRError> {
+    let mut leaves = Vec::new();
+    collect_leaves(ty, 0, what, layout, &mut leaves)?;
+    Ok(leaves.iter().any(|leaf| leaf.unaligned))
 }
 
 struct Leaf {

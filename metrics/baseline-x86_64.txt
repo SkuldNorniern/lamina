@@ -10548,8 +10548,8 @@ frame main 32
 frame who 0
 
 [packed_struct_layout O0]
-insns 366
-spills 183
+insns 368
+spills 184
 calls 41
 branches 3
 frame delta 48
@@ -10560,8 +10560,8 @@ frame put_u64 48
 frame read_word 48
 
 [packed_struct_layout O1]
-insns 320
-spills 81
+insns 322
+spills 82
 calls 41
 branches 3
 frame delta 0
@@ -10572,8 +10572,8 @@ frame put_u64 32
 frame read_word 16
 
 [packed_struct_layout O2]
-insns 1271
-spills 127
+insns 1273
+spills 128
 calls 25
 branches 47
 frame main 480
@@ -10582,8 +10582,8 @@ frame put_u64 32
 frame read_word 16
 
 [packed_struct_layout O3]
-insns 1268
-spills 126
+insns 1270
+spills 127
 calls 25
 branches 47
 frame main 464

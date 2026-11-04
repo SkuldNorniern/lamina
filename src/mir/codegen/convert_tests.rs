@@ -1762,3 +1762,44 @@ fn sret_on_a_scalar_return_is_refused() {
         "return of @f states sret, but Lamina classifies i64 as a scalar, which is returned in a register and not through a hidden pointer"
     );
 }
+
+#[test]
+fn an_unaligned_field_makes_an_integer_only_aggregate_memory_on_sysv() {
+    use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
+    let class = |source: &str, os| {
+        let ir = parse_module(source).expect("parse aggregate parameter");
+        let layout = Target::new(TargetArchitecture::X86_64, os).data_layout();
+        from_ir_for_target(&ir, "take", layout)
+            .expect("lower aggregate parameter")
+            .functions["take"]
+            .sig
+            .params[0]
+            .aggregate
+            .expect("aggregate marker")
+            .class
+    };
+    let packed = "fn @take(packed struct { a: i8, b: i32 } %p) -> i64 {\nentry:\nret.i64 0\n}";
+    let padded = "fn @take(struct { a: i8, b: i32 } %p) -> i64 {\nentry:\nret.i64 0\n}";
+    let packed_but_aligned =
+        "fn @take(packed struct { a: i64, b: i8 } %p) -> i64 {\nentry:\nret.i64 0\n}";
+
+    assert_eq!(
+        class(packed, TargetOperatingSystem::Linux),
+        AggregateClass::Memory,
+        "psABI 3.2.3 rule 1: an aggregate with an unaligned field has class MEMORY"
+    );
+    assert_eq!(
+        class(padded, TargetOperatingSystem::Linux),
+        AggregateClass::Integer
+    );
+    assert_eq!(
+        class(packed_but_aligned, TargetOperatingSystem::Linux),
+        AggregateClass::Integer,
+        "packing alone is not unalignment; every field here still sits on its own boundary"
+    );
+    assert_eq!(
+        class(packed, TargetOperatingSystem::Windows),
+        AggregateClass::Integer,
+        "the MEMORY-for-unaligned rule is System V's; Win64 places by size alone"
+    );
+}
