@@ -404,7 +404,9 @@ def compile_and_run_test(test_path, use_mir=False, target=None, opt_level=None):
     project_root = Path(__file__).parent
     test_path = Path(test_path)
     executable_name = test_path.stem
-    if os.name == 'nt':
+    # lamina names a PE output `<stem>.exe` whatever the host, so the suffix
+    # follows the target, not `os.name`.
+    if (target or '').endswith('_windows') or (target is None and os.name == 'nt'):
         executable_name += '.exe'
     # Built programs go under target/, which is ignored, so a run never leaves
     # binaries beside the sources or overwrites a tracked file.
