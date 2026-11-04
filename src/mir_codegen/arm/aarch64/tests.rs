@@ -1735,3 +1735,150 @@ fn switch_case_constants_in_range_compare_without_a_register() {
     assert!(!assembly.contains("    cmp x9, x"), "{assembly}");
     assert!(!assembly.contains("mov x9, #7"), "{assembly}");
 }
+
+/// Outgoing stack arguments of a tail call go where the caller's own incoming stack
+/// arguments are, which sits one frame record above the frame pointer. A Windows
+/// variadic callee grows that record to carry its general register save area, so the
+/// two numbers only agree if the tail call reads the variadic area rather than the
+/// fixed sixteen bytes.
+#[test]
+fn a_variadic_tail_call_uses_the_frame_record_its_prologue_pushed() -> Result<(), Box<dyn Error>> {
+    use crate::mir::{Block, Parameter};
+    let mut func = Function::new(
+        Signature::new("relay")
+            .with_params(vec![Parameter::new(
+                Register::Virtual(VirtualReg::gpr(0)),
+                MirType::Scalar(ScalarType::I64),
+            )])
+            .with_return(MirType::Scalar(ScalarType::I64)),
+    );
+    func.sig.variadic = true;
+    let mut block = Block::new("entry");
+    block.push(MirInst::TailCall {
+        name: "next".into(),
+        args: (0..12)
+            .map(|n| Operand::Immediate(Immediate::I64(n)))
+            .collect(),
+    });
+    func.add_block(block);
+
+    for (os, record) in [
+        (TargetOperatingSystem::Windows, 80),
+        (TargetOperatingSystem::Linux, 16),
+        (TargetOperatingSystem::MacOS, 16),
+    ] {
+        let asm = String::from_utf8(
+            compile_single_function_aarch64(
+                "relay",
+                &func,
+                os,
+                &MirCodegenSettings::default(),
+                &AggregateSignatures::empty(PointerWidth::Bits64),
+            )
+            .map_err(|error| error.to_string())?,
+        )?;
+        assert!(
+            asm.contains(&format!("    stp x29, x30, [sp, #-{record}]!\n")),
+            "{os:?}: {asm}"
+        );
+        assert!(
+            asm.contains(&format!("    ldp x29, x30, [sp], #{record}\n")),
+            "{os:?}: {asm}"
+        );
+        for word in 0..4 {
+            let at = record + word * 8;
+            assert!(
+                asm.contains(&format!(", [x29, #{at}]\n")),
+                "{os:?} has no outgoing stack argument at {at}: {asm}"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Apple's divergence from AAPCS64 stage C is for scalars: a stack argument may take
+/// a slot that is not a multiple of eight bytes. A composite is unaffected and still
+/// takes whole slots at an alignment of at least eight. There is no Apple machine
+/// here, so these offsets are checked against the rule rather than against a run.
+#[test]
+fn darwin_packs_scalar_stack_arguments_but_not_composite_ones() {
+    use crate::mir::{AggregateClass, AggregateShape};
+    let composite = |size: usize, align: usize| Aggregate {
+        size,
+        align,
+        class: AggregateClass::Integer,
+        shape: AggregateShape::Composite,
+    };
+    let int = MirType::Scalar(ScalarType::I64);
+    let offsets = |tail: &[(MirType, Option<Aggregate>)], os| {
+        let mut kinds: Vec<ArgKind> = (0..ARGUMENT_REGISTERS)
+            .map(|_| ArgKind::of(int, None, PointerWidth::Bits64))
+            .collect();
+        kinds.extend(
+            tail.iter()
+                .map(|(ty, aggregate)| ArgKind::of(*ty, *aggregate, PointerWidth::Bits64)),
+        );
+        classify_aarch64_arguments(&kinds, os, None)[ARGUMENT_REGISTERS..]
+            .iter()
+            .map(|place| match place {
+                ArgPlace::Stack { offset, .. } => *offset,
+                _ => panic!("the argument is not on the stack"),
+            })
+            .collect::<Vec<_>>()
+    };
+    let byte = (MirType::Scalar(ScalarType::I8), None);
+    let darwin = TargetOperatingSystem::MacOS;
+
+    let scalars = [
+        byte,
+        (MirType::Scalar(ScalarType::I8), None),
+        (MirType::Scalar(ScalarType::I16), None),
+        (MirType::Scalar(ScalarType::I32), None),
+        (MirType::Scalar(ScalarType::I8), None),
+        (int, None),
+    ];
+    assert_eq!(offsets(&scalars, darwin), vec![0, 1, 2, 4, 8, 16]);
+    assert_eq!(
+        offsets(&scalars, TargetOperatingSystem::Linux),
+        vec![0, 8, 16, 24, 32, 40]
+    );
+
+    for (size, align, after) in [(5usize, 1usize, 16usize), (12, 4, 24), (16, 16, 32)] {
+        let shape = (
+            MirType::Scalar(ScalarType::Ptr),
+            Some(composite(size, align)),
+        );
+        assert_eq!(
+            offsets(&[byte, shape, byte], darwin),
+            vec![0, align.max(8), after],
+            "a {size}-byte composite of alignment {align}"
+        );
+    }
+}
+
+/// Apple lets a sixteen-byte-aligned argument start in an odd-numbered `x` register,
+/// where AAPCS64 stage C.8 first rounds the next general register number up to even.
+#[test]
+fn darwin_starts_a_sixteen_byte_argument_in_an_odd_register() {
+    use crate::mir::{AggregateClass, AggregateShape};
+    let wide = Aggregate {
+        size: 16,
+        align: 16,
+        class: AggregateClass::Integer,
+        shape: AggregateShape::WideScalar,
+    };
+    let kinds = [
+        ArgKind::of(MirType::Scalar(ScalarType::I32), None, PointerWidth::Bits64),
+        ArgKind::of(
+            MirType::Scalar(ScalarType::Ptr),
+            Some(wide),
+            PointerWidth::Bits64,
+        ),
+    ];
+    let first = |os| match classify_aarch64_arguments(&kinds, os, None)[1] {
+        ArgPlace::Gpr { first, .. } => first,
+        _ => panic!("the wide argument is not in a register pair"),
+    };
+    assert_eq!(first(TargetOperatingSystem::MacOS), 1);
+    assert_eq!(first(TargetOperatingSystem::Linux), 2);
+}
