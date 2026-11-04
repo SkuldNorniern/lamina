@@ -64,7 +64,3 @@ nightly = [
     "lamina-codegen/nightly",
 ]
 
-[patch.crates-io]
-lamina-platform = { path = "lamina-platform" }
-lamina-mir = { path = "lamina-mir" }
-lamina-codegen = { path = "lamina-codegen" }
