@@ -654,17 +654,17 @@ fn pass_arguments<W: Write>(
         let ArgPlace::Stack(at) = *place else {
             continue;
         };
-        match copies[index] {
-            Some(copy) => abi::address(writer, T0, SP, copy)?,
+        match (copies[index], kind.aggregate) {
+            (Some(copy), _) => abi::address(writer, T0, SP, copy)?,
             // A float keeps the left half of its doubleword, which is where the
             // callee reads it from; its bits have to be placed there, not loaded as
             // an integer from a slot that holds them the same way.
-            None if kind.float() => {
+            (None, _) if kind.float() => {
                 load_argument_float(arg, kind, writer, slots, STACK_FLOAT)?;
                 writeln!(writer, "    lgdr {T0}, {STACK_FLOAT}")?;
             }
             // A by-value aggregate puts its own bytes in the slot, not its address.
-            None if let Some(aggregate) = kind.aggregate => {
+            (None, Some(aggregate)) => {
                 let packed = abi::packed(aggregate.size)
                     .ok_or_else(|| unsupported("s390x aggregate has no register form"))?;
                 load_operand(arg, writer, slots, T0)?;
@@ -673,7 +673,7 @@ fn pass_arguments<W: Write>(
                 abi::memory(writer, packed.store, T0, SP, at, T1)?;
                 continue;
             }
-            None => load_operand(arg, writer, slots, T0)?,
+            (None, None) => load_operand(arg, writer, slots, T0)?,
         }
         abi::memory(writer, "stg", T0, SP, abi::outgoing_stack_offset(at), T1)?;
     }
@@ -689,15 +689,15 @@ fn pass_arguments<W: Write>(
         let ArgPlace::Gpr(bank) = *place else {
             continue;
         };
-        match copies[index] {
-            Some(copy) => abi::address(writer, ARG_GPRS[bank], SP, copy)?,
-            None if let Some(aggregate) = kind.aggregate => {
+        match (copies[index], kind.aggregate) {
+            (Some(copy), _) => abi::address(writer, ARG_GPRS[bank], SP, copy)?,
+            (None, Some(aggregate)) => {
                 let packed = abi::packed(aggregate.size)
                     .ok_or_else(|| unsupported("s390x aggregate has no register form"))?;
                 load_operand(arg, writer, slots, ARG_GPRS[bank])?;
                 abi::memory(writer, packed.load, ARG_GPRS[bank], ARG_GPRS[bank], 0, T0)?;
             }
-            None => load_operand(arg, writer, slots, ARG_GPRS[bank])?,
+            (None, None) => load_operand(arg, writer, slots, ARG_GPRS[bank])?,
         }
     }
     Ok(())
