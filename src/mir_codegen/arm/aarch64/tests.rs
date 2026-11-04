@@ -1239,6 +1239,23 @@ fn elf_initialized_thread_local_goes_to_tdata() {
 }
 
 #[test]
+fn named_section_takes_coff_flags_on_windows() -> Result<(), Box<dyn Error>> {
+    let ir = "@section(\".text.custom\")\nfn @placed(i64 %x) -> i64 {\nentry:\n  ret.i64 %x\n}\n";
+    let windows = emit_aarch64(ir, "coff_section", TargetOperatingSystem::Windows)?;
+    assert!(
+        windows.contains("    .section .text.custom,\"xr\"\n"),
+        "{windows}"
+    );
+    assert!(!windows.contains("@progbits"), "{windows}");
+    let linux = emit_aarch64(ir, "elf_section", TargetOperatingSystem::Linux)?;
+    assert!(
+        linux.contains("    .section .text.custom,\"ax\",@progbits\n"),
+        "{linux}"
+    );
+    Ok(())
+}
+
+#[test]
 fn thread_locals_stay_refused_on_coff() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "@thread_local global $t: i64 = 0\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $t\n  ret.i64 %a\n}\n";
