@@ -88,14 +88,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
+      # weld is a bin target of this crate, so this places it beside lamina and no
+      # separate install step can leave a stale linker behind. GNU ld cannot produce
+      # PE or Mach-O, so without weld every testcase on Windows and macOS would fail
+      # at the link step and the count would say nothing about codegen.
       - name: Build compiler
         run: cargo build --release
-      # GNU ld cannot produce PE or Mach-O, so without weld every testcase on
-      # Windows and macOS fails at the link step and the count says nothing
-      # about codegen. Linux links with GNU ld and is left alone.
-      - name: Install weld
-        if: runner.os != 'Linux'
-        run: cargo install --git https://github.com/Project-Lamina/weld --locked lamina-weld
       # run_tests.py decides what counts as a crash, which testcase a target
       # variant replaces, and whether a missing .expected is a failure. Nothing
       # else checks that logic.

@@ -5,6 +5,7 @@ members = ["lamina-codegen", "lamina-ir", "lamina-mir", "lamina-platform"]
 [package]
 name = "lamina"
 version = "0.2.0"
+default-run = "lamina"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Eira <eira@nornity.com>"]
@@ -33,8 +34,14 @@ workspace = true
 name = "lamina"
 path = "src/main.rs"
 
+# Installed beside `lamina` so the default toolchain needs no separate linker.
+[[bin]]
+name = "weld"
+path = "src/bin/weld.rs"
+
 [dependencies]
 ras = { package = "lamina-ras", version = "0.2.3", features = ["encoder"] }
+weld = { package = "lamina-weld", version = "0.2.3" }
 lamina-ir = { path = "lamina-ir", version = "0.2.0" }
 lamina-platform = { path = "lamina-platform", version = "0.2.0" }
 lamina-mir = { path = "lamina-mir", version = "0.2.0" }
