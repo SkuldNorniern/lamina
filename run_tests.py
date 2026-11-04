@@ -399,7 +399,7 @@ def run_raw_output(argv, project_root):
         )
     return True, result.stdout.replace(b"\r\n", b"\n")
 
-def compile_and_run_test(test_path, use_mir=False, target=None):
+def compile_and_run_test(test_path, use_mir=False, target=None, opt_level=None):
     """Compile and run a test case, return the output lines"""
     project_root = Path(__file__).parent
     test_path = Path(test_path)
@@ -422,9 +422,11 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
     # Compile the test
     cmd_flags = "--emit-asm" if use_mir else ""
     target_flag = f"--target {target}" if target else ""
+    opt_flag = f"--opt-level {opt_level}" if opt_level is not None else ""
     source_path = testcase_source(test_path, target or host_variant())
     compile_cmd = (
-        f'cargo run --release --quiet -- {source_path} {cmd_flags} {target_flag} -o "{executable_path}"'
+        f'cargo run --release --quiet -- {source_path} {cmd_flags} {target_flag} '
+        f'{opt_flag} -o "{executable_path}"'
     )
     success, stdout, stderr, _ = run_command(compile_cmd, cwd=project_root)
 
@@ -450,7 +452,7 @@ def compile_and_run_test(test_path, use_mir=False, target=None):
 
     return True, output_lines
 
-def run_tests(use_mir=False, target=None, report_only=False):
+def run_tests(use_mir=False, target=None, report_only=False, opt_level=None):
     crashes = Path(__file__).parent / 'target' / 'crashes.txt'
     try:
         crashes.parent.mkdir(parents=True, exist_ok=True)
@@ -499,7 +501,7 @@ def run_tests(use_mir=False, target=None, report_only=False):
             failed += 1
             continue
 
-        success, result = compile_and_run_test(test_path, use_mir, target)
+        success, result = compile_and_run_test(test_path, use_mir, target, opt_level)
         
         if not success:
             print_colored(f"\n❌ FAILED {test_name}: {result}", Colors.RED)
@@ -613,6 +615,11 @@ if __name__ == "__main__":
     parser.add_argument('--target', choices=sorted(CROSS_TARGETS),
                         help='Compile for a cross target and run under its emulator; '
                              'skipped with a message when the toolchain is absent')
+    parser.add_argument('--opt-level', type=int, choices=[0, 1, 2, 3],
+                        help='Compile at this optimization level instead of the CLI '
+                             'default; without it the suite never executes code built '
+                             'by sroa, mem2reg, peephole, unrolling, CSE, the scheduler '
+                             'or rotation')
     parser.add_argument('--report-only', action='store_true',
                         help='Print the counts and exit 0 even when testcases fail, '
                              'for platforms whose backend is still incomplete')
@@ -624,4 +631,4 @@ if __name__ == "__main__":
     elif args.test:
         run_single_test(args.test, args.mir, args.target)
     else:
-        run_tests(args.mir, args.target, args.report_only)
+        run_tests(args.mir, args.target, args.report_only, args.opt_level)
