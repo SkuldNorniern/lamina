@@ -131,8 +131,7 @@ pub fn compile_to_runtime(
                 if jit_debug {
                     unsafe {
                         let remaining = code.len().saturating_sub(offset);
-                        let bytes =
-                            slice::from_raw_parts(adjusted, min(128, remaining));
+                        let bytes = slice::from_raw_parts(adjusted, min(128, remaining));
                         eprintln!(
                             "[JIT-DEBUG] First 32 bytes at function: {:02x?}",
                             bytes.iter().take(32).collect::<Vec<_>>()

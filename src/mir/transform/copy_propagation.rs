@@ -1,9 +1,11 @@
 //! Copy propagation transform for MIR.
 
 use crate::mir::{
-    AddressMode, AsmOperand, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
+    AddressMode, AsmOperand, Block, Function, Immediate, Instruction, IntBinOp, MirType, Operand,
+    Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
+use lamina_platform::PointerWidth;
 use std::collections::HashMap;
 
 fn as_reg(operand: &Operand) -> Option<&Register> {
@@ -46,6 +48,24 @@ fn identity_copy_source(instr: &Instruction) -> Option<(&Register, &Register)> {
     Some((dst, src))
 }
 
+/// An `IntConvert` from a whole-word type to itself changes no bits, so it is a copy.
+/// A pointer to integer conversion stays: the verifier holds the two types apart.
+fn same_width_convert_as_copy(instr: &Instruction, pointer: PointerWidth) -> Option<Instruction> {
+    let Instruction::IntConvert {
+        from, to, dst, src, ..
+    } = instr
+    else {
+        return None;
+    };
+    (from == to && !from.is_vector() && !from.is_float() && from.size_bytes(pointer) == 8).then(
+        || Instruction::Copy {
+            ty: *to,
+            dst: dst.clone(),
+            src: src.clone(),
+        },
+    )
+}
+
 /// Copy propagation transform that replaces variable uses with their source values.
 #[derive(Default)]
 pub struct CopyPropagation;
@@ -75,10 +95,11 @@ impl Transform for CopyPropagation {
 impl CopyPropagation {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
+        let pointer = func.pointer_width;
 
         // Apply copy propagation within each basic block (safe: no control flow issues)
         for block in &mut func.blocks {
-            if self.propagate_copies_in_block(block) {
+            if self.propagate_copies_in_block(block, pointer) {
                 changed = true;
             }
         }
@@ -86,7 +107,7 @@ impl CopyPropagation {
         Ok(changed)
     }
 
-    fn propagate_copies_in_block(&self, block: &mut Block) -> bool {
+    fn propagate_copies_in_block(&self, block: &mut Block, pointer: PointerWidth) -> bool {
         let mut changed = false;
         let mut value_map: HashMap<Register, Operand> = HashMap::new();
         // Keys that were mapped to a given register, so a redefinition finds them
@@ -100,6 +121,11 @@ impl CopyPropagation {
             let mut new_instr = instr.clone();
 
             if self.propagate_copies(&mut new_instr, &value_map) {
+                changed = true;
+            }
+
+            if let Some(copy) = same_width_convert_as_copy(&new_instr, pointer) {
+                new_instr.instr = copy;
                 changed = true;
             }
 
@@ -270,9 +296,53 @@ impl CopyPropagation {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, MirType, ScalarType, VirtualReg, transform::test_utils::get_block,
-    };
+    use crate::mir::{FunctionBuilder, ScalarType, VirtualReg, transform::test_utils::get_block};
+
+    fn convert_then_use(from: ScalarType, to: ScalarType) -> Function {
+        let reg = |id| Register::Virtual(VirtualReg::gpr(id));
+        FunctionBuilder::new("test")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntConvert {
+                from: MirType::Scalar(from),
+                to: MirType::Scalar(to),
+                signed: false,
+                dst: reg(1),
+                src: Operand::Register(reg(0)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(reg(1))),
+            })
+            .build()
+    }
+
+    #[test]
+    fn whole_word_convert_is_a_copy() {
+        let mut func = convert_then_use(ScalarType::I64, ScalarType::I64);
+        assert!(CopyPropagation.apply(&mut func).unwrap());
+        let block = get_block(&func, "entry");
+        assert!(matches!(
+            block.instructions[0].instr,
+            Instruction::Copy { .. }
+        ));
+        assert!(matches!(
+            &block.instructions[1].instr,
+            Instruction::Ret { value: Some(Operand::Register(r)) } if *r == Register::Virtual(VirtualReg::gpr(0))
+        ));
+    }
+
+    #[test]
+    fn narrowing_and_pointer_converts_stay() {
+        for to in [ScalarType::I32, ScalarType::Ptr] {
+            let mut func = convert_then_use(ScalarType::I64, to);
+            CopyPropagation.apply(&mut func).unwrap();
+            let block = get_block(&func, "entry");
+            assert!(matches!(
+                block.instructions[0].instr,
+                Instruction::IntConvert { .. }
+            ));
+        }
+    }
 
     #[test]
     fn test_copy_propagation_basic() {
