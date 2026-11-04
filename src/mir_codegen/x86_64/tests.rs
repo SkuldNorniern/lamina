@@ -2175,17 +2175,15 @@ fn coff_refuses_protected_global_by_name() {
 }
 
 #[test]
-fn coff_weak_and_hidden_globals_emit_their_directives() {
-    for (annotation, global, directive) in [
-        ("@weak", "w", ".weak w"),
-        ("@hidden", "h", ".local h"),
-        ("@internal", "i", ".local i"),
-    ] {
+fn coff_weak_and_hidden_globals_stay_external() {
+    for (annotation, global, directive) in [("@weak", "w", ".weak w"), ("@hidden", "h", ".globl h")]
+    {
         let source = format!(
             "{annotation} global ${global}: i64 = 1\nfn @main() -> i64 {{\nentry:\n    ret.i64 0\n}}\n"
         );
         let text = x86_64_global_linkage_for(&source, TargetOperatingSystem::Windows)
             .expect("accepted on COFF");
-        assert!(text.contains(directive), "{directive}: {text}");
+        assert!(text.lines().any(|l| l == directive), "{directive}: {text}");
+        assert!(!text.contains(".local"), "{annotation}: {text}");
     }
 }

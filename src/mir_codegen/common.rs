@@ -2803,7 +2803,13 @@ entry:
     #[test]
     fn coff_targets_emit_no_elf_visibility_directives() {
         let text = emit_unprotected_visibility_module(TargetOperatingSystem::Windows);
-        for directive in [".hidden", ".protected", ".internal", ".private_extern"] {
+        for directive in [
+            ".hidden",
+            ".protected",
+            ".internal",
+            ".local",
+            ".private_extern",
+        ] {
             assert!(!text.contains(directive), "{directive}: {text}");
         }
     }
