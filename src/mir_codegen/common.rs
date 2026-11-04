@@ -1377,10 +1377,14 @@ fn write_global_storage<W: Write>(
     Ok(())
 }
 
-/// The symbol of a thread-local's TLV descriptor. Source identifiers have no dots, so
-/// the suffix cannot collide with a mangled global.
-pub fn macho_tlv_descriptor(label: &str) -> String {
-    format!("{label}.tlv")
+/// The symbol of a thread-local's storage bytes.
+///
+/// dyld's contract puts the variable's own name on the `__thread_vars` descriptor, not on
+/// the storage: a reference to a thread local loads the descriptor's first word and calls
+/// it. The storage therefore needs a separate, file-local name, and `$tlv$init` is the one
+/// the Darwin toolchain uses.
+pub fn macho_tlv_storage(label: &str) -> String {
+    format!("{label}$tlv$init")
 }
 
 /// Emits the thread-local globals of a Mach-O target. Each gets a 24-byte TLV descriptor
@@ -1388,6 +1392,9 @@ pub fn macho_tlv_descriptor(label: &str) -> String {
 /// storage address, which the linker turns into the offset from the template start. The
 /// storage itself goes to `__thread_data` when it has a nonzero initializer, else to
 /// `__thread_bss`.
+///
+/// The descriptor carries the global's own symbol, so an exported thread local exports the
+/// descriptor; the storage is never exported.
 pub fn emit_macho_thread_local_globals<W: Write>(
     writer: &mut W,
     module: &MirModule,
@@ -1410,16 +1417,16 @@ pub fn emit_macho_thread_local_globals<W: Write>(
     for name in &names {
         let label = mangle(name);
         writeln!(writer, ".p2align 3")?;
-        writeln!(writer, "{}:", macho_tlv_descriptor(&label))?;
+        writeln!(writer, "{label}:")?;
         writeln!(writer, "    .quad __tlv_bootstrap")?;
         writeln!(writer, "    .quad 0")?;
-        writeln!(writer, "    .quad {label}")?;
+        writeln!(writer, "    .quad {}", macho_tlv_storage(&label))?;
     }
     for name in names {
         let global = &module.globals[name];
         write_global_storage(
             writer,
-            &mangle(name),
+            &macho_tlv_storage(&mangle(name)),
             global,
             ".section __DATA,__thread_data,thread_local_regular",
             ".section __DATA,__thread_bss,thread_local_zerofill",

@@ -1141,24 +1141,24 @@ fn macho_thread_locals_use_tlv_descriptors_and_thread_sections() -> Result<(), B
     let asm = String::from_utf8(out)?;
     for symbol in ["_t", "_u"] {
         let access = format!(
-            "    adrp x0, {symbol}.tlv@TLVPPAGE\n    ldr x0, [x0, {symbol}.tlv@TLVPPAGEOFF]\n    ldr x8, [x0]\n    blr x8\n"
+            "    adrp x0, {symbol}@TLVPPAGE\n    ldr x0, [x0, {symbol}@TLVPPAGEOFF]\n    ldr x8, [x0]\n    blr x8\n"
         );
         assert!(asm.contains(&access), "{asm}");
     }
     assert!(
         asm.contains(
-            ".section __DATA,__thread_vars,thread_local_variables\n.p2align 3\n_t.tlv:\n    .quad __tlv_bootstrap\n    .quad 0\n    .quad _t\n.p2align 3\n_u.tlv:\n    .quad __tlv_bootstrap\n    .quad 0\n    .quad _u\n"
+            ".section __DATA,__thread_vars,thread_local_variables\n.p2align 3\n_t:\n    .quad __tlv_bootstrap\n    .quad 0\n    .quad _t$tlv$init\n.p2align 3\n_u:\n    .quad __tlv_bootstrap\n    .quad 0\n    .quad _u$tlv$init\n"
         ),
         "{asm}"
     );
     assert!(
         asm.contains(
-            ".section __DATA,__thread_bss,thread_local_zerofill\n.p2align 3\n_t:\n    .zero 8\n"
+            ".section __DATA,__thread_bss,thread_local_zerofill\n.p2align 3\n_t$tlv$init:\n    .zero 8\n"
         ),
         "{asm}"
     );
     assert!(
-        asm.contains(".section __DATA,__thread_data,thread_local_regular\n.p2align 3\n_u:\n    .byte 0x05, 0x00"),
+        asm.contains(".section __DATA,__thread_data,thread_local_regular\n.p2align 3\n_u$tlv$init:\n    .byte 0x05, 0x00"),
         "{asm}"
     );
     assert!(!asm.contains(".tdata") && !asm.contains(".tbss"), "{asm}");

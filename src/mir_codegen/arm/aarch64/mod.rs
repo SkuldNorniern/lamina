@@ -1165,7 +1165,7 @@ fn emit_block<W: Write>(
                     return Err(unsupported_thread_local("AArch64"));
                 }
                 if os_uses_macho(target_os) {
-                    let descriptor = macho_tlv_descriptor(&abi.mangle_function_name(symbol));
+                    let descriptor = abi.mangle_function_name(symbol);
                     writeln!(w, "    adrp x0, {descriptor}@TLVPPAGE")?;
                     writeln!(w, "    ldr x0, [x0, {descriptor}@TLVPPAGEOFF]")?;
                     writeln!(w, "    ldr x8, [x0]")?;
