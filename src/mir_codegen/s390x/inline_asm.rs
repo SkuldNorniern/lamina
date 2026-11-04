@@ -8,17 +8,18 @@
 //! through `%r15`. The three registers that are live across the body — the frame pointer,
 //! the stack pointer and the saved entry stack pointer — are refused instead.
 
-use super::abi::A0;
+use super::abi::{A0, ENTRY, FP, SP};
 use super::extend_integer;
 use super::operand::{Slots, load_float_operand, load_operand, store_register, unsupported};
+use crate::mir_codegen::inline_asm::{
+    Binding, GPR_CLASS, RegisterFacts, expand_template, output_register, result_is_bool,
+    spell_percent,
+};
 use crate::{
     error::LaminaError,
-    mir::{AsmOperand, Instruction as MirInst, MirType, Register, ScalarType},
+    mir::{AsmOperand, Instruction as MirInst, Register},
 };
 use std::io::Write;
-
-/// The register class accepted in place of a named register.
-const GPR_CLASS: &str = "reg";
 
 const GPRS: [&str; 16] = [
     "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14",
@@ -31,17 +32,26 @@ const FPRS: [&str; 16] = [
 ];
 
 /// Registers the emitted body depends on between instructions: the frame pointer, the
-/// stack pointer, and the entry stack pointer an over-aligned frame keeps aside.
-const RESERVED: [&str; 3] = ["r9", "r11", "r15"];
+/// stack pointer, and the entry stack pointer an over-aligned frame keeps aside. Named
+/// by the ABI constants so that renumbering one breaks this refusal instead of silently
+/// leaving the register open to inline asm.
+const RESERVED: [&str; 3] = [ENTRY, FP, SP];
+
+fn is_reserved(name: &str) -> bool {
+    RESERVED
+        .iter()
+        .any(|reserved| reserved.strip_prefix('%') == Some(name))
+}
 
 /// Registers a `reg` operand may be given, in the order they are tried.
 const REG_CLASS_POOL: [&str; 8] = ["r2", "r3", "r4", "r5", "r1", "r10", "r12", "r13"];
 
-/// The physical register bound to one operand, and how the template spells it.
-pub(super) struct Binding {
-    reg: &'static str,
-    spelled: String,
-}
+const FACTS: RegisterFacts = RegisterFacts {
+    operand: named_register,
+    clobber: clobber_register,
+    spell: spell_percent,
+    pool: &REG_CLASS_POOL,
+};
 
 fn is_fpr(reg: &str) -> bool {
     FPRS.contains(&reg)
@@ -58,7 +68,7 @@ fn unknown_register(name: &str) -> LaminaError {
 
 /// Resolves a register name written in an operand or a clobber to its canonical spelling.
 fn named_register(name: &str) -> Result<&'static str, LaminaError> {
-    if RESERVED.contains(&name) {
+    if is_reserved(name) {
         return Err(LaminaError::ValidationError(format!(
             "register '{name}' is reserved by the s390x backend and cannot be named by inline \
              asm; %r11 is the frame pointer, %r15 the stack pointer and %r9 the entry stack \
@@ -72,115 +82,15 @@ fn named_register(name: &str) -> Result<&'static str, LaminaError> {
         .ok_or_else(|| unknown_register(name))
 }
 
-fn location(operand: &AsmOperand) -> &str {
-    match operand {
-        AsmOperand::Input { location, .. } | AsmOperand::Output { location } => location,
-    }
+fn clobber_register(name: &str) -> Result<Option<&'static str>, LaminaError> {
+    named_register(name).map(Some)
 }
 
-/// Binds every operand to a physical register. Named operands keep their spelling; `reg`
-/// operands take the first pool register that no named operand or clobber uses.
 pub(super) fn bind(
     operands: &[AsmOperand],
     clobbers: &[String],
 ) -> Result<Vec<Binding>, LaminaError> {
-    let mut taken: Vec<&'static str> = Vec::new();
-    let mut bindings: Vec<Option<Binding>> = Vec::with_capacity(operands.len());
-    for operand in operands {
-        let name = location(operand);
-        if name == GPR_CLASS {
-            bindings.push(None);
-            continue;
-        }
-        let reg = named_register(name)?;
-        if taken.contains(&reg) {
-            return Err(LaminaError::ValidationError(format!(
-                "register '{name}' is used by two inline asm operands"
-            )));
-        }
-        taken.push(reg);
-        bindings.push(Some(Binding {
-            reg,
-            spelled: format!("%{reg}"),
-        }));
-    }
-    for clobber in clobbers {
-        if matches!(clobber.as_str(), "memory" | "flags") {
-            continue;
-        }
-        let reg = named_register(clobber)?;
-        if !taken.contains(&reg) {
-            taken.push(reg);
-        }
-    }
-    let mut resolved = Vec::with_capacity(bindings.len());
-    for binding in bindings {
-        if let Some(binding) = binding {
-            resolved.push(binding);
-            continue;
-        }
-        let reg = REG_CLASS_POOL
-            .iter()
-            .copied()
-            .find(|candidate| !taken.contains(candidate))
-            .ok_or_else(|| {
-                LaminaError::ValidationError(
-                    "no free register for an inline asm 'reg' operand".to_owned(),
-                )
-            })?;
-        taken.push(reg);
-        resolved.push(Binding {
-            reg,
-            spelled: format!("%{reg}"),
-        });
-    }
-    Ok(resolved)
-}
-
-/// Replaces `$n` with the spelling of operand `n` and `$$` with `$`, and decodes the
-/// escapes `\n`, `\t`, `\\` and `\"`. Everything else is passed through untouched.
-fn expand_template(template: &str, bindings: &[Binding]) -> Result<String, LaminaError> {
-    let mut out = String::with_capacity(template.len());
-    let mut chars = template.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '$' => {
-                if chars.peek() == Some(&'$') {
-                    chars.next();
-                    out.push('$');
-                    continue;
-                }
-                let mut digits = String::new();
-                while let Some(d) = chars.peek().copied().filter(char::is_ascii_digit) {
-                    digits.push(d);
-                    chars.next();
-                }
-                let index: usize = digits.parse().map_err(|_| {
-                    LaminaError::ValidationError("malformed `$` in inline asm template".to_owned())
-                })?;
-                let binding = bindings.get(index).ok_or_else(|| {
-                    LaminaError::ValidationError(format!(
-                        "inline asm template uses ${index}, but the instruction has {} operand(s)",
-                        bindings.len()
-                    ))
-                })?;
-                out.push_str(&binding.spelled);
-            }
-            '\\' => match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('\\') => out.push('\\'),
-                Some('"') => out.push('"'),
-                Some(other) => {
-                    out.push('\\');
-                    out.push(other);
-                }
-                None => out.push('\\'),
-            },
-            other => out.push(other),
-        }
-    }
-    Ok(out)
+    FACTS.bind(operands, clobbers)
 }
 
 pub(super) fn emit<W: Write>(
@@ -205,8 +115,8 @@ pub(super) fn emit<W: Write>(
 
     for (operand, binding) in operands.iter().zip(&bindings) {
         if let AsmOperand::Input { value, .. } = operand {
-            let dst = format!("%{}", binding.reg);
-            if is_fpr(binding.reg) {
+            let dst = format!("%{}", binding.phys);
+            if is_fpr(binding.phys) {
                 load_float_operand(value, writer, slots, &dst, false)?;
             } else {
                 load_operand(value, writer, slots, &dst)?;
@@ -224,14 +134,7 @@ pub(super) fn emit<W: Write>(
     let Some((dst, ty)) = result else {
         return Ok(());
     };
-    let output = operands
-        .iter()
-        .zip(&bindings)
-        .find(|(operand, _)| matches!(operand, AsmOperand::Output { .. }))
-        .map(|(_, binding)| binding.reg)
-        .ok_or_else(|| {
-            LaminaError::ValidationError("asm.T instruction has no out(...) operand".to_owned())
-        })?;
+    let output = output_register(operands, &bindings)?;
     if is_fpr(output) {
         return Err(LaminaError::ValidationError(format!(
             "inline asm result of type {ty} is read from the floating-point register \
@@ -242,7 +145,7 @@ pub(super) fn emit<W: Write>(
     if source != A0 {
         writeln!(writer, "    lgr {A0}, {source}")?;
     }
-    extend_integer(writer, A0, ty, signed_result(ty))?;
+    extend_integer(writer, A0, ty, !result_is_bool(ty))?;
     match dst {
         Register::Virtual(vreg) => store_register(A0, vreg, writer, slots),
         Register::Physical(physical) => {
@@ -255,16 +158,10 @@ pub(super) fn emit<W: Write>(
     }
 }
 
-/// How a result narrower than a doubleword is widened into its slot, matching the
-/// canonical form the rest of the backend keeps: `i1` zero-extended, the rest signed.
-fn signed_result(ty: &MirType) -> bool {
-    !matches!(ty, MirType::Scalar(ScalarType::I1))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{Operand, VirtualReg};
+    use crate::mir::{MirType, Operand, ScalarType, VirtualReg};
     use std::collections::HashMap;
 
     fn out(location: &str) -> AsmOperand {
