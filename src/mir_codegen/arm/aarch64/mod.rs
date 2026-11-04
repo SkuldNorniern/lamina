@@ -22,11 +22,11 @@ use crate::mir_codegen::common::unsupported_io;
 use crate::mir_codegen::common::{
     ClobberIndex, CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, emit_macho_thread_local_globals, emit_static_global_data,
-    emit_symbol_visibility, integer_conversion, macho_tlv_descriptor, self_tail_arguments,
-    self_tail_schedule,
+    emit_symbol_visibility, integer_conversion, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
 use crate::mir_codegen::common::{reject_thread_local_globals, unsupported_thread_local};
+use crate::mir_codegen::macho_unwind;
 use crate::mir_codegen::simd::reserve_vector_slots;
 use lamina_mir::{SourceLoc, TlsModel};
 
@@ -982,6 +982,10 @@ fn compile_single_function_aarch64_with(
     if unwind {
         writeln!(output, "    .cfi_restore_state").map_err(io_error)?;
         writeln!(output, "    .cfi_endproc").map_err(io_error)?;
+    }
+    if let Some(encoding) = macho_unwind::plan_aarch64(target_os, frame_record, &callee_saved) {
+        writeln!(output, "{}:", macho_unwind::function_end_label(&label)).map_err(io_error)?;
+        macho_unwind::emit(&mut output, &label, encoding).map_err(io_error)?;
     }
 
     Ok(output)

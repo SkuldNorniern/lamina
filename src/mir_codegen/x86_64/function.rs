@@ -8,6 +8,7 @@ use crate::mir_codegen::common::emit_source_loc;
 use crate::mir_codegen::common::io_codegen_error;
 use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::{ClobberIndex, FunctionEmissionPlan};
+use crate::mir_codegen::macho_unwind;
 use lamina_mir::EightbyteClass;
 use lamina_platform::TargetArchitecture;
 
@@ -288,6 +289,8 @@ pub(super) fn compile_single_function_x86_64(
         total_slots,
         stack_size,
     );
+    let compact_unwind =
+        macho_unwind::plan_x86_64(target_os, naked, has_frame, &saved_regs, total_slots);
     if has_frame {
         X86Frame::generate_prologue(
             &mut output,
@@ -638,6 +641,11 @@ pub(super) fn compile_single_function_x86_64(
         writeln!(output, "{}:", super::unwind::function_end_label(&label))
             .map_err(io_codegen_error)?;
         super::unwind::emit(&mut output, &label, &windows_unwind).map_err(io_codegen_error)?;
+    }
+    if let Some(encoding) = compact_unwind {
+        writeln!(output, "{}:", macho_unwind::function_end_label(&label))
+            .map_err(io_codegen_error)?;
+        macho_unwind::emit(&mut output, &label, encoding).map_err(io_codegen_error)?;
     }
     Ok(strip_self_moves(output.inner))
 }

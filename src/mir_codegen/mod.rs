@@ -11,6 +11,7 @@ pub mod i686;
 pub mod limits;
 pub mod link;
 pub mod loongarch64;
+pub mod macho_unwind;
 pub mod mips64;
 pub mod ptx;
 pub mod s390x;
