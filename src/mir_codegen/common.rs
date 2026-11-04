@@ -855,15 +855,21 @@ fn place_function_assembly(
 }
 
 /// The directive that opens the section a `@section` name places code in. COFF and ELF
-/// take any section name. Mach-O names a section by a `segment,section` pair of at most 16
-/// bytes each, so the only names with a mapping are `.text`, which stays in `__TEXT,__text`,
-/// and `.text.<name>`, which goes to `__TEXT,__<name>` when `<name>` is 1 to 14 bytes of
-/// ASCII letters, digits and underscores. Any other name is refused.
+/// take any section name, and COFF spells the flags of code as `axr`, without a section
+/// type: a COFF assembler reads `x` and `r` and ignores `a`, and one that reads ELF
+/// letters needs `a` to keep the section allocated. Mach-O names a section by a
+/// `segment,section` pair of at most 16 bytes each, so the only names with a mapping are
+/// `.text`, which stays in `__TEXT,__text`, and `.text.<name>`, which goes to
+/// `__TEXT,__<name>` when `<name>` is 1 to 14 bytes of ASCII letters, digits and
+/// underscores. Any other name is refused.
 fn code_section_directive(
     func_name: &str,
     name: &str,
     target_os: TargetOperatingSystem,
 ) -> Result<String, CodegenError> {
+    if os_uses_coff(target_os) {
+        return Ok(format!("    .section {name},\"axr\"\n"));
+    }
     if !os_uses_macho(target_os) || name == ".text" {
         return Ok(format!("    .section {name},\"ax\",@progbits\n"));
     }
