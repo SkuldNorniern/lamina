@@ -1516,6 +1516,32 @@ mod tests {
     }
 
     #[test]
+    fn user_objects_link_ahead_of_the_c_library() {
+        let mut targets = vec![Target::new(
+            TargetArchitecture::Aarch64,
+            TargetOperatingSystem::MacOS,
+        )];
+        // A glibc link needs the host compiler's C runtime objects.
+        if cfg!(target_os = "linux") {
+            targets.push(Target::detect_host().expect("linux host is a target"));
+        }
+        for target in targets {
+            let args = build_unix_linker_args(
+                Path::new("module.o"),
+                Path::new("module"),
+                &target,
+                &[],
+                &["user.o".to_string()],
+            )
+            .expect("link arguments");
+            let user = args.iter().position(|a| a == "user.o");
+            let libc = args.iter().position(|a| a == "-lc" || a == "-lSystem");
+            assert!(user.is_some() && libc.is_some(), "{args:?}");
+            assert!(user < libc, "{args:?}");
+        }
+    }
+
+    #[test]
     fn a_freestanding_target_links_no_libc_and_no_compiler_runtime() {
         let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
             .with_environment(TargetEnvironment::Freestanding)
