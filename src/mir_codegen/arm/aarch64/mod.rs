@@ -216,6 +216,13 @@ fn copy_through_pointer<W: Write>(
 
 /// Places `kinds` by AAPCS64. `fixed` is the count of named arguments when the callee
 /// is variadic, which Darwin needs because it puts the rest on the stack.
+///
+/// Writing ARM64 Code for Apple Platforms, "Pass arguments to functions correctly":
+/// a stack argument may consume a slot that is not a multiple of eight bytes. The
+/// divergence reaches scalars only -- a composite still takes whole slots at an
+/// alignment of at least eight, as AAPCS64 stage C requires. The same section lets a
+/// sixteen-byte-aligned argument start in an odd-numbered `x` register, where AAPCS64
+/// stage C.8 rounds the next general register number up to even.
 fn classify_aarch64_arguments(
     kinds: &[ArgKind],
     target_os: TargetOperatingSystem,
@@ -228,7 +235,8 @@ fn classify_aarch64_arguments(
     let mut stack = 0;
     let mut places = Vec::with_capacity(kinds.len());
     // Linux gives every stack argument a whole eight-byte slot. Darwin packs a named
-    // one at its natural size and alignment, and gives a variadic one a whole slot.
+    // scalar at its natural size and alignment; a composite and a variadic argument
+    // take whole slots, as AAPCS64 says.
     let honors_alignment = TargetArchitecture::Aarch64.honors_argument_alignment();
     let on_stack = |stack: &mut usize, kind: &ArgKind, packed: bool| {
         let bytes = if packed {
@@ -253,7 +261,7 @@ fn classify_aarch64_arguments(
         // registers are still free.
         let unnamed = fixed.is_some_and(|fixed| index >= fixed);
         let variadic = darwin && unnamed;
-        let packed = darwin && !variadic;
+        let packed = darwin && !variadic && kind.aggregate.is_none();
         if variadic {
             places.push(on_stack(&mut stack, kind, packed));
             continue;
