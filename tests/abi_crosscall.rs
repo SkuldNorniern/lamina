@@ -169,11 +169,14 @@ fn have(tool: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+/// Skip, unless this run is the one that promises the cross toolchain.
+///
+/// `gcc-15-aarch64-linux-gnu` conflicts with `gcc-multilib` on Ubuntu 26, so the
+/// job that tests i686 cannot also host the aarch64 cross compiler. The cross
+/// half runs in a job of its own, which sets `LAMINA_REQUIRE_CROSS_TOOLS`.
 fn skip(reason: &str) -> bool {
-    assert!(
-        env::var_os("LAMINA_REQUIRE_TOOLS").is_none_or(|value| value != "1"),
-        "{reason} (LAMINA_REQUIRE_TOOLS=1)"
-    );
+    let required = env::var_os("LAMINA_REQUIRE_CROSS_TOOLS").is_some_and(|value| value == "1");
+    assert!(!required, "{reason} (LAMINA_REQUIRE_CROSS_TOOLS=1)");
     eprintln!("skipped: {reason}");
     true
 }
