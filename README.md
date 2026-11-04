@@ -22,7 +22,7 @@ I built Lamina for a few reasons:
 
 - **Education**: learn compiler internals by implementing the pieces end-to-end (IR, lowering, optimizations, codegen).
 - **Optimization test playground**: a place to prototype and validate optimization passes without the overhead of a huge existing compiler.
-- **A modern compiler ecosystem**: experiment with a clean IR/MIR split, a small toolchain, and a structure that can grow into more serious tooling over time.
+- **A compiler ecosystem**: experiment with a clean IR/MIR split, a small toolchain, and a structure that can grow into more serious tooling over time.
 
 ## Overview
 
@@ -46,12 +46,13 @@ Lamina IR serves as a mid-level intermediate representation.
 - **Function System**: Typed parameters and returns
 
 ### Capabilities
-- **Targets**: x86_64 Linux is the reference and is the one target executed here. AArch64, RISC-V, s390x, PowerPC64 and WebAssembly emit assembly; see the [targets page](https://lamina.sh/docs/targets) for what each has been run against
+- **Targets**: x86_64 Linux is the reference target. The other targets emit assembly; see the [targets page](https://lamina.sh/docs/targets) for what each has been run against
 - **MIR optimization pipeline**: `--opt-level 0` to `--opt-level 3` with a transform pipeline
 - **Native codegen**: emits assembly without LLVM/Cranelift
+- **JIT**: `--jit` compiles and runs the program in-process; `--sandbox` requires `--jit`
 - **Tests**: an automated test suite
 - **IRBuilder API**: programmatic IR construction
-- **Benchmarks**: included (see below)
+- **Benchmarks**: programs in `benchmarks/`
 
 ## Architecture & Code Generation
 
@@ -68,9 +69,9 @@ level is selected with `--opt-level <0|1|2|3>`. There is no `-O0` spelling; `-O0
 rejected as an unknown argument.
 
 - **`--opt-level 0`**: No optimizations (fastest compilation)
-- **`--opt-level 1`**: Stable, conservative optimizations (CFG simplification, jump threading)
-- **`--opt-level 2`**: Additional optimizations (constant folding, memory optimization, addressing canonicalization)
-- **`--opt-level 3`**: Aggressive optimizations (function inlining, strength reduction)
+- **`--opt-level 1`** (default): CFG simplification, jump threading, branch optimization, dead code elimination
+- **`--opt-level 2`**: adds stack slot splitting and promotion to registers, constant folding, copy propagation, memory optimization, tail-call optimization, peephole, module inlining and bounded loop unrolling
+- **`--opt-level 3`**: adds loop-invariant code motion, induction and strength reduction, CSE, instruction scheduling and loop rotation
 
 The pipeline includes transforms for:
 - Control flow optimization (CFG simplification, jump threading)
@@ -85,7 +86,7 @@ The pipeline includes transforms for:
 Lamina directly generates machine code for multiple target architectures without relying on external backends.
 
 **Notes:**
-- **Targets**: see [Available Targets](#available-targets). x86_64 Linux is the one run here; s390x is run under emulation; the rest are assembly only
+- **Targets**: see [Available Targets](#available-targets). `run_tests.py` runs testcases under qemu-user for s390x, AArch64, RISC-V 64 and ARMv7 when their cross toolchains are installed, and runs i686 natively
 - **No external backend**: no LLVM/Cranelift
 - **Hosts**: Linux is the host the compiler is developed and run on. macOS and Windows objects are written cross from Linux and are not executed here
 
@@ -97,7 +98,7 @@ Lamina directly generates machine code for multiple target architectures without
 - **Function Calls**: Recursive and non-recursive function calls with proper ABI
 - **Memory Operations**: Stack allocation, load and store; heap memory through a `call @malloc`
 - **Type System**: Primitives, arrays, structs, and pointers
-- **I/O Operations**: Raw byte I/O (`write`, `read`, `writebyte`, `readbyte`) on all supported architectures, plus libc calls such as `printf` through `@extern` declarations
+- **I/O Operations**: Raw byte I/O (`write`, `read`, `writebyte`, `readbyte`), plus libc calls such as `printf` through `@extern` declarations. The `x86_64_unknown` and `aarch64_unknown` targets reject `writebyte` at code generation
 - **Optimization Pipeline**: Configurable optimization levels with multiple transform passes
 
 
@@ -120,7 +121,7 @@ Here's a simple example of creating a basic arithmetic function using the Lamina
 
 ```rust
 use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-use lamina::ir::builder::{var, i32};
+use lamina::ir::builder::var;
 
 // Create function: fn @add(i32 %a, i32 %b) -> i32
 let mut builder = IRBuilder::new();
@@ -150,62 +151,30 @@ let mut assembly = Vec::new();
 lamina::compile_lamina_ir_to_target_assembly(
     &format!("{}", module), // Convert module to IR text
     &mut assembly,
-    "x86_64_linux"
+    "x86_64_linux",
+    1, // codegen units
 )?;
 
 println!("Generated assembly:\n{}", String::from_utf8(assembly)?);
 ```
 
-This generates the equivalent Lamina IR:
+The module prints as:
 
 ```lamina
 fn @add(i32 %a, i32 %b) -> i32 {
-  entry:
-    %result = add.i32 %a, %b
-    ret.i32 %result
+entry:
+  %sum = add.i32 %a, %b
+  ret.i32 %sum
 }
 ```
-
-## Performance Benchmarks
-
-The following results are from our 256×256 2D matrix multiplication benchmark (500 runs).
-On this benchmark Lamina is the slowest of the compiled languages measured: about four
-times the runtime of C and about eighteen times that of Zig. It is ahead of the
-interpreted and JIT languages. One benchmark on one machine is not a general
-statement about the backend, but it is the measurement that exists.
-
-
-### Benchmark Results (AMD Ryzen 9 9900X)
-
-| Language   | Time (s) | Performance Ratio | Memory (MB) | Memory Ratio |
-|------------|----------|-------------------|-------------|-------------|
-| Lamina     | 0.0372   | 1.00x (baseline)  | 1.38        | 1.00x       |
-| Zig        | 0.0021   | 0.06x             | 0.50        | 0.36x       |
-| C          | 0.0098   | 0.26x             | 1.50        | 1.09x       |
-| C++        | 0.0101   | 0.27x             | 3.49        | 2.54x       |
-| Go         | 0.0134   | 0.36x             | 1.60        | 1.16x       |
-| Nim        | 0.0134   | 0.36x             | 1.50        | 1.09x       |
-| Rust       | 0.0176   | 0.47x             | 1.91        | 1.39x       |
-| C#         | 0.0333   | 0.90x             | 30.39       | 22.10x      |
-| Java       | 0.0431   | 1.16x             | 42.93       | 31.22x      |
-| PHP        | 0.5720   | 15.37x            | 20.50       | 14.91x      |
-| Ruby       | 1.4744   | 39.63x            | 23.25       | 16.91x      |
-| Python     | 2.2585   | 60.70x            | 12.38       | 9.00x       |
-| JavaScript | 2.7995   | 75.24x            | 53.20       | 38.69x      |
-
-**Notes:**
-- Lower ratios indicate better performance relative to Lamina
-- Statistical outliers were removed using IQR method
-- Memory measurements include peak RSS during execution
-- Results show median values from 500 runs for compiled languages
 
 ## Getting Started
 
 ### Prerequisites
-- The Rust version named by `rust-version` in `Cargo.toml`, on edition 2024
-- macOS, Linux, or Windows
+- The Rust version named by `rust-version` in `Cargo.toml` (1.88), on edition 2024
+- Linux is the host the compiler is developed and run on
 - Clang/GCC only if you ask for one: `-c gnu` or `-c clang`. The default toolchain
-  assembles with `ras` and links with `weld`, both of which come with the compiler.
+  assembles with `ras`, which is linked in as a library, and links with `weld`.
 
 ### Installation
 
@@ -214,13 +183,12 @@ cargo install lamina
 ```
 
 That installs two binaries: `lamina` and `weld`, the linker lamina uses by default.
-Nothing else has to be installed for the default toolchain, and `weld` doubles as a
-standalone `ld` replacement.
+`weld` doubles as a standalone `ld` replacement.
 
-`lamina` looks for `weld` beside itself first and only then on `PATH`, so the copy it
-was built against wins over any other. Set `LAMINA_WELD` to a path to link with a
-different one. A weld older than the one lamina was built against is refused by name,
-rather than left to fail later at a relocation it does not understand.
+`lamina` looks for `weld` beside itself first and only then on `PATH`. Set `LAMINA_WELD`
+to a path to link with a different one. A weld older than 0.2.3 is refused with a
+`[WARN]` that names both versions, and lamina links with GNU ld instead. If no weld is
+found, lamina also falls back to GNU ld with a `[WARN]`.
 
 
 ### Available Targets
@@ -273,7 +241,7 @@ Lamina IR files consist of type declarations, global definitions, and function d
 type !Vec2 = struct { x: f32, y: f32 }
 
 # Global value
-global $message: [5 x i8] = "hello"
+global $message: [6 x i8] = "hello"
 
 # Function with annotations
 @export
@@ -406,8 +374,7 @@ On WebAssembly, the non-WASI target imports these operations from the host under
 
 - **Enhanced Optimizations**: Complete optimization pipeline, loop analysis, auto-vectorization
 - **Language Integration**: C and Rust frontends for compiling to Lamina IR
-- **JIT Compilation**: Dynamic code execution engine
-- **Debugging Tools**: Enhanced debugging information, DWARF support, interactive debugger
+- **Debugging**: `-g` emits `.file`/`.loc` directives. With ras, ELF and Mach-O objects also get minimal DWARF. `ldb` (its own repo) reads it. Parameter locations (`DW_AT_location`) are not emitted yet
 - **GPU Acceleration**: CUDA / Vulkan compute shader support
 - **SIMD Support**: auto-vectorization. Explicit vectors have landed: `<N x T>` as a type suffix, with `splat`, `extractlane`, `insertlane` and `shuffle`
 
