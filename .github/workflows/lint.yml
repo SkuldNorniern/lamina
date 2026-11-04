@@ -32,3 +32,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  msrv:
+    name: "msrv"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The rust-version in Cargo.toml. Stable takes syntax this release rejects,
+      # so only a build on it shows the stated version still holds.
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+      - name: Check on rust-version
+        run: cargo check --workspace --all-targets
