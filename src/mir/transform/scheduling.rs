@@ -172,24 +172,17 @@ impl InstructionScheduling {
             }
         }
 
-        // 5. Control Dependencies
-        // The terminator (Branch/Jmp/Ret) must depend on everything that affects it's condition
-        // or effectively be last.
-        // We ensure terminators are last by giving them implicit dependence on all roots?
-        // Actually, terminators use registers, so RAW covers condition.
-        // But we must ensure no instruction is moved AFTER the terminator.
-        // Since terminator is usually last, and we only schedule valid instructions,
-        // we just ensure the terminator index is constrained.
-        // By construction, terminators shouldn't have successors in the block.
-        // And we simply must ensure all instructions are scheduled.
-
-        // Special case: Make sure the terminator (last instruction) depends on side-effecting ops?
-        // Simpler: Just make the last instruction depend on the last memory op.
-        if let Some(last_inst_idx) = instructions.len().checked_sub(1)
-            && let Some(prev_mem_idx) = last_memory_op
-            && prev_mem_idx != last_inst_idx
+        if let Some(last) = instructions.len().checked_sub(1)
+            && instructions[last].instr.is_terminator()
         {
-            graph.add_edge(prev_mem_idx, last_inst_idx);
+            for prev in 0..last {
+                graph.add_edge(prev, last);
+            }
+        } else if let Some(last) = instructions.len().checked_sub(1)
+            && let Some(prev_mem_idx) = last_memory_op
+            && prev_mem_idx != last
+        {
+            graph.add_edge(prev_mem_idx, last);
         }
 
         graph
