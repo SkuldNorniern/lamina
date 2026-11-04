@@ -159,9 +159,37 @@ fn weak_function_is_a_coff_weak_external_with_its_auxiliary_record() {
     );
 }
 
+const HIDDEN_LEVEL: &str = r#"
+@hidden
+fn @quiet() -> i64 {
+entry:
+    ret.i64 7
+}
+
+@hidden
+@export
+global $level: i64 = 3
+
+fn @main() -> i64 {
+entry:
+    %v = call @quiet()
+    ret.i64 %v
+}
+"#;
+
+#[test]
+fn hidden_visibility_stays_an_external_coff_symbol() {
+    let object = windows_object(HIDDEN_LEVEL);
+    let symbols = coff_symbols(&object);
+    assert_eq!(find(&symbols, "quiet").1.class, IMAGE_SYM_CLASS_EXTERNAL);
+    assert_eq!(find(&symbols, "level").1.class, IMAGE_SYM_CLASS_EXTERNAL);
+    // Nothing makes a hidden symbol file-local, so it can be weak as well.
+    windows_object(&HIDDEN_LEVEL.replace("@hidden\nfn", "@weak\n@hidden\nfn"));
+}
+
 #[test]
 fn visibility_that_is_not_exported_becomes_a_file_local_coff_symbol() {
-    for annotation in ["@hidden", "@internal", "@private"] {
+    for annotation in ["@internal", "@private"] {
         let ir = format!(
             "{annotation}\nfn @quiet() -> i64 {{\nentry:\n    ret.i64 7\n}}\n\nfn @main() -> i64 {{\nentry:\n    %v = call @quiet()\n    ret.i64 %v\n}}\n"
         );
@@ -195,7 +223,7 @@ fn protected_visibility_is_refused_on_coff() {
 
 #[test]
 fn weak_together_with_an_unexported_visibility_is_refused_on_coff() {
-    let ir = "@weak\n@hidden\nfn @w() -> i64 {\nentry:\n    ret.i64 1\n}\n\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n";
+    let ir = "@weak\n@private\nfn @w() -> i64 {\nentry:\n    ret.i64 1\n}\n\nfn @main() -> i64 {\nentry:\n    ret.i64 0\n}\n";
     let message = windows_error(ir);
     assert!(message.contains("@weak"), "{message}");
     assert!(message.contains("weak external"), "{message}");
@@ -262,19 +290,42 @@ fn link_and_run(out: &Path, gcc: &Path, lib: &Path, objects: &[&Path]) -> i32 {
     run.status.code().expect("exit code")
 }
 
-#[test]
-fn a_coff_weak_definition_loses_to_a_strong_one_at_run_time() {
+/// The mingw-w64 directories when every tool a run-time test needs is installed.
+fn run_time_tools() -> Option<(PathBuf, PathBuf)> {
     if !tool("ld.lld-18") && skip("ld.lld-18 not installed") {
-        return;
+        return None;
     }
     if !tool("x86_64-w64-mingw32-gcc") && skip("x86_64-w64-mingw32-gcc not installed") {
-        return;
+        return None;
     }
     if !tool("wine") && skip("wine not installed") {
-        return;
+        return None;
     }
-    let Some((gcc, lib)) = mingw_dirs() else {
+    let dirs = mingw_dirs();
+    if dirs.is_none() {
         skip("mingw-w64 runtime objects not installed");
+    }
+    dirs
+}
+
+fn mingw_compile(source: &Path, object: &Path) {
+    let compiled = Command::new("x86_64-w64-mingw32-gcc")
+        .arg("-c")
+        .arg(source)
+        .arg("-o")
+        .arg(object)
+        .output()
+        .expect("run mingw gcc");
+    assert!(
+        compiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+}
+
+#[test]
+fn a_coff_weak_definition_loses_to_a_strong_one_at_run_time() {
+    let Some((gcc, lib)) = run_time_tools() else {
         return;
     };
 
@@ -289,18 +340,7 @@ fn a_coff_weak_definition_loses_to_a_strong_one_at_run_time() {
     let source = dir.join("strong.c");
     fs::write(&source, "long long which(void){ return 2; }\n").expect("write strong source");
     let strong = dir.join("strong.obj");
-    let compiled = Command::new("x86_64-w64-mingw32-gcc")
-        .arg("-c")
-        .arg(&source)
-        .arg("-o")
-        .arg(&strong)
-        .output()
-        .expect("run mingw gcc");
-    assert!(
-        compiled.status.success(),
-        "{}",
-        String::from_utf8_lossy(&compiled.stderr)
-    );
+    mingw_compile(&source, &strong);
 
     assert_eq!(
         link_and_run(&dir.join("alone.exe"), &gcc, &lib, &[&weak]),
@@ -311,5 +351,50 @@ fn a_coff_weak_definition_loses_to_a_strong_one_at_run_time() {
         link_and_run(&dir.join("overridden.exe"), &gcc, &lib, &[&weak, &strong]),
         2,
         "a strong definition in another object overrides the weak one"
+    );
+}
+
+const HIDDEN_READ: &str = r#"
+@hidden
+@export
+global $level: i64 = 3
+
+@extern
+fn @read_level() -> i64
+
+fn @main() -> i64 {
+entry:
+    %v = call @read_level()
+    ret.i64 %v
+}
+"#;
+
+#[test]
+fn a_hidden_coff_global_is_read_from_another_object_at_run_time() {
+    let Some((gcc, lib)) = run_time_tools() else {
+        return;
+    };
+
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("coff-hidden-run");
+    fs::create_dir_all(&dir).expect("scratch directory");
+
+    let hidden = dir.join("hidden.obj");
+    fs::write(&hidden, windows_object(HIDDEN_READ)).expect("write hidden object");
+
+    let source = dir.join("read.c");
+    fs::write(
+        &source,
+        "extern long long level;\nlong long read_level(void){ return level; }\n",
+    )
+    .expect("write reader source");
+    let reader = dir.join("read.obj");
+    mingw_compile(&source, &reader);
+
+    assert_eq!(
+        link_and_run(&dir.join("hidden.exe"), &gcc, &lib, &[&hidden, &reader]),
+        3,
+        "another object of the link reads the hidden global"
     );
 }

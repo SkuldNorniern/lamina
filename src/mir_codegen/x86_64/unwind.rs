@@ -18,6 +18,11 @@ const UWOP_SAVE_NONVOL: u8 = 4;
 
 const REG_RBP: u8 = 5;
 
+/// Read-only initialized data, as cl and clang mark both tables. COFF letters read
+/// `d` and `r` and ignore `a`; an assembler that reads ELF letters needs the `a` to
+/// keep the section allocated.
+const TABLE_FLAGS: &str = "adr";
+
 /// `pushq %rbp` is one byte and `movq %rsp, %rbp` is three.
 const PUSH_RBP_END: u8 = 1;
 const MOVE_RBP_END: u8 = 4;
@@ -229,7 +234,7 @@ pub(super) fn emit<W: Write>(writer: &mut W, label: &str, unwind: &Unwind) -> io
         format!("{alloc_end}-{label}")
     };
 
-    writeln!(writer, ".section .xdata,\"a\"")?;
+    writeln!(writer, ".section .xdata,\"{TABLE_FLAGS}\"")?;
     writeln!(writer, "    .p2align 2")?;
     writeln!(writer, "{info}:")?;
     writeln!(writer, "    .byte 1")?;
@@ -283,7 +288,7 @@ pub(super) fn emit<W: Write>(writer: &mut W, label: &str, unwind: &Unwind) -> io
         writeln!(writer, "    .short 0")?;
     }
 
-    writeln!(writer, ".section .pdata,\"a\"")?;
+    writeln!(writer, ".section .pdata,\"{TABLE_FLAGS}\"")?;
     writeln!(writer, "    .p2align 2")?;
     writeln!(writer, "    .long {label}")?;
     writeln!(writer, "    .long {}", function_end_label(label))?;
@@ -452,7 +457,8 @@ mod tests {
     #[test]
     fn the_record_names_the_function_and_its_unwind_info() {
         let text = body(&frameful(64));
-        assert!(text.contains(".section .pdata,\"a\"\n"), "{text}");
+        assert!(text.contains(".section .xdata,\"adr\"\n"), "{text}");
+        assert!(text.contains(".section .pdata,\"adr\"\n"), "{text}");
         assert!(text.contains("    .long fn\n"), "{text}");
         assert!(text.contains("    .long .Lxunwind_end_fn\n"), "{text}");
         assert!(text.contains("    .long .Lxunwind_info_fn\n"), "{text}");

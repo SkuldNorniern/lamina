@@ -890,8 +890,10 @@ fn code_section_directive(
 }
 
 /// ELF targets take `.internal`, `.hidden` and `.protected`. Mach-O has only
-/// `.private_extern`, COFF has no visibility at all and expresses "not exported"
-/// as a file-local symbol, and wasm and GPU targets have no such symbol visibility.
+/// `.private_extern`, and COFF, wasm and GPU targets have no such symbol visibility.
+/// A COFF external is not exported from an image without dllexport, so a hidden
+/// symbol stays an external that the other objects of the link reach, as on ELF;
+/// internal and private ones are left out of `.globl` and so are file-local already.
 fn os_uses_elf_visibility(target_os: TargetOperatingSystem) -> bool {
     matches!(
         target_os,
@@ -912,12 +914,6 @@ fn visibility_directive(
         return match visibility {
             SymbolVisibility::Protected => None,
             _ => Some(".private_extern"),
-        };
-    }
-    if os_uses_coff(target_os) {
-        return match visibility {
-            SymbolVisibility::Protected => None,
-            _ => Some(".local"),
         };
     }
     if !os_uses_elf_visibility(target_os) {
@@ -958,8 +954,8 @@ fn linkage_refusal(
             (Some(SymbolVisibility::Protected), _, _) => Some(
                 "COFF has no protected visibility; use @hidden for a symbol that is not exported",
             ),
-            (Some(_), true, _) => Some(
-                "COFF resolves a weak external across objects, so it has to stay an external symbol, and the only thing COFF has to say a symbol is not exported is to make it file-local",
+            (Some(SymbolVisibility::Private), true, _) => Some(
+                "COFF resolves a weak external across objects, so it has to stay an external symbol, and @private makes it file-local",
             ),
             (_, true, true) => Some("COFF has no weak thread-local definition"),
             _ => None,
@@ -2807,7 +2803,13 @@ entry:
     #[test]
     fn coff_targets_emit_no_elf_visibility_directives() {
         let text = emit_unprotected_visibility_module(TargetOperatingSystem::Windows);
-        for directive in [".hidden", ".protected", ".internal", ".private_extern"] {
+        for directive in [
+            ".hidden",
+            ".protected",
+            ".internal",
+            ".local",
+            ".private_extern",
+        ] {
             assert!(!text.contains(directive), "{directive}: {text}");
         }
     }
