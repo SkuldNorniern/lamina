@@ -555,8 +555,11 @@ fn build_unix_linker_args(
     args.extend(object_args(runtime_objects));
     args.extend(build_crt_args(target, false)?);
     args.extend(build_entry_point_arg(target_os));
-    args.extend(build_library_args(target)?);
+    // User objects go ahead of libc, as gcc orders them. glibc on aarch64 defines
+    // __stack_chk_guard in ld.so, which libc.so adds as needed, so only for a
+    // reference made before it.
     args.extend(additional_flags.iter().cloned());
+    args.extend(build_library_args(target)?);
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
 
