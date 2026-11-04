@@ -11,6 +11,7 @@ mod alias_tests;
 mod branch_opt;
 mod cfg;
 mod constant_folding;
+mod constant_hoisting;
 mod copy_propagation;
 mod cse;
 mod deadcode;
@@ -38,6 +39,7 @@ pub use branch_opt::BranchOptimization;
 pub use cfg::{CfgSimplify, JumpThreading};
 pub(crate) use cfg::{Dominators, calculate_dominators, compute_back_edge_headers};
 pub use constant_folding::ConstantFolding;
+pub use constant_hoisting::ConstantHoisting;
 pub use copy_propagation::CopyPropagation;
 pub use cse::CommonSubexpressionElimination;
 pub use deadcode::{DeadCodeElimination, remove_dead_pure_calls, truncate_after_noreturn_calls};
@@ -351,6 +353,7 @@ pub struct TransformPipeline {
     max_total_iterations: usize,
     inline: bool,
     rotate_loops: bool,
+    hoist_constants: bool,
     #[cfg(feature = "nightly")]
     vector: Option<VectorUnit>,
 }
@@ -362,6 +365,7 @@ impl TransformPipeline {
             max_total_iterations: 1000,
             inline: false,
             rotate_loops: false,
+            hoist_constants: false,
             #[cfg(feature = "nightly")]
             vector: None,
         }
@@ -457,6 +461,7 @@ impl TransformPipeline {
             pipeline = pipeline
                 .add_transform(AddressingCanonicalization)
                 .add_transform(DeadCodeElimination);
+            pipeline.hoist_constants = true;
         }
         pipeline
     }
@@ -541,6 +546,15 @@ impl TransformPipeline {
         if self.rotate_loops {
             for func in module.functions.values_mut() {
                 LoopRotation.apply(func)?;
+            }
+            module
+                .validate_in_pipeline()
+                .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        }
+        // After rotation: it copies the loop test, constants included, into the back edge.
+        if self.hoist_constants {
+            for func in module.functions.values_mut() {
+                ConstantHoisting.apply(func)?;
             }
             module
                 .validate_in_pipeline()

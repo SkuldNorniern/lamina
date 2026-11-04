@@ -80,7 +80,7 @@ impl Transform for LoopRotation {
     }
 }
 
-fn next_virtual_id(func: &Function) -> u32 {
+pub(super) fn next_virtual_id(func: &Function) -> u32 {
     func.blocks
         .iter()
         .flat_map(|b| &b.instructions)
