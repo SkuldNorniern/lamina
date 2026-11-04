@@ -45,10 +45,7 @@ fn global_parameters_are_initialized_before_entry() -> Result<(), Box<dyn Error>
             .lines()
             .find_map(|line| line.strip_prefix("    mov x0, "))
             .ok_or("missing return move")?;
-        assert!(
-            prologue.contains(&format!("ldur {reg}, [x29, #-8]")),
-            "{asm}"
-        );
+        assert!(prologue.contains(&format!("mov {reg}, x0")), "{asm}");
     }
     Ok(())
 }

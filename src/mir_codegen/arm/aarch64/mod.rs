@@ -733,7 +733,22 @@ fn compile_single_function_aarch64_with(
     if let Some(area) = &va_area {
         variadic::spill_save_area(&mut output, area).map_err(lamina_to_codegen_error)?;
     }
+    // A whole word bound for a register goes straight there, no stop in its frame slot.
+    let mut moved_parameters = HashSet::new();
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
+        if let (ArgPlace::Gpr { first, .. }, Register::Virtual(vreg), Some(plan)) =
+            (*place, &p.reg, &global_plan)
+            && !kind.by_reference
+            && p.aggregate.is_none()
+            && !p.ty.is_float()
+            && p.ty.size_bytes(func.pointer_width) == 8
+            && let Some(MirAllocation::Register(reg)) = plan.get(vreg)
+        {
+            writeln!(output, "    mov {reg}, x{first}")
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+            moved_parameters.insert(*vreg);
+            continue;
+        }
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
             emit_frame_slot_address(&mut output, addr, off).map_err(lamina_to_codegen_error)?;
@@ -864,6 +879,7 @@ fn compile_single_function_aarch64_with(
     if let Some(global_plan) = &global_plan {
         for param in &func.sig.params {
             if let Register::Virtual(vreg) = &param.reg
+                && !moved_parameters.contains(vreg)
                 && let Some(MirAllocation::Register(reg)) = global_plan.get(vreg)
                 && let Some(offset) = frame.slot_of(&param.reg)
             {
@@ -1922,36 +1938,55 @@ fn emit_block<W: Write>(
                 true_val,
                 false_val,
             } => {
-                let r_cond = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let r_t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let r_f = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                load_reg_to(w, cond, r_cond, frame, ra)?;
-                emit_materialize_operand(w, true_val, r_t, frame, ra)?;
-                emit_materialize_operand(w, false_val, r_f, frame, ra)?;
-                if ty.size_bytes(pointer_width) == 4 {
+                let narrow = ty.size_bytes(pointer_width) == 4;
+                let mut scratches = Vec::new();
+                let mut held = |w: &mut W, operand: &Operand, ra: &mut A64RegAlloc| {
+                    if let Some(preg) = operand_in_register(operand, ra) {
+                        return Ok::<&'static str, LaminaError>(preg);
+                    }
+                    let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                    scratches.push(scratch);
+                    emit_materialize_operand(w, operand, scratch, frame, ra)?;
+                    Ok(scratch)
+                };
+                let r_cond = held(w, &Operand::Register(cond.clone()), ra)?;
+                let r_t = held(w, true_val, ra)?;
+                let r_f = held(w, false_val, ra)?;
+                let in_place = dest_in_register(dst, ra);
+                let r_d = match in_place {
+                    Some(preg) if !narrow => preg,
+                    // A narrow result still goes through store_result below.
+                    _ => {
+                        let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        scratches.push(scratch);
+                        scratch
+                    }
+                };
+                if narrow {
                     writeln!(w, "    cmp {}, #0", w_alias(r_cond))?;
                     writeln!(
                         w,
                         "    csel {}, {}, {}, ne",
-                        w_alias(r_t),
+                        w_alias(r_d),
                         w_alias(r_t),
                         w_alias(r_f)
                     )?;
-                    store_result(w, dst, &x_alias(r_t), frame, ra)?;
                 } else {
                     writeln!(w, "    cmp {}, #0", x_alias(r_cond))?;
                     writeln!(
                         w,
                         "    csel {}, {}, {}, ne",
-                        x_alias(r_t),
+                        x_alias(r_d),
                         x_alias(r_t),
                         x_alias(r_f)
                     )?;
-                    store_result(w, dst, &x_alias(r_t), frame, ra)?;
                 }
-                ra.free_scratch(r_cond);
-                ra.free_scratch(r_t);
-                ra.free_scratch(r_f);
+                if narrow || in_place.is_none() {
+                    store_result(w, dst, &x_alias(r_d), frame, ra)?;
+                }
+                for scratch in scratches {
+                    ra.free_scratch(scratch);
+                }
             }
             MirInst::Store { ty, src, addr, .. } => {
                 let size = ty.size_bytes(pointer_width);
@@ -2567,14 +2602,23 @@ fn emit_block<W: Write>(
                 false_target,
             } => {
                 let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                load_reg_to(w, cond, t, frame, ra)?;
-                writeln!(w, "    cmp {}, #0", x_alias(t))?;
-                emit_branch_if(
-                    w,
-                    "ne",
-                    &format!("{block_prefix}{true_target}"),
-                    long_branches,
-                )?;
+                let held = match cond {
+                    Register::Virtual(v) => ra.get_mapping_for(v),
+                    Register::Physical(_) => None,
+                };
+                let tested = match held {
+                    Some(preg) => x_alias(preg),
+                    None => {
+                        load_reg_to(w, cond, t, frame, ra)?;
+                        x_alias(t)
+                    }
+                };
+                if long_branches {
+                    writeln!(w, "    cmp {tested}, #0")?;
+                    emit_branch_if(w, "ne", &format!("{block_prefix}{true_target}"), true)?;
+                } else {
+                    writeln!(w, "    cbnz {tested}, {block_prefix}{true_target}")?;
+                }
                 writeln!(w, "    b {block_prefix}{false_target}")?;
                 ra.free_scratch(t);
             }
