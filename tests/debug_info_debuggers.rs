@@ -38,13 +38,23 @@ fn @emit(i64 %value) -> i64 {
 "#;
 
     /// Skips when the tool is missing, unless the suite was told to require it.
+    /// The debugger to drive, accepting a version-suffixed spelling: Ubuntu ships
+    /// `lldb-18` with no unsuffixed alias unless the `lldb` package is installed.
     fn tool(name: &str) -> Option<String> {
-        let present = Command::new(name)
-            .arg("--version")
-            .output()
-            .is_ok_and(|output| output.status.success());
-        if present {
+        let runnable = |candidate: &str| {
+            Command::new(candidate)
+                .arg("--version")
+                .output()
+                .is_ok_and(|output| output.status.success())
+        };
+        if runnable(name) {
             return Some(name.to_string());
+        }
+        for suffix in ["-18", "-19", "-17"] {
+            let versioned = format!("{name}{suffix}");
+            if runnable(&versioned) {
+                return Some(versioned);
+            }
         }
         let required = env::var_os("LAMINA_REQUIRE_TOOLS").is_some_and(|value| value == "1");
         assert!(
