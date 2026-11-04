@@ -946,15 +946,38 @@ fn compile_single_function_aarch64_with(
                     ) = (&inst.instr, &block.instructions[position + 1].instr)
                     {
                         emit_source_loc(output, settings, inst.loc)?;
-                        emit_materialize_operand(output, lhs, "x16", &frame, ra)?;
-                        emit_materialize_operand(output, rhs, "x17", &frame, ra)?;
                         let unsigned = matches!(
                             op,
                             IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
                         );
-                        extend_integer(output, "x16", ty, !unsigned, func.pointer_width)?;
-                        extend_integer(output, "x17", ty, !unsigned, func.pointer_width)?;
-                        writeln!(output, "    cmp x16, x17")?;
+                        if ty.size_bytes(func.pointer_width) == 8 {
+                            // Nothing to extend, so read registers in place and fold the constant.
+                            let left = match operand_in_register(lhs, ra) {
+                                Some(preg) => x_alias(preg),
+                                None => {
+                                    emit_materialize_operand(output, lhs, "x16", &frame, ra)?;
+                                    "x16".to_string()
+                                }
+                            };
+                            let folded = match rhs {
+                                Operand::Immediate(imm) => fold_int_cmp_immediate(imm_to_u64(imm)),
+                                Operand::Register(_) => None,
+                            };
+                            if let Some((mnemonic, operand)) = folded {
+                                writeln!(output, "    {mnemonic} {left}, {operand}")?;
+                            } else if let Some(preg) = operand_in_register(rhs, ra) {
+                                writeln!(output, "    cmp {left}, {}", x_alias(preg))?;
+                            } else {
+                                emit_materialize_operand(output, rhs, "x17", &frame, ra)?;
+                                writeln!(output, "    cmp {left}, x17")?;
+                            }
+                        } else {
+                            emit_materialize_operand(output, lhs, "x16", &frame, ra)?;
+                            emit_materialize_operand(output, rhs, "x17", &frame, ra)?;
+                            extend_integer(output, "x16", ty, !unsigned, func.pointer_width)?;
+                            extend_integer(output, "x17", ty, !unsigned, func.pointer_width)?;
+                            writeln!(output, "    cmp x16, x17")?;
+                        }
                         let (invert, taken, other) =
                             plan.branch(func, index, next, true_target, false_target);
                         let direct = int_condition(*op);

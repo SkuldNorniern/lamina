@@ -1899,3 +1899,67 @@ fn darwin_starts_a_sixteen_byte_argument_in_an_odd_register() {
     assert_eq!(first(TargetOperatingSystem::MacOS), 1);
     assert_eq!(first(TargetOperatingSystem::Linux), 2);
 }
+
+fn fused_compare_asm(ty: ScalarType, rhs: i64) -> Result<String, Box<dyn Error>> {
+    use crate::mir::{Block, Parameter};
+    let value = Register::Virtual(VirtualReg::gpr(0));
+    let flag = Register::Virtual(VirtualReg::gpr(1));
+    let mut func = Function::new(
+        Signature::new("branchy")
+            .with_params(vec![Parameter::new(value.clone(), MirType::Scalar(ty))])
+            .with_return(MirType::Scalar(ScalarType::I64)),
+    );
+    let mut entry = Block::new("entry");
+    entry.push(MirInst::IntCmp {
+        op: IntCmpOp::SLt,
+        ty: MirType::Scalar(ty),
+        dst: flag.clone(),
+        lhs: Operand::Register(value),
+        rhs: Operand::Immediate(Immediate::I64(rhs)),
+    });
+    entry.push(MirInst::Br {
+        cond: flag,
+        true_target: "yes".to_string(),
+        false_target: "no".to_string(),
+    });
+    func.add_block(entry);
+    for (label, result) in [("yes", 1), ("no", 2)] {
+        let mut block = Block::new(label);
+        block.push(MirInst::Ret {
+            value: Some(Operand::Immediate(Immediate::I64(result))),
+        });
+        func.add_block(block);
+    }
+    let settings = MirCodegenSettings {
+        regalloc: RegallocStrategy::LinearScanGlobal,
+        ..Default::default()
+    };
+    Ok(String::from_utf8(
+        compile_single_function_aarch64(
+            "branchy",
+            &func,
+            TargetOperatingSystem::Linux,
+            &settings,
+            &AggregateSignatures::empty(PointerWidth::Bits64),
+        )
+        .map_err(|error| error.to_string())?,
+    )?)
+}
+
+#[test]
+fn fused_compare_folds_wide_constant() -> Result<(), Box<dyn Error>> {
+    let asm = fused_compare_asm(ScalarType::I64, 7)?;
+    assert!(asm.contains(", #7"), "{asm}");
+    assert!(!asm.contains("cmp x16, x17"), "{asm}");
+    let negative = fused_compare_asm(ScalarType::I64, -7)?;
+    assert!(negative.contains("cmn "), "{negative}");
+    Ok(())
+}
+
+#[test]
+fn fused_compare_still_extends_narrow_values() -> Result<(), Box<dyn Error>> {
+    let asm = fused_compare_asm(ScalarType::I32, 7)?;
+    assert!(asm.contains("sbfx x16, x16, #0, #32"), "{asm}");
+    assert!(asm.contains("cmp x16, x17"), "{asm}");
+    Ok(())
+}
