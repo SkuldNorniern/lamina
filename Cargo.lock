@@ -56,6 +56,8 @@ dependencies = [
 [[package]]
 name = "lamina-weld"
 version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fff57b65444095f829b7bceb80a9520e4c5ba33a73230e9936a439d1315c203b"
 dependencies = [
  "log",
  "rustc-hash",
