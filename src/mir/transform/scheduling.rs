@@ -5,12 +5,21 @@ use crate::mir::{
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use lamina_mir::Located;
+use lamina_mir::RegisterClass;
 use lamina_platform::PointerWidth;
 use std::{
     cmp::Ordering,
-    collections::{BinaryHeap, HashMap},
+    collections::{BinaryHeap, HashMap, HashSet},
     mem,
 };
+
+/// How many values of one class may be live at a point before the scheduler stops
+/// ranking on dependence depth. The smallest allocatable general-purpose pool across
+/// the backends is thirteen (x86_64), less a scratch register.
+const PRESSURE_BUDGET: usize = 12;
+
+/// How many of the highest-priority ready instructions the pressure heuristic looks at.
+const READY_WINDOW: usize = 16;
 
 /// Instruction scheduling that reorders instructions to improve ILP.
 #[derive(Default)]
@@ -42,9 +51,10 @@ impl InstructionScheduling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
         let pointer = func.pointer_width;
+        let escaping = escaping_registers(func);
 
         for block in &mut func.blocks {
-            if self.schedule_block(block, pointer) {
+            if self.schedule_block(block, pointer, &escaping) {
                 changed = true;
             }
         }
@@ -52,7 +62,12 @@ impl InstructionScheduling {
         Ok(changed)
     }
 
-    fn schedule_block(&self, block: &mut Block, pointer: PointerWidth) -> bool {
+    fn schedule_block(
+        &self,
+        block: &mut Block,
+        pointer: PointerWidth,
+        escaping: &HashSet<Register>,
+    ) -> bool {
         if block.instructions.len() < 3 {
             return false;
         }
@@ -64,7 +79,12 @@ impl InstructionScheduling {
         let priorities = self.calculate_priorities(&graph, &block.instructions);
 
         // 3. List Scheduling
-        let scheduled_indices = self.list_schedule(&graph, &priorities, block.instructions.len());
+        let scheduled_indices = self.list_schedule(
+            &graph,
+            &priorities,
+            &block.instructions,
+            &PressureTracker::new(&block.instructions, escaping),
+        );
 
         // 4. Reorder Instructions
         if self.is_order_changed(&scheduled_indices) {
@@ -226,10 +246,13 @@ impl InstructionScheduling {
         &self,
         graph: &DependencyGraph,
         priorities: &[usize],
-        num_instrs: usize,
+        instructions: &[Located],
+        initial: &PressureTracker,
     ) -> Vec<usize> {
+        let num_instrs = instructions.len();
         let mut scheduled = Vec::with_capacity(num_instrs);
         let mut in_degree = graph.in_degree.clone();
+        let mut pressure = initial.clone();
 
         // Priority Queue stores (priority, index).
         // BinaryHeap is max-heap, so higher priority (depth) comes first.
@@ -244,8 +267,34 @@ impl InstructionScheduling {
             }
         }
 
-        while let Some(item) = ready_queue.pop() {
-            let u = item.index;
+        let mut window: Vec<ScheduledItem> = Vec::with_capacity(READY_WINDOW);
+        while !ready_queue.is_empty() {
+            let u = if let Some(class) = pressure.saturated_class() {
+                window.clear();
+                for _ in 0..READY_WINDOW {
+                    match ready_queue.pop() {
+                        Some(item) => window.push(item),
+                        None => break,
+                    }
+                }
+                let pick = window
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(rank, item)| {
+                        (pressure.delta(&instructions[item.index], class), *rank)
+                    })
+                    .map_or(0, |(rank, _)| rank);
+                let chosen = window.swap_remove(pick);
+                ready_queue.extend(window.drain(..));
+                chosen.index
+            } else {
+                match ready_queue.pop() {
+                    Some(item) => item.index,
+                    None => break,
+                }
+            };
+
+            pressure.issue(&instructions[u]);
             scheduled.push(u);
 
             if let Some(succs) = graph.edges.get(&u) {
@@ -292,6 +341,132 @@ impl InstructionScheduling {
                 | Instruction::VaEnd { .. }
                 | Instruction::VaCopy { .. }
         )
+    }
+}
+
+/// Registers no single block can be the last reader of: anything more than one block
+/// mentions, and anything the signature names.
+fn escaping_registers(func: &Function) -> HashSet<Register> {
+    let mut escaping: HashSet<Register> = func.sig.params.iter().map(|p| p.reg.clone()).collect();
+    let mut seen_in: HashMap<Register, usize> = HashMap::new();
+    for (index, block) in func.blocks.iter().enumerate() {
+        for instr in &block.instructions {
+            for reg in instr.use_regs().into_iter().chain(instr.def_reg()) {
+                match seen_in.get(reg) {
+                    Some(&first) if first != index => {
+                        escaping.insert(reg.clone());
+                    }
+                    Some(_) => {}
+                    None => {
+                        seen_in.insert(reg.clone(), index);
+                    }
+                }
+            }
+        }
+    }
+    escaping
+}
+
+/// How many values of each class are live at the point the scheduler has reached, and
+/// which of the block's reads are still ahead of it.
+#[derive(Clone)]
+struct PressureTracker {
+    live: HashSet<Register>,
+    pending_uses: HashMap<Register, usize>,
+    escaping: HashSet<Register>,
+    counts: [usize; 3],
+}
+
+fn class_slot(class: RegisterClass) -> usize {
+    match class {
+        RegisterClass::Gpr => 0,
+        RegisterClass::Fpr => 1,
+        RegisterClass::Vec => 2,
+    }
+}
+
+impl PressureTracker {
+    fn new(instructions: &[Located], escaping: &HashSet<Register>) -> Self {
+        let mut pending_uses: HashMap<Register, usize> = HashMap::new();
+        let mut defined: HashSet<Register> = HashSet::new();
+        let mut live: HashSet<Register> = HashSet::new();
+        for instr in instructions {
+            for reg in instr.use_regs() {
+                *pending_uses.entry(reg.clone()).or_default() += 1;
+                if !defined.contains(reg) {
+                    live.insert(reg.clone());
+                }
+            }
+            if let Some(def) = instr.def_reg() {
+                defined.insert(def.clone());
+            }
+        }
+        let mut counts = [0usize; 3];
+        for reg in &live {
+            counts[class_slot(reg.class())] += 1;
+        }
+        Self {
+            live,
+            pending_uses,
+            escaping: escaping.clone(),
+            counts,
+        }
+    }
+
+    fn saturated_class(&self) -> Option<RegisterClass> {
+        for (slot, class) in [RegisterClass::Gpr, RegisterClass::Fpr, RegisterClass::Vec]
+            .into_iter()
+            .enumerate()
+        {
+            if self.counts[slot] >= PRESSURE_BUDGET {
+                return Some(class);
+            }
+        }
+        None
+    }
+
+    fn dies_here(&self, reg: &Register, extra_reads: usize) -> bool {
+        !self.escaping.contains(reg)
+            && self.pending_uses.get(reg).copied().unwrap_or(0) <= extra_reads
+    }
+
+    /// Change in the number of simultaneously live `class` values if `instr` issues now.
+    fn delta(&self, instr: &Located, class: RegisterClass) -> isize {
+        let mut delta = 0isize;
+        let mut counted: HashMap<&Register, usize> = HashMap::new();
+        for reg in instr.use_regs() {
+            if reg.class() != class {
+                continue;
+            }
+            let seen = counted.entry(reg).or_insert(0);
+            *seen += 1;
+            if self.live.contains(reg) && self.dies_here(reg, *seen) {
+                delta -= 1;
+            }
+        }
+        if let Some(def) = instr.def_reg()
+            && def.class() == class
+            && !self.live.contains(def)
+        {
+            delta += 1;
+        }
+        delta
+    }
+
+    fn issue(&mut self, instr: &Located) {
+        for reg in instr.use_regs() {
+            if let Some(count) = self.pending_uses.get_mut(reg) {
+                *count = count.saturating_sub(1);
+            }
+            if self.dies_here(reg, 0) && self.live.remove(reg) {
+                self.counts[class_slot(reg.class())] -= 1;
+            }
+        }
+        if let Some(def) = instr.def_reg()
+            && self.live.insert(def.clone())
+        {
+            self.counts[class_slot(def.class())] += 1;
+        }
     }
 }
 
@@ -386,8 +561,34 @@ mod tests {
             false_target: "exit".into(),
         }));
         let tail = block.instructions[block.instructions.len() - 2..].to_vec();
-        InstructionScheduling.schedule_block(&mut block, PointerWidth::Bits64);
+        InstructionScheduling.schedule_block(&mut block, PointerWidth::Bits64, &HashSet::new());
         assert_eq!(block.instructions[block.instructions.len() - 2..], tail);
+    }
+
+    #[test]
+    fn a_jump_stays_last_under_pressure() {
+        let ty = MirType::Scalar(ScalarType::I64);
+        let mut block = Block::new("wide");
+        for i in 0..40u32 {
+            block
+                .instructions
+                .push(Located::from(Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty,
+                    dst: VirtualReg::gpr(i).into(),
+                    lhs: Operand::imm_i64(i64::from(i)),
+                    rhs: Operand::imm_i64(1),
+                }));
+        }
+        block.instructions.push(Located::from(Instruction::Jmp {
+            target: "exit".into(),
+        }));
+        InstructionScheduling.schedule_block(&mut block, PointerWidth::Bits64, &HashSet::new());
+        assert!(matches!(
+            block.instructions.last().map(|i| &i.instr),
+            Some(Instruction::Jmp { .. })
+        ));
+        assert_eq!(block.instructions.len(), 41);
     }
 
     #[test]
