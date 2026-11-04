@@ -3,7 +3,10 @@
 use crate::mir::{
     AddressMode, Aggregate, AsmOperand, Block, Function, Instruction, Module, Operand, Register,
     VirtualReg,
-    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel,
+        loop_rotation::next_virtual_id,
+    },
 };
 use lamina_mir::{Located, SymbolVisibility};
 use std::{
@@ -59,6 +62,7 @@ impl ModuleInlining {
         let mut count = 0;
         let mut expanded: HashSet<String> = HashSet::new();
         loop {
+            Self::undo_tail_calls_to_expand(module);
             let mut sites = Vec::new();
             let mut names: Vec<_> = module.functions.keys().cloned().collect();
             names.sort();
@@ -69,34 +73,7 @@ impl ModuleInlining {
                         if let Instruction::Call {
                             name: callee, args, ..
                         } = &instruction.instr
-                            && !module.is_external(callee)
-                            && let Some(function) = module.functions.get(callee)
-                            && function.sig.kernel.is_none()
-                            && !function.sig.no_inline
-                            && !function.sig.variadic
-                            && !function
-                                .blocks
-                                .iter()
-                                .flat_map(|b| &b.instructions)
-                                .any(|i| matches!(&i.instr, Instruction::InlineAsm { .. }))
-                            && function.instruction_count() <= Self::callee_size_limit(function)
-                            && function.sig.params.len() == args.len()
-                            && function.sig.ret_aggregate.is_none()
-                            && function
-                                .sig
-                                .params
-                                .iter()
-                                .all(|param| param.aggregate.is_none())
-                            && !Self::is_recursive(callee, callee, module, &mut HashSet::new())
-                            && function
-                                .blocks
-                                .iter()
-                                .flat_map(|b| &b.instructions)
-                                .all(|i| {
-                                    let mut clone = i.clone();
-                                    !matches!(&i.instr, Instruction::TailCall { .. })
-                                        && Self::map_registers(&mut clone, &mut Clone::clone)
-                                })
+                            && Self::can_expand(module, callee, args.len())
                         {
                             sites.push((name.clone(), block_index, index, callee.clone()));
                         }
@@ -127,6 +104,88 @@ impl ModuleInlining {
             .validate_in_pipeline()
             .map_err(|errors| TransformError::VerificationFailed { errors })?;
         Ok(count)
+    }
+
+    fn can_expand(module: &Module, callee: &str, arg_count: usize) -> bool {
+        let Some(function) = module.functions.get(callee) else {
+            return false;
+        };
+        !module.is_external(callee)
+            && function.sig.kernel.is_none()
+            && !function.sig.no_inline
+            && !function.sig.variadic
+            && !function
+                .blocks
+                .iter()
+                .flat_map(|b| &b.instructions)
+                .any(|i| matches!(&i.instr, Instruction::InlineAsm { .. }))
+            && function.instruction_count() <= Self::callee_size_limit(function)
+            && function.sig.params.len() == arg_count
+            && function.sig.ret_aggregate.is_none()
+            && function
+                .sig
+                .params
+                .iter()
+                .all(|param| param.aggregate.is_none())
+            && !Self::is_recursive(callee, callee, module, &mut HashSet::new())
+            && function
+                .blocks
+                .iter()
+                .flat_map(|b| &b.instructions)
+                .all(|i| {
+                    let mut clone = i.clone();
+                    !matches!(&i.instr, Instruction::TailCall { .. })
+                        && Self::map_registers(&mut clone, &mut Clone::clone)
+                })
+    }
+
+    /// Tail call optimization runs first, so a small function ending in a call reaches
+    /// here as a tail call, which nothing can expand. Turn back the ones that will expand.
+    /// The second run of the function passes makes tail calls of whatever is left.
+    fn undo_tail_calls_to_expand(module: &mut Module) {
+        let mut sites = Vec::new();
+        for (name, caller) in &module.functions {
+            for (block_index, block) in caller.blocks.iter().enumerate() {
+                if let Some(Instruction::TailCall { name: callee, args }) =
+                    block.instructions.last().map(|i| &i.instr)
+                    && callee != name
+                    && Self::can_expand(module, callee, args.len())
+                    && module.functions[callee].sig.ret_ty == caller.sig.ret_ty
+                {
+                    sites.push((name.clone(), block_index));
+                }
+            }
+        }
+        for (name, block_index) in sites {
+            let Some(caller) = module.functions.get_mut(&name) else {
+                continue;
+            };
+            let returns = caller.sig.ret_ty.is_some();
+            let id = next_virtual_id(caller);
+            let block = &mut caller.blocks[block_index];
+            let Some(last) = block.instructions.pop() else {
+                continue;
+            };
+            let Instruction::TailCall { name: callee, args } = last.instr else {
+                block.instructions.push(last);
+                continue;
+            };
+            let result = returns.then(|| Register::Virtual(VirtualReg::gpr(id)));
+            block.instructions.push(Located::at(
+                Instruction::Call {
+                    name: callee,
+                    args,
+                    ret: result.clone(),
+                },
+                last.loc,
+            ));
+            block.instructions.push(Located::at(
+                Instruction::Ret {
+                    value: result.map(Operand::Register),
+                },
+                last.loc,
+            ));
+        }
     }
 
     /// Drop a function the inliner expanded that nothing names any more. The call it
@@ -907,6 +966,7 @@ mod execution_tests {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod inline_hint_tests {
     use super::*;
+    use crate::mir::{FunctionBuilder, MirType, ScalarType};
     use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 
     fn chain_callee(annotation: &str, body_len: usize) -> String {
@@ -939,6 +999,95 @@ mod inline_hint_tests {
             .iter()
             .flat_map(|b| &b.instructions)
             .any(|i| matches!(&i.instr, Instruction::Call { .. }))
+    }
+
+    fn tail_chain_module() -> Module {
+        let word = MirType::Scalar(ScalarType::I64);
+        let reg = |id| Register::Virtual(VirtualReg::gpr(id));
+        let leaf = FunctionBuilder::new("leaf")
+            .param(reg(0), word)
+            .returns(word)
+            .block("entry")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(reg(0))),
+            })
+            .build();
+        let middle = FunctionBuilder::new("middle")
+            .param(reg(0), word)
+            .returns(word)
+            .block("entry")
+            .instr(Instruction::TailCall {
+                name: "leaf".to_string(),
+                args: vec![Operand::Register(reg(0))],
+            })
+            .build();
+        let main = FunctionBuilder::new("main")
+            .param(reg(0), word)
+            .returns(word)
+            .block("entry")
+            .instr(Instruction::Call {
+                name: "middle".to_string(),
+                args: vec![Operand::Register(reg(0))],
+                ret: Some(reg(1)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(reg(1))),
+            })
+            .build();
+        let mut module = Module::new("tail");
+        module.add_function(leaf);
+        module.add_function(middle);
+        module.add_function(main);
+        module.mark_exported("main");
+        module
+    }
+
+    #[test]
+    fn a_chain_ending_in_tail_calls_inlines_all_the_way() {
+        let mut module = tail_chain_module();
+        // middle into main, then leaf into main and into middle.
+        assert_eq!(
+            ModuleInlining::new().inline_functions(&mut module).unwrap(),
+            3
+        );
+        let main = module.get_function("main").expect("main");
+        assert!(
+            !main
+                .blocks
+                .iter()
+                .flat_map(|b| &b.instructions)
+                .any(|i| matches!(
+                    &i.instr,
+                    Instruction::Call { .. } | Instruction::TailCall { .. }
+                ))
+        );
+    }
+
+    #[test]
+    fn a_tail_call_to_itself_stays() {
+        let word = MirType::Scalar(ScalarType::I64);
+        let reg = Register::Virtual(VirtualReg::gpr(0));
+        let looping = FunctionBuilder::new("looping")
+            .param(reg.clone(), word)
+            .returns(word)
+            .block("entry")
+            .instr(Instruction::TailCall {
+                name: "looping".to_string(),
+                args: vec![Operand::Register(reg)],
+            })
+            .build();
+        let mut module = Module::new("self_tail");
+        module.add_function(looping);
+        module.mark_exported("looping");
+        assert_eq!(
+            ModuleInlining::new().inline_functions(&mut module).unwrap(),
+            0
+        );
+        let looping = module.get_function("looping").expect("looping");
+        assert!(matches!(
+            looping.blocks[0].instructions[0].instr,
+            Instruction::TailCall { .. }
+        ));
     }
 
     #[test]
