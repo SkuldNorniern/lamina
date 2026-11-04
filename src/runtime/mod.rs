@@ -18,6 +18,8 @@ pub use sandbox::{Sandbox, SandboxConfig};
 
 #[cfg(feature = "encoder")]
 use std::env;
+#[cfg(all(feature = "encoder", target_arch = "aarch64"))]
+use std::{cmp::min, slice};
 
 #[cfg(feature = "encoder")]
 use crate::mir_codegen::validate_module_call_parameters;
@@ -130,7 +132,7 @@ pub fn compile_to_runtime(
                     unsafe {
                         let remaining = code.len().saturating_sub(offset);
                         let bytes =
-                            std::slice::from_raw_parts(adjusted, std::cmp::min(128, remaining));
+                            slice::from_raw_parts(adjusted, min(128, remaining));
                         eprintln!(
                             "[JIT-DEBUG] First 32 bytes at function: {:02x?}",
                             bytes.iter().take(32).collect::<Vec<_>>()
@@ -164,7 +166,7 @@ pub fn compile_to_runtime(
 
                         // Decode first few instructions
                         eprintln!("[JIT-DEBUG] Decoding first 16 instructions (64 bytes):");
-                        for i in 0..std::cmp::min(16, bytes.len() / 4) {
+                        for i in 0..min(16, bytes.len() / 4) {
                             let inst_bytes = &bytes[i * 4..(i + 1) * 4];
                             let inst = u32::from_le_bytes([
                                 inst_bytes[0],
