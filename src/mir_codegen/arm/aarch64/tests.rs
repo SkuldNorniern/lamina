@@ -1243,7 +1243,7 @@ fn named_section_takes_coff_flags_on_windows() -> Result<(), Box<dyn Error>> {
     let ir = "@section(\".text.custom\")\nfn @placed(i64 %x) -> i64 {\nentry:\n  ret.i64 %x\n}\n";
     let windows = emit_aarch64(ir, "coff_section", TargetOperatingSystem::Windows)?;
     assert!(
-        windows.contains("    .section .text.custom,\"xr\"\n"),
+        windows.contains("    .section .text.custom,\"axr\"\n"),
         "{windows}"
     );
     assert!(!windows.contains("@progbits"), "{windows}");
