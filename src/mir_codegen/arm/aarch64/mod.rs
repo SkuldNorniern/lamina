@@ -1327,6 +1327,21 @@ fn emit_block<W: Write>(
                         format!("AArch64 backend does not support vector Copy of type {ty}"),
                     )));
                 }
+                // A whole word needs no extension, so it goes straight across.
+                if ty.size_bytes(pointer_width) == 8
+                    && let Some(to) = dest_in_register(dst, ra)
+                {
+                    let to = x_alias(to);
+                    match src {
+                        Operand::Immediate(immediate) => {
+                            emit_mov_imm64(w, &to, imm_to_u64(immediate))?
+                        }
+                        Operand::Register(register) => {
+                            load_copy_reg_to(w, register, &to, 8, frame, ra)?
+                        }
+                    }
+                    continue;
+                }
                 let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 let value = x_alias(scratch);
                 match src {
@@ -1751,23 +1766,27 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_d);
             }
             MirInst::Load { ty, dst, addr, .. } => {
-                let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                materialize_address(w, addr, a, frame, ra)?;
-                match ty.size_bytes(pointer_width) {
-                    1 => writeln!(w, "    ldrsb {}, [{}]", x_alias(t), a)?,
-                    2 => writeln!(w, "    ldrsh {}, [{}]", x_alias(t), a)?,
-                    4 => writeln!(w, "    ldrsw {}, [{}]", x_alias(t), a)?,
-                    8 => writeln!(w, "    ldr {}, [{}]", x_alias(t), a)?,
-                    _ => writeln!(
-                        w,
-                        "    // Unhandled load size: {}",
-                        ty.size_bytes(pointer_width)
-                    )?,
+                let size = ty.size_bytes(pointer_width);
+                let held = dest_in_register(dst, ra);
+                let t = match held {
+                    Some(preg) => preg,
+                    None => ra.alloc_scratch().ok_or_else(scratch_error)?,
+                };
+                let (place, scratches) = emit_access_address(w, addr, size, frame, ra)?;
+                match size {
+                    1 => writeln!(w, "    ldrsb {}, {place}", x_alias(t))?,
+                    2 => writeln!(w, "    ldrsh {}, {place}", x_alias(t))?,
+                    4 => writeln!(w, "    ldrsw {}, {place}", x_alias(t))?,
+                    8 => writeln!(w, "    ldr {}, {place}", x_alias(t))?,
+                    _ => writeln!(w, "    // Unhandled load size: {size}")?,
                 }
-                store_result(w, dst, &x_alias(t), frame, ra)?;
-                ra.free_scratch(a);
-                ra.free_scratch(t);
+                if held.is_none() {
+                    store_result(w, dst, &x_alias(t), frame, ra)?;
+                    ra.free_scratch(t);
+                }
+                for scratch in scratches {
+                    ra.free_scratch(scratch);
+                }
             }
             MirInst::Select {
                 ty,
@@ -1808,23 +1827,29 @@ fn emit_block<W: Write>(
                 ra.free_scratch(r_f);
             }
             MirInst::Store { ty, src, addr, .. } => {
-                let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                materialize_address(w, addr, a, frame, ra)?;
-                emit_materialize_operand(w, src, t, frame, ra)?;
-                match ty.size_bytes(pointer_width) {
-                    1 => writeln!(w, "    strb {}, [{}]", w_alias(t), a)?,
-                    2 => writeln!(w, "    strh {}, [{}]", w_alias(t), a)?,
-                    4 => writeln!(w, "    str {}, [{}]", w_alias(t), a)?,
-                    8 => writeln!(w, "    str {}, [{}]", x_alias(t), a)?,
-                    _ => writeln!(
-                        w,
-                        "    // Unhandled store size: {}",
-                        ty.size_bytes(pointer_width)
-                    )?,
+                let size = ty.size_bytes(pointer_width);
+                let held = operand_in_register(src, ra);
+                let t = match held {
+                    Some(preg) => preg,
+                    None => ra.alloc_scratch().ok_or_else(scratch_error)?,
+                };
+                let (place, scratches) = emit_access_address(w, addr, size, frame, ra)?;
+                if held.is_none() {
+                    emit_materialize_operand(w, src, t, frame, ra)?;
                 }
-                ra.free_scratch(a);
-                ra.free_scratch(t);
+                match size {
+                    1 => writeln!(w, "    strb {}, {place}", w_alias(t))?,
+                    2 => writeln!(w, "    strh {}, {place}", w_alias(t))?,
+                    4 => writeln!(w, "    str {}, {place}", w_alias(t))?,
+                    8 => writeln!(w, "    str {}, {place}", x_alias(t))?,
+                    _ => writeln!(w, "    // Unhandled store size: {size}")?,
+                }
+                if held.is_none() {
+                    ra.free_scratch(t);
+                }
+                for scratch in scratches {
+                    ra.free_scratch(scratch);
+                }
             }
             MirInst::StackAddr { dst, slot } => {
                 let offset = frame.slot_of(&Register::Virtual(*slot)).ok_or_else(|| {
@@ -2946,6 +2971,69 @@ fn materialize_address<W: Write>(
         }
     }
     Ok(())
+}
+
+/// The bracketed address a load or store of `size` bytes takes, using registers the
+/// operands already hold. Returns the scratch registers the caller frees after the access.
+fn emit_access_address<W: Write>(
+    w: &mut W,
+    addr: &AddressMode,
+    size: usize,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(String, Vec<&'static str>), LaminaError> {
+    let mut scratches = Vec::new();
+    let mut in_register =
+        |w: &mut W, register: &Register, ra: &mut A64RegAlloc| -> Result<String, LaminaError> {
+            if let Register::Virtual(v) = register
+                && let Some(preg) = ra.get_mapping_for(v)
+            {
+                return Ok(x_alias(preg));
+            }
+            let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+            scratches.push(scratch);
+            load_reg_to(w, register, scratch, frame, ra)?;
+            Ok(x_alias(scratch))
+        };
+    let place = match addr {
+        AddressMode::BaseOffset { base, offset, .. } => {
+            let offset = i64::from(*offset);
+            let unit = size.max(1) as i64;
+            let encodable = (-256..=255).contains(&offset)
+                || (offset > 0 && offset % unit == 0 && offset / unit <= 4095);
+            if !encodable {
+                let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                materialize_address(w, addr, scratch, frame, ra)?;
+                return Ok((format!("[{scratch}]"), vec![scratch]));
+            }
+            let base = in_register(w, base, ra)?;
+            if offset == 0 {
+                format!("[{base}]")
+            } else {
+                format!("[{base}, #{offset}]")
+            }
+        }
+        AddressMode::BaseIndexScale {
+            base,
+            index,
+            scale,
+            offset,
+            ..
+        } if *offset == 0 && (*scale == 1 || usize::from(*scale) == size) => {
+            let base = in_register(w, base, ra)?;
+            let index = in_register(w, index, ra)?;
+            match index_scale_shift(*scale) {
+                Some(shift) if shift > 0 => format!("[{base}, {index}, lsl #{shift}]"),
+                _ => format!("[{base}, {index}]"),
+            }
+        }
+        AddressMode::BaseIndexScale { .. } => {
+            let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+            materialize_address(w, addr, scratch, frame, ra)?;
+            return Ok((format!("[{scratch}]"), vec![scratch]));
+        }
+    };
+    Ok((place, scratches))
 }
 
 /// Trait-backed MIR ⇒ AArch64 code generator.

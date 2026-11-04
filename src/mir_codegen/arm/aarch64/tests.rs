@@ -1963,3 +1963,66 @@ fn fused_compare_still_extends_narrow_values() -> Result<(), Box<dyn Error>> {
     assert!(asm.contains("cmp x16, x17"), "{asm}");
     Ok(())
 }
+
+fn indexed_load_asm(scale: u8, ty: ScalarType) -> Result<String, Box<dyn Error>> {
+    use crate::mir::{AddressMode, Block, MemoryAttrs, Parameter};
+    let reg = |id| Register::Virtual(VirtualReg::gpr(id));
+    let word = MirType::Scalar(ScalarType::I64);
+    let mut func = Function::new(
+        Signature::new("indexed")
+            .with_params(vec![
+                Parameter::new(reg(0), MirType::Scalar(ScalarType::Ptr)),
+                Parameter::new(reg(1), word),
+            ])
+            .with_return(word),
+    );
+    let mut entry = Block::new("entry");
+    entry.push(MirInst::Load {
+        ty: MirType::Scalar(ty),
+        dst: reg(2),
+        addr: AddressMode::BaseIndexScale {
+            base: reg(0),
+            index: reg(1),
+            scale,
+            offset: 0,
+            address_space: Default::default(),
+        },
+        attrs: MemoryAttrs::default(),
+    });
+    entry.push(MirInst::Ret {
+        value: Some(Operand::Register(reg(2))),
+    });
+    func.add_block(entry);
+    let settings = MirCodegenSettings {
+        regalloc: RegallocStrategy::LinearScanGlobal,
+        ..Default::default()
+    };
+    Ok(String::from_utf8(
+        compile_single_function_aarch64(
+            "indexed",
+            &func,
+            TargetOperatingSystem::Linux,
+            &settings,
+            &AggregateSignatures::empty(PointerWidth::Bits64),
+        )
+        .map_err(|error| error.to_string())?,
+    )?)
+}
+
+#[test]
+fn indexed_load_reads_in_one_instruction() -> Result<(), Box<dyn Error>> {
+    let asm = indexed_load_asm(8, ScalarType::I64)?;
+    assert!(asm.contains(", lsl #3]"), "{asm}");
+    let bytes = indexed_load_asm(1, ScalarType::I8)?;
+    assert!(bytes.contains("ldrsb"), "{bytes}");
+    assert!(!bytes.contains("lsl #"), "{bytes}");
+    Ok(())
+}
+
+#[test]
+fn index_scale_unlike_access_size_goes_through_add() -> Result<(), Box<dyn Error>> {
+    let asm = indexed_load_asm(8, ScalarType::I32)?;
+    assert!(!asm.contains(", lsl #3]"), "{asm}");
+    assert!(asm.contains("lsl "), "{asm}");
+    Ok(())
+}
