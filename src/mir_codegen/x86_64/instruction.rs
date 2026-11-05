@@ -827,6 +827,7 @@ pub(super) fn emit_instruction_x86_64(
     pointer_width: PointerWidth,
 ) -> Result<(), LaminaError> {
     let unwind = os_uses_elf(target_os);
+    let lp = local_label_prefix(target_os);
     // An elided fall-through jump writes no bytes, so a row for it would land on the
     // next block's first instruction.
     let elided = matches!(inst, MirInst::Jmp { target } if target == next_label);
@@ -2085,7 +2086,15 @@ pub(super) fn emit_instruction_x86_64(
         | MirInst::VaArg { .. }
         | MirInst::VaEnd { .. }
         | MirInst::VaCopy { .. } => {
-            super::variadic::emit(inst, writer, reg_alloc, stack_slots, va_area, func_name)?;
+            super::variadic::emit(
+                inst,
+                writer,
+                reg_alloc,
+                stack_slots,
+                va_area,
+                target_os,
+                func_name,
+            )?;
         }
         MirInst::TailCall { name, args } if name == func_name => {
             // Self tail call: move the arguments straight into the parameter homes as a
@@ -2131,7 +2140,7 @@ pub(super) fn emit_instruction_x86_64(
                 emit_parallel_copy(&pairs, writer)?;
                 emit_narrow_param_normalization(writer, param_extensions, self_param_homes)?;
                 if entry_label != next_label {
-                    writeln!(writer, "    jmp .L_{func_name}.{entry_label}")?;
+                    writeln!(writer, "    jmp {lp}_{func_name}.{entry_label}")?;
                 }
                 return Ok(());
             }
@@ -2148,7 +2157,11 @@ pub(super) fn emit_instruction_x86_64(
                 reg_alloc,
                 stack_slots,
             )?;
-            writeln!(writer, "    jmp {}", self_tail_entry_label(func_name))?;
+            writeln!(
+                writer,
+                "    jmp {}",
+                self_tail_entry_label(target_os, func_name)
+            )?;
         }
         MirInst::TailCall { name, args } => {
             let abi = X86ABI::new(target_os);
@@ -2711,9 +2724,9 @@ pub(super) fn emit_instruction_x86_64(
             }
             for (case_val, case_label) in cases {
                 writeln!(writer, "    cmpq ${case_val}, %rax")?;
-                writeln!(writer, "    je .L_{func_name}.{case_label}")?;
+                writeln!(writer, "    je {lp}_{func_name}.{case_label}")?;
             }
-            writeln!(writer, "    jmp .L_{func_name}.{default}")?;
+            writeln!(writer, "    jmp {lp}_{func_name}.{default}")?;
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {text}")?;
@@ -2817,7 +2830,7 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::Jmp { target } => {
             if target != next_label {
-                writeln!(writer, "    jmp .L_{func_name}.{target}")?;
+                writeln!(writer, "    jmp {lp}_{func_name}.{target}")?;
             }
         }
         MirInst::Br {
@@ -2830,11 +2843,11 @@ pub(super) fn emit_instruction_x86_64(
             }
             writeln!(writer, "    testq %rax, %rax")?;
             if true_target == next_label {
-                writeln!(writer, "    jz .L_{func_name}.{false_target}")?;
+                writeln!(writer, "    jz {lp}_{func_name}.{false_target}")?;
             } else {
-                writeln!(writer, "    jnz .L_{func_name}.{true_target}")?;
+                writeln!(writer, "    jnz {lp}_{func_name}.{true_target}")?;
                 if false_target != next_label {
-                    writeln!(writer, "    jmp .L_{func_name}.{false_target}")?;
+                    writeln!(writer, "    jmp {lp}_{func_name}.{false_target}")?;
                 }
             }
         }

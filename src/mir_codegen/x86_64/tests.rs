@@ -2187,3 +2187,22 @@ fn coff_weak_and_hidden_globals_stay_external() {
         assert!(!text.contains(".local"), "{annotation}: {text}");
     }
 }
+
+#[test]
+fn macos_block_labels_stay_out_of_the_symbol_table() {
+    let ir = parse_module(
+        "fn @pick(i64 %x) -> i64 {\nentry:\n    %c = eq.i64 %x, 0\n    br %c, zero, other\nzero:\n    ret.i64 1\nother:\n    ret.i64 2\n}\n",
+    )
+    .unwrap();
+    let mir = from_ir_x86_64(&ir, "labels").unwrap();
+    let assemble = |os: TargetOperatingSystem| {
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, os).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+    let macos = assemble(TargetOperatingSystem::MacOS);
+    assert!(macos.contains("\nL_pick.zero:\n"), "{macos}");
+    assert!(!macos.contains(".L"), "{macos}");
+    let linux = assemble(TargetOperatingSystem::Linux);
+    assert!(linux.contains("\n.L_pick.zero:\n"), "{linux}");
+}

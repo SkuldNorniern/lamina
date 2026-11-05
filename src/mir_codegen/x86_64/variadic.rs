@@ -86,8 +86,10 @@ impl VaArea {
 pub(super) fn spill_register_save_area<W: Write>(
     writer: &mut W,
     area: &VaArea,
+    target_os: TargetOperatingSystem,
     func_name: &str,
 ) -> io::Result<()> {
+    let lp = local_label_prefix(target_os);
     let save = match *area {
         VaArea::Win64 { .. } => {
             for (index, reg) in WIN64_ARG_REGS.iter().enumerate() {
@@ -108,7 +110,7 @@ pub(super) fn spill_register_save_area<W: Write>(
             save + (GP_SLOT_BYTES as i32) * index as i32
         )?;
     }
-    let skip = format!(".L_{func_name}.va_xmm_skip");
+    let skip = format!("{lp}_{func_name}.va_xmm_skip");
     writeln!(writer, "    testb %al, %al")?;
     writeln!(writer, "    je {skip}")?;
     for index in 0..8 {
@@ -144,8 +146,10 @@ pub(super) fn emit<W: Write>(
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     area: Option<&VaArea>,
+    target_os: TargetOperatingSystem,
     func_name: &str,
 ) -> Result<(), LaminaError> {
+    let lp = local_label_prefix(target_os);
     let Some(area) = area else {
         return Err(unsupported(
             "variadic arguments are only available inside a variadic function",
@@ -177,8 +181,8 @@ pub(super) fn emit<W: Write>(
             let Register::Virtual(vreg) = dst else {
                 return Err(unsupported("va_arg must define a virtual register"));
             };
-            let stack = format!(".L_{func_name}.va_arg{}.stack", vreg.id);
-            let done = format!(".L_{func_name}.va_arg{}.done", vreg.id);
+            let stack = format!("{lp}_{func_name}.va_arg{}.stack", vreg.id);
+            let done = format!("{lp}_{func_name}.va_arg{}.done", vreg.id);
             let (cursor, limit, step) = if is_float {
                 (
                     FP_OFFSET_FIELD,

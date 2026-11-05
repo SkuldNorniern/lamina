@@ -1364,9 +1364,12 @@ fn darwin_saves_callee_saved_registers_without_cfi() -> Result<(), Box<dyn Error
     let assembly = String::from_utf8(output)?;
     assert!(!assembly.contains(".cfi_"), "{assembly}");
     let (prologue, rest) = assembly
-        .split_once(".L_dense.entry:")
+        .split_once("\nL_dense.entry:")
         .ok_or("missing entry")?;
-    let epilogue = rest.split_once(".Lret_dense:").ok_or("missing epilogue")?.1;
+    let epilogue = rest
+        .split_once("\nLret_dense:")
+        .ok_or("missing epilogue")?
+        .1;
     for index in 21..=28 {
         if rest.contains(&format!("x{index},")) {
             assert!(prologue.contains(&format!("x{index},")), "{assembly}");
@@ -2111,5 +2114,32 @@ fn product_used_again_keeps_its_multiply() -> Result<(), Box<dyn Error>> {
     let asm = multiply_add_asm(true)?;
     assert!(!asm.contains("madd "), "{asm}");
     assert!(asm.contains("mul "), "{asm}");
+    Ok(())
+}
+
+#[test]
+fn macos_block_labels_stay_out_of_the_symbol_table() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let ir = "fn @pick(i64 %x) -> i64 {\nentry:\n    %c = eq.i64 %x, 0\n    br %c, zero, other\nzero:\n    ret.i64 1\nother:\n    ret.i64 2\n}\n";
+    let mir = from_ir_x86_64(&parse_module(ir)?, "labels").expect("lower");
+    let mut macos = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut macos,
+        TargetOperatingSystem::MacOS,
+        PointerWidth::Bits64,
+    )?;
+    let macos = String::from_utf8(macos)?;
+    assert!(macos.contains("\nL_pick.zero:\n"), "{macos}");
+    assert!(!macos.contains(".L"), "{macos}");
+    let mut linux = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut linux,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
+    let linux = String::from_utf8(linux)?;
+    assert!(linux.contains("\n.L_pick.zero:\n"), "{linux}");
     Ok(())
 }

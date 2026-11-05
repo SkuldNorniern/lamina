@@ -2179,8 +2179,15 @@ pub(super) fn block_layout(func: &Function) -> Vec<usize> {
     order
 }
 
-pub(super) fn self_tail_entry_label(func_name: &str) -> String {
-    format!(".L_{func_name}.tailentry")
+/// Prefix of the labels a function keeps to itself. A Mach-O assembler leaves only
+/// `L` names out of the symbol table, and ld64 starts an atom at every symbol, so a
+/// `.L` label there would split the function and cut its unwind entry short.
+pub(crate) fn local_label_prefix(target_os: TargetOperatingSystem) -> &'static str {
+    if os_uses_macho(target_os) { "L" } else { ".L" }
+}
+
+pub(super) fn self_tail_entry_label(target_os: TargetOperatingSystem, func_name: &str) -> String {
+    format!("{}_{func_name}.tailentry", local_label_prefix(target_os))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
