@@ -588,7 +588,11 @@ fn compile_single_function_aarch64_with(
             }
         }
         let allowed = |interval: &LiveInterval, reg| call_clobbers.is_clear(reg, interval);
-        let pool = A64RegAlloc::gpr_pool_for_global_allocation(allows_callee_saved);
+        let pool = if keeps_argument_registers_free(func) {
+            A64RegAlloc::gpr_pool_for_leaf(func.sig.params.len(), allows_callee_saved)
+        } else {
+            A64RegAlloc::gpr_pool_for_global_allocation(allows_callee_saved)
+        };
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
             .filter(|i| {
@@ -2968,6 +2972,37 @@ fn emit_sp_adjust<W: Write>(w: &mut W, op: &str, amount: u64) -> Result<(), Lami
 
 /// Stores a register into a frame slot, going through a scratch when the offset is
 /// past the reach of `stur`.
+/// Whether x3-x7 stay untouched by everything this function does, beyond its arguments
+/// arriving there: only whole-word-or-less integer parameters, no aggregate return, and
+/// only instructions that never name an argument register.
+fn keeps_argument_registers_free(func: &Function) -> bool {
+    let narrow =
+        |ty: &MirType| matches!(ty, MirType::Scalar(_)) && ty.size_bytes(PointerWidth::Bits64) <= 8;
+    !func.sig.variadic
+        && func.sig.ret_aggregate.is_none()
+        && func
+            .sig
+            .params
+            .iter()
+            .all(|p| p.aggregate.is_none() && narrow(&p.ty) && !p.ty.is_float())
+        && func
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .all(|i| match &i.instr {
+                MirInst::IntBinary { ty, .. } | MirInst::IntCmp { ty, .. } => narrow(ty),
+                MirInst::Load { ty, .. } | MirInst::Store { ty, .. } => narrow(ty),
+                MirInst::Copy { ty, .. } => narrow(ty),
+                MirInst::Select { ty, .. } => narrow(ty),
+                MirInst::IntConvert { .. }
+                | MirInst::Lea { .. }
+                | MirInst::Jmp { .. }
+                | MirInst::Br { .. }
+                | MirInst::Ret { .. } => true,
+                _ => false,
+            })
+}
+
 /// Saves or restores the callee-saved registers a global plan handed out, in the area
 /// reserved for them at `base` from the frame pointer. Adjacent pairs go through
 /// `stp`/`ldp` pairs, anchored on x29 while the offsets stay in their reach and on a

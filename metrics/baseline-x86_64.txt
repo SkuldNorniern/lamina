@@ -9821,6 +9821,50 @@ branches 7
 frame main 32
 frame put_u64 32
 
+[leaf_argument_registers O0]
+insns 319
+spills 145
+calls 10
+branches 5
+frame eight 128
+frame five 112
+frame looped 80
+frame main 32
+frame print_i64 64
+frame put_u64 48
+frame two 96
+
+[leaf_argument_registers O1]
+insns 253
+spills 29
+calls 10
+branches 5
+frame eight 32
+frame five 16
+frame looped 16
+frame main 16
+frame print_i64 16
+frame put_u64 32
+frame two 0
+
+[leaf_argument_registers O2]
+insns 357
+spills 25
+calls 6
+branches 21
+frame looped 32
+frame main 16
+frame put_u64 32
+
+[leaf_argument_registers O3]
+insns 358
+spills 25
+calls 6
+branches 21
+frame looped 32
+frame main 16
+frame put_u64 32
+
 [load_store_alignment O0]
 insns 103
 spills 34

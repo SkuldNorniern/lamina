@@ -29,6 +29,10 @@ const CALLEE_SAVED_GPRS: &[&str] = &[
     "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 ];
 
+/// Argument registers a function that calls nothing can keep values in, at no cost.
+/// x0-x2 stay out: the return sequence and the I/O paths name them.
+const LEAF_GPRS: &[&str] = &["x3", "x4", "x5", "x6", "x7"];
+
 const SCRATCH_GPRS: &[&str] = &["x9", "x10", "x11", "x12"];
 
 impl Default for A64RegAlloc {
@@ -117,12 +121,26 @@ impl A64RegAlloc {
     }
 
     /// GPR candidates for global allocation. `callee_saved` widens the pool with
-    /// x21-x28, which the prologue then has to save and the epilogue restore.
+    /// x19-x28, which the prologue then has to save and the epilogue restore. The
+    /// allocators take from the end of the list, so those go first and are reached last.
     pub fn gpr_pool_for_global_allocation(callee_saved: bool) -> Vec<&'static str> {
-        let mut pool = MAP_GPRS.to_vec();
+        let mut pool = Vec::new();
         if callee_saved {
             pool.extend_from_slice(CALLEE_SAVED_GPRS);
         }
+        pool.extend_from_slice(MAP_GPRS);
+        pool
+    }
+
+    /// The pool for a function that calls nothing and takes `parameters` arguments. The
+    /// argument registers above those arguments are reached before anything needing a save.
+    pub fn gpr_pool_for_leaf(parameters: usize, callee_saved: bool) -> Vec<&'static str> {
+        let mut pool = Vec::new();
+        if callee_saved {
+            pool.extend_from_slice(CALLEE_SAVED_GPRS);
+        }
+        pool.extend_from_slice(MAP_GPRS);
+        pool.extend(LEAF_GPRS.iter().copied().skip(parameters.saturating_sub(3)));
         pool
     }
 
@@ -156,7 +174,9 @@ impl A64RegAlloc {
                 continue;
             }
             if let Allocation::Register(phys) = alloc
-                && (MAP_GPRS.contains(phys) || CALLEE_SAVED_GPRS.contains(phys))
+                && (MAP_GPRS.contains(phys)
+                    || LEAF_GPRS.contains(phys)
+                    || CALLEE_SAVED_GPRS.contains(phys))
             {
                 s.global_mappings.insert(vreg, *phys);
                 s.used_gprs.insert(*phys);
@@ -263,11 +283,23 @@ mod tests {
     }
 
     #[test]
+    fn a_leaf_pool_leaves_out_the_registers_its_arguments_arrive_in() {
+        for (parameters, first) in [(0, "x3"), (3, "x3"), (4, "x4"), (7, "x7")] {
+            let pool = A64RegAlloc::gpr_pool_for_leaf(parameters, false);
+            let leaf: Vec<_> = pool.into_iter().filter(|r| LEAF_GPRS.contains(r)).collect();
+            assert_eq!(leaf.first(), Some(&first), "{parameters} parameters");
+        }
+        let pool = A64RegAlloc::gpr_pool_for_leaf(8, false);
+        assert!(pool.iter().all(|r| !LEAF_GPRS.contains(r)));
+    }
+
+    #[test]
     fn callee_saved_pool_is_opt_in() {
         let narrow = A64RegAlloc::gpr_pool_for_global_allocation(false);
         let wide = A64RegAlloc::gpr_pool_for_global_allocation(true);
         assert_eq!(narrow, vec!["x13", "x14", "x15"]);
-        assert!(wide.starts_with(&["x13", "x14", "x15"]));
+        // Allocators take from the end, so free registers are reached before saved ones.
+        assert!(wide.ends_with(&["x13", "x14", "x15"]));
         assert_eq!(wide.len(), 13);
         for reserved in ["x16", "x17", "x18", "x29", "x30"] {
             assert!(

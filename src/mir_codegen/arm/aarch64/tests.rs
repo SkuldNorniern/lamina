@@ -1376,6 +1376,60 @@ fn darwin_saves_callee_saved_registers_without_cfi() -> Result<(), Box<dyn Error
     Ok(())
 }
 
+fn compiled_leaf(source: &str) -> Result<String, Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let mir = from_ir_x86_64(&parse_module(source)?, "leaf").expect("lower leaf");
+    let settings = MirCodegenSettings {
+        regalloc: RegallocStrategy::LinearScanGlobal,
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    generate_mir_aarch64_with_units_and_settings(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        1,
+        &settings,
+        PointerWidth::Bits64,
+    )?;
+    Ok(String::from_utf8(output)?)
+}
+
+#[test]
+fn a_leaf_keeps_values_in_argument_registers_before_saving_any() -> Result<(), Box<dyn Error>> {
+    let asm = compiled_leaf(
+        "fn @f(i64 %a, i64 %b) -> i64 {\nentry:\n  %c = mul.i64 %a, %b\n  %d = add.i64 %a, %c\n  %e = xor.i64 %b, %d\n  %f = add.i64 %c, %e\n  %g = mul.i64 %d, %f\n  %h = add.i64 %e, %g\n  ret.i64 %h\n}\n",
+    )?;
+    assert!(!asm.contains("x19"), "needed no save: {asm}");
+    Ok(())
+}
+
+#[test]
+fn a_leaf_never_plans_a_value_into_a_register_an_argument_arrives_in() -> Result<(), Box<dyn Error>>
+{
+    let asm = compiled_leaf(
+        "fn @f(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h) -> i64 {\nentry:\n  %i = add.i64 %a, %b\n  %j = add.i64 %c, %d\n  %k = add.i64 %e, %f\n  %l = add.i64 %g, %h\n  %m = add.i64 %i, %j\n  %n = add.i64 %k, %l\n  %o = add.i64 %m, %n\n  ret.i64 %o\n}\n",
+    )?;
+    for reg in ["x3", "x4", "x5", "x6", "x7"] {
+        assert!(
+            !asm.contains(&format!("mov {reg}, x")),
+            "{reg} holds an argument: {asm}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_function_that_calls_stays_off_argument_registers() -> Result<(), Box<dyn Error>> {
+    let asm = compiled_leaf(
+        "fn @g() -> i64 {\nentry:\n  ret.i64 1\n}\nfn @f(i64 %a) -> i64 {\nentry:\n  %b = mul.i64 %a, 3\n  %c = mul.i64 %a, 5\n  %d = mul.i64 %a, 7\n  %e = mul.i64 %a, 11\n  %r = call @g()\n  %s = add.i64 %b, %c\n  %t = add.i64 %d, %e\n  %u = add.i64 %s, %t\n  %v = add.i64 %u, %r\n  ret.i64 %v\n}\n",
+    )?;
+    for reg in ["x3", "x4", "x5", "x6", "x7"] {
+        assert!(!asm.contains(&format!("{reg},")), "{reg}: {asm}");
+    }
+    Ok(())
+}
+
 #[test]
 fn tail_calls_restore_callee_saved_registers_first() -> Result<(), Box<dyn Error>> {
     use crate::mir::{Block, Parameter};
@@ -1444,7 +1498,7 @@ fn tail_calls_restore_callee_saved_registers_first() -> Result<(), Box<dyn Error
                         || line.contains(&format!("{reg}]"))
                         || line.ends_with(&format!(" {reg}"))
                 })
-                .last()
+                .next_back()
                 .map(str::to_owned)
         };
         let planned: Vec<_> = (19..=28)
