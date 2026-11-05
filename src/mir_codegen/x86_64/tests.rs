@@ -1567,7 +1567,13 @@ fn external_declarations_come_out_in_one_order() {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+#[cfg(all(
+    test,
+    any(
+        all(target_arch = "x86_64", target_os = "linux"),
+        all(target_arch = "aarch64", target_os = "macos")
+    )
+))]
 mod edge_move_tests {
     use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
     use crate::test_support::TempDir;
@@ -1607,7 +1613,13 @@ mod edge_move_tests {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+#[cfg(all(
+    test,
+    any(
+        all(target_arch = "x86_64", target_os = "linux"),
+        all(target_arch = "aarch64", target_os = "macos")
+    )
+))]
 mod intrinsic_namespace_tests {
     use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
     use crate::test_support::TempDir;
