@@ -2187,3 +2187,38 @@ fn coff_weak_and_hidden_globals_stay_external() {
         assert!(!text.contains(".local"), "{annotation}: {text}");
     }
 }
+
+#[test]
+fn elf_data_symbols_carry_their_type_and_size() {
+    let assemble = |source: &str, os: TargetOperatingSystem| {
+        let ir = parse_module(source).unwrap();
+        let mir = from_ir_x86_64(&ir, "symbols").unwrap();
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, os).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+    let main = "fn @main() -> i64 {\nentry:\n    %a = load.i64 $counter\n    ret.i64 %a\n}\n";
+    let plain = format!("global $counter: i64 = 41\nglobal $zeros: i64 = 0\n\n{main}");
+    let linux = assemble(
+        &format!("@thread_local\nglobal $tl: i64 = 7\n{plain}"),
+        TargetOperatingSystem::Linux,
+    );
+    for (name, kind) in [
+        ("counter", "object"),
+        ("tl", "tls_object"),
+        ("zeros", "object"),
+    ] {
+        assert!(
+            linux.contains(&format!(".type {name}, %{kind}\n")),
+            "{linux}"
+        );
+        assert!(
+            linux.contains(&format!(".size {name}, .-{name}\n")),
+            "{linux}"
+        );
+    }
+    for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::Windows] {
+        let asm = assemble(&plain, os);
+        assert!(!asm.contains(".type ") && !asm.contains(".size "), "{asm}");
+    }
+}

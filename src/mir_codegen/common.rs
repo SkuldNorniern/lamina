@@ -21,7 +21,7 @@ use crate::{
     },
     mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
-use lamina_codegen::{Allocation, LiveInterval, os_uses_coff, os_uses_macho};
+use lamina_codegen::{Allocation, LiveInterval, os_uses_coff, os_uses_elf, os_uses_macho};
 use lamina_platform::{MemoryOrdering, PointerWidth, TargetOperatingSystem};
 
 pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError {
@@ -1260,14 +1260,19 @@ fn emit_global_storage<W: Write>(
             None => (data_section, bss_section),
             Some(_) => (tls_data_section, tls_bss_section),
         };
-        write_global_storage(
-            writer,
-            &mangle(name),
-            global,
-            data_section,
-            bss_section,
-            &mangle,
-        )?;
+        let label = mangle(name);
+        let elf = os_uses_elf(target_os);
+        if elf {
+            let kind = match global.thread_local {
+                None => "object",
+                Some(_) => "tls_object",
+            };
+            writeln!(writer, ".type {label}, %{kind}")?;
+        }
+        write_global_storage(writer, &label, global, data_section, bss_section, &mangle)?;
+        if elf {
+            writeln!(writer, ".size {label}, .-{label}")?;
+        }
     }
     Ok(())
 }
