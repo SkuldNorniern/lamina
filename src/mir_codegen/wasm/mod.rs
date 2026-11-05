@@ -7,8 +7,7 @@ use crate::mir_codegen::common::lamina_to_codegen_error;
 use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
 use crate::mir_codegen::common::{reject_function_placement, reject_global_linkage};
 use crate::mir_codegen::common::{
-    reject_thread_local_globals, unsupported_inline_asm, unsupported_overflow_flag,
-    unsupported_thread_local,
+    reject_thread_local_globals, unsupported_inline_asm, unsupported_thread_local,
 };
 use crate::mir_codegen::simd::vector_slots;
 
@@ -24,8 +23,8 @@ use crate::error::LaminaError;
 use crate::{
     mir::{
         AddressMode, Function, Global, GlobalRelocation, Immediate, Instruction as MirInst,
-        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
-        VirtualReg,
+        IntBinOp, IntCmpOp, IntOverflowOp, MirType, Module as MirModule, Operand, Register,
+        ScalarType, Signature, VirtualReg,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions,
@@ -1175,6 +1174,116 @@ fn extend_integer_wasm(
     Ok(())
 }
 
+/// Leaves an i32 on the stack: whether `op` on `lhs` and `rhs` leaves the range of
+/// `ty`. Operands are reloaded rather than kept, so no scratch local is needed.
+///
+/// Below 64 bits the operation is exact in i64, and it overflowed when narrowing
+/// the result back to `ty` changes it. At 64 bits add and sub use the sign rules,
+/// and mul divides the product back, after the cases where that division traps.
+#[allow(clippy::too_many_arguments)]
+fn emit_int_overflow_wasm(
+    writer: &mut impl Write,
+    op: IntOverflowOp,
+    ty: MirType,
+    signed: bool,
+    lhs: &Operand,
+    rhs: &Operand,
+    vreg_to_local: &HashMap<VirtualReg, usize>,
+    pointer_width: PointerWidth,
+) -> Result<(), LaminaError> {
+    let operand = |w: &mut dyn Write, value: &Operand| -> Result<(), LaminaError> {
+        let mut text = Vec::new();
+        load_operand_wasm(value, &mut text, vreg_to_local)?;
+        extend_integer_wasm(&mut text, ty, signed, pointer_width)?;
+        w.write_all(&text)?;
+        Ok(())
+    };
+    let (wasm_op, div) = match op {
+        IntOverflowOp::Add => ("i64.add", ""),
+        IntOverflowOp::Sub => ("i64.sub", ""),
+        IntOverflowOp::Mul => ("i64.mul", if signed { "i64.div_s" } else { "i64.div_u" }),
+    };
+    let result = |w: &mut dyn Write| -> Result<(), LaminaError> {
+        operand(w, lhs)?;
+        operand(w, rhs)?;
+        writeln!(w, "      {wasm_op}")?;
+        Ok(())
+    };
+    if ty.size_bytes(pointer_width) < 8 {
+        result(writer)?;
+        result(writer)?;
+        extend_integer_wasm(writer, ty, signed, pointer_width)?;
+        writeln!(writer, "      i64.ne")?;
+        return Ok(());
+    }
+    match (op, signed) {
+        (IntOverflowOp::Add, true) => {
+            // Both operands differ in sign from the result.
+            operand(writer, lhs)?;
+            result(writer)?;
+            writeln!(writer, "      i64.xor")?;
+            operand(writer, rhs)?;
+            result(writer)?;
+            writeln!(
+                writer,
+                "      i64.xor\n      i64.and\n      i64.const 0\n      i64.lt_s"
+            )?;
+        }
+        (IntOverflowOp::Sub, true) => {
+            // The operands differ in sign, and lhs differs in sign from the result.
+            operand(writer, lhs)?;
+            operand(writer, rhs)?;
+            writeln!(writer, "      i64.xor")?;
+            operand(writer, lhs)?;
+            result(writer)?;
+            writeln!(
+                writer,
+                "      i64.xor\n      i64.and\n      i64.const 0\n      i64.lt_s"
+            )?;
+        }
+        (IntOverflowOp::Add, false) => {
+            result(writer)?;
+            operand(writer, lhs)?;
+            writeln!(writer, "      i64.lt_u")?;
+        }
+        (IntOverflowOp::Sub, false) => {
+            operand(writer, lhs)?;
+            operand(writer, rhs)?;
+            writeln!(writer, "      i64.lt_u")?;
+        }
+        (IntOverflowOp::Mul, _) => {
+            operand(writer, lhs)?;
+            writeln!(
+                writer,
+                "      i64.eqz\n      if (result i32)\n      i32.const 0\n      else"
+            )?;
+            if signed {
+                operand(writer, lhs)?;
+                writeln!(
+                    writer,
+                    "      i64.const -1\n      i64.eq\n      if (result i32)"
+                )?;
+                operand(writer, rhs)?;
+                writeln!(
+                    writer,
+                    "      i64.const {}\n      i64.eq\n      else",
+                    i64::MIN
+                )?;
+            }
+            result(writer)?;
+            operand(writer, lhs)?;
+            writeln!(writer, "      {div}")?;
+            operand(writer, rhs)?;
+            writeln!(writer, "      i64.ne")?;
+            if signed {
+                writeln!(writer, "      end")?;
+            }
+            writeln!(writer, "      end")?;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn emit_instruction_wasm(
     inst: &MirInst,
@@ -1205,8 +1314,26 @@ fn emit_instruction_wasm(
         MirInst::ThreadLocalAddr { .. } => {
             return Err(unsupported_thread_local("WASM"));
         }
-        MirInst::IntOverflow { .. } => {
-            return Err(unsupported_overflow_flag("WASM"));
+        MirInst::IntOverflow {
+            op,
+            ty,
+            signed,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            emit_int_overflow_wasm(
+                writer,
+                *op,
+                *ty,
+                *signed,
+                lhs,
+                rhs,
+                vreg_to_local,
+                pointer_width,
+            )?;
+            writeln!(writer, "      i64.extend_i32_u")?;
+            store_to_register_wasm(dst, writer, vreg_to_local)?;
         }
         MirInst::SymbolAddress { dst, symbol } => {
             let address = addresses

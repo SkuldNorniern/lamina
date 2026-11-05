@@ -5,6 +5,7 @@ use crate::parser::parse_module;
 use crate::test_support::TempDir;
 use lamina_platform::PointerWidth;
 use std::{
+    collections::HashSet,
     fs,
     io::Write,
     process::{Command, Stdio},
@@ -129,6 +130,69 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
             .expect("stdout should be UTF-8")
             .replace("\r\n", "\n"),
     )
+}
+
+/// Operation, type, operands and whether it overflows, at the edges of each width:
+/// i8, u8 and i32 are checked by narrowing the i64 result, i64 and u64 by the sign
+/// rules and by dividing the product back.
+const OVERFLOW_CASES: &[(&str, &str, &str, &str, u8)] = &[
+    ("add", "i8", "127", "1", 1),
+    ("add", "i8", "126", "1", 0),
+    ("sub", "i8", "-128", "1", 1),
+    ("mul", "i8", "-128", "-1", 1),
+    ("mul", "i8", "16", "8", 1),
+    ("mul", "i8", "15", "8", 0),
+    ("add", "u8", "255", "1", 1),
+    ("sub", "u8", "0", "1", 1),
+    ("mul", "u8", "16", "16", 1),
+    ("mul", "u8", "15", "17", 0),
+    ("add", "i32", "2147483647", "1", 1),
+    ("mul", "i32", "46341", "46341", 1),
+    ("mul", "i32", "46340", "46340", 0),
+    ("add", "i64", "9223372036854775807", "1", 1),
+    ("add", "i64", "9223372036854775807", "-1", 0),
+    ("sub", "i64", "-9223372036854775808", "1", 1),
+    ("sub", "i64", "-1", "9223372036854775807", 0),
+    ("sub", "i64", "-2", "9223372036854775807", 1),
+    ("mul", "i64", "-9223372036854775808", "-1", 1),
+    ("mul", "i64", "-1", "-9223372036854775808", 1),
+    ("mul", "i64", "-9223372036854775808", "1", 0),
+    ("mul", "i64", "0", "-9223372036854775808", 0),
+    ("mul", "i64", "3037000500", "3037000500", 1),
+    ("mul", "i64", "3037000499", "3037000499", 0),
+    ("add", "u64", "18446744073709551615", "1", 1),
+    ("sub", "u64", "0", "1", 1),
+    ("mul", "u64", "4294967296", "4294967296", 1),
+    ("mul", "u64", "4294967295", "4294967297", 0),
+];
+
+#[test]
+fn checked_arithmetic_reports_overflow_at_every_width() {
+    // One function per operation, so the operands reach it as locals.
+    let mut source = String::new();
+    let mut main = String::from("fn @main() -> i64 {\nentry:\n");
+    let mut expected = String::new();
+    let mut defined = HashSet::new();
+    for (index, (op, ty, lhs, rhs, overflows)) in OVERFLOW_CASES.iter().enumerate() {
+        if defined.insert((op, ty)) {
+            source.push_str(&format!(
+                "fn @{op}_{ty}({ty} %a, {ty} %b) -> bool {{\nentry:\n %r = {op}.ovf.{ty} %a, %b\n ret.bool %r\n}}\n"
+            ));
+        }
+        main.push_str(&format!(
+            " %c{index} = call @{op}_{ty}({lhs}, {rhs})\n %v{index} = extend.bool.i64 %c{index}\n call @print_i64(%v{index})\n"
+        ));
+        expected.push_str(&format!("{overflows}\n"));
+    }
+    source.push_str(&main);
+    source.push_str(" ret.i64 0\n}");
+    expected.push_str("0\n");
+    for opt_level in [0, 3] {
+        let Some(stdout) = run_wasm_main("ovf", &source, opt_level) else {
+            return;
+        };
+        assert_eq!(stdout, expected, "O{opt_level}");
+    }
 }
 
 #[test]
