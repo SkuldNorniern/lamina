@@ -9,11 +9,13 @@ use lamina_mir::Located;
 use lamina_platform::PointerWidth;
 use std::error::Error;
 
-/// Replays the `li`, `slli`, `addi` and `add` lines that build the `t0` and `a0`
+/// Replays the `li`, `slli`, `addi` and `add` lines that build the `t0`, `t1` and `a0`
 /// values. Returns what the prologue does to `sp`, and each address that is built
-/// from `fp` or offset from an address already in `a0`.
+/// from `fp` or offset from an address already in `a0`. A stack probe builds the
+/// final `sp` in `t1` and lowers `sp` until it gets there.
 fn riscv_frame_arithmetic(asm: &str) -> (i64, Vec<i64>) {
-    let (mut t0, mut a0, mut sp_delta, mut addresses) = (0i64, 0i64, 0i64, Vec::new());
+    let (mut t0, mut t1, mut a0, mut sp_delta, mut addresses) =
+        (0i64, 0i64, 0i64, 0i64, Vec::new());
     let mut in_prologue = true;
     for line in asm.lines().map(str::trim) {
         if line.starts_with(".L_reserved.") {
@@ -23,18 +25,32 @@ fn riscv_frame_arithmetic(asm: &str) -> (i64, Vec<i64>) {
         let parts: Vec<&str> = args.split(", ").collect();
         match (op, parts.as_slice()) {
             ("li", [r, v]) => {
-                *(if *r == "t0" { &mut t0 } else { &mut a0 }) = v.parse().unwrap_or(0)
+                *(match *r {
+                    "t0" => &mut t0,
+                    "t1" => &mut t1,
+                    _ => &mut a0,
+                }) = v.parse().unwrap_or(0)
             }
             ("slli", [r, _, k]) => {
-                let v = if *r == "t0" { &mut t0 } else { &mut a0 };
+                let v = match *r {
+                    "t0" => &mut t0,
+                    "t1" => &mut t1,
+                    _ => &mut a0,
+                };
                 *v = v.wrapping_shl(k.parse().unwrap_or(0));
             }
             ("addi", ["sp", "sp", v]) if in_prologue => sp_delta += v.parse::<i64>().unwrap_or(0),
             ("addi", [r, _, v]) => {
-                let v_ref = if *r == "t0" { &mut t0 } else { &mut a0 };
+                let v_ref = match *r {
+                    "t0" => &mut t0,
+                    "t1" => &mut t1,
+                    _ => &mut a0,
+                };
                 *v_ref = v_ref.wrapping_add(v.parse().unwrap_or(0));
             }
             ("add", ["sp", "sp", "t0"]) if in_prologue => sp_delta += t0,
+            ("add", ["t1", "sp", "t1"]) if in_prologue => t1 += sp_delta,
+            ("bltu", ["t1", "sp", "1b"]) if in_prologue => sp_delta = t1,
             ("add", ["a0", "fp", "a0"]) => addresses.push(a0),
             ("add", ["a0", "a0", "t0"]) => {
                 a0 = a0.wrapping_add(t0);
@@ -1368,4 +1384,33 @@ fn a_float_pair_without_two_free_float_registers_falls_back_to_the_integer_conve
         matches!(places[7], RiscVArgPlace::Words { first: 0, words: 1 }),
         "one free float register is not two, so the pair takes a0"
     );
+}
+
+fn stack_probe_assembly(source: &str) -> Result<String, Box<dyn Error>> {
+    let ir = parse_module(source)?;
+    let module =
+        from_ir_for_target(&ir, "probe", TargetArchitecture::Riscv64.data_layout()).expect("lower");
+    let mut output = Vec::new();
+    generate_mir_riscv(&module, &mut output, TargetOperatingSystem::Linux)?;
+    Ok(String::from_utf8(output)?)
+}
+
+#[test]
+fn frame_larger_than_a_page_is_probed() -> Result<(), Box<dyn Error>> {
+    let asm = stack_probe_assembly(
+        "fn @f() -> i64 {\nentry:\n    %p = stackalloc.[65536 x i8]\n    ret.i64 0\n}\n",
+    )?;
+    let probe = "1:\n    sub sp, sp, t2\n    sd zero, 0(sp)\n    bltu t1, sp, 1b\n";
+    assert!(asm.contains("    add t1, sp, t1\n"), "{asm}");
+    assert!(asm.contains(probe), "{asm}");
+    Ok(())
+}
+
+#[test]
+fn small_frame_gets_no_probe() -> Result<(), Box<dyn Error>> {
+    let asm = stack_probe_assembly(
+        "fn @f() -> i64 {\nentry:\n    %p = stackalloc.[24 x i8]\n    ret.i64 0\n}\n",
+    )?;
+    assert!(!asm.contains("bltu t1, sp, 1b"), "{asm}");
+    Ok(())
 }

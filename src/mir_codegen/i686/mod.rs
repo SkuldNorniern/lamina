@@ -316,7 +316,7 @@ fn compile_function(
         _ => None,
     };
     let frame = abi::frame_bytes(total * abi::SLOT as usize);
-    abi::prologue(&mut output, frame).map_err(io)?;
+    abi::prologue(&mut output, frame, target_os.stack_probe()).map_err(io)?;
     store_incoming_arguments(&mut output, func, &slots, sret).map_err(lamina_to_codegen_error)?;
 
     let mut ctx = EmitCtx {

@@ -1,7 +1,7 @@
 //! cdecl (32-bit System V) frame layout and argument places.
 
 use crate::mir::MirType;
-use lamina_platform::PointerWidth;
+use lamina_platform::{PointerWidth, StackProbe, TargetArchitecture};
 use std::io::{self, Write};
 
 pub(super) const PTR: PointerWidth = PointerWidth::Bits32;
@@ -30,10 +30,37 @@ pub(super) fn frame_bytes(locals: usize) -> usize {
     locals.div_ceil(16) * 16 + 8
 }
 
-pub(super) fn prologue<W: Write>(writer: &mut W, frame: usize) -> io::Result<()> {
+pub(super) fn prologue<W: Write>(
+    writer: &mut W,
+    frame: usize,
+    probe: Option<StackProbe>,
+) -> io::Result<()> {
     writeln!(writer, "    pushl %ebp")?;
     writeln!(writer, "    movl %esp, %ebp")?;
-    writeln!(writer, "    subl ${frame}, %esp")
+    let page_size = TargetArchitecture::I686.stack_page_size();
+    match probe {
+        Some(StackProbe::PageLoop) if frame > page_size => {
+            probed_allocation(writer, frame, page_size)
+        }
+        _ => writeln!(writer, "    subl ${frame}, %esp"),
+    }
+}
+
+/// Lowers `%esp` one page at a time and touches each page, so a frame larger than the
+/// guard page cannot step over it. cdecl passes every argument on the stack, so `%eax`
+/// is free on entry.
+fn probed_allocation<W: Write>(writer: &mut W, frame: usize, page_size: usize) -> io::Result<()> {
+    writeln!(writer, "    leal -{frame}(%esp), %eax")?;
+    let remainder = frame % page_size;
+    if remainder != 0 {
+        writeln!(writer, "    subl ${remainder}, %esp")?;
+        writeln!(writer, "    orl $0, (%esp)")?;
+    }
+    writeln!(writer, "1:")?;
+    writeln!(writer, "    subl ${page_size}, %esp")?;
+    writeln!(writer, "    orl $0, (%esp)")?;
+    writeln!(writer, "    cmpl %eax, %esp")?;
+    writeln!(writer, "    ja 1b")
 }
 
 /// Pops the frame and returns, releasing `pop` extra bytes of the caller's argument

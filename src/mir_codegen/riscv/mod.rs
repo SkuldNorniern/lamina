@@ -317,8 +317,15 @@ fn compile_single_function_riscv(
         RiscVFrame::adjust_sp(&mut output, -i64::from(incoming_stack_base))
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
-    RiscVFrame::generate_prologue(&mut output, stack_size, &callee_saved_registers, target)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    RiscVFrame::generate_prologue(
+        &mut output,
+        stack_size,
+        &callee_saved_registers,
+        target,
+        target_os.stack_probe(),
+        target_arch(target).stack_page_size(),
+    )
+    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     if let Some(area) = &va_area {
         variadic::spill(&mut output, area, target).map_err(io_codegen_error)?;
     }

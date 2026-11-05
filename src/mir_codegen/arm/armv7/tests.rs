@@ -355,3 +355,22 @@ fn a_non_variadic_function_saves_no_core_argument_registers() {
         "{assembly}"
     );
 }
+
+#[test]
+fn frame_larger_than_a_page_is_probed() {
+    let asm =
+        compile("fn @f() -> i64 {\nentry:\n    %p = stackalloc.[65536 x i8]\n    ret.i64 0\n}\n");
+    let probe = "1:\n    sub sp, sp, #4096\n    str r4, [sp]\n    cmp sp, r4\n    bhi 1b\n";
+    assert!(asm.contains("    sub r4, sp, r4\n"), "{asm}");
+    assert!(asm.contains(probe), "{asm}");
+    let probe_at = asm.find(probe).expect("probe");
+    let bic_at = asm.find("    bic sp, sp,").expect("bic");
+    assert!(probe_at < bic_at, "{asm}");
+}
+
+#[test]
+fn small_frame_gets_no_probe() {
+    let asm =
+        compile("fn @f() -> i64 {\nentry:\n    %p = stackalloc.[24 x i8]\n    ret.i64 0\n}\n");
+    assert!(!asm.contains("bhi 1b"), "{asm}");
+}

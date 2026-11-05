@@ -34,7 +34,7 @@ use crate::{
     },
 };
 use lamina_codegen::{aarch64::FrameMap, abi::Abi};
-use lamina_platform::{PointerWidth, TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{PointerWidth, StackProbe, TargetArchitecture, TargetOperatingSystem};
 
 use abi::{ArgKind, Armv7Abi, Signatures, classify, returns_in_memory};
 use emit::{Ctx, copy_through_pointer, is_wide_integer, reject_wide};
@@ -207,6 +207,25 @@ fn compile_single_function(
         .map_err(lamina_to_codegen_error)
 }
 
+/// Lowers sp one page at a time and touches each page, so a frame larger than the
+/// guard page cannot step over it. The prologue has already pushed r4, so it holds
+/// the final sp; what the stores write does not matter.
+fn probed_sp_sub<W: Write>(w: &mut W, amount: u32, page_size: u32) -> Result<(), LaminaError> {
+    mov_imm32(w, "r4", amount)?;
+    writeln!(w, "    sub r4, sp, r4")?;
+    let remainder = amount % page_size;
+    if remainder != 0 {
+        sp_adjust(w, "sub", remainder as usize)?;
+        writeln!(w, "    str r4, [sp]")?;
+    }
+    writeln!(w, "1:")?;
+    writeln!(w, "    sub sp, sp, #{page_size}")?;
+    writeln!(w, "    str r4, [sp]")?;
+    writeln!(w, "    cmp sp, r4")?;
+    writeln!(w, "    bhi 1b")?;
+    Ok(())
+}
+
 fn compile_function(
     func_name: &str,
     func: &Function,
@@ -252,7 +271,13 @@ fn compile_function(
     let alignment = frame_alignment(func);
     frame.frame_size =
         (frame.frame_size.max(0) as usize).div_ceil(alignment) as i32 * alignment as i32;
-    sp_adjust(&mut w, "sub", frame.frame_size.max(0) as usize)?;
+    let page_size = TargetArchitecture::Armv7.stack_page_size();
+    match target_os.stack_probe() {
+        Some(StackProbe::PageLoop) if frame.frame_size.max(0) as usize > page_size => {
+            probed_sp_sub(&mut w, frame.frame_size as u32, page_size as u32)?
+        }
+        _ => sp_adjust(&mut w, "sub", frame.frame_size.max(0) as usize)?,
+    }
     writeln!(w, "    bic sp, sp, #{}", alignment - 1)?;
     let size = frame.frame_size.max(0) as u32;
     if is_modified_immediate(size) {
