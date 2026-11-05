@@ -1,0 +1,1473 @@
+# element-wise self-loops the vectorizer widens at O3, every lane width and operation
+fn @i8_add() -> i64 {
+entry:
+  %a = stackalloc.[64 x i8]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i8 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i8 %v
+  store.i8 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i8 %a, %i
+  %x = load.i8 %q
+  %y = add.i8 %x, 91
+  store.i8 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i8 %a, %k
+  %z = load.i8 %r
+  %e = extend.i8.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i8_sub() -> i64 {
+entry:
+  %a = stackalloc.[64 x i8]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i8 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i8 %v
+  store.i8 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i8 %a, %i
+  %x = load.i8 %q
+  %y = sub.i8 %x, 53
+  store.i8 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i8 %a, %k
+  %z = load.i8 %r
+  %e = extend.i8.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i8_and() -> i64 {
+entry:
+  %a = stackalloc.[64 x i8]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i8 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i8 %v
+  store.i8 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i8 %a, %i
+  %x = load.i8 %q
+  %y = and.i8 %x, 60
+  store.i8 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i8 %a, %k
+  %z = load.i8 %r
+  %e = extend.i8.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i8_or() -> i64 {
+entry:
+  %a = stackalloc.[64 x i8]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i8 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i8 %v
+  store.i8 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i8 %a, %i
+  %x = load.i8 %q
+  %y = or.i8 %x, 5
+  store.i8 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i8 %a, %k
+  %z = load.i8 %r
+  %e = extend.i8.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i8_xor() -> i64 {
+entry:
+  %a = stackalloc.[64 x i8]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i8 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i8 %v
+  store.i8 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i8 %a, %i
+  %x = load.i8 %q
+  %y = xor.i8 %x, 85
+  store.i8 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i8 %a, %k
+  %z = load.i8 %r
+  %e = extend.i8.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i8_mul() -> i64 {
+entry:
+  %a = stackalloc.[64 x i8]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i8 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i8 %v
+  store.i8 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i8 %a, %i
+  %x = load.i8 %q
+  %y = mul.i8 %x, 3
+  store.i8 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i8 %a, %k
+  %z = load.i8 %r
+  %e = extend.i8.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i16_add() -> i64 {
+entry:
+  %a = stackalloc.[64 x i16]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i16 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i16 %v
+  store.i16 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i16 %a, %i
+  %x = load.i16 %q
+  %y = add.i16 %x, 91
+  store.i16 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i16 %a, %k
+  %z = load.i16 %r
+  %e = extend.i16.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i16_sub() -> i64 {
+entry:
+  %a = stackalloc.[64 x i16]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i16 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i16 %v
+  store.i16 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i16 %a, %i
+  %x = load.i16 %q
+  %y = sub.i16 %x, 53
+  store.i16 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i16 %a, %k
+  %z = load.i16 %r
+  %e = extend.i16.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i16_and() -> i64 {
+entry:
+  %a = stackalloc.[64 x i16]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i16 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i16 %v
+  store.i16 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i16 %a, %i
+  %x = load.i16 %q
+  %y = and.i16 %x, 60
+  store.i16 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i16 %a, %k
+  %z = load.i16 %r
+  %e = extend.i16.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i16_or() -> i64 {
+entry:
+  %a = stackalloc.[64 x i16]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i16 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i16 %v
+  store.i16 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i16 %a, %i
+  %x = load.i16 %q
+  %y = or.i16 %x, 5
+  store.i16 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i16 %a, %k
+  %z = load.i16 %r
+  %e = extend.i16.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i16_xor() -> i64 {
+entry:
+  %a = stackalloc.[64 x i16]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i16 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i16 %v
+  store.i16 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i16 %a, %i
+  %x = load.i16 %q
+  %y = xor.i16 %x, 85
+  store.i16 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i16 %a, %k
+  %z = load.i16 %r
+  %e = extend.i16.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i16_mul() -> i64 {
+entry:
+  %a = stackalloc.[64 x i16]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i16 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i16 %v
+  store.i16 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i16 %a, %i
+  %x = load.i16 %q
+  %y = mul.i16 %x, 3
+  store.i16 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i16 %a, %k
+  %z = load.i16 %r
+  %e = extend.i16.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i32_add() -> i64 {
+entry:
+  %a = stackalloc.[64 x i32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i32 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i32 %v
+  store.i32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i32 %a, %i
+  %x = load.i32 %q
+  %y = add.i32 %x, 91
+  store.i32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i32 %a, %k
+  %z = load.i32 %r
+  %e = extend.i32.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i32_sub() -> i64 {
+entry:
+  %a = stackalloc.[64 x i32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i32 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i32 %v
+  store.i32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i32 %a, %i
+  %x = load.i32 %q
+  %y = sub.i32 %x, 53
+  store.i32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i32 %a, %k
+  %z = load.i32 %r
+  %e = extend.i32.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i32_and() -> i64 {
+entry:
+  %a = stackalloc.[64 x i32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i32 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i32 %v
+  store.i32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i32 %a, %i
+  %x = load.i32 %q
+  %y = and.i32 %x, 60
+  store.i32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i32 %a, %k
+  %z = load.i32 %r
+  %e = extend.i32.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i32_or() -> i64 {
+entry:
+  %a = stackalloc.[64 x i32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i32 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i32 %v
+  store.i32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i32 %a, %i
+  %x = load.i32 %q
+  %y = or.i32 %x, 5
+  store.i32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i32 %a, %k
+  %z = load.i32 %r
+  %e = extend.i32.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i32_xor() -> i64 {
+entry:
+  %a = stackalloc.[64 x i32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i32 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i32 %v
+  store.i32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i32 %a, %i
+  %x = load.i32 %q
+  %y = xor.i32 %x, 85
+  store.i32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i32 %a, %k
+  %z = load.i32 %r
+  %e = extend.i32.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i32_mul() -> i64 {
+entry:
+  %a = stackalloc.[64 x i32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i32 %a, %j
+  %v = mul.i64 %j, 37
+  %w = trunc.i64.i32 %v
+  store.i32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i32 %a, %i
+  %x = load.i32 %q
+  %y = mul.i32 %x, 3
+  store.i32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i32 %a, %k
+  %z = load.i32 %r
+  %e = extend.i32.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i64_add() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i64 %a, %j
+  %v = mul.i64 %j, 37
+  %w = add.i64 %v, 1
+  store.i64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i64 %a, %i
+  %x = load.i64 %q
+  %y = add.i64 %x, 91
+  store.i64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i64 %a, %k
+  %z = load.i64 %r
+  %e = add.i64 %z, 0
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i64_sub() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i64 %a, %j
+  %v = mul.i64 %j, 37
+  %w = add.i64 %v, 1
+  store.i64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i64 %a, %i
+  %x = load.i64 %q
+  %y = sub.i64 %x, 53
+  store.i64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i64 %a, %k
+  %z = load.i64 %r
+  %e = add.i64 %z, 0
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i64_and() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i64 %a, %j
+  %v = mul.i64 %j, 37
+  %w = add.i64 %v, 1
+  store.i64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i64 %a, %i
+  %x = load.i64 %q
+  %y = and.i64 %x, 60
+  store.i64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i64 %a, %k
+  %z = load.i64 %r
+  %e = add.i64 %z, 0
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i64_or() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i64 %a, %j
+  %v = mul.i64 %j, 37
+  %w = add.i64 %v, 1
+  store.i64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i64 %a, %i
+  %x = load.i64 %q
+  %y = or.i64 %x, 5
+  store.i64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i64 %a, %k
+  %z = load.i64 %r
+  %e = add.i64 %z, 0
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i64_xor() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i64 %a, %j
+  %v = mul.i64 %j, 37
+  %w = add.i64 %v, 1
+  store.i64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i64 %a, %i
+  %x = load.i64 %q
+  %y = xor.i64 %x, 85
+  store.i64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i64 %a, %k
+  %z = load.i64 %r
+  %e = add.i64 %z, 0
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @i64_mul() -> i64 {
+entry:
+  %a = stackalloc.[64 x i64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.i64 %a, %j
+  %v = mul.i64 %j, 37
+  %w = add.i64 %v, 1
+  store.i64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.i64 %a, %i
+  %x = load.i64 %q
+  %y = mul.i64 %x, 3
+  store.i64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.i64 %a, %k
+  %z = load.i64 %r
+  %e = add.i64 %z, 0
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @f32_add() -> i64 {
+entry:
+  %a = stackalloc.[64 x f32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.f32 %a, %j
+  %w = add.f32 1.5, 2.0
+  store.f32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.f32 %a, %i
+  %x = load.f32 %q
+  %y = add.f32 %x, 0.25
+  store.f32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.f32 %a, %k
+  %z = load.f32 %r
+  %b = bitcast.f32.i32 %z
+  %e = extend.i32.i64 %b
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @f32_sub() -> i64 {
+entry:
+  %a = stackalloc.[64 x f32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.f32 %a, %j
+  %w = add.f32 1.5, 2.0
+  store.f32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.f32 %a, %i
+  %x = load.f32 %q
+  %y = sub.f32 %x, 0.25
+  store.f32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.f32 %a, %k
+  %z = load.f32 %r
+  %b = bitcast.f32.i32 %z
+  %e = extend.i32.i64 %b
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @f32_mul() -> i64 {
+entry:
+  %a = stackalloc.[64 x f32]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.f32 %a, %j
+  %w = add.f32 1.5, 2.0
+  store.f32 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.f32 %a, %i
+  %x = load.f32 %q
+  %y = mul.f32 %x, 1.5
+  store.f32 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.f32 %a, %k
+  %z = load.f32 %r
+  %b = bitcast.f32.i32 %z
+  %e = extend.i32.i64 %b
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @f64_add() -> i64 {
+entry:
+  %a = stackalloc.[64 x f64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.f64 %a, %j
+  %w = add.f64 1.5, 2.0
+  store.f64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.f64 %a, %i
+  %x = load.f64 %q
+  %y = add.f64 %x, 0.25
+  store.f64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.f64 %a, %k
+  %z = load.f64 %r
+  %e = bitcast.f64.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @f64_sub() -> i64 {
+entry:
+  %a = stackalloc.[64 x f64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.f64 %a, %j
+  %w = add.f64 1.5, 2.0
+  store.f64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.f64 %a, %i
+  %x = load.f64 %q
+  %y = sub.f64 %x, 0.25
+  store.f64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.f64 %a, %k
+  %z = load.f64 %r
+  %e = bitcast.f64.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @f64_mul() -> i64 {
+entry:
+  %a = stackalloc.[64 x f64]
+  %j = add.i64 0, 0
+  jmp fill
+fill:
+  %more = lt.i64 %j, 64
+  br %more, fbody, go
+fbody:
+  %p = getelem.f64 %a, %j
+  %w = add.f64 1.5, 2.0
+  store.f64 %p, %w
+  %j = add.i64 %j, 1
+  jmp fill
+go:
+  %i = add.i64 0, 0
+  jmp head
+head:
+  %again = lt.i64 %i, 64
+  br %again, body, sum
+body:
+  %q = getelem.f64 %a, %i
+  %x = load.f64 %q
+  %y = mul.f64 %x, 1.5
+  store.f64 %q, %y
+  %i = add.i64 %i, 1
+  jmp head
+sum:
+  %k = add.i64 0, 0
+  %t = add.i64 0, 0
+  jmp shead
+shead:
+  %m = lt.i64 %k, 64
+  br %m, sbody, done
+sbody:
+  %r = getelem.f64 %a, %k
+  %z = load.f64 %r
+  %e = bitcast.f64.i64 %z
+  %t = add.i64 %t, %e
+  %k = add.i64 %k, 1
+  jmp shead
+done:
+  ret.i64 %t
+}
+
+fn @main() -> i64 {
+entry:
+  %r0 = call @i8_add()
+  call @print_i64(%r0)
+  %r1 = call @i8_sub()
+  call @print_i64(%r1)
+  %r2 = call @i8_and()
+  call @print_i64(%r2)
+  %r3 = call @i8_or()
+  call @print_i64(%r3)
+  %r4 = call @i8_xor()
+  call @print_i64(%r4)
+  %r5 = call @i8_mul()
+  call @print_i64(%r5)
+  %r6 = call @i16_add()
+  call @print_i64(%r6)
+  %r7 = call @i16_sub()
+  call @print_i64(%r7)
+  %r8 = call @i16_and()
+  call @print_i64(%r8)
+  %r9 = call @i16_or()
+  call @print_i64(%r9)
+  %r10 = call @i16_xor()
+  call @print_i64(%r10)
+  %r11 = call @i16_mul()
+  call @print_i64(%r11)
+  %r12 = call @i32_add()
+  call @print_i64(%r12)
+  %r13 = call @i32_sub()
+  call @print_i64(%r13)
+  %r14 = call @i32_and()
+  call @print_i64(%r14)
+  %r15 = call @i32_or()
+  call @print_i64(%r15)
+  %r16 = call @i32_xor()
+  call @print_i64(%r16)
+  %r17 = call @i32_mul()
+  call @print_i64(%r17)
+  %r18 = call @i64_add()
+  call @print_i64(%r18)
+  %r19 = call @i64_sub()
+  call @print_i64(%r19)
+  %r20 = call @i64_and()
+  call @print_i64(%r20)
+  %r21 = call @i64_or()
+  call @print_i64(%r21)
+  %r22 = call @i64_xor()
+  call @print_i64(%r22)
+  %r23 = call @i64_mul()
+  call @print_i64(%r23)
+  %r24 = call @f32_add()
+  call @print_i64(%r24)
+  %r25 = call @f32_sub()
+  call @print_i64(%r25)
+  %r26 = call @f32_mul()
+  call @print_i64(%r26)
+  %r27 = call @f64_add()
+  call @print_i64(%r27)
+  %r28 = call @f64_sub()
+  call @print_i64(%r28)
+  %r29 = call @f64_mul()
+  call @print_i64(%r29)
+  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}

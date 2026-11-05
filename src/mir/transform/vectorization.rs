@@ -20,11 +20,12 @@ use lamina_mir::Located;
 use lamina_platform::X86CpuLevel;
 use std::collections::{HashMap, HashSet};
 
-/// Vector unit a function is being compiled for. Only the x86-64 SSE2 unit is
-/// wired up; every other target keeps the pass switched off and so is unchanged.
+/// Vector unit a function is being compiled for. Only x86-64 SSE2 and AArch64 NEON
+/// are wired up; every other target keeps the pass switched off and so is unchanged.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VectorUnit {
     X86Sse2(X86CpuLevel),
+    Aarch64Neon,
 }
 
 /// Vectorizes self-looping element-wise loops whose accesses the alias analysis
@@ -296,9 +297,12 @@ impl AutoVectorization {
 
     /// The cost model from Plan/vector-cost-model.md: a 64-bit lane multiply is
     /// emulated from `pmuludq` below AVX-512DQ and measured slower than the
-    /// scalar loop, so it is refused there.
+    /// scalar loop, so it is refused there. NEON has every lane multiply but that one.
     fn profitable(&self, op: VectorOp, lane: VectorLane) -> bool {
-        let VectorUnit::X86Sse2(level) = self.unit;
+        let level = match self.unit {
+            VectorUnit::Aarch64Neon => return !(op == VectorOp::VMul && lane == VectorLane::I64),
+            VectorUnit::X86Sse2(level) => level,
+        };
         if op == VectorOp::VMul && matches!(lane, VectorLane::I8 | VectorLane::I16) {
             return false;
         }
@@ -782,6 +786,51 @@ done:
   ret.i64 0
 }}"
         )
+    }
+
+    fn neon_vector_ops(source: &str) -> usize {
+        let mut module = from_ir_x86_64(&parse_module(source).unwrap(), "vectorization").unwrap();
+        TransformPipeline::default_for_opt_level_on(3, Some(VectorUnit::Aarch64Neon))
+            .apply_to_module(&mut module)
+            .unwrap();
+        module
+            .functions
+            .values()
+            .flat_map(|f| &f.blocks)
+            .flat_map(|b| &b.instructions)
+            .filter(|i| matches!(i.instr, Instruction::VectorOp { .. }))
+            .count()
+    }
+
+    #[test]
+    fn neon_multiplies_every_lane_but_a_64_bit_one() {
+        let over = |element: &str, op: &str| {
+            format!(
+                "fn @f() -> i64 {{
+entry:
+  %a = stackalloc.[64 x {element}]
+  %j = add.i64 0, 0
+  jmp head
+head:
+  %more = lt.i64 %j, 64
+  br %more, body, done
+body:
+  %q = getelem.{element} %a, %j
+  %x = load.{element} %q
+  %z = {op}.{element} %x, 3
+  store.{element} %q, %z
+  %j = add.i64 %j, 1
+  jmp head
+done:
+  ret.i64 0
+}}"
+            )
+        };
+        for element in ["i8", "i16", "i32"] {
+            assert!(neon_vector_ops(&over(element, "mul")) > 0, "{element}");
+        }
+        assert_eq!(neon_vector_ops(&over("i64", "mul")), 0);
+        assert!(neon_vector_ops(&over("i64", "add")) > 0);
     }
 
     #[test]

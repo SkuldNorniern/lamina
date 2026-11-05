@@ -10481,6 +10481,160 @@ frame main 16
 frame print_u64 16
 frame put_u64 32
 
+[neon_vectorized_loops O0]
+insns 3449
+spills 1614
+calls 62
+branches 183
+frame f32_add 496
+frame f32_mul 496
+frame f32_sub 496
+frame f64_add 736
+frame f64_mul 736
+frame f64_sub 736
+frame i16_add 368
+frame i16_and 368
+frame i16_mul 368
+frame i16_or 368
+frame i16_sub 368
+frame i16_xor 368
+frame i32_add 496
+frame i32_and 496
+frame i32_mul 496
+frame i32_or 496
+frame i32_sub 496
+frame i32_xor 496
+frame i64_add 752
+frame i64_and 752
+frame i64_mul 752
+frame i64_or 752
+frame i64_sub 752
+frame i64_xor 752
+frame i8_add 304
+frame i8_and 304
+frame i8_mul 304
+frame i8_or 304
+frame i8_sub 304
+frame i8_xor 304
+frame main 240
+frame print_i64 64
+frame put_u64 48
+
+[neon_vectorized_loops O1]
+insns 2073
+spills 45
+calls 62
+branches 183
+frame f32_add 288
+frame f32_mul 288
+frame f32_sub 288
+frame f64_add 544
+frame f64_mul 544
+frame f64_sub 544
+frame i16_add 128
+frame i16_and 128
+frame i16_mul 128
+frame i16_or 128
+frame i16_sub 128
+frame i16_xor 128
+frame i32_add 256
+frame i32_and 256
+frame i32_mul 256
+frame i32_or 256
+frame i32_sub 256
+frame i32_xor 256
+frame i64_add 512
+frame i64_and 512
+frame i64_mul 512
+frame i64_or 512
+frame i64_sub 512
+frame i64_xor 512
+frame i8_add 64
+frame i8_and 64
+frame i8_mul 64
+frame i8_or 64
+frame i8_sub 64
+frame i8_xor 64
+frame main 16
+frame print_i64 16
+frame put_u64 32
+
+[neon_vectorized_loops O2]
+insns 3034
+spills 101
+calls 61
+branches 241
+frame f32_add 288
+frame f32_mul 288
+frame f32_sub 288
+frame f64_add 544
+frame f64_mul 544
+frame f64_sub 544
+frame i16_add 128
+frame i16_and 128
+frame i16_mul 128
+frame i16_or 128
+frame i16_sub 128
+frame i16_xor 128
+frame i32_add 256
+frame i32_and 256
+frame i32_mul 256
+frame i32_or 256
+frame i32_sub 256
+frame i32_xor 256
+frame i64_add 512
+frame i64_and 512
+frame i64_mul 512
+frame i64_or 512
+frame i64_sub 512
+frame i64_xor 512
+frame i8_add 64
+frame i8_and 64
+frame i8_mul 64
+frame i8_or 64
+frame i8_sub 64
+frame i8_xor 64
+frame main 16
+frame put_u64 32
+
+[neon_vectorized_loops O3]
+insns 3100
+spills 107
+calls 61
+branches 331
+frame f32_add 288
+frame f32_mul 288
+frame f32_sub 288
+frame f64_add 544
+frame f64_mul 544
+frame f64_sub 544
+frame i16_add 128
+frame i16_and 128
+frame i16_mul 128
+frame i16_or 128
+frame i16_sub 128
+frame i16_xor 128
+frame i32_add 256
+frame i32_and 256
+frame i32_mul 256
+frame i32_or 256
+frame i32_sub 256
+frame i32_xor 256
+frame i64_add 512
+frame i64_and 512
+frame i64_mul 512
+frame i64_or 512
+frame i64_sub 512
+frame i64_xor 512
+frame i8_add 64
+frame i8_and 64
+frame i8_mul 64
+frame i8_or 64
+frame i8_sub 64
+frame i8_xor 64
+frame main 16
+frame put_u64 32
+
 [nested_calls O0]
 insns 177
 spills 50
