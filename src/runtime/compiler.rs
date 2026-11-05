@@ -114,6 +114,10 @@ impl<T> CompiledFunction<T> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(
+        not(feature = "encoder"),
+        all(target_arch = "x86_64", target_os = "linux")
+    ))]
     use super::*;
     #[cfg(not(feature = "encoder"))]
     use crate::mir::Module;
@@ -121,8 +125,17 @@ mod tests {
     use crate::mir::codegen::from_ir_x86_64;
     #[cfg(all(feature = "encoder", target_arch = "x86_64", target_os = "linux"))]
     use crate::parser::parse_module;
+    // Only the x86_64 Linux JIT test and the no-encoder test build a compiler.
+    #[cfg(any(
+        not(feature = "encoder"),
+        all(target_arch = "x86_64", target_os = "linux")
+    ))]
     use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
+    #[cfg(any(
+        not(feature = "encoder"),
+        all(target_arch = "x86_64", target_os = "linux")
+    ))]
     fn make_compiler() -> RuntimeCompiler {
         RuntimeCompiler::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
     }
