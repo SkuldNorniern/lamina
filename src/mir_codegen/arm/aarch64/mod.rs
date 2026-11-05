@@ -527,6 +527,7 @@ fn compile_single_function_aarch64_with(
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
+    let vector_homes = simd::vector_homes(func);
     let mut output = Vec::new();
     let abi = AArch64ABI::new(target_os);
 
@@ -1091,6 +1092,7 @@ fn compile_single_function_aarch64_with(
                         va_area,
                         func.pointer_width,
                         callee_saved_base.map(|base| (base, callee_saved.as_slice())),
+                        &vector_homes,
                     )?;
                 }
                 position += 1;
@@ -1303,6 +1305,7 @@ fn emit_block<W: Write>(
     va_area: Option<variadic::VaArea>,
     pointer_width: PointerWidth,
     callee_saved: Option<(i32, &[&'static str])>,
+    vector_homes: &HashMap<Register, u8>,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines
@@ -1369,7 +1372,7 @@ fn emit_block<W: Write>(
                 ra.free_scratch(scratch);
             }
             MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
-                simd::emit(inst, w, frame, ra)?
+                simd::emit(inst, w, frame, ra, vector_homes)?
             }
             MirInst::IntConvert { .. } => {
                 if let Some(operations) = integer_conversion(inst, pointer_width) {
@@ -1391,6 +1394,7 @@ fn emit_block<W: Write>(
                         va_area,
                         pointer_width,
                         callee_saved,
+                        vector_homes,
                     )?;
                 }
             }
@@ -2685,7 +2689,7 @@ fn emit_block<W: Write>(
             | MirInst::VaCopy { .. } => {
                 variadic::emit(inst, w, frame, ra, abi.target_os(), va_area, block_prefix)?;
             }
-            MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra)?,
+            MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra, vector_homes)?,
             MirInst::AtomicLoad { .. }
             | MirInst::AtomicStore { .. }
             | MirInst::AtomicBinary { .. }

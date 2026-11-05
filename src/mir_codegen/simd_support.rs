@@ -579,6 +579,21 @@ pub fn negative(backend: Backend, pointer_width: PointerWidth) {
     }
 }
 
+/// `asm` with the number dropped from every `v<n>.` register, so `v17.4s` reads `v.4s`.
+fn without_vector_numbers(asm: &str) -> String {
+    let mut out = String::with_capacity(asm.len());
+    let mut rest = asm;
+    while let Some(at) = rest.find('v') {
+        let (head, tail) = rest.split_at(at + 1);
+        out.push_str(head);
+        let digits = tail.len() - tail.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        let numbered = digits > 0 && tail[digits..].starts_with('.');
+        rest = if numbered { &tail[digits..] } else { tail };
+    }
+    out.push_str(rest);
+    out
+}
+
 pub fn native(
     backend: Backend,
     mnemonic: impl Fn(VectorOp, VectorLane, usize) -> String,
@@ -647,12 +662,18 @@ pub fn native(
                                 assert!(asm.contains("umov "), "{asm}");
                             }
                             let want = mnemonic(op, lane, index);
+                            // NEON keeps vectors in whichever register has room.
+                            let (seen, want) = if matches!(backend, Backend::Neon) {
+                                (without_vector_numbers(&asm), without_vector_numbers(&want))
+                            } else {
+                                (asm.clone(), want)
+                            };
                             assert!(
-                                asm.contains(&want),
+                                seen.contains(&want),
                                 "{backend:?} {strategy:?} {op:?} {lane:?}: expected {want}: {asm}"
                             );
                             assert!(asm.contains(if matches!(backend, Backend::Neon) {
-                                "ldr q0"
+                                "ldr q"
                             } else {
                                 "vle"
                             }));
