@@ -66,7 +66,7 @@ use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CodegenBase, CopyLocation, assign_stack_slots, assign_stack_slots_where, coalesce_dying_inputs,
     compile_functions_parallel, emit_global_directives, emit_symbol_visibility,
-    emit_x86_64_global_data, parallel_codegen_error, parallel_copy_schedule,
+    emit_x86_64_global_data, local_label_prefix, parallel_codegen_error, parallel_copy_schedule,
     reject_x86_64_thread_local_globals, self_tail_entry_label, use_counts,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};

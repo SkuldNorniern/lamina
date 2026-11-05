@@ -27,7 +27,9 @@ use crate::mir_codegen::common::{
     emit_symbol_visibility, integer_conversion, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
-use crate::mir_codegen::common::{reject_thread_local_globals, unsupported_thread_local};
+use crate::mir_codegen::common::{
+    local_label_prefix, reject_thread_local_globals, unsupported_thread_local,
+};
 use crate::mir_codegen::macho_unwind;
 use crate::mir_codegen::simd::reserve_vector_slots;
 use lamina_mir::{SourceLoc, TlsModel};
@@ -860,8 +862,9 @@ fn compile_single_function_aarch64_with(
         }
     }
 
-    let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
-    let block_prefix = format!(".L_{}.", label.trim_start_matches('_'));
+    let lp = local_label_prefix(target_os);
+    let epilogue_label = format!("{lp}ret_{}", label.trim_start_matches('_'));
+    let block_prefix = format!("{lp}_{}.", label.trim_start_matches('_'));
 
     let has_complex_function =
         func.blocks.len() > 50 || func.blocks.iter().any(|b| b.instructions.len() > 100);
