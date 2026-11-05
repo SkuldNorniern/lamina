@@ -1377,7 +1377,7 @@ fn darwin_saves_callee_saved_registers_without_cfi() -> Result<(), Box<dyn Error
 }
 
 #[test]
-fn tail_calls_stay_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
+fn tail_calls_restore_callee_saved_registers_first() -> Result<(), Box<dyn Error>> {
     use crate::mir::{Block, Parameter};
     let x = Register::Virtual(VirtualReg::gpr(0));
     let mut func = Function::new(
@@ -1436,10 +1436,27 @@ fn tail_calls_stay_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
             )
             .map_err(|error| error.to_string())?,
         )?;
-        for index in 19..=28 {
+        let body = asm.split_once("    b g\n").ok_or("missing tail branch")?.0;
+        let mentions = |reg: &str| {
+            body.lines()
+                .filter(|line| {
+                    line.contains(&format!("{reg},"))
+                        || line.contains(&format!("{reg}]"))
+                        || line.ends_with(&format!(" {reg}"))
+                })
+                .last()
+                .map(str::to_owned)
+        };
+        let planned: Vec<_> = (19..=28)
+            .map(|index| format!("x{index}"))
+            .filter(|reg| mentions(reg).is_some())
+            .collect();
+        assert!(!planned.is_empty(), "no callee-saved register used: {asm}");
+        for reg in &planned {
+            let last = mentions(reg).ok_or("register vanished")?;
             assert!(
-                !asm.contains(&format!("x{index},")) && !asm.contains(&format!("x{index}]")),
-                "x{index} survives no tail call: {asm}"
+                (last.contains("ldp ") || last.contains("ldr ")) && last.contains("[x29"),
+                "{reg} is not restored ahead of the tail call: {asm}"
             );
         }
     }

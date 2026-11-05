@@ -12103,6 +12103,44 @@ frame main 48
 frame print_u64 16
 frame put_u64 32
 
+[tail_call_callee_saved O0]
+insns 272
+spills 125
+calls 9
+branches 3
+frame main 160
+frame mix 48
+frame print_i64 64
+frame put_u64 48
+frame relay 144
+
+[tail_call_callee_saved O1]
+insns 245
+spills 51
+calls 9
+branches 3
+frame main 96
+frame mix 0
+frame print_i64 16
+frame put_u64 32
+frame relay 80
+
+[tail_call_callee_saved O2]
+insns 282
+spills 39
+calls 4
+branches 7
+frame main 112
+frame put_u64 32
+
+[tail_call_callee_saved O3]
+insns 269
+spills 29
+calls 4
+branches 7
+frame main 64
+frame put_u64 32
+
 [tail_call_float_args O0]
 insns 158
 spills 42

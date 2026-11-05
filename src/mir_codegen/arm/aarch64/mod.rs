@@ -553,19 +553,14 @@ fn compile_single_function_aarch64_with(
                     | MirInst::ThreadLocalAddr { .. }
             )
         });
-    // A tail call leaves through its own epilogue and inline asm picks physical
-    // registers without consulting the allocator, so neither may hold a planned value in
-    // a callee-saved register, and neither gets a plan at all once the function calls.
+    // Inline asm picks physical registers without consulting the allocator, so it may not
+    // hold a planned value in a callee-saved register, and gets no plan at all once the
+    // function calls.
     let allows_callee_saved = !func
         .blocks
         .iter()
         .flat_map(|b| b.instructions.iter())
-        .any(|i| {
-            matches!(
-                &i.instr,
-                MirInst::TailCall { .. } | MirInst::InlineAsm { .. }
-            )
-        });
+        .any(|i| matches!(&i.instr, MirInst::InlineAsm { .. }));
     let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> = if settings.regalloc
         != RegallocStrategy::Incremental
         && (allows_callee_saved || !makes_calls)
@@ -1095,6 +1090,7 @@ fn compile_single_function_aarch64_with(
                         sret_slot,
                         va_area,
                         func.pointer_width,
+                        callee_saved_base.map(|base| (base, callee_saved.as_slice())),
                     )?;
                 }
                 position += 1;
@@ -1306,6 +1302,7 @@ fn emit_block<W: Write>(
     sret_slot: Option<i32>,
     va_area: Option<variadic::VaArea>,
     pointer_width: PointerWidth,
+    callee_saved: Option<(i32, &[&'static str])>,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines
@@ -1393,6 +1390,7 @@ fn emit_block<W: Write>(
                         sret_slot,
                         va_area,
                         pointer_width,
+                        callee_saved,
                     )?;
                 }
             }
@@ -2520,6 +2518,15 @@ fn emit_block<W: Write>(
                 let unwind = os_uses_elf(abi.target_os());
                 if unwind {
                     writeln!(w, "    .cfi_remember_state")?;
+                }
+                // The arguments are in place, so the planned values they came from can go.
+                if let Some((base, regs)) = callee_saved {
+                    emit_callee_saved(w, regs, base, false)?;
+                    if unwind {
+                        for reg in regs {
+                            writeln!(w, "    .cfi_restore {}", reg.trim_start_matches('x'))?;
+                        }
+                    }
                 }
                 if frame.frame_size > 0 {
                     emit_sp_adjust(w, "add", frame.frame_size as u64)?;
