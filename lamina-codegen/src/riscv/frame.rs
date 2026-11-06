@@ -1,5 +1,6 @@
 /// RISC-V stack frame management utilities
 use crate::riscv::target::RiscVTarget;
+use lamina_platform::StackProbe;
 use std::io::{Error, Write};
 
 pub struct RiscVFrame;
@@ -35,6 +36,8 @@ impl RiscVFrame {
         stack_size: usize,
         callee_saved_registers: &[&str],
         target: RiscVTarget,
+        probe: Option<StackProbe>,
+        page_size: usize,
     ) -> Result<(), Error> {
         // 16 either way: both ABIs want sp 16-byte aligned.
         let w = target.word_bytes();
@@ -46,8 +49,12 @@ impl RiscVFrame {
 
         // Allocate stack space for local variables if needed
         let locals = Self::locals_bytes(stack_size, callee_saved_registers, target);
-        if locals > 0 {
-            Self::adjust_sp(writer, -(locals as i64))?;
+        match probe {
+            Some(StackProbe::PageLoop) if locals > page_size => {
+                Self::probed_sp_sub(writer, locals, page_size, sw)?
+            }
+            _ if locals > 0 => Self::adjust_sp(writer, -(locals as i64))?,
+            _ => {}
         }
         for (index, register) in callee_saved_registers.iter().enumerate() {
             let offset = Self::callee_saved_offset(stack_size, index, target);
@@ -111,6 +118,28 @@ impl RiscVFrame {
 
     /// Move `sp` by `delta` bytes. Deltas outside the 12-bit range go through `t0`,
     /// which the prologue, epilogue and call sequences do not hold a value in.
+    /// Lowers sp one page at a time and touches each page, so a frame larger than the
+    /// guard page cannot step over it. t1 and t2 are temporaries nothing holds on entry.
+    fn probed_sp_sub<W: Write>(
+        writer: &mut W,
+        amount: usize,
+        page_size: usize,
+        sw: &str,
+    ) -> Result<(), Error> {
+        Self::load_imm(writer, "t1", -(amount as i64))?;
+        writeln!(writer, "    add t1, sp, t1")?;
+        let remainder = amount % page_size;
+        if remainder != 0 {
+            Self::adjust_sp(writer, -(remainder as i64))?;
+            writeln!(writer, "    {sw} zero, 0(sp)")?;
+        }
+        Self::load_imm(writer, "t2", page_size as i64)?;
+        writeln!(writer, "1:")?;
+        writeln!(writer, "    sub sp, sp, t2")?;
+        writeln!(writer, "    {sw} zero, 0(sp)")?;
+        writeln!(writer, "    bltu t1, sp, 1b")
+    }
+
     pub fn adjust_sp<W: Write>(writer: &mut W, delta: i64) -> Result<(), Error> {
         if (IMM12_MIN..=IMM12_MAX).contains(&delta) {
             writeln!(writer, "    addi sp, sp, {delta}")
@@ -239,7 +268,7 @@ mod tests {
         let mut pro = Vec::new();
         let mut epi = Vec::new();
         let rv64 = RiscVTarget::general(Xlen::Rv64);
-        RiscVFrame::generate_prologue(&mut pro, 24, &[], rv64).expect("prologue");
+        RiscVFrame::generate_prologue(&mut pro, 24, &[], rv64, None, 4096).expect("prologue");
         RiscVFrame::generate_epilogue(&mut epi, 24, &[], rv64).expect("epilogue");
         let pro = String::from_utf8(pro).expect("utf8");
         let epi = String::from_utf8(epi).expect("utf8");
@@ -251,7 +280,7 @@ mod tests {
     fn frame_beyond_the_immediate_range_is_adjusted_through_t0() -> Result<(), Box<dyn Error>> {
         let rv64 = RiscVTarget::general(Xlen::Rv64);
         let mut prologue = Vec::new();
-        RiscVFrame::generate_prologue(&mut prologue, 40000, &[], rv64)?;
+        RiscVFrame::generate_prologue(&mut prologue, 40000, &[], rv64, None, 4096)?;
         let prologue = String::from_utf8(prologue)?;
         assert!(prologue.contains("    add sp, sp, t0\n"), "{prologue}");
         assert_eq!(eval_li_sequence(&prologue, "t0"), -40000, "{prologue}");
@@ -356,7 +385,7 @@ mod tests {
         let mut prologue = Vec::new();
         let mut epilogue = Vec::new();
         let rv64 = RiscVTarget::general(Xlen::Rv64);
-        RiscVFrame::generate_prologue(&mut prologue, 16, &["s1"], rv64)?;
+        RiscVFrame::generate_prologue(&mut prologue, 16, &["s1"], rv64, None, 4096)?;
         RiscVFrame::generate_epilogue(&mut epilogue, 16, &["s1"], rv64)?;
         let prologue = String::from_utf8(prologue)?;
         let epilogue = String::from_utf8(epilogue)?;

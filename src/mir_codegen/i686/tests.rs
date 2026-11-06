@@ -432,3 +432,40 @@ mod variadic_wide_argument_tests {
         assert!(!assembly.contains("    addl $8, %edx"), "{assembly}");
     }
 }
+
+fn stack_probe_assembly(source: &str) -> String {
+    use crate::{mir::codegen, mir_codegen::MirCodegenSettings, parser};
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+    let ir = parser::parse_module(source).expect("parse");
+    let module = codegen::from_ir_for_target(&ir, "probe", TargetArchitecture::I686.data_layout())
+        .expect("lower");
+    let mut out = Vec::new();
+    super::generate_mir_i686_with_units_and_settings(
+        &module,
+        &mut out,
+        TargetOperatingSystem::Linux,
+        1,
+        &MirCodegenSettings::default(),
+    )
+    .expect("emit");
+    String::from_utf8(out).expect("utf8")
+}
+
+#[test]
+fn frame_larger_than_a_page_is_probed() {
+    let asm = stack_probe_assembly(
+        "fn @f() -> i64 {\nentry:\n    %p = stackalloc.[65536 x i8]\n    ret.i64 0\n}\n",
+    );
+    let probe = "1:\n    subl $4096, %esp\n    orl $0, (%esp)\n    cmpl %eax, %esp\n    ja 1b\n";
+    assert!(asm.contains("    leal -"), "{asm}");
+    assert!(asm.contains(probe), "{asm}");
+}
+
+#[test]
+fn small_frame_gets_no_probe() {
+    let asm = stack_probe_assembly(
+        "fn @f() -> i64 {\nentry:\n    %p = stackalloc.[24 x i8]\n    ret.i64 0\n}\n",
+    );
+    assert!(!asm.contains("ja 1b"), "{asm}");
+    assert!(!asm.contains("orl $0"), "{asm}");
+}
