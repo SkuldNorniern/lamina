@@ -34,7 +34,7 @@ pub fn unsupported_io(operation: &str, os: TargetOperatingSystem) -> LaminaError
 /// to the wrapping arithmetic alone.
 pub fn unsupported_overflow_flag(backend: &str) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "checked arithmetic ('<op>.ovf') is not supported by the {backend} backend; it is implemented for x86_64 and s390x"
+        "checked arithmetic ('<op>.ovf') is not supported by the {backend} backend; it is implemented for x86_64, AArch64, s390x and WASM"
     )))
 }
 
