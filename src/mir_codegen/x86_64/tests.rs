@@ -22,10 +22,6 @@ fn position_independent_modules_load_external_addresses_through_the_got() {
         generate_mir_x86_64(module, &mut output, TargetOperatingSystem::Linux).unwrap();
         String::from_utf8(output).unwrap()
     };
-    let plain = assemble(&mir);
-    assert!(plain.contains("    leaq printf(%rip), "), "{plain}");
-    assert!(!plain.contains("GOTPCREL"), "{plain}");
-
     mir.relocation = RelocationModel::Pie;
     let pie = assemble(&mir);
     assert!(pie.contains("    movq printf@GOTPCREL(%rip), "), "{pie}");
@@ -33,7 +29,7 @@ fn position_independent_modules_load_external_addresses_through_the_got() {
 }
 
 #[test]
-fn macos_external_function_addresses_load_through_the_got() {
+fn external_function_addresses_load_through_the_got() {
     let ir = parse_module(
         "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n",
     )
@@ -54,8 +50,15 @@ fn macos_external_function_addresses_load_through_the_got() {
     assert!(!macos.contains("_twice@GOTPCREL"), "{macos}");
 
     let linux = assemble(TargetOperatingSystem::Linux);
-    assert!(linux.contains("    leaq printf(%rip), "), "{linux}");
-    assert!(!linux.contains("GOTPCREL"), "{linux}");
+    assert!(
+        linux.contains("    movq printf@GOTPCREL(%rip), "),
+        "{linux}"
+    );
+    assert!(linux.contains("    leaq twice(%rip), "), "{linux}");
+    assert!(!linux.contains("twice@GOTPCREL"), "{linux}");
+
+    let windows = assemble(TargetOperatingSystem::Windows);
+    assert!(!windows.contains("GOTPCREL"), "{windows}");
 }
 
 #[test]

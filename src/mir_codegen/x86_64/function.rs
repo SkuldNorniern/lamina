@@ -1148,7 +1148,8 @@ pub(super) struct AbiExtensions {
     return_types: HashMap<String, MirType>,
     variadic: HashSet<String>,
     /// Symbols whose address is loaded through the GOT: under `@pic` or `@pie`, and for
-    /// undefined externals on macOS, which dyld can only bind through a slot.
+    /// undefined externals on ELF and macOS. A PIE link refuses a PC-relative reference
+    /// to a symbol from a shared library, and dyld can only bind one through a slot.
     got_symbols: HashSet<String>,
 }
 
@@ -1204,7 +1205,9 @@ impl AbiExtensions {
             .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
             .collect();
         let got_symbols = match module.relocation {
-            RelocationModel::Static if target_os == TargetOperatingSystem::MacOS => {
+            RelocationModel::Static
+                if os_uses_elf(target_os) || target_os == TargetOperatingSystem::MacOS =>
+            {
                 module.external_functions.clone()
             }
             RelocationModel::Static => HashSet::new(),
