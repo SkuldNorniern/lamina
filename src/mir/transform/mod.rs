@@ -310,11 +310,15 @@ impl<'a> OptimizingForm<'a> {
     }
 }
 
-/// The vector unit this compiler can target for `target`, if any. Only x86-64 is
-/// wired up; every other architecture answers `None` and is left untouched.
+/// The vector unit this compiler can target for `target`, if any. Only x86-64 and
+/// AArch64 are wired up; every other architecture answers `None` and is left untouched.
 #[cfg(feature = "nightly")]
 pub fn vector_unit_for(target: TargetArchitecture, level: X86CpuLevel) -> Option<VectorUnit> {
-    matches!(target, TargetArchitecture::X86_64).then_some(VectorUnit::X86Sse2(level))
+    match target {
+        TargetArchitecture::X86_64 => Some(VectorUnit::X86Sse2(level)),
+        TargetArchitecture::Aarch64 => Some(VectorUnit::Aarch64Neon),
+        _ => None,
+    }
 }
 
 /// Without the nightly feature there is no vectorizer to configure.
@@ -353,6 +357,7 @@ pub struct TransformPipeline {
     max_total_iterations: usize,
     inline: bool,
     rotate_loops: bool,
+    canonicalize_addresses: bool,
     hoist_constants: bool,
     #[cfg(feature = "nightly")]
     vector: Option<VectorUnit>,
@@ -365,6 +370,7 @@ impl TransformPipeline {
             max_total_iterations: 1000,
             inline: false,
             rotate_loops: false,
+            canonicalize_addresses: false,
             hoist_constants: false,
             #[cfg(feature = "nightly")]
             vector: None,
@@ -458,9 +464,7 @@ impl TransformPipeline {
         let mut pipeline =
             Self::default_for_opt_level_on(opt_level, vector_unit_for(target, level));
         if opt_level >= 2 && target == TargetArchitecture::Aarch64 {
-            pipeline = pipeline
-                .add_transform(AddressingCanonicalization)
-                .add_transform(DeadCodeElimination);
+            pipeline.canonicalize_addresses = true;
             pipeline.hoist_constants = true;
         }
         pipeline
@@ -551,15 +555,6 @@ impl TransformPipeline {
                 .validate_in_pipeline()
                 .map_err(|errors| TransformError::VerificationFailed { errors })?;
         }
-        // After rotation: it copies the loop test, constants included, into the back edge.
-        if self.hoist_constants {
-            for func in module.functions.values_mut() {
-                ConstantHoisting.apply(func)?;
-            }
-            module
-                .validate_in_pipeline()
-                .map_err(|errors| TransformError::VerificationFailed { errors })?;
-        }
         #[cfg(feature = "nightly")]
         if let Some(unit) = self.vector {
             let pass = AutoVectorization::new(unit);
@@ -567,6 +562,25 @@ impl TransformPipeline {
                 if pass.apply(func)? {
                     DeadCodeElimination.apply(func)?;
                 }
+            }
+            module
+                .validate_in_pipeline()
+                .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        }
+        // After the vectorizer, which reads an address as the arithmetic that builds it.
+        if self.canonicalize_addresses {
+            for func in module.functions.values_mut() {
+                AddressingCanonicalization.apply(func)?;
+                DeadCodeElimination.apply(func)?;
+            }
+            module
+                .validate_in_pipeline()
+                .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        }
+        // After rotation: it copies the loop test, constants included, into the back edge.
+        if self.hoist_constants {
+            for func in module.functions.values_mut() {
+                ConstantHoisting.apply(func)?;
             }
             module
                 .validate_in_pipeline()

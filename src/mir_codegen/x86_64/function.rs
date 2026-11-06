@@ -143,6 +143,7 @@ pub(super) fn compile_single_function_x86_64(
         rax_value: None,
     };
     let abi = X86ABI::new(target_os);
+    let lp = local_label_prefix(target_os);
 
     ensure_signature_support(&func.sig).map_err(lamina_to_codegen_error)?;
 
@@ -332,13 +333,14 @@ pub(super) fn compile_single_function_x86_64(
     }
 
     if let Some(area) = &va_area {
-        spill_register_save_area(&mut output, area, func_name).map_err(io_codegen_error)?;
+        spill_register_save_area(&mut output, area, target_os, func_name)
+            .map_err(io_codegen_error)?;
     }
 
     // A self tail call re-enters here with its arguments already in the ABI argument
     // registers, so it reuses the parameter homing below and skips frame teardown and
     // setup entirely.
-    writeln!(output, "{}:", self_tail_entry_label(func_name))
+    writeln!(output, "{}:", self_tail_entry_label(target_os, func_name))
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     if let Some(offset) = sret_slot {
@@ -505,7 +507,7 @@ pub(super) fn compile_single_function_x86_64(
     let layout = &plan.order;
     let rotations = &plan.rotations;
     if layout.first().map(|&i| func.blocks[i].label.as_str()) != Some(func.entry.as_str()) {
-        writeln!(output, "    jmp .L_{}.{}", func_name, func.entry).map_err(io_codegen_error)?;
+        writeln!(output, "    jmp {lp}_{}.{}", func_name, func.entry).map_err(io_codegen_error)?;
     }
 
     // A comparison whose only consumer is the branch right after it needs no setCC and no
@@ -525,7 +527,7 @@ pub(super) fn compile_single_function_x86_64(
         if loop_headers.contains(&block_index) {
             writeln!(output, "    .p2align 5,,31").map_err(io_codegen_error)?;
         }
-        writeln!(output, ".L_{}.{}:", func_name, block.label).map_err(io_codegen_error)?;
+        writeln!(output, "{lp}_{}.{}:", func_name, block.label).map_err(io_codegen_error)?;
 
         let mut skip = 0;
         for (position, inst) in block.instructions.iter().enumerate() {
@@ -583,17 +585,17 @@ pub(super) fn compile_single_function_x86_64(
                         .is_some_and(|&body| func.blocks[body].label == *false_target)
                 {
                     let inverted = inverted_cmp_suffix(op).map_err(lamina_to_codegen_error)?;
-                    writeln!(output, "    j{inverted} .L_{func_name}.{false_target}")
+                    writeln!(output, "    j{inverted} {lp}_{func_name}.{false_target}")
                         .map_err(io_codegen_error)?;
                     if true_target != next_label {
-                        writeln!(output, "    jmp .L_{func_name}.{true_target}")
+                        writeln!(output, "    jmp {lp}_{func_name}.{true_target}")
                             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                     }
                 } else {
-                    writeln!(output, "    j{suffix} .L_{func_name}.{true_target}")
+                    writeln!(output, "    j{suffix} {lp}_{func_name}.{true_target}")
                         .map_err(io_codegen_error)?;
                     if false_target != next_label {
-                        writeln!(output, "    jmp .L_{func_name}.{false_target}")
+                        writeln!(output, "    jmp {lp}_{func_name}.{false_target}")
                             .map_err(io_codegen_error)?;
                     }
                 }
@@ -1146,7 +1148,8 @@ pub(super) struct AbiExtensions {
     return_types: HashMap<String, MirType>,
     variadic: HashSet<String>,
     /// Symbols whose address is loaded through the GOT: under `@pic` or `@pie`, and for
-    /// undefined externals on macOS, which dyld can only bind through a slot.
+    /// undefined externals on ELF and macOS. A PIE link refuses a PC-relative reference
+    /// to a symbol from a shared library, and dyld can only bind one through a slot.
     got_symbols: HashSet<String>,
 }
 
@@ -1202,7 +1205,9 @@ impl AbiExtensions {
             .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
             .collect();
         let got_symbols = match module.relocation {
-            RelocationModel::Static if target_os == TargetOperatingSystem::MacOS => {
+            RelocationModel::Static
+                if os_uses_elf(target_os) || target_os == TargetOperatingSystem::MacOS =>
+            {
                 module.external_functions.clone()
             }
             RelocationModel::Static => HashSet::new(),

@@ -1,0 +1,107 @@
+# a call-free function holding values in the argument registers above its arguments
+fn @two(i64 %a, i64 %b) -> i64 {
+entry:
+  %c = mul.i64 %a, %b
+  %d = add.i64 %a, %c
+  %e = xor.i64 %b, %d
+  %f = add.i64 %c, %e
+  %g = mul.i64 %d, %f
+  %h = add.i64 %e, %g
+  %i = sub.i64 %h, %a
+  %j = xor.i64 %i, %c
+  %k = add.i64 %j, %f
+  ret.i64 %k
+}
+
+fn @five(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e) -> i64 {
+entry:
+  %f = mul.i64 %a, %e
+  %g = mul.i64 %b, %d
+  %h = xor.i64 %c, %f
+  %i = add.i64 %g, %h
+  %j = sub.i64 %i, %a
+  %k = add.i64 %j, %b
+  %l = xor.i64 %k, %c
+  %m = add.i64 %l, %d
+  %n = sub.i64 %m, %e
+  ret.i64 %n
+}
+
+fn @eight(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h) -> i64 {
+entry:
+  %i = mul.i64 %a, %h
+  %j = mul.i64 %b, %g
+  %k = mul.i64 %c, %f
+  %l = mul.i64 %d, %e
+  %m = add.i64 %i, %j
+  %n = add.i64 %k, %l
+  %o = xor.i64 %m, %n
+  %p = add.i64 %o, %a
+  ret.i64 %p
+}
+
+fn @looped(i64 %n, i64 %step) -> i64 {
+entry:
+  %i = add.i64 0, 0
+  %x = add.i64 1, 0
+  %y = add.i64 2, 0
+  %z = add.i64 3, 0
+  jmp head
+head:
+  %more = lt.i64 %i, %n
+  br %more, body, done
+body:
+  %x = add.i64 %x, %y
+  %y = xor.i64 %y, %z
+  %z = add.i64 %z, %step
+  %i = add.i64 %i, 1
+  jmp head
+done:
+  %r = add.i64 %x, %y
+  %s = add.i64 %r, %z
+  ret.i64 %s
+}
+
+fn @main() -> i64 {
+entry:
+  %a = call @two(6, 7)
+  call @print_i64(%a)
+  %b = call @five(2, 3, 5, 7, 11)
+  call @print_i64(%b)
+  %c = call @eight(1, 2, 3, 4, 5, 6, 7, 8)
+  call @print_i64(%c)
+  %d = call @looped(100, 9)
+  call @print_i64(%d)
+  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}

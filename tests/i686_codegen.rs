@@ -1,5 +1,6 @@
 #![allow(clippy::expect_used)]
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod common;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

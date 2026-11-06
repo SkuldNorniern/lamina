@@ -22,10 +22,6 @@ fn position_independent_modules_load_external_addresses_through_the_got() {
         generate_mir_x86_64(module, &mut output, TargetOperatingSystem::Linux).unwrap();
         String::from_utf8(output).unwrap()
     };
-    let plain = assemble(&mir);
-    assert!(plain.contains("    leaq printf(%rip), "), "{plain}");
-    assert!(!plain.contains("GOTPCREL"), "{plain}");
-
     mir.relocation = RelocationModel::Pie;
     let pie = assemble(&mir);
     assert!(pie.contains("    movq printf@GOTPCREL(%rip), "), "{pie}");
@@ -33,7 +29,7 @@ fn position_independent_modules_load_external_addresses_through_the_got() {
 }
 
 #[test]
-fn macos_external_function_addresses_load_through_the_got() {
+fn external_function_addresses_load_through_the_got() {
     let ir = parse_module(
         "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n",
     )
@@ -54,8 +50,15 @@ fn macos_external_function_addresses_load_through_the_got() {
     assert!(!macos.contains("_twice@GOTPCREL"), "{macos}");
 
     let linux = assemble(TargetOperatingSystem::Linux);
-    assert!(linux.contains("    leaq printf(%rip), "), "{linux}");
-    assert!(!linux.contains("GOTPCREL"), "{linux}");
+    assert!(
+        linux.contains("    movq printf@GOTPCREL(%rip), "),
+        "{linux}"
+    );
+    assert!(linux.contains("    leaq twice(%rip), "), "{linux}");
+    assert!(!linux.contains("twice@GOTPCREL"), "{linux}");
+
+    let windows = assemble(TargetOperatingSystem::Windows);
+    assert!(!windows.contains("GOTPCREL"), "{windows}");
 }
 
 #[test]
@@ -1567,7 +1570,13 @@ fn external_declarations_come_out_in_one_order() {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+#[cfg(all(
+    test,
+    any(
+        all(target_arch = "x86_64", target_os = "linux"),
+        all(target_arch = "aarch64", target_os = "macos")
+    )
+))]
 mod edge_move_tests {
     use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
     use crate::test_support::TempDir;
@@ -1607,7 +1616,13 @@ mod edge_move_tests {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+#[cfg(all(
+    test,
+    any(
+        all(target_arch = "x86_64", target_os = "linux"),
+        all(target_arch = "aarch64", target_os = "macos")
+    )
+))]
 mod intrinsic_namespace_tests {
     use crate::mir_codegen::test_support::{PRINT_I64_HELPERS, compile};
     use crate::test_support::TempDir;
@@ -2188,6 +2203,7 @@ fn coff_weak_and_hidden_globals_stay_external() {
     }
 }
 
+
 #[test]
 fn elf_data_symbols_carry_their_type_and_size() {
     let assemble = |source: &str, os: TargetOperatingSystem| {
@@ -2197,12 +2213,17 @@ fn elf_data_symbols_carry_their_type_and_size() {
         generate_mir_x86_64(&mir, &mut output, os).unwrap();
         String::from_utf8(output).unwrap()
     };
+
     let main = "fn @main() -> i64 {\nentry:\n    %a = load.i64 $counter\n    ret.i64 %a\n}\n";
-    let plain = format!("global $counter: i64 = 41\nglobal $zeros: i64 = 0\n\n{main}");
+    let plain = format!(
+        "global $counter: i64 = 41\nglobal $zeros: i64 = 0\n\n{main}"
+    );
+
     let linux = assemble(
         &format!("@thread_local\nglobal $tl: i64 = 7\n{plain}"),
         TargetOperatingSystem::Linux,
     );
+
     for (name, kind) in [
         ("counter", "object"),
         ("tl", "tls_object"),
@@ -2217,8 +2238,39 @@ fn elf_data_symbols_carry_their_type_and_size() {
             "{linux}"
         );
     }
-    for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::Windows] {
+
+    for os in [
+        TargetOperatingSystem::MacOS,
+        TargetOperatingSystem::Windows,
+    ] {
         let asm = assemble(&plain, os);
-        assert!(!asm.contains(".type ") && !asm.contains(".size "), "{asm}");
+        assert!(
+            !asm.contains(".type ") && !asm.contains(".size "),
+            "{asm}"
+        );
     }
 }
+
+#[test]
+fn macos_block_labels_stay_out_of_the_symbol_table() {
+    let ir = parse_module(
+        "fn @pick(i64 %x) -> i64 {\nentry:\n    %c = eq.i64 %x, 0\n    br %c, zero, other\nzero:\n    ret.i64 1\nother:\n    ret.i64 2\n}\n",
+    )
+    .unwrap();
+
+    let mir = from_ir_x86_64(&ir, "labels").unwrap();
+
+    let assemble = |os: TargetOperatingSystem| {
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, os).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+
+    let macos = assemble(TargetOperatingSystem::MacOS);
+    assert!(macos.contains("\nL_pick.zero:\n"), "{macos}");
+    assert!(!macos.contains(".L"), "{macos}");
+
+    let linux = assemble(TargetOperatingSystem::Linux);
+    assert!(linux.contains("\n.L_pick.zero:\n"), "{linux}");
+}
+

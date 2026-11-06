@@ -57,15 +57,15 @@ fn aarch64_i128_takes_even_register_pair() {
 #[test]
 fn aarch64_skipped_register_is_not_backfilled() {
     let asm = assemble("aarch64_linux", I128_THEN_I64);
-    let stores = spills(&asm, "str x");
-    assert!(
-        stores.iter().any(|l| l.starts_with("str x4, ")),
-        "{stores:?}"
-    );
-    assert!(
-        !stores.iter().any(|l| l.starts_with("str x1, ")),
-        "{stores:?}"
-    );
+    // A whole word goes straight to its register, or to its frame slot without a plan.
+    let reads = |register: &str| {
+        asm.lines().map(str::trim).any(|line| {
+            line.starts_with(&format!("str {register}, "))
+                || (line.starts_with("mov ") && line.ends_with(&format!(", {register}")))
+        })
+    };
+    assert!(reads("x4"), "{asm}");
+    assert!(!reads("x1"), "{asm}");
 }
 
 #[test]

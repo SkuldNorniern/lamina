@@ -6,7 +6,10 @@ use crate::{
         MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature,
         VectorLane, VectorOp, VectorType, VirtualReg,
     },
-    mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
+    mir_codegen::{
+        MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings,
+        test_support::cross_assembler_ready,
+    },
 };
 use lamina_platform::{PointerWidth, Target, TargetArchitecture, TargetOperatingSystem};
 use std::{
@@ -370,7 +373,9 @@ pub fn tools_available(names: &[&str]) -> bool {
 }
 
 pub fn objdump_tool() -> Option<&'static str> {
-    ["llvm-objdump-18", "llvm-objdump"]
+    // Apple's Xcode tools ship llvm-objdump as plain `objdump` and do not put it on PATH
+    // under the llvm name, so fall back to that spelling.
+    ["llvm-objdump-18", "llvm-objdump", "objdump"]
         .into_iter()
         .find(|tool| tool_available(tool))
 }
@@ -574,6 +579,21 @@ pub fn negative(backend: Backend, pointer_width: PointerWidth) {
     }
 }
 
+/// `asm` with the number dropped from every `v<n>.` register, so `v17.4s` reads `v.4s`.
+fn without_vector_numbers(asm: &str) -> String {
+    let mut out = String::with_capacity(asm.len());
+    let mut rest = asm;
+    while let Some(at) = rest.find('v') {
+        let (head, tail) = rest.split_at(at + 1);
+        out.push_str(head);
+        let digits = tail.len() - tail.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        let numbered = digits > 0 && tail[digits..].starts_with('.');
+        rest = if numbered { &tail[digits..] } else { tail };
+    }
+    out.push_str(rest);
+    out
+}
+
 pub fn native(
     backend: Backend,
     mnemonic: impl Fn(VectorOp, VectorLane, usize) -> String,
@@ -588,6 +608,16 @@ pub fn native(
     }
     let guard = TempDir::new(&format!("lamina-{backend:?}"));
     let dir = guard.path();
+    // Some hosts' clang (Apple's, for one) has no RISC-V backend, so the probe skips loudly
+    // there instead of failing on an option the toolchain never had.
+    let probe_args: &[&str] = match backend {
+        Backend::Neon => &["--target=aarch64-linux-gnu"],
+        Backend::Rvv => &["--target=riscv64-linux-gnu", "-march=rv64gcv"],
+        _ => &["--target=riscv64-linux-gnu"],
+    };
+    if !cross_assembler_ready(dir, probe_args) {
+        return;
+    }
     for strategy in [
         RegallocStrategy::Incremental,
         RegallocStrategy::LinearScanGlobal,
@@ -632,12 +662,18 @@ pub fn native(
                                 assert!(asm.contains("umov "), "{asm}");
                             }
                             let want = mnemonic(op, lane, index);
+                            // NEON keeps vectors in whichever register has room.
+                            let (seen, want) = if matches!(backend, Backend::Neon) {
+                                (without_vector_numbers(&asm), without_vector_numbers(&want))
+                            } else {
+                                (asm.clone(), want)
+                            };
                             assert!(
-                                asm.contains(&want),
+                                seen.contains(&want),
                                 "{backend:?} {strategy:?} {op:?} {lane:?}: expected {want}: {asm}"
                             );
                             assert!(asm.contains(if matches!(backend, Backend::Neon) {
-                                "ldr q0"
+                                "ldr q"
                             } else {
                                 "vle"
                             }));

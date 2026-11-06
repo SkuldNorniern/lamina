@@ -602,10 +602,13 @@ fn aggregate_layout<'a>(
 fn type_layout(ty: &Type<'_>, layout: TargetDataLayout) -> Option<(u64, u64)> {
     let pointer = layout.pointer_width;
     match ty {
-        Type::Primitive(p) => Some((
-            sizeof_primitive(*p, pointer),
-            align_of_primitive(*p, pointer),
-        )),
+        Type::Primitive(p) => {
+            let alignment = match p {
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => layout.align_64,
+                _ => align_of_primitive(*p, pointer),
+            };
+            Some((sizeof_primitive(*p, pointer), alignment))
+        }
         Type::Array { element_type, size } => {
             let (element_size, alignment) = type_layout(element_type, layout)?;
             Some((element_size.checked_mul(*size)?, alignment))
@@ -958,6 +961,46 @@ mod tests {
             format!("{}", Value::Global("my_global_var")),
             "$my_global_var"
         );
+    }
+
+    #[test]
+    fn eight_byte_scalars_take_the_target_alignment() {
+        // gcc -m32 lays `struct { int a; long long b; int c; }` out as 0, 4, 12 in 16
+        // bytes; every other target aligns b to 8.
+        for wide in [PrimitiveType::I64, PrimitiveType::U64, PrimitiveType::F64] {
+            let fields = vec![
+                StructField {
+                    name: "a",
+                    ty: Type::Primitive(PrimitiveType::I32),
+                },
+                StructField {
+                    name: "b",
+                    ty: Type::Primitive(wide),
+                },
+                StructField {
+                    name: "c",
+                    ty: Type::Primitive(PrimitiveType::I32),
+                },
+            ];
+            let offsets = |layout| {
+                (0..3)
+                    .map(|index| struct_field_byte_offset(&fields, false, index, layout))
+                    .collect::<Vec<_>>()
+            };
+            let ty = Type::Struct {
+                fields: fields.clone(),
+                packed: false,
+            };
+            assert_eq!(offsets(l32()), [Some(0), Some(4), Some(12)]);
+            assert_eq!(sizeof_type(&ty, l32()), Some(16));
+            assert_eq!(align_of_type(&ty, l32()), 4);
+            for arch in [TargetArchitecture::X86_64, TargetArchitecture::Armv7] {
+                let layout = arch.data_layout();
+                assert_eq!(offsets(layout), [Some(0), Some(8), Some(16)], "{arch:?}");
+                assert_eq!(sizeof_type(&ty, layout), Some(24), "{arch:?}");
+                assert_eq!(align_of_type(&ty, layout), 8, "{arch:?}");
+            }
+        }
     }
 }
 

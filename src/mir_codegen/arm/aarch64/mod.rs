@@ -27,7 +27,9 @@ use crate::mir_codegen::common::{
     emit_symbol_visibility, integer_conversion, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note, promoted_argument_type};
-use crate::mir_codegen::common::{reject_thread_local_globals, unsupported_thread_local};
+use crate::mir_codegen::common::{
+    local_label_prefix, reject_thread_local_globals, unsupported_thread_local,
+};
 use crate::mir_codegen::macho_unwind;
 use crate::mir_codegen::simd::reserve_vector_slots;
 use lamina_mir::{SourceLoc, TlsModel};
@@ -401,6 +403,8 @@ struct AggregateSignatures {
     returns: HashMap<String, Aggregate>,
     float_returns: HashMap<String, MirType>,
     variadic: HashSet<String>,
+    /// Functions the module declares but does not define.
+    external: HashSet<String>,
 }
 
 impl AggregateSignatures {
@@ -412,6 +416,7 @@ impl AggregateSignatures {
             returns: HashMap::new(),
             float_returns: HashMap::new(),
             variadic: HashSet::new(),
+            external: HashSet::new(),
         }
     }
 
@@ -451,6 +456,7 @@ impl AggregateSignatures {
                 .filter(|(_, func)| func.sig.variadic)
                 .map(|(name, _)| name.clone())
                 .collect(),
+            external: module.external_functions.clone(),
         }
     }
 
@@ -488,6 +494,10 @@ impl AggregateSignatures {
 
     fn float_result(&self, callee: &str) -> Option<MirType> {
         self.float_returns.get(callee).copied()
+    }
+
+    fn is_external(&self, name: &str) -> bool {
+        self.external.contains(name)
     }
 }
 
@@ -527,6 +537,7 @@ fn compile_single_function_aarch64_with(
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
+    let vector_homes = simd::vector_homes(func);
     let mut output = Vec::new();
     let abi = AArch64ABI::new(target_os);
 
@@ -553,19 +564,14 @@ fn compile_single_function_aarch64_with(
                     | MirInst::ThreadLocalAddr { .. }
             )
         });
-    // A tail call leaves through its own epilogue and inline asm picks physical
-    // registers without consulting the allocator, so neither may hold a planned value in
-    // a callee-saved register, and neither gets a plan at all once the function calls.
+    // Inline asm picks physical registers without consulting the allocator, so it may not
+    // hold a planned value in a callee-saved register, and gets no plan at all once the
+    // function calls.
     let allows_callee_saved = !func
         .blocks
         .iter()
         .flat_map(|b| b.instructions.iter())
-        .any(|i| {
-            matches!(
-                &i.instr,
-                MirInst::TailCall { .. } | MirInst::InlineAsm { .. }
-            )
-        });
+        .any(|i| matches!(&i.instr, MirInst::InlineAsm { .. }));
     let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> = if settings.regalloc
         != RegallocStrategy::Incremental
         && (allows_callee_saved || !makes_calls)
@@ -592,7 +598,11 @@ fn compile_single_function_aarch64_with(
             }
         }
         let allowed = |interval: &LiveInterval, reg| call_clobbers.is_clear(reg, interval);
-        let pool = A64RegAlloc::gpr_pool_for_global_allocation(allows_callee_saved);
+        let pool = if keeps_argument_registers_free(func) {
+            A64RegAlloc::gpr_pool_for_leaf(func.sig.params.len(), allows_callee_saved)
+        } else {
+            A64RegAlloc::gpr_pool_for_global_allocation(allows_callee_saved)
+        };
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
             .filter(|i| {
@@ -733,7 +743,22 @@ fn compile_single_function_aarch64_with(
     if let Some(area) = &va_area {
         variadic::spill_save_area(&mut output, area).map_err(lamina_to_codegen_error)?;
     }
+    // A whole word bound for a register goes straight there, no stop in its frame slot.
+    let mut moved_parameters = HashSet::new();
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
+        if let (ArgPlace::Gpr { first, .. }, Register::Virtual(vreg), Some(plan)) =
+            (*place, &p.reg, &global_plan)
+            && !kind.by_reference
+            && p.aggregate.is_none()
+            && !p.ty.is_float()
+            && p.ty.size_bytes(func.pointer_width) == 8
+            && let Some(MirAllocation::Register(reg)) = plan.get(vreg)
+        {
+            writeln!(output, "    mov {reg}, x{first}")
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+            moved_parameters.insert(*vreg);
+            continue;
+        }
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
             emit_frame_slot_address(&mut output, addr, off).map_err(lamina_to_codegen_error)?;
@@ -845,8 +870,9 @@ fn compile_single_function_aarch64_with(
         }
     }
 
-    let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
-    let block_prefix = format!(".L_{}.", label.trim_start_matches('_'));
+    let lp = local_label_prefix(target_os);
+    let epilogue_label = format!("{lp}ret_{}", label.trim_start_matches('_'));
+    let block_prefix = format!("{lp}_{}.", label.trim_start_matches('_'));
 
     let has_complex_function =
         func.blocks.len() > 50 || func.blocks.iter().any(|b| b.instructions.len() > 100);
@@ -864,6 +890,7 @@ fn compile_single_function_aarch64_with(
     if let Some(global_plan) = &global_plan {
         for param in &func.sig.params {
             if let Register::Virtual(vreg) = &param.reg
+                && !moved_parameters.contains(vreg)
                 && let Some(MirAllocation::Register(reg)) = global_plan.get(vreg)
                 && let Some(offset) = frame.slot_of(&param.reg)
             {
@@ -1079,6 +1106,8 @@ fn compile_single_function_aarch64_with(
                         sret_slot,
                         va_area,
                         func.pointer_width,
+                        callee_saved_base.map(|base| (base, callee_saved.as_slice())),
+                        &vector_homes,
                     )?;
                 }
                 position += 1;
@@ -1290,6 +1319,8 @@ fn emit_block<W: Write>(
     sret_slot: Option<i32>,
     va_area: Option<variadic::VaArea>,
     pointer_width: PointerWidth,
+    callee_saved: Option<(i32, &[&'static str])>,
+    vector_homes: &HashMap<Register, u8>,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines
@@ -1348,6 +1379,11 @@ fn emit_block<W: Write>(
                 if os_uses_macho(abi.target_os()) {
                     writeln!(w, "    adrp {scratch}, {label}@PAGE")?;
                     writeln!(w, "    add {scratch}, {scratch}, {label}@PAGEOFF")?;
+                } else if os_uses_elf(abi.target_os()) && signatures.is_external(symbol) {
+                    // A PIE link refuses a PC-relative reference to a symbol that may
+                    // come from a shared library.
+                    writeln!(w, "    adrp {scratch}, :got:{label}")?;
+                    writeln!(w, "    ldr {scratch}, [{scratch}, :got_lo12:{label}]")?;
                 } else {
                     writeln!(w, "    adrp {scratch}, {label}")?;
                     writeln!(w, "    add {scratch}, {scratch}, :lo12:{label}")?;
@@ -1356,7 +1392,7 @@ fn emit_block<W: Write>(
                 ra.free_scratch(scratch);
             }
             MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
-                simd::emit(inst, w, frame, ra)?
+                simd::emit(inst, w, frame, ra, vector_homes)?
             }
             MirInst::IntConvert { .. } => {
                 if let Some(operations) = integer_conversion(inst, pointer_width) {
@@ -1377,6 +1413,8 @@ fn emit_block<W: Write>(
                         sret_slot,
                         va_area,
                         pointer_width,
+                        callee_saved,
+                        vector_homes,
                     )?;
                 }
             }
@@ -1922,36 +1960,55 @@ fn emit_block<W: Write>(
                 true_val,
                 false_val,
             } => {
-                let r_cond = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let r_t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                let r_f = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                load_reg_to(w, cond, r_cond, frame, ra)?;
-                emit_materialize_operand(w, true_val, r_t, frame, ra)?;
-                emit_materialize_operand(w, false_val, r_f, frame, ra)?;
-                if ty.size_bytes(pointer_width) == 4 {
+                let narrow = ty.size_bytes(pointer_width) == 4;
+                let mut scratches = Vec::new();
+                let mut held = |w: &mut W, operand: &Operand, ra: &mut A64RegAlloc| {
+                    if let Some(preg) = operand_in_register(operand, ra) {
+                        return Ok::<&'static str, LaminaError>(preg);
+                    }
+                    let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                    scratches.push(scratch);
+                    emit_materialize_operand(w, operand, scratch, frame, ra)?;
+                    Ok(scratch)
+                };
+                let r_cond = held(w, &Operand::Register(cond.clone()), ra)?;
+                let r_t = held(w, true_val, ra)?;
+                let r_f = held(w, false_val, ra)?;
+                let in_place = dest_in_register(dst, ra);
+                let r_d = match in_place {
+                    Some(preg) if !narrow => preg,
+                    // A narrow result still goes through store_result below.
+                    _ => {
+                        let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        scratches.push(scratch);
+                        scratch
+                    }
+                };
+                if narrow {
                     writeln!(w, "    cmp {}, #0", w_alias(r_cond))?;
                     writeln!(
                         w,
                         "    csel {}, {}, {}, ne",
-                        w_alias(r_t),
+                        w_alias(r_d),
                         w_alias(r_t),
                         w_alias(r_f)
                     )?;
-                    store_result(w, dst, &x_alias(r_t), frame, ra)?;
                 } else {
                     writeln!(w, "    cmp {}, #0", x_alias(r_cond))?;
                     writeln!(
                         w,
                         "    csel {}, {}, {}, ne",
-                        x_alias(r_t),
+                        x_alias(r_d),
                         x_alias(r_t),
                         x_alias(r_f)
                     )?;
-                    store_result(w, dst, &x_alias(r_t), frame, ra)?;
                 }
-                ra.free_scratch(r_cond);
-                ra.free_scratch(r_t);
-                ra.free_scratch(r_f);
+                if narrow || in_place.is_none() {
+                    store_result(w, dst, &x_alias(r_d), frame, ra)?;
+                }
+                for scratch in scratches {
+                    ra.free_scratch(scratch);
+                }
             }
             MirInst::Store { ty, src, addr, .. } => {
                 let size = ty.size_bytes(pointer_width);
@@ -2486,6 +2543,15 @@ fn emit_block<W: Write>(
                 if unwind {
                     writeln!(w, "    .cfi_remember_state")?;
                 }
+                // The arguments are in place, so the planned values they came from can go.
+                if let Some((base, regs)) = callee_saved {
+                    emit_callee_saved(w, regs, base, false)?;
+                    if unwind {
+                        for reg in regs {
+                            writeln!(w, "    .cfi_restore {}", reg.trim_start_matches('x'))?;
+                        }
+                    }
+                }
                 if frame.frame_size > 0 {
                     emit_sp_adjust(w, "add", frame.frame_size as u64)?;
                 }
@@ -2567,14 +2633,23 @@ fn emit_block<W: Write>(
                 false_target,
             } => {
                 let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                load_reg_to(w, cond, t, frame, ra)?;
-                writeln!(w, "    cmp {}, #0", x_alias(t))?;
-                emit_branch_if(
-                    w,
-                    "ne",
-                    &format!("{block_prefix}{true_target}"),
-                    long_branches,
-                )?;
+                let held = match cond {
+                    Register::Virtual(v) => ra.get_mapping_for(v),
+                    Register::Physical(_) => None,
+                };
+                let tested = match held {
+                    Some(preg) => x_alias(preg),
+                    None => {
+                        load_reg_to(w, cond, t, frame, ra)?;
+                        x_alias(t)
+                    }
+                };
+                if long_branches {
+                    writeln!(w, "    cmp {tested}, #0")?;
+                    emit_branch_if(w, "ne", &format!("{block_prefix}{true_target}"), true)?;
+                } else {
+                    writeln!(w, "    cbnz {tested}, {block_prefix}{true_target}")?;
+                }
                 writeln!(w, "    b {block_prefix}{false_target}")?;
                 ra.free_scratch(t);
             }
@@ -2634,7 +2709,7 @@ fn emit_block<W: Write>(
             | MirInst::VaCopy { .. } => {
                 variadic::emit(inst, w, frame, ra, abi.target_os(), va_area, block_prefix)?;
             }
-            MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra)?,
+            MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra, vector_homes)?,
             MirInst::AtomicLoad { .. }
             | MirInst::AtomicStore { .. }
             | MirInst::AtomicBinary { .. }
@@ -2913,6 +2988,37 @@ fn emit_sp_adjust<W: Write>(w: &mut W, op: &str, amount: u64) -> Result<(), Lami
 
 /// Stores a register into a frame slot, going through a scratch when the offset is
 /// past the reach of `stur`.
+/// Whether x3-x7 stay untouched by everything this function does, beyond its arguments
+/// arriving there: only whole-word-or-less integer parameters, no aggregate return, and
+/// only instructions that never name an argument register.
+fn keeps_argument_registers_free(func: &Function) -> bool {
+    let narrow =
+        |ty: &MirType| matches!(ty, MirType::Scalar(_)) && ty.size_bytes(PointerWidth::Bits64) <= 8;
+    !func.sig.variadic
+        && func.sig.ret_aggregate.is_none()
+        && func
+            .sig
+            .params
+            .iter()
+            .all(|p| p.aggregate.is_none() && narrow(&p.ty) && !p.ty.is_float())
+        && func
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .all(|i| match &i.instr {
+                MirInst::IntBinary { ty, .. } | MirInst::IntCmp { ty, .. } => narrow(ty),
+                MirInst::Load { ty, .. } | MirInst::Store { ty, .. } => narrow(ty),
+                MirInst::Copy { ty, .. } => narrow(ty),
+                MirInst::Select { ty, .. } => narrow(ty),
+                MirInst::IntConvert { .. }
+                | MirInst::Lea { .. }
+                | MirInst::Jmp { .. }
+                | MirInst::Br { .. }
+                | MirInst::Ret { .. } => true,
+                _ => false,
+            })
+}
+
 /// Saves or restores the callee-saved registers a global plan handed out, in the area
 /// reserved for them at `base` from the frame pointer. Adjacent pairs go through
 /// `stp`/`ldp` pairs, anchored on x29 while the offsets stay in their reach and on a

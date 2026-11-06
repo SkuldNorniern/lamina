@@ -238,12 +238,10 @@ fn cross_call(label: &str, target: &str, cc: &str, extra: &[&str], runner: Optio
     );
 }
 
+// Gated rather than returning early: a macOS run would otherwise report this as passed.
+#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
 #[test]
 fn x86_64_agrees_with_gcc_on_packed_aggregate_arguments() {
-    if cfg!(not(target_arch = "x86_64")) || cfg!(not(target_os = "linux")) {
-        eprintln!("skipped: the host does not run x86_64 Linux binaries");
-        return;
-    }
     if !have("gcc") && skip("gcc is not installed") {
         return;
     }

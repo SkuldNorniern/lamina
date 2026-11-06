@@ -45,10 +45,7 @@ fn global_parameters_are_initialized_before_entry() -> Result<(), Box<dyn Error>
             .lines()
             .find_map(|line| line.strip_prefix("    mov x0, "))
             .ok_or("missing return move")?;
-        assert!(
-            prologue.contains(&format!("ldur {reg}, [x29, #-8]")),
-            "{asm}"
-        );
+        assert!(prologue.contains(&format!("mov {reg}, x0")), "{asm}");
     }
     Ok(())
 }
@@ -430,6 +427,28 @@ fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn
     let macho = String::from_utf8(macho)?;
     assert!(macho.contains("adrp x9, _counter@PAGE\n"), "{macho}");
     assert!(macho.contains("add x9, x9, _counter@PAGEOFF\n"), "{macho}");
+    Ok(())
+}
+
+#[test]
+fn elf_external_function_addresses_load_through_the_got() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir_x86_64(&module, "got").expect("lower funcaddr module");
+    let mut linux = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut linux,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
+    let linux = String::from_utf8(linux)?;
+    assert!(linux.contains(", :got:printf\n"), "{linux}");
+    assert!(linux.contains(", :got_lo12:printf]\n"), "{linux}");
+    assert!(!linux.contains(":lo12:printf"), "{linux}");
+    assert!(linux.contains(", :lo12:twice\n"), "{linux}");
+    assert!(!linux.contains(":got:twice"), "{linux}");
     Ok(())
 }
 
@@ -1367,9 +1386,12 @@ fn darwin_saves_callee_saved_registers_without_cfi() -> Result<(), Box<dyn Error
     let assembly = String::from_utf8(output)?;
     assert!(!assembly.contains(".cfi_"), "{assembly}");
     let (prologue, rest) = assembly
-        .split_once(".L_dense.entry:")
+        .split_once("\nL_dense.entry:")
         .ok_or("missing entry")?;
-    let epilogue = rest.split_once(".Lret_dense:").ok_or("missing epilogue")?.1;
+    let epilogue = rest
+        .split_once("\nLret_dense:")
+        .ok_or("missing epilogue")?
+        .1;
     for index in 21..=28 {
         if rest.contains(&format!("x{index},")) {
             assert!(prologue.contains(&format!("x{index},")), "{assembly}");
@@ -1379,8 +1401,62 @@ fn darwin_saves_callee_saved_registers_without_cfi() -> Result<(), Box<dyn Error
     Ok(())
 }
 
+fn compiled_leaf(source: &str) -> Result<String, Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let mir = from_ir_x86_64(&parse_module(source)?, "leaf").expect("lower leaf");
+    let settings = MirCodegenSettings {
+        regalloc: RegallocStrategy::LinearScanGlobal,
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    generate_mir_aarch64_with_units_and_settings(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        1,
+        &settings,
+        PointerWidth::Bits64,
+    )?;
+    Ok(String::from_utf8(output)?)
+}
+
 #[test]
-fn tail_calls_stay_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
+fn a_leaf_keeps_values_in_argument_registers_before_saving_any() -> Result<(), Box<dyn Error>> {
+    let asm = compiled_leaf(
+        "fn @f(i64 %a, i64 %b) -> i64 {\nentry:\n  %c = mul.i64 %a, %b\n  %d = add.i64 %a, %c\n  %e = xor.i64 %b, %d\n  %f = add.i64 %c, %e\n  %g = mul.i64 %d, %f\n  %h = add.i64 %e, %g\n  ret.i64 %h\n}\n",
+    )?;
+    assert!(!asm.contains("x19"), "needed no save: {asm}");
+    Ok(())
+}
+
+#[test]
+fn a_leaf_never_plans_a_value_into_a_register_an_argument_arrives_in() -> Result<(), Box<dyn Error>>
+{
+    let asm = compiled_leaf(
+        "fn @f(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h) -> i64 {\nentry:\n  %i = add.i64 %a, %b\n  %j = add.i64 %c, %d\n  %k = add.i64 %e, %f\n  %l = add.i64 %g, %h\n  %m = add.i64 %i, %j\n  %n = add.i64 %k, %l\n  %o = add.i64 %m, %n\n  ret.i64 %o\n}\n",
+    )?;
+    for reg in ["x3", "x4", "x5", "x6", "x7"] {
+        assert!(
+            !asm.contains(&format!("mov {reg}, x")),
+            "{reg} holds an argument: {asm}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_function_that_calls_stays_off_argument_registers() -> Result<(), Box<dyn Error>> {
+    let asm = compiled_leaf(
+        "fn @g() -> i64 {\nentry:\n  ret.i64 1\n}\nfn @f(i64 %a) -> i64 {\nentry:\n  %b = mul.i64 %a, 3\n  %c = mul.i64 %a, 5\n  %d = mul.i64 %a, 7\n  %e = mul.i64 %a, 11\n  %r = call @g()\n  %s = add.i64 %b, %c\n  %t = add.i64 %d, %e\n  %u = add.i64 %s, %t\n  %v = add.i64 %u, %r\n  ret.i64 %v\n}\n",
+    )?;
+    for reg in ["x3", "x4", "x5", "x6", "x7"] {
+        assert!(!asm.contains(&format!("{reg},")), "{reg}: {asm}");
+    }
+    Ok(())
+}
+
+#[test]
+fn tail_calls_restore_callee_saved_registers_first() -> Result<(), Box<dyn Error>> {
     use crate::mir::{Block, Parameter};
     let x = Register::Virtual(VirtualReg::gpr(0));
     let mut func = Function::new(
@@ -1439,10 +1515,27 @@ fn tail_calls_stay_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
             )
             .map_err(|error| error.to_string())?,
         )?;
-        for index in 19..=28 {
+        let body = asm.split_once("    b g\n").ok_or("missing tail branch")?.0;
+        let mentions = |reg: &str| {
+            body.lines()
+                .filter(|line| {
+                    line.contains(&format!("{reg},"))
+                        || line.contains(&format!("{reg}]"))
+                        || line.ends_with(&format!(" {reg}"))
+                })
+                .next_back()
+                .map(str::to_owned)
+        };
+        let planned: Vec<_> = (19..=28)
+            .map(|index| format!("x{index}"))
+            .filter(|reg| mentions(reg).is_some())
+            .collect();
+        assert!(!planned.is_empty(), "no callee-saved register used: {asm}");
+        for reg in &planned {
+            let last = mentions(reg).ok_or("register vanished")?;
             assert!(
-                !asm.contains(&format!("x{index},")) && !asm.contains(&format!("x{index}]")),
-                "x{index} survives no tail call: {asm}"
+                (last.contains("ldp ") || last.contains("ldr ")) && last.contains("[x29"),
+                "{reg} is not restored ahead of the tail call: {asm}"
             );
         }
     }
@@ -2114,5 +2207,32 @@ fn product_used_again_keeps_its_multiply() -> Result<(), Box<dyn Error>> {
     let asm = multiply_add_asm(true)?;
     assert!(!asm.contains("madd "), "{asm}");
     assert!(asm.contains("mul "), "{asm}");
+    Ok(())
+}
+
+#[test]
+fn macos_block_labels_stay_out_of_the_symbol_table() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
+    let ir = "fn @pick(i64 %x) -> i64 {\nentry:\n    %c = eq.i64 %x, 0\n    br %c, zero, other\nzero:\n    ret.i64 1\nother:\n    ret.i64 2\n}\n";
+    let mir = from_ir_x86_64(&parse_module(ir)?, "labels").expect("lower");
+    let mut macos = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut macos,
+        TargetOperatingSystem::MacOS,
+        PointerWidth::Bits64,
+    )?;
+    let macos = String::from_utf8(macos)?;
+    assert!(macos.contains("\nL_pick.zero:\n"), "{macos}");
+    assert!(!macos.contains(".L"), "{macos}");
+    let mut linux = Vec::new();
+    generate_mir_aarch64(
+        &mir,
+        &mut linux,
+        TargetOperatingSystem::Linux,
+        PointerWidth::Bits64,
+    )?;
+    let linux = String::from_utf8(linux)?;
+    assert!(linux.contains("\n.L_pick.zero:\n"), "{linux}");
     Ok(())
 }

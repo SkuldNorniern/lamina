@@ -1,7 +1,8 @@
 //! Copy propagation transform for MIR.
 
 use crate::mir::{
-    AddressMode, AsmOperand, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
+    AddressMode, AsmOperand, Block, Function, Immediate, Instruction, IntBinOp, MirType, Operand,
+    Register, ScalarType,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use lamina_platform::PointerWidth;
@@ -150,6 +151,15 @@ impl CopyPropagation {
                 value_map.insert(dst.clone(), Operand::Register(src.clone()));
                 aliases_of.entry(src.clone()).or_default().push(dst.clone());
             }
+            // A constant cannot go stale, only its own register can be written again.
+            if let Instruction::Copy {
+                ty: MirType::Scalar(ScalarType::I64),
+                dst,
+                src: src @ Operand::Immediate(Immediate::I64(_)),
+            } = &new_instr.instr
+            {
+                value_map.insert(dst.clone(), src.clone());
+            }
 
             new_instructions.push(new_instr);
         }
@@ -295,9 +305,7 @@ impl CopyPropagation {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, MirType, ScalarType, VirtualReg, transform::test_utils::get_block,
-    };
+    use crate::mir::{FunctionBuilder, VirtualReg, transform::test_utils::get_block};
 
     fn convert_then_use(from: ScalarType, to: ScalarType) -> Function {
         let reg = |id| Register::Virtual(VirtualReg::gpr(id));
@@ -343,6 +351,52 @@ mod tests {
                 Instruction::IntConvert { .. }
             ));
         }
+    }
+
+    #[test]
+    fn constant_in_a_copy_reaches_its_uses() {
+        let reg = |id| Register::Virtual(VirtualReg::gpr(id));
+        let word = MirType::Scalar(ScalarType::I64);
+        let mut func = FunctionBuilder::new("test")
+            .returns(word)
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: word,
+                dst: reg(0),
+                src: Operand::Immediate(Immediate::I64(3)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Mul,
+                ty: word,
+                dst: reg(1),
+                lhs: Operand::Register(reg(0)),
+                rhs: Operand::Register(reg(0)),
+            })
+            .instr(Instruction::Copy {
+                ty: word,
+                dst: reg(0),
+                src: Operand::Immediate(Immediate::I64(4)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(reg(0))),
+            })
+            .build();
+        assert!(CopyPropagation.apply(&mut func).unwrap());
+        let block = get_block(&func, "entry");
+        assert!(matches!(
+            &block.instructions[1].instr,
+            Instruction::IntBinary {
+                lhs: Operand::Immediate(Immediate::I64(3)),
+                rhs: Operand::Immediate(Immediate::I64(3)),
+                ..
+            }
+        ));
+        assert!(matches!(
+            &block.instructions[3].instr,
+            Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(4)))
+            }
+        ));
     }
 
     #[test]

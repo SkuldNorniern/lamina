@@ -1,12 +1,15 @@
-use crate::test_support::TempDir;
 use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
 use std::error::Error;
 
 // Builds and runs a native program with the host toolchain.
-#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+#[cfg(any(
+    all(target_arch = "x86_64", target_os = "linux"),
+    all(target_arch = "aarch64", target_os = "macos")
+))]
 mod native {
     use super::*;
     use crate::mir_codegen::test_support::PRINT_I64_HELPERS;
+    use crate::test_support::TempDir;
     use crate::{mir::Instruction, mir_codegen::test_support::compile};
     use std::{fs, process::Command};
 
