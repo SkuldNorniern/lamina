@@ -2203,21 +2203,74 @@ fn coff_weak_and_hidden_globals_stay_external() {
     }
 }
 
+
+#[test]
+fn elf_data_symbols_carry_their_type_and_size() {
+    let assemble = |source: &str, os: TargetOperatingSystem| {
+        let ir = parse_module(source).unwrap();
+        let mir = from_ir_x86_64(&ir, "symbols").unwrap();
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, os).unwrap();
+        String::from_utf8(output).unwrap()
+    };
+
+    let main = "fn @main() -> i64 {\nentry:\n    %a = load.i64 $counter\n    ret.i64 %a\n}\n";
+    let plain = format!(
+        "global $counter: i64 = 41\nglobal $zeros: i64 = 0\n\n{main}"
+    );
+
+    let linux = assemble(
+        &format!("@thread_local\nglobal $tl: i64 = 7\n{plain}"),
+        TargetOperatingSystem::Linux,
+    );
+
+    for (name, kind) in [
+        ("counter", "object"),
+        ("tl", "tls_object"),
+        ("zeros", "object"),
+    ] {
+        assert!(
+            linux.contains(&format!(".type {name}, %{kind}\n")),
+            "{linux}"
+        );
+        assert!(
+            linux.contains(&format!(".size {name}, .-{name}\n")),
+            "{linux}"
+        );
+    }
+
+    for os in [
+        TargetOperatingSystem::MacOS,
+        TargetOperatingSystem::Windows,
+    ] {
+        let asm = assemble(&plain, os);
+        assert!(
+            !asm.contains(".type ") && !asm.contains(".size "),
+            "{asm}"
+        );
+    }
+}
+
 #[test]
 fn macos_block_labels_stay_out_of_the_symbol_table() {
     let ir = parse_module(
         "fn @pick(i64 %x) -> i64 {\nentry:\n    %c = eq.i64 %x, 0\n    br %c, zero, other\nzero:\n    ret.i64 1\nother:\n    ret.i64 2\n}\n",
     )
     .unwrap();
+
     let mir = from_ir_x86_64(&ir, "labels").unwrap();
+
     let assemble = |os: TargetOperatingSystem| {
         let mut output = Vec::new();
         generate_mir_x86_64(&mir, &mut output, os).unwrap();
         String::from_utf8(output).unwrap()
     };
+
     let macos = assemble(TargetOperatingSystem::MacOS);
     assert!(macos.contains("\nL_pick.zero:\n"), "{macos}");
     assert!(!macos.contains(".L"), "{macos}");
+
     let linux = assemble(TargetOperatingSystem::Linux);
     assert!(linux.contains("\n.L_pick.zero:\n"), "{linux}");
 }
+
