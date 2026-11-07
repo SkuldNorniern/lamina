@@ -2203,7 +2203,6 @@ fn coff_weak_and_hidden_globals_stay_external() {
     }
 }
 
-
 #[test]
 fn elf_data_symbols_carry_their_type_and_size() {
     let assemble = |source: &str, os: TargetOperatingSystem| {
@@ -2215,9 +2214,7 @@ fn elf_data_symbols_carry_their_type_and_size() {
     };
 
     let main = "fn @main() -> i64 {\nentry:\n    %a = load.i64 $counter\n    ret.i64 %a\n}\n";
-    let plain = format!(
-        "global $counter: i64 = 41\nglobal $zeros: i64 = 0\n\n{main}"
-    );
+    let plain = format!("global $counter: i64 = 41\nglobal $zeros: i64 = 0\n\n{main}");
 
     let linux = assemble(
         &format!("@thread_local\nglobal $tl: i64 = 7\n{plain}"),
@@ -2239,15 +2236,9 @@ fn elf_data_symbols_carry_their_type_and_size() {
         );
     }
 
-    for os in [
-        TargetOperatingSystem::MacOS,
-        TargetOperatingSystem::Windows,
-    ] {
+    for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::Windows] {
         let asm = assemble(&plain, os);
-        assert!(
-            !asm.contains(".type ") && !asm.contains(".size "),
-            "{asm}"
-        );
+        assert!(!asm.contains(".type ") && !asm.contains(".size "), "{asm}");
     }
 }
 
@@ -2273,4 +2264,3 @@ fn macos_block_labels_stay_out_of_the_symbol_table() {
     let linux = assemble(TargetOperatingSystem::Linux);
     assert!(linux.contains("\n.L_pick.zero:\n"), "{linux}");
 }
-
