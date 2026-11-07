@@ -43,8 +43,7 @@ version = "0.2.1"
 [[package]]
 name = "lamina-ras"
 version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e1b1453e59d0c8699264c5628cc49f9606db3c422def9f5e124489f3b6cb0db"
+source = "git+https://github.com/Project-Lamina/ras?rev=13aea46cf4e6ddf096c4d107259164072af4773d#13aea46cf4e6ddf096c4d107259164072af4773d"
 dependencies = [
  "lamina-codegen",
  "lamina-mir",

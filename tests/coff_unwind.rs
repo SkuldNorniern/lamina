@@ -65,3 +65,19 @@ fn unwind_tables_are_read_only_data_as_cl_writes_them() {
         );
     }
 }
+
+const IMAGE_REL_AMD64_ADDR32NB: u16 = 0x0003;
+
+#[test]
+fn unwind_records_point_image_relative() {
+    let object = windows_object(FRAME_IR);
+    // link.exe refuses absolute ADDR32 here unless the image is kept under 2 GiB
+    let header = section_header(&object, ".pdata");
+    let table = u32_at(&object, header + 24) as usize;
+    let count = usize::from(u16_at(&object, header + 32));
+    // main's record, three addresses: the leaf callee has none
+    assert_eq!(count, 3);
+    for at in (0..count).map(|i| table + i * 10) {
+        assert_eq!(u16_at(&object, at + 8), IMAGE_REL_AMD64_ADDR32NB);
+    }
+}

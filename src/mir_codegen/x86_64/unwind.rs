@@ -290,9 +290,10 @@ pub(super) fn emit<W: Write>(writer: &mut W, label: &str, unwind: &Unwind) -> io
 
     writeln!(writer, ".section .pdata,\"{TABLE_FLAGS}\"")?;
     writeln!(writer, "    .p2align 2")?;
-    writeln!(writer, "    .long {label}")?;
-    writeln!(writer, "    .long {}", function_end_label(label))?;
-    writeln!(writer, "    .long {info}")?;
+    // RUNTIME_FUNCTION holds image relative addresses: `.rva` makes ADDR32NB, `.long` ADDR32
+    writeln!(writer, "    .rva {label}")?;
+    writeln!(writer, "    .rva {}", function_end_label(label))?;
+    writeln!(writer, "    .rva {info}")?;
     writeln!(writer, ".text")?;
     Ok(())
 }
@@ -459,9 +460,10 @@ mod tests {
         let text = body(&frameful(64));
         assert!(text.contains(".section .xdata,\"adr\"\n"), "{text}");
         assert!(text.contains(".section .pdata,\"adr\"\n"), "{text}");
-        assert!(text.contains("    .long fn\n"), "{text}");
-        assert!(text.contains("    .long .Lxunwind_end_fn\n"), "{text}");
-        assert!(text.contains("    .long .Lxunwind_info_fn\n"), "{text}");
+        // image relative, a plain .long is an absolute address link.exe refuses here
+        assert!(text.contains("    .rva fn\n"), "{text}");
+        assert!(text.contains("    .rva .Lxunwind_end_fn\n"), "{text}");
+        assert!(text.contains("    .rva .Lxunwind_info_fn\n"), "{text}");
         assert!(text.ends_with(".text\n"), "{text}");
     }
 

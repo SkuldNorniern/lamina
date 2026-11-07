@@ -72,3 +72,5 @@ nightly = [
 lamina-platform = { path = "lamina-platform" }
 lamina-mir = { path = "lamina-mir" }
 lamina-codegen = { path = "lamina-codegen" }
+# `.rva` for coff unwind records, until a ras release has it
+lamina-ras = { git = "https://github.com/Project-Lamina/ras", rev = "13aea46cf4e6ddf096c4d107259164072af4773d" }
