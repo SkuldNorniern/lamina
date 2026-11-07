@@ -1518,12 +1518,11 @@ fn tail_calls_restore_callee_saved_registers_first() -> Result<(), Box<dyn Error
         let body = asm.split_once("    b g\n").ok_or("missing tail branch")?.0;
         let mentions = |reg: &str| {
             body.lines()
-                .filter(|line| {
+                .rfind(|line| {
                     line.contains(&format!("{reg},"))
                         || line.contains(&format!("{reg}]"))
                         || line.ends_with(&format!(" {reg}"))
                 })
-                .next_back()
                 .map(str::to_owned)
         };
         let planned: Vec<_> = (19..=28)
