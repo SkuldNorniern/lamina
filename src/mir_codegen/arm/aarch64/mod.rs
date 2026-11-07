@@ -1376,7 +1376,12 @@ fn emit_block<W: Write>(
             MirInst::SymbolAddress { dst, symbol } => {
                 let label = abi.mangle_function_name(symbol);
                 let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                if os_uses_macho(abi.target_os()) {
+                if os_uses_macho(abi.target_os()) && signatures.is_external(symbol) {
+                    // ld64 has no address for a symbol a dylib defines, so an adrp/add
+                    // pair against it is a fixup error rather than a link.
+                    writeln!(w, "    adrp {scratch}, {label}@GOTPAGE")?;
+                    writeln!(w, "    ldr {scratch}, [{scratch}, {label}@GOTPAGEOFF]")?;
+                } else if os_uses_macho(abi.target_os()) {
                     writeln!(w, "    adrp {scratch}, {label}@PAGE")?;
                     writeln!(w, "    add {scratch}, {scratch}, {label}@PAGEOFF")?;
                 } else if os_uses_elf(abi.target_os()) && signatures.is_external(symbol) {
