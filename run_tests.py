@@ -306,15 +306,19 @@ def execution_failure(stdout, stderr, code):
         parts.append(f"stdout: {stdout}")
     return "Execution failed: " + "; ".join(parts)
 
-def load_expected_output(test_path, byteorder=sys.byteorder):
+def load_expected_output(test_path, byteorder=sys.byteorder, target=None):
     """Load expected output from .expected or expected_output.txt file"""
     test_path = Path(test_path)
 
-    # A <stem>.<byteorder>.expected file takes precedence for programs of that byte order.
+    # A <stem>.<target>.expected answers for a target whose C ABI gives a program a
+    # different answer, such as the 4-byte alignment i386 gives a 64-bit field. A
+    # <stem>.<byteorder>.expected answers for programs of that byte order.
     expected_path = test_path.with_suffix('.expected')
-    byte_order_path = test_path.with_name(f"{test_path.stem}.{byteorder}.expected")
-    if byte_order_path.exists():
-        expected_path = byte_order_path
+    for name in (target, byteorder):
+        variant = test_path.with_name(f"{test_path.stem}.{name}.expected")
+        if name and variant.exists():
+            expected_path = variant
+            break
     
     # If not found, try expected_output.txt (standard for benchmarks)
     if not expected_path.exists():
@@ -512,7 +516,7 @@ def run_tests(use_mir=False, target=None, report_only=False, opt_level=None):
             skipped += 1
             continue
 
-        expected_output = load_expected_output(test_path, byteorder)
+        expected_output = load_expected_output(test_path, byteorder, target)
         if expected_output is None:
             print_colored(f"\n❌ FAILED {test_name}: No expected output found", Colors.RED)
             failures.append((test_name, "No expected output found"))
@@ -599,7 +603,7 @@ def run_single_test(test_name, use_mir=False, target=None):
     print_colored(f"🧪 Running single test: {test_path}", Colors.BOLD + Colors.BLUE)
     
     byteorder = CROSS_TARGETS[target]['byteorder'] if target else sys.byteorder
-    expected_output = load_expected_output(test_path, byteorder)
+    expected_output = load_expected_output(test_path, byteorder, target)
     if expected_output is None:
         print_colored(f"⚠️  No expected output found for {test_path}", Colors.YELLOW)
         return
