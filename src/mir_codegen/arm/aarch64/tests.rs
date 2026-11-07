@@ -430,25 +430,37 @@ fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn
     Ok(())
 }
 
-#[test]
-fn elf_external_function_addresses_load_through_the_got() -> Result<(), Box<dyn Error>> {
+/// `funcaddr` of an undefined `printf` beside `funcaddr` of a function this module
+/// defines, so the two paths through `SymbolAddress` show up in one listing.
+fn funcaddr_listing(target_os: TargetOperatingSystem) -> Result<String, Box<dyn Error>> {
     use crate::{mir::codegen::from_ir_x86_64, parser::parse_module};
     let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nfn @twice(i64 %x) -> i64 {\nentry:\n    ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n    %p = funcaddr @printf\n    %q = funcaddr @twice\n    ret.i64 0\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir_x86_64(&module, "got").expect("lower funcaddr module");
-    let mut linux = Vec::new();
-    generate_mir_aarch64(
-        &mir,
-        &mut linux,
-        TargetOperatingSystem::Linux,
-        PointerWidth::Bits64,
-    )?;
-    let linux = String::from_utf8(linux)?;
+    let mut out = Vec::new();
+    generate_mir_aarch64(&mir, &mut out, target_os, PointerWidth::Bits64)?;
+    Ok(String::from_utf8(out)?)
+}
+
+#[test]
+fn elf_external_function_addresses_load_through_the_got() -> Result<(), Box<dyn Error>> {
+    let linux = funcaddr_listing(TargetOperatingSystem::Linux)?;
     assert!(linux.contains(", :got:printf\n"), "{linux}");
     assert!(linux.contains(", :got_lo12:printf]\n"), "{linux}");
     assert!(!linux.contains(":lo12:printf"), "{linux}");
     assert!(linux.contains(", :lo12:twice\n"), "{linux}");
     assert!(!linux.contains(":got:twice"), "{linux}");
+    Ok(())
+}
+
+#[test]
+fn macho_external_function_addresses_load_through_the_got() -> Result<(), Box<dyn Error>> {
+    let macos = funcaddr_listing(TargetOperatingSystem::MacOS)?;
+    assert!(macos.contains(", _printf@GOTPAGE\n"), "{macos}");
+    assert!(macos.contains(" _printf@GOTPAGEOFF]\n"), "{macos}");
+    assert!(!macos.contains("_printf@PAGEOFF"), "{macos}");
+    assert!(macos.contains(", _twice@PAGEOFF\n"), "{macos}");
+    assert!(!macos.contains("_twice@GOTPAGE"), "{macos}");
     Ok(())
 }
 
